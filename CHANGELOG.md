@@ -2,6 +2,18 @@
 
 All notable changes to Black Wire Forge are recorded here.
 
+## v1.0.1 — 2026-09-24
+
+### Fixed
+
+- A mode's main file input is visible on arrival. Talking Head's face picture sat inside the
+  collapsed Recipe drawer whenever the mode also had a prompt box, while the page said "Needs a
+  picture first" and pointed at another room. Primary file inputs now take the slot above the
+  prompt; other file inputs stay in the drawer.
+- "Needs a picture first" now says you can add your own, before offering to make one.
+- The UI smoke test checks that every primary file input is visible, not just present. It
+  counted the hidden input as rendered and passed.
+
 ## v1.0.0 — 2026-09-24
 
 First public release.

@@ -2031,10 +2031,10 @@ function renderTryThis(){
     let needsHTML = '';
     if(ex.needs && !supplied){
       const target = roomAndExampleForCapWord(ex.needs);
-      needsHTML = '<p class="hint" data-try-needs>Needs a ' + esc(ex.needs) + ' first.'
-        + (target ? ' <a href="#room=' + esc(target.room.id) + '&try=' + esc(target.example.id) + '">Make one in '
+      needsHTML = '<p class="hint" data-try-needs>Needs a ' + esc(ex.needs) + ' first. Add your own below'
+        + (target ? ', or <a href="#room=' + esc(target.room.id) + '&try=' + esc(target.example.id) + '">make one in '
                      + esc(target.room.name) + '</a>' : '')
-        + '</p>';
+        + '.</p>';
     }
     return '<div class="try-row"><button type="button" class="btn" data-try="' + esc(ex.id) + '"'
       + ' title="' + esc(ex.why || '') + '">' + esc(ex.label) + '</button>'
@@ -2143,23 +2143,19 @@ async function renderModeFields(){
   // the recipe drawer -- if it has one -- stays a plain collapsed line below
   // it rather than swallowing the only input the mode has.
   STATE.uploads = {};
-  const ledgerHTML = uploadFields.map(f => ledgerRowHTML(f, values)).join('')
-    + jackFields.map(f => jackNoteHTML(f)).join('');
-  let ledgerContainer;
-  if(promptField){
-    $('#ledgerProminent').hidden = true;
-    $('#ledgerProminentBody').innerHTML = '';
-    $('#ledgerInRecipe').hidden = !ledgerFields.length;
-    $('#ledgerInRecipeBody').innerHTML = ledgerHTML;
-    ledgerContainer = '#ledgerInRecipeBody';
-  } else {
-    $('#ledgerInRecipe').hidden = true;
-    $('#ledgerInRecipeBody').innerHTML = '';
-    $('#ledgerProminent').hidden = !ledgerFields.length;
-    $('#ledgerProminentTitle').textContent = uploadFields.length > 1 ? 'Add files' : 'Add a file';
-    $('#ledgerProminentBody').innerHTML = ledgerHTML;
-    ledgerContainer = '#ledgerProminentBody';
-  }
+  // A PRIMARY file input (Talking Head's face) is the mode's main input, so it
+  // always takes the prominent slot above the prompt. Inside the collapsed
+  // recipe drawer a first-timer never finds it. Other file inputs (and cable
+  // jacks) stay in the drawer's ledger when the mode also has a prompt.
+  const prominentFields = promptField ? uploadFields.filter(f => tierOf(f) === 'primary') : ledgerFields;
+  const drawerFields = ledgerFields.filter(f => !prominentFields.includes(f));
+  const rowHTML = f => UPLOAD_TYPES.includes(f.type) ? ledgerRowHTML(f, values) : jackNoteHTML(f);
+  $('#ledgerProminent').hidden = !prominentFields.length;
+  $('#ledgerProminentTitle').textContent =
+    prominentFields.filter(f => UPLOAD_TYPES.includes(f.type)).length > 1 ? 'Add files' : 'Add a file';
+  $('#ledgerProminentBody').innerHTML = prominentFields.map(rowHTML).join('');
+  $('#ledgerInRecipe').hidden = !drawerFields.length;
+  $('#ledgerInRecipeBody').innerHTML = drawerFields.map(rowHTML).join('');
   uploadFields.forEach(f => {
     const input = $('#upload_' + f.id);
     if(!input) return;
@@ -2177,7 +2173,7 @@ async function renderModeFields(){
         const thumbs = $('#thumbs_' + f.id);
         thumbs.innerHTML = j.files.map((uf, i) =>
           '<div class="t"><span class="num" style="padding:4px;display:block">' + (i+1) + '</span></div>').join('');
-        const tag = $(ledgerContainer + ' [data-ledger-row="' + f.id + '"] .ref-tag');
+        const tag = $('[data-ledger-row="' + f.id + '"] .ref-tag');
         if(tag) tag.textContent = j.files.length + ' loaded';
         renderTryThis();   // a "Needs a … first" note clears once the file is here
         renderHelperBar();   // "Describe this picture" appears once a file is here

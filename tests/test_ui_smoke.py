@@ -413,6 +413,14 @@ try:
                 check("room=%r %s/%s: 'Everything else (N)' states declared advanced count (%d)"
                       % (rid, mm["cap"], mm["mode"], want_advanced),
                       summary is not None and ("(%d)" % want_advanced) in summary, "summary text: %r" % summary)
+                # v1.0.1: counting data-field-tier="primary" passed while Talking Head's
+                # face upload sat inside the COLLAPSED recipe drawer. A primary file
+                # input must be visible on arrival, with nothing opened first.
+                for f in fields:
+                    if f.get("tier") == "primary" and f.get("type") in ("image", "audio", "image_list", "video_list", "model"):
+                        vis = page.is_visible("#upload_%s" % f["id"])
+                        check("room=%r %s/%s: primary file input %r is visible without opening anything"
+                              % (rid, mm["cap"], mm["mode"], f["id"]), vis, "hidden (inside a closed drawer?)")
 
                 # H2: every mode's first Try this button -- click it, check
                 # recipe/quality/values landed, and that Make was NEVER sent.
