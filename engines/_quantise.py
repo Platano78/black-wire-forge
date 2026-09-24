@@ -36,6 +36,16 @@ except ImportError as e:
     DEPS_OK, DEPS_ERROR = False, str(e)
 
 if DEPS_OK:
+    # portability fix: Image.Dither / Image.Quantize are new in Pillow 9.1 (the
+    # pre-9.1 constants live straight on Image, e.g. Image.NONE / Image.MEDIANCUT).
+    # Resolved once here so quantize() below works unchanged on Pillow 8.x-12.x.
+    DITHER_NONE = Image.Dither.NONE if hasattr(Image, "Dither") else Image.NONE
+    QUANTIZE_MEDIANCUT = Image.Quantize.MEDIANCUT if hasattr(Image, "Quantize") else Image.MEDIANCUT
+else:
+    DITHER_NONE = None
+    QUANTIZE_MEDIANCUT = None
+
+if DEPS_OK:
     BAYER4 = np.array([
         [0, 8, 2, 10],
         [12, 4, 14, 6],
@@ -95,7 +105,7 @@ def build_palette(rgb, n_colors, bg_mask=None, palette_mode="population"):
         im = Image.fromarray(strip)
     else:
         im = Image.fromarray(rgb)
-    q = im.quantize(colors=n_colors, method=Image.MEDIANCUT, dither=Image.Dither.NONE)
+    q = im.quantize(colors=n_colors, method=QUANTIZE_MEDIANCUT, dither=DITHER_NONE)
     pal = q.getpalette()[: n_colors * 3]
     return np.array(pal, dtype=np.float32).reshape(-1, 3)
 

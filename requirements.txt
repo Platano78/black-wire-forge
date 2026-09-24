@@ -4,3 +4,5 @@
 #   python3 -m pip install -r requirements.txt
 numpy       # Pixel Art's quantise/dither post-step (engines/_quantise.py)
 Pillow      # Pixel Art's quantise/dither post-step, and picture->video image-fit
+            # (engines/_quantise.py supports Pillow 8.x and up; it does not
+            # require the Image.Dither/Image.Quantize enums added in 9.1)
