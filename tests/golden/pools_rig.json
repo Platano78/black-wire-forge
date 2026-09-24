@@ -1,0 +1,145 @@
+{
+ "audio_encoder": {
+  "AudioEncoderLoader.audio_encoder_name": [
+   "COMBO",
+   {
+    "multiselect": false,
+    "options": [
+     "sheetsage2_bf16.safetensors"
+    ]
+   }
+  ]
+ },
+ "bg_removal": {
+  "LoadBackgroundRemovalModel.bg_removal_name": [
+   "COMBO",
+   {
+    "multiselect": false,
+    "options": [
+     "model.safetensors"
+    ],
+    "tooltip": "The model used to remove backgrounds from images"
+   }
+  ]
+ },
+ "checkpoint": {
+  "CheckpointLoaderSimple.ckpt_name": [
+   [
+    "pixel-sdxl/sd_xl_base_1.0.safetensors",
+    "stable-audio-open-1.0/stable-audio-open-1.0.safetensors",
+    "yue2_3b_bf16.safetensors"
+   ],
+   {
+    "tooltip": "The name of the checkpoint (model) to load."
+   }
+  ]
+ },
+ "clip": {
+  "CLIPLoader.clip_name": [
+   [
+    "ace_step_1.5/qwen_0.6b_ace15.safetensors",
+    "ace_step_1.5/qwen_1.7b_ace15.safetensors",
+    "ltx25/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+    "minimax_h3/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+    "minimax_music3/minimax_music3_text_encoder_pruned_int8_convrot.safetensors",
+    "qwen3vl_8b_int8_convrot.safetensors",
+    "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+    "stable-audio-open-1.0/t5-base.safetensors",
+    "wan22/umt5_xxl_fp8_e4m3fn_scaled.safetensors"
+   ]
+  ],
+  "DualCLIPLoader.clip_name1": [
+   [
+    "ace_step_1.5/qwen_0.6b_ace15.safetensors",
+    "ace_step_1.5/qwen_1.7b_ace15.safetensors",
+    "ltx25/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+    "minimax_h3/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+    "minimax_music3/minimax_music3_text_encoder_pruned_int8_convrot.safetensors",
+    "qwen3vl_8b_int8_convrot.safetensors",
+    "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+    "stable-audio-open-1.0/t5-base.safetensors",
+    "wan22/umt5_xxl_fp8_e4m3fn_scaled.safetensors"
+   ]
+  ]
+ },
+ "clip_vision": {
+  "CLIPVisionLoader.clip_name": [
+   [
+    "trellis2/dino_v3_vit_l.safetensors"
+   ]
+  ]
+ },
+ "latent_upscaler": {
+  "LatentUpscaleModelLoader.model_name": [
+   "COMBO",
+   {
+    "multiselect": false,
+    "options": [
+     "ltx25/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors",
+     "ltx25/ltx-2.5-latent-temporal-upscaler-x2-bf16-1.0.safetensors"
+    ]
+   }
+  ]
+ },
+ "lora": {
+  "LoraLoaderModelOnly.lora_name": [
+   [
+    "licon_msr/LTX-2.3-Licon-MSR-V2.safetensors",
+    "licon_msr25/LTX-2.5-Licon-MSR-V1.safetensors",
+    "minimax_h3/lightx2v_hybrid-4to8step-Turbo_r48.safetensors",
+    "minimax_h3/loras/minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors",
+    "minimax_h3/loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+    "minimax_h3/loras/minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+    "pixel-sdxl/pixel-art-xl.safetensors"
+   ]
+  ]
+ },
+ "unet": {
+  "UNETLoader.unet_name": [
+   [
+    "ace_step_1.5/acestep_v1.5_turbo.safetensors",
+    "minimax_music3/minimax_music3_dit_int8_convrot.safetensors",
+    "trellis2/trellis_2_int8_convrot.safetensors",
+    "wan22/wan2.2_ti2v_5B_fp16.safetensors"
+   ]
+  ],
+  "UnetLoaderGGUF.unet_name": [
+   [
+    "ltx25/ltx-2.5-22b-distilled-transformer-bf16-Q5_K_M.gguf",
+    "minimax_h3/MiniMax-H3-FL2VA-Pruned-Q4_K_M.gguf",
+    "minimax_h3/MiniMax-H3-Ref2VA-Pruned-Q4_K_M.gguf",
+    "qwen_image_2.1_Q6_K.gguf"
+   ]
+  ]
+ },
+ "upscale_model": {
+  "UpscaleModelLoader.model_name": [
+   "COMBO",
+   {
+    "multiselect": false,
+    "options": [
+     "RealESRGAN_x4plus.pth"
+    ]
+   }
+  ]
+ },
+ "vae": {
+  "VAELoader.vae_name": [
+   [
+    "ace_step_1.5/ace_1.5_vae.safetensors",
+    "ltx25/ltx-2.5-audio-vae-bf16.safetensors",
+    "ltx25/ltx-2.5-video-vae-bf16.safetensors",
+    "ltx25/ltx-2.5-video-vae-conv-bf16.safetensors",
+    "minimax_h3/vae/minimax_h3_audio_vae_fp32.safetensors",
+    "minimax_h3/vae/minimax_h3_video_vae_fp16.safetensors",
+    "minimax_music3/minimax_music3_dav.safetensors",
+    "qwen_image_2.1_vae_bf16.safetensors",
+    "qwen_image_vae.safetensors",
+    "trellis2/trellis_2_shape_vae_bf16.safetensors",
+    "trellis2/trellis_2_texture_vae_bf16.safetensors",
+    "wan22/wan2.2_vae.safetensors",
+    "pixel_space"
+   ]
+  ]
+ }
+}

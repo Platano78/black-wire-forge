@@ -1,0 +1,49 @@
+{
+  "t2v": {
+    "prompt": "A lantern floats over calm water at dusk, gentle ripples.",
+    "width": 1024,
+    "height": 576,
+    "length": 97,
+    "fps": 24,
+    "seed": 4242
+  },
+  "i2v": {
+    "prompt": "The woman in the picture turns her head slowly and smiles.",
+    "width": 1024,
+    "height": 576,
+    "length": 97,
+    "fps": 24,
+    "seed": 4242,
+    "start_image": "test_face.png",
+    "image_strength": 0.7
+  },
+  "flf2v": {
+    "prompt": "The scene morphs smoothly from the first picture to the second.",
+    "width": 1024,
+    "height": 576,
+    "length": 97,
+    "fps": 24,
+    "seed": 4242,
+    "start_image": "test_face.png",
+    "end_image": "test_end.png",
+    "image_strength": 0.7,
+    "two_stage": false
+  },
+  "loop": {
+    "prompt": "A dancer spins continuously in a spotlight, one long take.",
+    "width": 768,
+    "height": 512,
+    "length": 361,
+    "fps": 24,
+    "seed": 4242
+  },
+  "talking": {
+    "face": "test_face.png",
+    "line": "Welcome to the forge, everything here runs on my own hardware.",
+    "look": "warm lighting",
+    "length": 97,
+    "width": 1024,
+    "height": 576,
+    "seed": 4242
+  }
+}

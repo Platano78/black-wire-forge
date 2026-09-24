@@ -1,0 +1,129 @@
+{
+ "15": {
+  "class_type": "CheckpointLoaderSimple",
+  "inputs": {
+   "ckpt_name": "yue2_3b_bf16.safetensors"
+  }
+ },
+ "18": {
+  "class_type": "ConditioningZeroOut",
+  "inputs": {
+   "conditioning": [
+    "25",
+    0
+   ]
+  }
+ },
+ "24": {
+  "class_type": "YuE2GenerateABC",
+  "inputs": {
+   "clip": [
+    "15",
+    1
+   ],
+   "lyrics": "[Verse]\nDrifting through the static hum\n",
+   "max_abc_tokens": 8192,
+   "mode": "full",
+   "penalty_window": 100,
+   "repetition_penalty": 1.005,
+   "seed": 4242,
+   "style": "lofi hiphop, mellow, chill",
+   "temperature": 0.7,
+   "top_k": 30,
+   "top_p": 0.9
+  }
+ },
+ "25": {
+  "class_type": "YuE2GenerateMusic",
+  "inputs": {
+   "abc": [
+    "24",
+    0
+   ],
+   "clip": [
+    "15",
+    1
+   ],
+   "lyrics": "[Verse]\nDrifting through the static hum\n",
+   "max_duration": 8.0,
+   "mode": "full",
+   "repetition_penalty": 1.2,
+   "seed": 4242,
+   "style": "lofi hiphop, mellow, chill",
+   "temperature": 1.0,
+   "top_k": 100,
+   "top_p": 0.95
+  }
+ },
+ "40": {
+  "class_type": "SaveAudioAdvanced",
+  "inputs": {
+   "audio": [
+    "9",
+    0
+   ],
+   "filename_prefix": "owui/yue2",
+   "format": "mp3",
+   "format.quality": "V0"
+  }
+ },
+ "5": {
+  "class_type": "EmptyYuE2LatentAudio",
+  "inputs": {
+   "batch_size": 1,
+   "seconds": [
+    "25",
+    1
+   ]
+  }
+ },
+ "8": {
+  "class_type": "KSampler",
+  "inputs": {
+   "cfg": 1.0,
+   "denoise": 1.0,
+   "latent_image": [
+    "5",
+    0
+   ],
+   "model": [
+    "15",
+    0
+   ],
+   "negative": [
+    "18",
+    0
+   ],
+   "positive": [
+    "25",
+    0
+   ],
+   "sampler_name": "dpm_2",
+   "scheduler": "sgm_uniform",
+   "seed": 4242,
+   "steps": 32
+  }
+ },
+ "9": {
+  "class_type": "VAEDecodeAudio",
+  "inputs": {
+   "samples": [
+    "8",
+    0
+   ],
+   "vae": [
+    "15",
+    2
+   ]
+  }
+ },
+ "yue2_seconds": {
+  "class_type": "PreviewAny",
+  "inputs": {
+   "source": [
+    "25",
+    1
+   ]
+  }
+ }
+}

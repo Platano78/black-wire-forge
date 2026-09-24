@@ -1,0 +1,31 @@
+{
+ "img_steps": [
+  12,
+  20,
+  30,
+  40
+ ],
+ "img_why": {
+  "12": "fastest, a bit rough",
+  "20": "best balance",
+  "30": "more detail",
+  "40": "slowest, most detail"
+ },
+ "source_commit": "26428a7",
+ "vid_steps": [
+  4,
+  6,
+  8,
+  12,
+  16,
+  20
+ ],
+ "vid_why": {
+  "12": "runs clean, in between, can look soft",
+  "16": "runs clean, close to best, a bit quicker",
+  "20": "runs clean, what every good clip we made used",
+  "4": "speed pack on, quickest, good for trying an idea",
+  "6": "speed pack on, a little more detail",
+  "8": "speed pack on, best of the quick ones"
+ }
+}

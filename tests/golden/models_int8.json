@@ -1,0 +1,12 @@
+{
+ "h3_clip_int8": "h3_clip_int8.safetensors",
+ "h3_clip_nvfp4": "",
+ "h3_turbo_lora": "h3_turbo_8step.safetensors",
+ "h3_unet_fl2va": "h3_fl2va.gguf",
+ "h3_unet_ref2va": "h3_ref2va.gguf",
+ "h3_vae_audio": "h3_vae_audio.safetensors",
+ "h3_vae_video": "h3_vae_video.safetensors",
+ "qwen_clip": "qwen3vl_8b_int8_convrot.safetensors",
+ "qwen_unet": "qwen_image_2.1_Q6_K.gguf",
+ "qwen_vae": "qwen_image_2.1_vae_bf16.safetensors"
+}

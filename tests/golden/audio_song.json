@@ -1,0 +1,125 @@
+{
+ "104": {
+  "class_type": "UNETLoader",
+  "inputs": {
+   "unet_name": "ace_step_1.5/acestep_v1.5_turbo.safetensors",
+   "weight_dtype": "default"
+  }
+ },
+ "105": {
+  "class_type": "DualCLIPLoader",
+  "inputs": {
+   "clip_name1": "ace_step_1.5/qwen_0.6b_ace15.safetensors",
+   "clip_name2": "ace_step_1.5/qwen_1.7b_ace15.safetensors",
+   "device": "default",
+   "type": "ace"
+  }
+ },
+ "106": {
+  "class_type": "VAELoader",
+  "inputs": {
+   "vae_name": "ace_step_1.5/ace_1.5_vae.safetensors"
+  }
+ },
+ "107": {
+  "class_type": "SaveAudioAdvanced",
+  "inputs": {
+   "audio": [
+    "18",
+    0
+   ],
+   "filename_prefix": "owui/song",
+   "format": "mp3",
+   "format.quality": "V0"
+  }
+ },
+ "18": {
+  "class_type": "VAEDecodeAudio",
+  "inputs": {
+   "samples": [
+    "3",
+    0
+   ],
+   "vae": [
+    "106",
+    0
+   ]
+  }
+ },
+ "3": {
+  "class_type": "KSampler",
+  "inputs": {
+   "cfg": 1.0,
+   "denoise": 1.0,
+   "latent_image": [
+    "98",
+    0
+   ],
+   "model": [
+    "78",
+    0
+   ],
+   "negative": [
+    "47",
+    0
+   ],
+   "positive": [
+    "94",
+    0
+   ],
+   "sampler_name": "euler",
+   "scheduler": "simple",
+   "seed": 4242,
+   "steps": 8
+  }
+ },
+ "47": {
+  "class_type": "ConditioningZeroOut",
+  "inputs": {
+   "conditioning": [
+    "94",
+    0
+   ]
+  }
+ },
+ "78": {
+  "class_type": "ModelSamplingAuraFlow",
+  "inputs": {
+   "model": [
+    "104",
+    0
+   ],
+   "shift": 3.0
+  }
+ },
+ "94": {
+  "class_type": "TextEncodeAceStepAudio1.5",
+  "inputs": {
+   "bpm": 138,
+   "cfg_scale": 2.0,
+   "clip": [
+    "105",
+    0
+   ],
+   "duration": 8.0,
+   "generate_audio_codes": true,
+   "keyscale": "A minor",
+   "language": "en",
+   "lyrics": "",
+   "min_p": 0.0,
+   "seed": 4242,
+   "tags": "warm analog synthwave, driving bassline, 80s nostalgia",
+   "temperature": 0.85,
+   "timesignature": "4",
+   "top_k": 0,
+   "top_p": 0.9
+  }
+ },
+ "98": {
+  "class_type": "EmptyAceStep1.5LatentAudio",
+  "inputs": {
+   "batch_size": 1,
+   "seconds": 8.0
+  }
+ }
+}

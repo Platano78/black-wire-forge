@@ -1,0 +1,17 @@
+{
+  "title": "Black Wire Forge",
+  "port": 3998,
+  "bind": "127.0.0.1",
+  "allowed_hosts": [],
+
+  "lanes": [
+    {
+      "id": "picture-a",
+      "name": "Picture Lane",
+      "host": "127.0.0.1",
+      "port": 8188,
+      "caps": ["image"],
+      "note": "a ComfyUI instance on this machine"
+    }
+  ]
+}

@@ -1,0 +1,95 @@
+{
+ "1": {
+  "class_type": "CheckpointLoaderSimple",
+  "inputs": {
+   "ckpt_name": "stable-audio-open-1.0/stable-audio-open-1.0.safetensors"
+  }
+ },
+ "2": {
+  "class_type": "CLIPLoader",
+  "inputs": {
+   "clip_name": "stable-audio-open-1.0/t5-base.safetensors",
+   "device": "default",
+   "type": "stable_audio"
+  }
+ },
+ "3": {
+  "class_type": "CLIPTextEncode",
+  "inputs": {
+   "clip": [
+    "2",
+    0
+   ],
+   "text": "a single door creak"
+  }
+ },
+ "4": {
+  "class_type": "CLIPTextEncode",
+  "inputs": {
+   "clip": [
+    "2",
+    0
+   ],
+   "text": "music, voice"
+  }
+ },
+ "5": {
+  "class_type": "EmptyLatentAudio",
+  "inputs": {
+   "batch_size": 1,
+   "seconds": 2.0
+  }
+ },
+ "6": {
+  "class_type": "KSampler",
+  "inputs": {
+   "cfg": 4.98,
+   "denoise": 1.0,
+   "latent_image": [
+    "5",
+    0
+   ],
+   "model": [
+    "1",
+    0
+   ],
+   "negative": [
+    "4",
+    0
+   ],
+   "positive": [
+    "3",
+    0
+   ],
+   "sampler_name": "dpmpp_3m_sde_gpu",
+   "scheduler": "exponential",
+   "seed": 4242,
+   "steps": 50
+  }
+ },
+ "7": {
+  "class_type": "VAEDecodeAudio",
+  "inputs": {
+   "samples": [
+    "6",
+    0
+   ],
+   "vae": [
+    "1",
+    2
+   ]
+  }
+ },
+ "8": {
+  "class_type": "SaveAudioAdvanced",
+  "inputs": {
+   "audio": [
+    "7",
+    0
+   ],
+   "filename_prefix": "owui/sfx",
+   "format": "mp3",
+   "format.quality": "V0"
+  }
+ }
+}

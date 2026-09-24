@@ -1,0 +1,46 @@
+{
+ "abilities": {
+  "fl2va": true,
+  "image": true,
+  "ref2v": true,
+  "turbo": true,
+  "video": true
+ },
+ "abilities_empty": {
+  "fl2va": false,
+  "image": false,
+  "ref2v": false,
+  "turbo": false,
+  "video": false
+ },
+ "abilities_int8_clip": {
+  "fl2va": true,
+  "image": true,
+  "ref2v": true,
+  "turbo": true,
+  "video": true
+ },
+ "abilities_turbo_only": {
+  "fl2va": false,
+  "image": false,
+  "ref2v": false,
+  "turbo": true,
+  "video": false
+ },
+ "describe_image": "Qwen-Image 2.1 (GGUF)",
+ "describe_video": "MiniMax-H3 (GGUF)",
+ "missing_image": [],
+ "missing_image_empty": [
+  "the Qwen-Image model",
+  "its text encoder",
+  "its image decoder"
+ ],
+ "missing_ref2v": [],
+ "missing_video": [],
+ "missing_video_empty": [
+  "the LTX video model",
+  "the LTX text encoder",
+  "the LTX video decoder"
+ ],
+ "missing_video_int8": []
+}

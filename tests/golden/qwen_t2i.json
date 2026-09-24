@@ -1,0 +1,120 @@
+{
+    "1": {
+        "class_type": "UnetLoaderGGUF",
+        "inputs": {
+            "unet_name": "qwen_image_2.1_Q6_K.gguf"
+        }
+    },
+    "10": {
+        "class_type": "SaveImage",
+        "inputs": {
+            "filename_prefix": "blackwire/IMG",
+            "images": [
+                "9",
+                0
+            ]
+        }
+    },
+    "11": {
+        "class_type": "APG",
+        "inputs": {
+            "eta": 1.0,
+            "model": [
+                "1",
+                0
+            ],
+            "momentum": 0.3,
+            "norm_threshold": 10.0
+        }
+    },
+    "12": {
+        "class_type": "FreSca",
+        "inputs": {
+            "freq_cutoff": 8,
+            "model": [
+                "11",
+                0
+            ],
+            "scale_high": 2.0,
+            "scale_low": 1.0
+        }
+    },
+    "2": {
+        "class_type": "CLIPLoader",
+        "inputs": {
+            "clip_name": "qwen3vl_8b_int8_convrot.safetensors",
+            "device": "default",
+            "type": "qwen_image"
+        }
+    },
+    "3": {
+        "class_type": "VAELoader",
+        "inputs": {
+            "vae_name": "qwen_image_2.1_vae_bf16.safetensors"
+        }
+    },
+    "4": {
+        "class_type": "TextEncodeQwenImage21",
+        "inputs": {
+            "clip": [
+                "2",
+                0
+            ],
+            "negative_prompt": "N",
+            "prompt": "P",
+            "resolution": 1024,
+            "vae": [
+                "3",
+                0
+            ]
+        }
+    },
+    "6": {
+        "class_type": "EmptyLatentImage",
+        "inputs": {
+            "batch_size": 1,
+            "height": 512,
+            "width": 512
+        }
+    },
+    "8": {
+        "class_type": "KSampler",
+        "inputs": {
+            "cfg": 1.0,
+            "denoise": 1.0,
+            "latent_image": [
+                "6",
+                0
+            ],
+            "model": [
+                "12",
+                0
+            ],
+            "negative": [
+                "4",
+                1
+            ],
+            "positive": [
+                "4",
+                0
+            ],
+            "sampler_name": "seeds_2",
+            "scheduler": "sgm_uniform",
+            "seed": 4242,
+            "steps": 25
+        }
+    },
+    "9": {
+        "class_type": "VAEDecode",
+        "inputs": {
+            "samples": [
+                "8",
+                0
+            ],
+            "vae": [
+                "3",
+                0
+            ]
+        }
+    }
+}

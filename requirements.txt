@@ -1,0 +1,6 @@
+# Optional. The app runs with none of these installed -- Pixel Art (and the
+# picture->video image-fit step) each report themselves unavailable with a
+# plain sentence instead of crashing the server. Install to enable them:
+#   python3 -m pip install -r requirements.txt
+numpy       # Pixel Art's quantise/dither post-step (engines/_quantise.py)
+Pillow      # Pixel Art's quantise/dither post-step, and picture->video image-fit

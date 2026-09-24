@@ -1,0 +1,30 @@
+{
+ "img": {
+  "cfg": 1.0,
+  "height": 512,
+  "negative": "N",
+  "prompt": "P",
+  "ref_images": [
+   "ref.png"
+  ],
+  "resolution": 1024,
+  "seed": 4242,
+  "steps": 25,
+  "width": 512
+ },
+ "vid": {
+  "cfg": 1.0,
+  "fps": 24,
+  "height": 512,
+  "length": 49,
+  "negative": "N",
+  "prompt": "P",
+  "ref_images": [
+   "ref.png"
+  ],
+  "resolution": 1024,
+  "seed": 4242,
+  "steps": 25,
+  "width": 512
+ }
+}

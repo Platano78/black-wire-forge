@@ -1,0 +1,47 @@
+{
+  "song": {
+    "tags": "warm analog synthwave, driving bassline, 80s nostalgia",
+    "lyrics": "",
+    "audio_format": "mp3",
+    "bpm": 138,
+    "duration": 8.0,
+    "keyscale": "A minor",
+    "timesignature": "4",
+    "language": "en",
+    "seed": 4242
+  },
+  "music": {
+    "caption": "Ambient pad, slow evolving texture, warm and spacious.",
+    "seconds": 8.0,
+    "seed": 4242,
+    "audio_format": "mp3",
+    "lyrics": ""
+  },
+  "sfx": {
+    "prompt": "a single door creak",
+    "negative": "music, voice",
+    "seconds": 2.0,
+    "seed": 4242,
+    "audio_format": "mp3"
+  },
+  "yue2": {
+    "style": "lofi hiphop, mellow, chill",
+    "lyrics": "[Verse]\nDrifting through the static hum\n",
+    "audio_format": "mp3",
+    "max_duration": 8.0,
+    "mode": "full",
+    "plan": true,
+    "seed": 4242,
+    "ckpt": "yue2_3b_bf16.safetensors"
+  },
+  "cover": {
+    "source_audio_name": "test_source.wav",
+    "style": "acoustic ballad cover",
+    "lyrics": "[Verse]\nDrifting through the static hum\n",
+    "audio_format": "mp3",
+    "max_duration": 8.0,
+    "mode": "melody",
+    "seed": 4242,
+    "ckpt": "yue2_3b_bf16.safetensors"
+  }
+}

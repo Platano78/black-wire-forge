@@ -1,0 +1,181 @@
+{
+ "339": {
+  "class_type": "RandomNoise",
+  "inputs": {
+   "noise_seed": 4242
+  }
+ },
+ "352": {
+  "class_type": "KSamplerSelect",
+  "inputs": {
+   "sampler_name": "euler_ancestral"
+  }
+ },
+ "356": {
+  "class_type": "EmptyLTXVLatentVideo",
+  "inputs": {
+   "batch_size": 1,
+   "height": 512,
+   "length": 361,
+   "width": 768
+  }
+ },
+ "364": {
+  "class_type": "CLIPTextEncode",
+  "inputs": {
+   "clip": [
+    "387",
+    0
+   ],
+   "text": "A dancer spins continuously in a spotlight, one long take."
+  }
+ },
+ "365": {
+  "class_type": "LTXVConditioning",
+  "inputs": {
+   "frame_rate": 24.0,
+   "negative": [
+    "373",
+    0
+   ],
+   "positive": [
+    "364",
+    0
+   ]
+  }
+ },
+ "370": {
+  "class_type": "CreateVideo",
+  "inputs": {
+   "fps": 24.0,
+   "images": [
+    "374",
+    0
+   ]
+  }
+ },
+ "373": {
+  "class_type": "CLIPTextEncode",
+  "inputs": {
+   "clip": [
+    "387",
+    0
+   ],
+   "text": "pc game, console game, video game, cartoon, childish, ugly"
+  }
+ },
+ "374": {
+  "class_type": "VAEDecodeTiled",
+  "inputs": {
+   "overlap": 64,
+   "samples": [
+    "500",
+    0
+   ],
+   "temporal_overlap": 16,
+   "temporal_size": 64,
+   "tile_size": 512,
+   "vae": [
+    "385",
+    0
+   ]
+  }
+ },
+ "384": {
+  "class_type": "UnetLoaderGGUF",
+  "inputs": {
+   "unet_name": "ltx25/ltx-2.5-22b-distilled-transformer-bf16-Q5_K_M.gguf"
+  }
+ },
+ "385": {
+  "class_type": "VAELoader",
+  "inputs": {
+   "vae_name": "ltx25/ltx-2.5-video-vae-bf16.safetensors"
+  }
+ },
+ "387": {
+  "class_type": "CLIPLoader",
+  "inputs": {
+   "clip_name": "ltx25/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+   "type": "ltxv"
+  }
+ },
+ "390": {
+  "class_type": "CFGGuider",
+  "inputs": {
+   "cfg": 1.0,
+   "model": [
+    "384",
+    0
+   ],
+   "negative": [
+    "365",
+    1
+   ],
+   "positive": [
+    "365",
+    0
+   ]
+  }
+ },
+ "404": {
+  "class_type": "ManualSigmas",
+  "inputs": {
+   "sigmas": "1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0"
+  }
+ },
+ "500": {
+  "class_type": "LTXVLoopingSampler",
+  "inputs": {
+   "adain_factor": 0.0,
+   "cond_image_strength": 1.0,
+   "guider": [
+    "390",
+    0
+   ],
+   "guiding_strength": 1.0,
+   "horizontal_tiles": 1,
+   "latents": [
+    "356",
+    0
+   ],
+   "model": [
+    "384",
+    0
+   ],
+   "noise": [
+    "339",
+    0
+   ],
+   "sampler": [
+    "352",
+    0
+   ],
+   "sigmas": [
+    "404",
+    0
+   ],
+   "spatial_overlap": 1,
+   "temporal_overlap": 24,
+   "temporal_overlap_cond_strength": 0.5,
+   "temporal_tile_size": 80,
+   "vae": [
+    "385",
+    0
+   ],
+   "vertical_tiles": 1
+  }
+ },
+ "75": {
+  "class_type": "SaveVideo",
+  "inputs": {
+   "codec": "auto",
+   "filename_prefix": "video/LTX25_looping",
+   "format": "auto",
+   "video": [
+    "370",
+    0
+   ]
+  }
+ }
+}

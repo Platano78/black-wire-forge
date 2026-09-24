@@ -1,0 +1,136 @@
+{
+ "47": {
+  "class_type": "CheckpointLoaderSimple",
+  "inputs": {
+   "ckpt_name": "yue2_3b_bf16.safetensors"
+  }
+ },
+ "48": {
+  "class_type": "YuE2GenerateMusic",
+  "inputs": {
+   "abc": [
+    "55",
+    0
+   ],
+   "clip": [
+    "47",
+    1
+   ],
+   "lyrics": "[Verse]\nDrifting through the static hum\n",
+   "max_duration": 8.0,
+   "mode": "melody",
+   "repetition_penalty": 1.2,
+   "seed": 4242,
+   "style": "acoustic ballad cover",
+   "temperature": 1.0,
+   "top_k": 100,
+   "top_p": 0.95
+  }
+ },
+ "49": {
+  "class_type": "ConditioningZeroOut",
+  "inputs": {
+   "conditioning": [
+    "48",
+    0
+   ]
+  }
+ },
+ "51": {
+  "class_type": "KSampler",
+  "inputs": {
+   "cfg": 1.0,
+   "denoise": 1.0,
+   "latent_image": [
+    "52",
+    0
+   ],
+   "model": [
+    "47",
+    0
+   ],
+   "negative": [
+    "49",
+    0
+   ],
+   "positive": [
+    "48",
+    0
+   ],
+   "sampler_name": "dpm_2",
+   "scheduler": "sgm_uniform",
+   "seed": 4242,
+   "steps": 32
+  }
+ },
+ "52": {
+  "class_type": "EmptyYuE2LatentAudio",
+  "inputs": {
+   "batch_size": 1,
+   "seconds": [
+    "48",
+    1
+   ]
+  }
+ },
+ "53": {
+  "class_type": "VAEDecodeAudio",
+  "inputs": {
+   "samples": [
+    "51",
+    0
+   ],
+   "vae": [
+    "47",
+    2
+   ]
+  }
+ },
+ "55": {
+  "class_type": "SheetSage2AudioToABC",
+  "inputs": {
+   "audio": [
+    "60",
+    0
+   ],
+   "audio_encoder": [
+    "56",
+    0
+   ],
+   "mode": "melody"
+  }
+ },
+ "56": {
+  "class_type": "AudioEncoderLoader",
+  "inputs": {
+   "audio_encoder_name": "sheetsage2_bf16.safetensors"
+  }
+ },
+ "58": {
+  "class_type": "SaveAudioAdvanced",
+  "inputs": {
+   "audio": [
+    "53",
+    0
+   ],
+   "filename_prefix": "owui/cover",
+   "format": "mp3",
+   "format.quality": "V0"
+  }
+ },
+ "60": {
+  "class_type": "LoadAudio",
+  "inputs": {
+   "audio": "test_source.wav"
+  }
+ },
+ "yue2_seconds": {
+  "class_type": "PreviewAny",
+  "inputs": {
+   "source": [
+    "48",
+    1
+   ]
+  }
+ }
+}

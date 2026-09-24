@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Help — Black Wire Forge</title>
+<style>
+  /* Same tokens as index.html: OS-native fonts only, zero radius,
+     --divider is the ONE rule any user must be able to see, no web fonts
+     or scripts from anywhere -- this page must work with no network. */
+  :root{
+    --canvas:#121417; --panel:#181b1f; --surface2:#20242a; --surface3:#15171a;
+    --divider:#686e76; --hairline:#2d333b;
+    --accent:#ff5c00; --accent-hover:#ff6b1a; --on-accent:#121417;
+    --text-hi:#f1f5f9; --text-mid:#94a3b8; --text-disabled:#475569;
+    --ready:#10b981; --error:#ef4444;
+    --sans:system-ui,-apple-system,'Segoe UI',sans-serif;
+    --mono:ui-monospace,'SF Mono','Cascadia Mono',monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--canvas); color:var(--text-hi); font-family:var(--sans);
+    font-size:15px; line-height:1.5;
+  }
+  a{color:var(--accent)}
+  a:focus-visible,button:focus-visible{outline:2px solid var(--accent); outline-offset:1px}
+  code{font-family:var(--mono); font-size:13px; background:var(--surface2);
+    border:1px solid var(--divider); padding:1px 5px}
+  #topbar{
+    background:var(--surface3); border-bottom:1px solid var(--divider);
+    display:flex; align-items:center; justify-content:space-between; gap:16px;
+    padding:0 16px; min-height:52px;
+  }
+  #topbar h1{font-size:16px; letter-spacing:.06em; text-transform:uppercase; margin:0; font-weight:600}
+  #topbar a.btn{
+    background:var(--surface2); border:1px solid var(--divider); color:var(--text-hi);
+    min-height:40px; padding:0 14px; display:inline-flex; align-items:center;
+    text-decoration:none; border-radius:0;
+  }
+  #topbar a.btn:hover{background:var(--surface3)}
+  main{max-width:760px; margin:0 auto; padding:24px 16px 64px}
+  h1{font-size:24px; font-weight:600; margin:0 0 16px}
+  h2{font-size:20px; font-weight:600; margin:36px 0 12px; padding-top:16px; border-top:1px solid var(--divider)}
+  h2:first-of-type{border-top:none; padding-top:0}
+  h3{font-size:14px; font-weight:600; text-transform:uppercase; letter-spacing:.04em;
+    color:var(--text-mid); margin:20px 0 8px}
+  p{margin:0 0 12px}
+  ul,ol{margin:0 0 12px; padding-left:22px}
+  li{margin:0 0 8px}
+  .muted{color:var(--text-mid)}
+  #toc{border:1px solid var(--divider); background:var(--panel); padding:14px 16px; margin:0 0 24px}
+  #toc h2{margin:0 0 8px; font-size:13px; text-transform:uppercase; letter-spacing:.05em; border-top:none; padding-top:0}
+  #toc ul{margin:0; padding-left:18px}
+  #toc li{margin:0 0 4px}
+  table{width:100%; border-collapse:collapse; margin:0 0 12px; font-size:14px}
+  th,td{text-align:left; padding:8px 10px; border-bottom:1px solid var(--divider); vertical-align:top}
+  th{color:var(--text-mid); font-size:12px; text-transform:uppercase; letter-spacing:.03em; font-weight:600}
+  dl{margin:0 0 12px}
+  dt{font-weight:600; margin:14px 0 4px; border-top:1px solid var(--hairline); padding-top:10px}
+  dt:first-child{border-top:none; padding-top:0; margin-top:0}
+  dd{margin:0; color:var(--text-mid)}
+  #roomsLive .room-live{border-top:1px solid var(--hairline); padding:10px 0}
+  #roomsLive .room-live:first-child{border-top:none}
+  #roomsLive h4{margin:0 0 2px; font-size:14px; font-weight:600}
+  #roomsLive .room-blurb{margin:0 0 8px; font-size:12px; color:var(--text-mid)}
+  #roomsLive ul{padding-left:18px; margin:0}
+  #roomsLive li{font-size:13px; margin:0 0 6px}
+  #creditsLive li{font-size:13px}
+  @media (max-width:480px){
+    main{padding:16px 16px 48px}
+    #topbar{padding:0 12px}
+  }
+</style>
+</head>
+<body>
+
+<header id="topbar">
+  <h1>Black Wire Forge — Help</h1>
+  <a class="btn" href="/">Back to the forge</a>
+</header>
+
+<main>
+  <nav id="toc" aria-label="Contents">
+    <h2>Contents</h2>
+    <ul>
+      <li><a href="#the-screen">The screen</a></li>
+      <li><a href="#machines">Machines</a></li>
+      <li><a href="#making-something">Making something</a></li>
+      <li><a href="#first-five-minutes">Your first five minutes</a></li>
+      <li><a href="#history">History</a></li>
+      <li><a href="#sharing-and-licences">Sharing and licences</a></li>
+      <li><a href="#the-cutting-room">The Cutting Room</a></li>
+      <li><a href="#links">Links</a></li>
+      <li><a href="#setting-up">Setting up</a></li>
+      <li><a href="#faq">FAQ</a></li>
+    </ul>
+  </nav>
+
+  <h1>How Black Wire Forge works</h1>
+  <p>Black Wire Forge makes pictures, video, sound and 3D on your own machines. Pick the job first, the engine
+  second. Everything you make lands in History, and rendering stays on your own configured machines. The one
+  exception: if the optional prompt helper is set up, "Help me write this" and "Describe this picture" send your
+  text (and, for a picture, the image) to that helper's own endpoint — see the FAQ below.</p>
+
+  <h2 id="the-screen">The screen</h2>
+  <ul>
+    <li><strong>Top bar:</strong> one block per machine, showing its state and how busy it is. Click one to make it the
+      machine your next job goes to.</li>
+    <li><strong>Rooms</strong> (the row under the top bar): one room per kind of job, grouped by Sound, Picture, Motion and
+      Object. The <strong>Cutting Room</strong> at the right end is where the things you make go together.</li>
+    <li><strong>History</strong> (left): everything made in this room, or everything, with the switch at the top.</li>
+    <li><strong>Monitor</strong> (centre): the thing you picked in History, or the room's guidance when nothing is picked.</li>
+    <li><strong>Inspector</strong> (right): the room's engines, then the recipe, your words or files, quality, and Make.</li>
+    <li><strong>Activity</strong> (bottom): what the app has been doing, line by line.</li>
+  </ul>
+
+  <h2 id="machines">Machines</h2>
+  <p>Each machine shows one of six states, each with its own word and dot shape, so you never have to
+  read a colour. WORKING has a second label, QUEUED, for the same state (rendering/queued jobs share a
+  dot shape; QUEUED means one of yours is in line but nothing is rendering there yet):</p>
+  <table>
+    <thead><tr><th>state</th><th>means</th></tr></thead>
+    <tbody>
+      <tr><td>READY</td><td>answering, and has what it needs</td></tr>
+      <tr><td>WORKING (or QUEUED)</td><td>rendering now, or a job of yours is queued there (the count shows how far)</td></tr>
+      <tr><td>ASLEEP</td><td>not answering, nothing waiting for it</td></tr>
+      <tr><td>ASLEEP, WORK WAITING</td><td>not answering, and a job of yours is waiting for it</td></tr>
+      <tr><td>CANNOT TELL</td><td>stopped answering mid-way; the app will not guess</td></tr>
+      <tr><td>UP, NOT FOR THIS</td><td>answering, but it has none of the models this app uses</td></tr>
+    </tbody>
+  </table>
+  <p>Some engines run on a different kind of machine: for example, turning a 3D model around runs as a
+  program on the app's own machine, on its processor. Its row says <strong>runs on &lt;machine&gt;</strong>; pick it and the
+  app switches machine for you.</p>
+
+  <h2 id="making-something">Making something</h2>
+  <ol>
+    <li><strong>Pick a room</strong>, then an engine in the inspector. Each engine says in one line when to pick it, and
+      carries its licence stamp.</li>
+    <li><strong>Pick a recipe.</strong> A recipe fills in settings that were measured to work, and its note (in italics)
+      says why.</li>
+    <li><strong>Write, or add files.</strong> Pictures and sound go to the machine that will use them. A 3D model is a
+      <code>.glb</code> file.</li>
+    <li><strong>Pick a quality.</strong> Named stops, not raw numbers. An estimate like "about 40 s" appears once the
+      same engine and quality has finished three times on that machine; until then it shows <code>--</code> rather
+      than a guess.</li>
+    <li><strong>Everything else (N)</strong> opens every other setting. You can change any number. Your change wins;
+      picking a recipe or a quality afterwards rewrites the numbers that recipe or quality sets.</li>
+    <li><strong>Make.</strong> The job appears in History straight away as a ghost with its progress, and is replaced by
+      the result when it finishes.</li>
+  </ol>
+
+  <h3>What each room can do right now</h3>
+  <div id="roomsLive"><p class="muted">Loading&hellip;</p></div>
+
+  <h2 id="first-five-minutes">Your first five minutes</h2>
+  <p>Every room with something it can make has its own <strong>Try this</strong> button: one click fills in a
+  real recipe and settings for you, so you can see what a finished result looks like before you write a
+  word yourself. Nothing is made until you press Make. Three to try first:</p>
+  <ol>
+    <li><a href="/#room=picture&amp;try=t2i-try">Make a picture from words</a>, in the Picture room.</li>
+    <li><a href="/#room=music&amp;try=song-try">Make a song</a>, in the Music room.</li>
+    <li><a href="/#room=3d&amp;try=mesh-try">Turn your picture into a 3D model</a>, in the 3D room — turning
+      that model around afterwards needs a 3D model first, so make one here before you try it.</li>
+  </ol>
+
+  <h2 id="history">History</h2>
+  <ul>
+    <li><strong>This room / Everything</strong> switches between this room's things and everything you have made.
+      Picking something from another room takes you to that room.</li>
+    <li><strong>Use again</strong> puts that job's settings back in the inspector.</li>
+    <li><strong>Stop</strong> ends a job that is still going.</li>
+    <li><strong>Forget</strong> removes the record from History. The file itself is never deleted by this app.</li>
+  </ul>
+
+  <h2 id="sharing-and-licences">Sharing and licences</h2>
+  <p>Every result carries a licence stamp. These are informational badges about the engine's own licence
+  metadata, not a legal clearance — review the model licence and the rights in your prompts, references and
+  output before publishing anything you make here:</p>
+  <ul>
+    <li><strong>yours to use</strong> (green): the engine's licence carries no recorded distribution gate.</li>
+    <li><strong>conditions apply</strong>: read the licence under Credits before you publish.</li>
+    <li><strong>non-commercial</strong> (red): only when the licence itself says NC.</li>
+  </ul>
+  <p><strong>Download (recipe removed)</strong> strips the settings and words hidden inside a picture, audio or video
+  file before it leaves the app — for the formats it can actually clean right now (JPEG/WebP are re-encoded, not
+  byte-for-byte untouched; not every audio format is supported, e.g. WAV/M4A are not). If a file can't actually be
+  cleaned, the download is refused with a plain sentence rather than quietly handing you the original under that
+  label — use "Keep the recipe" if you want the original regardless. 3D model files download exactly as made.
+  <strong>Keep the recipe</strong> downloads the file with everything inside it. <strong>Credits</strong> lists every engine and
+  its licence.</p>
+
+  <h3>Every licence in use right now</h3>
+  <div id="creditsLive"><p class="muted">Loading&hellip;</p></div>
+
+  <h2 id="the-cutting-room">The Cutting Room</h2>
+  <p>This is where pictures, shots and sound are put in order and cut together into one film. Sequences and
+  storyboards are stored on disk: add picture, video and sound slots; choose which take is picked when a slot
+  has several; import a script and its lines become pre-filled slots; connect one slot's result into another's
+  input field ("cable" it) to carry a shot's motion or sound into the next one. When you're ready, build the
+  cut: one rendered file from your picked takes, available when <code>ffmpeg</code>/<code>ffprobe</code> are
+  installed.</p>
+
+  <h2 id="links">Links</h2>
+  <p>A room has its own address: add <code>#room=music</code> (or any room's id) to the page address to open it
+  directly, or to share where you were.</p>
+
+  <h2 id="setting-up">Setting up</h2>
+  <p>This section is for whoever runs the app, not whoever uses it day to day.</p>
+  <ul>
+    <li><strong>config.json</strong> lives next to <code>server.py</code> (or wherever
+      <code>GENCENTER_CONFIG</code> points). It is not in the repo -- start from
+      <code>config.example.json</code>. There must be at least one lane; an empty
+      <code>"lanes"</code> list is refused at startup, with a message saying so.</li>
+    <li><strong>A lane</strong> is usually one machine running its own ComfyUI: an <code>id</code>, a
+      <code>name</code> shown in the UI, and <code>host</code>/<code>port</code> for its ComfyUI API.
+      <code>caps</code> -- which kinds of job it's for (<code>image</code>, <code>video</code>,
+      <code>audio</code>, <code>3d</code>) -- is optional here: leave it out and the lane is considered
+      for everything it can actually be shown to run. A <strong>process lane</strong> instead runs a local
+      program on the app's own machine (no ComfyUI, no <code>host</code>/<code>port</code>) and must
+      declare <code>caps</code>. To add a lane, add another entry to the
+      <code>"lanes"</code> list and restart the app; nothing else needs to change.</li>
+    <li><strong>allowed_hosts</strong> lists any extra name (besides <code>localhost</code> and the
+      machine's own IP/hostname) the app should answer requests addressed to -- an mDNS name or a
+      reverse proxy, for example. A name not on this list is refused, even from inside your LAN.</li>
+    <li><strong>"CANNOT TELL"</strong> means a machine stopped answering mid-way through checking on
+      it -- not that it's asleep, and not that a job it was running failed. The app will not guess
+      which; see the Machines section above.</li>
+    <li><strong>Logs</strong> aren't written to a file: the app prints one line per event to its own
+      stdout (wherever you started <code>python3 server.py</code> from, or redirected it to), and
+      keeps the most recent 250 of those lines in memory for the Activity panel at the bottom of the
+      screen. Restarting the app clears that in-memory copy.</li>
+  </ul>
+
+  <h2 id="faq">FAQ</h2>
+  <dl>
+    <dt>Why is a room dimmed?</dt>
+    <dd>Nothing installed can make that kind of thing yet. It stays in the list so
+    you can see what the tool is for.</dd>
+    <dt>Why does an engine say "needs &hellip;"?</dt>
+    <dd>The active machine is missing that model or program; the words
+    name it. Pick another machine above, or install it.</dd>
+    <dt>Why does a machine say CANNOT TELL instead of idle?</dt>
+    <dd>It stopped answering. The app will not
+    pretend it is idle, or that your job is still rendering.</dd>
+    <dt>A job says lost.</dt>
+    <dd>The app restarted while a program was running on its own machine, or a job has
+    been waiting more than six hours. Make it again.</dd>
+    <dt>Where are my files?</dt>
+    <dd>On the machine that made them. Things made on the app's own machine are kept
+    in the app's data folder. Download copies a file to you.</dd>
+    <dt>Why is there no time estimate?</dt>
+    <dd>It needs three finished jobs of the same engine and quality on that
+    machine. It never borrows a number from somewhere else.</dd>
+    <dt>Does it need the internet?</dt>
+    <dd>No. The page itself loads no fonts or scripts from anywhere. Rendering
+    stays on your own configured machines. The one exception is the optional
+    prompt helper (see below) — if it is set up, whatever you send it goes
+    wherever that helper's own endpoint is.</dd>
+    <dt>Can I run two things at once?</dt>
+    <dd>Each machine takes its own queue. A process lane (the app's own
+    machine, or another one running a local program) runs up to its
+    configured worker count at once — one at a time by default.</dd>
+    <dt>What does "Help me write this" do?</dt>
+    <dd>It asks a helper to turn your idea, or a picture you have, into a
+    prompt in the style this mode expects. Only offered when the app was set
+    up with one; you always see the suggestion first and choose whether to
+    use it. It never starts a job on its own. Your text — and, for "Describe
+    this picture", the image itself — is sent to that helper's own endpoint;
+    its operator and privacy policy apply, not this app's.</dd>
+  </dl>
+</main>
+
+<script>
+'use strict';
+/* Two live sections, rendered from the running app so they never go stale.
+   Navigation and generation controls elsewhere use task-oriented labels;
+   these two sections (installed engines, Credits) are exactly where the
+   app DOES name the engine and its licence, on purpose. */
+function esc(s){ return String(s == null ? '' : s)
+  .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+async function getJSON(url){
+  const r = await fetch(url);
+  if(!r.ok) throw new Error('http ' + r.status);
+  return r.json();
+}
+
+async function renderRoomsLive(){
+  const el = document.getElementById('roomsLive');
+  try{
+    const lanesData = await getJSON('/api/lanes');
+    const lanes = lanesData.lanes || [];
+    const perLane = {};
+    for(const lane of lanes){
+      perLane[lane.id] = await getJSON('/api/engines?lane=' + encodeURIComponent(lane.id));
+    }
+    const anyPayload = lanes.length ? perLane[lanes[0].id] : await getJSON('/api/engines');
+    const rooms = (Array.isArray(anyPayload.rooms) ? anyPayload.rooms : [])
+      .slice().sort((a, b) => (a.order == null ? 1000 : a.order) - (b.order == null ? 1000 : b.order));
+    if(!rooms.length) throw new Error('no rooms');
+
+    function findMode(cap, mode){
+      for(const lid of Object.keys(perLane)){
+        const c = perLane[lid][cap];
+        const m = c && (c.modes || []).find(x => x.id === mode);
+        if(m) return m;
+      }
+      return null;
+    }
+
+    // A lane whose discovery is stale (asleep, or answering mid-way) reports
+    // every mode unavailable -- that is the LANE being unreachable, not the
+    // model being missing. Same wording index.html's machineState() uses.
+    function laneStateWord(lane){
+      const err = (lane.err || '').toLowerCase();
+      return (err.includes('timeout') || err.includes('timed out')) ? 'cannot tell' : 'asleep';
+    }
+
+    const html = rooms.filter(r => r.kind !== 'cutting').map(room => {
+      const items = (room.modes || []).map(x => {
+        const info = findMode(x.cap, x.mode);
+        if(!info) return '';
+        const can = [];
+        let missing = [];
+        lanes.forEach(lane => {
+          const c = perLane[lane.id][x.cap];
+          const m = c && (c.modes || []).find(mm => mm.id === x.mode);
+          // C1: `m.available` alone only says the model files/deps are there --
+          // it says nothing about whether this LANE can actually take the job
+          // right now. Count it only when the lane is reachable, was actually
+          // configured for this capability, and is the kind of lane the mode
+          // needs; otherwise a cached-model, offline, or deliberately-excluded
+          // lane reads as "can make this right now".
+          const eligible = m && lane.up && (lane.declared_caps || []).includes(x.cap)
+            && lane.kind === m.lane_kind && m.available;
+          if(eligible) can.push(lane.name);
+          else if(m && m.missing && m.missing.length && !missing.length) missing = m.missing;
+        });
+        const licenceName = (info.licence && info.licence.name) || 'unknown';
+        let machineText;
+        if(can.length){
+          machineText = esc(can.join(', '));
+        } else {
+          // Every lane that is FOR this cap but not answering right now:
+          // the mode not being available says nothing about whether the
+          // models are installed -- discovery on that lane never ran.
+          const asleepLanes = lanes.filter(l => (l.caps || []).includes(x.cap) && !l.up);
+          if(asleepLanes.length){
+            machineText = 'the machine that makes this is asleep right now: '
+              + esc(asleepLanes.map(l => l.name + ' (' + laneStateWord(l) + ')').join(', '));
+          } else {
+            machineText = 'nothing set up can make this yet' + (missing.length ? ' (needs ' + esc(missing.join(', ')) + ')' : '');
+          }
+        }
+        return '<li><strong>' + esc(info.label) + '</strong>' + (info.note ? ' — ' + esc(info.note) : '')
+          + ' &middot; ' + esc(licenceName) + ' &middot; ' + machineText + '</li>';
+      }).join('');
+      return '<div class="room-live"><h4>' + esc(room.name) + '</h4>'
+        + (room.blurb ? '<p class="room-blurb">' + esc(room.blurb) + '</p>' : '')
+        + '<ul>' + items + '</ul></div>';
+    }).join('');
+    el.innerHTML = html || '<p class="muted">Start the app to see this.</p>';
+  } catch(e){
+    el.innerHTML = '<p class="muted">Start the app to see this.</p>';
+  }
+}
+
+async function renderCreditsLive(){
+  const el = document.getElementById('creditsLive');
+  try{
+    const d = await getJSON('/api/credits');
+    const credits = d.credits || [];
+    if(!credits.length) throw new Error('no credits');
+    el.innerHTML = '<ul>' + credits.map(c => {
+      const name = c.name || '';
+      const tag = c.shippable ? 'yours to use'
+        : (/\bnc\b/i.test(name) || /non-commercial/i.test(name) ? 'non-commercial' : 'conditions apply');
+      return '<li><strong>' + esc(name) + '</strong> &middot; ' + esc(tag)
+        + (c.attribution ? ' &middot; ' + esc(c.attribution) : '') + '</li>';
+    }).join('') + '</ul>';
+  } catch(e){
+    el.innerHTML = '<p class="muted">Start the app to see this.</p>';
+  }
+}
+
+renderRoomsLive();
+renderCreditsLive();
+</script>
+</body>
+</html>

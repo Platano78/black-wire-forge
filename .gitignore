@@ -1,0 +1,31 @@
+# Your machines, never anyone else's.
+config.json
+
+# Runtime state: job history, websocket ids, carried stills, launchd logs.
+data/
+*.log
+
+# Editor / OS / Python noise
+*.bak
+*.bak-*
+*.tmp
+__pycache__/
+*.py[cod]
+.DS_Store
+
+# --- Black Wire Forge ---
+.env
+.venv
+venv
+env
+.desktop
+/workflows
+__pycache__
+storage
+
+
+# --- Black Wire Forge (fork additions) ---
+# real config carries host IPs — never committed. See config.example.json
+outputs/
+*.pyc
+.share-staging/

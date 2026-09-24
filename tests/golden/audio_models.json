@@ -1,0 +1,13 @@
+{
+  "ace_unet": "ace_step_1.5/acestep_v1.5_turbo.safetensors",
+  "ace_clip1": "ace_step_1.5/qwen_0.6b_ace15.safetensors",
+  "ace_clip2": "ace_step_1.5/qwen_1.7b_ace15.safetensors",
+  "ace_vae": "ace_step_1.5/ace_1.5_vae.safetensors",
+  "music3_unet": "minimax_music3/minimax_music3_dit_int8_convrot.safetensors",
+  "music3_clip": "minimax_music3/minimax_music3_text_encoder_pruned_int8_convrot.safetensors",
+  "music3_vae": "minimax_music3/minimax_music3_dav.safetensors",
+  "sao_ckpt": "stable-audio-open-1.0/stable-audio-open-1.0.safetensors",
+  "sao_clip": "stable-audio-open-1.0/t5-base.safetensors",
+  "yue2_ckpt": "yue2_3b_bf16.safetensors",
+  "yue2_audio_encoder": "sheetsage2_bf16.safetensors"
+}

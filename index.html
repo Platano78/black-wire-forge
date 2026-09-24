@@ -1,0 +1,3772 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Black Wire Forge</title>
+<style>
+  /* Tokens: the internal visual design tokens doc, loosened per the BLACK WIRE
+     FORGE DELTA -- 15px body, 36px rows, 40px hit areas, zero radius, OS-native
+     fonts only (no web fonts, no CDN). Where the delta and the base system
+     disagree, the delta wins; these tokens already reflect that. */
+  :root{
+    --canvas:#121417; --panel:#181b1f; --surface2:#20242a; --surface3:#15171a;
+    /* UX review 2026-09-22 (an internal UX review #2/#3/#6): the ONE
+       place these three fixes live -- everything else reads from these vars.
+       --divider is any border/rule a user must be able to SEE to understand
+       structure (panel edges, component boundaries, section rules): #686e76
+       measures >=3:1 against canvas/panel/surface2 (was #2d333b, 1.36-1.45:1).
+       --hairline stays for genuinely decorative internal rules where nothing
+       depends on seeing them. --on-accent is the ONLY text-on-orange pairing
+       (#121417, 5.96:1) -- never derive text-on-orange from anything else. */
+    --divider:#686e76; --hairline:#2d333b;
+    --accent:#ff5c00; --accent-hover:#ff6b1a; --on-accent:#121417;
+    --ready:#10b981; --asleep:#64748b; --asleep-label:#94a3b8; --error:#ef4444;
+    --text-hi:#f1f5f9; --text-mid:#94a3b8; --text-disabled:#475569;
+    --sans:system-ui,-apple-system,'Segoe UI',sans-serif;
+    --mono:ui-monospace,'SF Mono','Cascadia Mono',monospace;
+    --serif:Georgia,'Times New Roman',serif;
+    --clip-video:#1E293B; --clip-audio:#142824; --clip-generated:#2D1F17;
+    --stale:#f59e0b;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;height:100%}
+  body{
+    background:var(--canvas); color:var(--text-hi); font-family:var(--sans);
+    font-size:15px; line-height:1.4; display:flex; flex-direction:column; min-height:100vh;
+  }
+  button,input,select,textarea{font-family:inherit;font-size:inherit;color:inherit}
+  .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  button{cursor:pointer}
+  button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,
+  textarea:focus-visible,[tabindex]:focus-visible{
+    outline:2px solid var(--accent); outline-offset:1px;
+  }
+  h1,h2{font-weight:600;margin:0}
+  .hairline{border-color:var(--divider)}
+  .muted{color:var(--text-mid)}
+  .disabled-text{color:var(--text-disabled)}
+  .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
+  /* [hidden] must win over any display:flex set on the same element -- the
+     UA stylesheet's [hidden]{display:none} loses to an author display rule. */
+  [hidden]{display:none !important}
+  .btn{
+    background:var(--surface2); border:1px solid var(--divider); color:var(--text-hi);
+    min-height:40px; padding:0 14px; display:inline-flex; align-items:center; gap:8px;
+    border-radius:0;
+  }
+  .btn:hover{background:var(--surface3)}
+  .btn[disabled]{color:var(--text-disabled); cursor:not-allowed}
+  .btn-primary{
+    background:var(--accent); color:var(--on-accent); border-color:var(--accent);
+    font-weight:600;
+  }
+  .btn-primary:hover{background:var(--accent-hover)}
+  .btn-primary[disabled]{background:var(--surface2); color:var(--text-disabled); border-color:var(--divider)}
+  .chip{
+    display:inline-flex; align-items:center; gap:6px; border:1px solid var(--divider);
+    background:var(--surface2); padding:3px 8px; font-family:var(--mono); font-size:12px;
+    color:var(--text-mid); text-transform:uppercase; letter-spacing:.03em;
+  }
+  /* Six honest machine states differ by LABEL TEXT (always rendered) and by
+     DOT SHAPE, never by color alone (UX review: "you need shape or text
+     too"). Solid circle = actually doing something now; hollow circle =
+     nothing happening; dashed = the state itself is uncertain; square =
+     zero-radius is the design system's OWN "something is wrong" exception
+     (roundedness:0 is otherwise reserved for status dots, B-forge.design.md
+     "Shapes"). */
+  .dot{width:9px;height:9px;flex:none;display:inline-block}
+  .dot-ready{border-radius:50%; background:var(--ready)}
+  .dot-working{border-radius:50%; background:var(--ready); position:relative}
+  .dot-working::after{content:''; position:absolute; inset:-3px; border-radius:50%;
+    border:1.5px solid var(--ready); animation:pulse-ring 1.4s ease-out infinite}
+  @keyframes pulse-ring{0%{transform:scale(.6); opacity:1}100%{transform:scale(1.6); opacity:0}}
+  .dot-asleep{border-radius:50%; background:transparent; border:1.5px solid var(--asleep)}
+  .dot-asleep-waiting{border-radius:50%; background:transparent; border:1.5px solid var(--asleep); position:relative}
+  .dot-asleep-waiting::after{content:''; position:absolute; inset:2px; border-radius:50%; background:var(--asleep)}
+  .dot-cannot-tell{border-radius:50%; border:1.5px dashed var(--asleep); background:transparent}
+  .dot-not-for-this{border-radius:0; background:var(--error)}
+
+  /* ---- toolbar ---- */
+  #toolbar{
+    background:var(--surface3); border-bottom:1px solid var(--divider);
+    display:flex; align-items:center; gap:16px; padding:0 12px; min-height:52px;
+    flex-wrap:wrap;
+  }
+  #toolbar h1{font-size:16px; letter-spacing:.06em; text-transform:uppercase; white-space:nowrap}
+  #machineModules{display:flex; gap:8px; flex-wrap:wrap; flex:1}
+  .machine{
+    background:var(--panel); border:1px solid var(--divider); padding:6px 10px;
+    display:flex; flex-direction:column; gap:3px; min-width:150px; min-height:40px;
+    text-align:left;
+  }
+  .machine[aria-pressed="true"]{border-color:var(--accent)}
+  .machine .mline1{display:flex; align-items:center; gap:6px; font-size:13px; font-weight:600}
+  .machine .mline2{display:flex; align-items:center; gap:6px; font-family:var(--mono); font-size:11px;
+    letter-spacing:.03em; text-transform:uppercase}
+  .vram{display:flex; gap:2px; align-items:flex-end; height:10px}
+  .vram i{width:3px; background:var(--hairline); display:block}
+  .vram i.on{background:var(--accent)}
+  #creditsBtn{white-space:nowrap}
+
+  /* ---- room strip (rooms by task; the internal rooms design spec) ---- */
+  #roomStrip{
+    display:flex; align-items:center; gap:0; min-height:44px; padding:0 8px;
+    background:var(--surface3); border-bottom:1px solid var(--divider);
+    overflow-x:auto; -webkit-overflow-scrolling:touch; flex-wrap:nowrap; position:relative;
+  }
+  .room-group{display:flex; align-items:center; gap:6px; padding:0 10px; height:44px; flex:none}
+  .room-group-label{
+    font-family:var(--mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase;
+    color:var(--text-mid); white-space:nowrap;
+  }
+  .room-tab{
+    background:transparent; border:none; border-bottom:2px solid transparent;
+    color:var(--text-mid); font-size:14px; min-height:40px; padding:0 8px;
+    display:inline-flex; align-items:center; gap:6px; white-space:nowrap;
+  }
+  .room-tab:hover{color:var(--text-hi)}
+  .room-tab[aria-pressed="true"]{color:var(--text-hi); border-bottom-color:var(--accent)}
+  .room-tab-dim{color:var(--text-disabled)}
+  .room-tab-dim:hover{color:var(--text-disabled)}
+  .room-divider{width:1px; align-self:stretch; margin:6px 0; background:var(--divider); flex:none}
+  .room-spacer{flex:1}
+  .room-cutting{
+    border:1px solid var(--divider); background:var(--surface3); margin:6px 8px 6px 0;
+    padding:0 12px; min-height:32px; color:var(--text-hi); font-size:13px;
+    letter-spacing:.04em; text-transform:uppercase;
+    position:sticky; right:0; z-index:2;
+  }
+  .room-cutting[aria-pressed="true"]{border-color:var(--accent); color:var(--accent)}
+
+  /* ---- layout ---- */
+  #layout{flex:1; display:grid; grid-template-columns:340px 1fr 380px; gap:1px;
+    background:var(--divider); min-height:0}
+  #layout > section{background:var(--canvas); overflow:auto; min-height:0; min-width:0}
+  @media (max-width:1440px){
+    #layout{grid-template-columns:300px 1fr 340px}
+  }
+  @media (max-width:1024px){
+    /* Stacked columns scroll with the PAGE, so the body must grow with its
+       content -- with html/body pinned at 100% the footer sat at the
+       viewport's bottom edge on top of the overflowing inspector. */
+    html,body{height:auto}
+    #layout{grid-template-columns:1fr; grid-auto-rows:min-content; flex:none}
+    #layout > section{overflow:visible}
+  }
+
+  /* ---- bin ---- */
+  #bin{display:flex; flex-direction:column}
+  #binHeader{padding:10px 12px; border-bottom:1px solid var(--divider); background:var(--panel)}
+  #binHeader h2{font-size:13px; letter-spacing:.1em; text-transform:uppercase; margin-bottom:8px}
+  .history-toggle{display:flex; gap:0; border:1px solid var(--divider)}
+  .history-toggle button{
+    flex:1; min-height:36px; background:var(--surface2); color:var(--text-mid); border:none;
+    border-right:1px solid var(--divider); font-size:12px; text-transform:uppercase; letter-spacing:.03em;
+  }
+  .history-toggle button:last-child{border-right:none}
+  .history-toggle button[aria-pressed="true"]{background:var(--panel); color:var(--accent);
+    outline:1px solid var(--accent); outline-offset:-1px}
+  #binTable{width:100%; border-collapse:collapse}
+  #binTable tbody tr{
+    border-bottom:1px solid var(--divider); cursor:pointer; height:52px;
+  }
+  #binTable tbody tr:hover,#binTable tbody tr[aria-selected="true"]{background:var(--panel)}
+  #binTable td{padding:6px 10px; vertical-align:middle; font-size:13px}
+  .bin-thumb{width:44px;height:36px;background:var(--surface3);border:1px solid var(--divider);
+    display:flex;align-items:center;justify-content:center;overflow:hidden;flex:none}
+  .bin-thumb img,.bin-thumb video{width:100%;height:100%;object-fit:cover}
+  .bin-row-main{display:flex; align-items:center; gap:8px}
+  .bin-meta{color:var(--text-mid); font-size:11px; font-family:var(--mono)}
+  .ghost{
+    border:1px dashed var(--accent); background:rgba(255,92,0,.06); animation:tungsten 2.2s ease-in-out infinite;
+  }
+  @keyframes tungsten{0%,100%{box-shadow:inset 0 0 0 rgba(255,92,0,0)}50%{box-shadow:inset 0 0 12px rgba(255,92,0,.18)}}
+  .ghost .bin-thumb{color:var(--accent)}
+  #binEmpty{padding:24px 12px; color:var(--text-mid); font-size:13px}
+
+  /* ---- monitor ---- */
+  #monitor{display:flex; flex-direction:column; padding:16px; gap:12px}
+  .monitor-empty{margin:auto; color:var(--text-mid); text-align:center; max-width:300px; padding:24px}
+  .monitor-empty p{margin:0 0 8px}
+  .monitor-empty .guide-title{color:var(--text-hi); font-weight:600; margin:14px 0 8px; font-size:13px;
+    text-transform:uppercase; letter-spacing:.04em}
+  .monitor-empty .guide-list{list-style:none; margin:0; padding:0; text-align:left}
+  .monitor-empty .guide-list li{
+    padding:8px 0; border-top:1px solid var(--divider); font-size:13px; color:var(--text-mid);
+  }
+  .monitor-empty .guide-list li b{color:var(--text-hi); font-weight:600}
+  .monitor-banner{
+    margin:auto; max-width:420px; text-align:center; padding:24px; color:var(--text-mid);
+    font-size:14px; border:1px dashed var(--divider);
+  }
+  #monitorStage{
+    flex:1; min-height:280px; background:var(--surface3); border:1px solid var(--divider);
+    display:flex; align-items:center; justify-content:center; position:relative;
+  }
+  #monitorStage img,#monitorStage video{max-width:100%; max-height:100%}
+  #monitorStage audio{width:90%}
+  #monitorProvenance{display:flex; flex-wrap:wrap; gap:8px; align-items:center}
+  #monitorActions{display:flex; gap:8px; flex-wrap:wrap}
+  /* Default (no modifier class) = "conditions apply" -- neutral, not red.
+     shippable is green; noncommercial (the licence NAME itself says so) is
+     the only red case. A boolean is not a legal claim -- see licenceStampHTML. */
+  .licence-stamp{
+    border:1px dashed var(--divider); color:var(--text-mid); font-family:var(--mono); font-size:11px;
+    letter-spacing:.05em; text-transform:uppercase; padding:4px 10px; display:inline-block;
+    transform:rotate(-1.5deg); white-space:nowrap;
+  }
+  .licence-stamp.shippable{border-color:var(--ready); color:var(--ready)}
+  .licence-stamp.noncommercial{border-color:var(--error); color:var(--error)}
+  .licence-stamp.unknown{border-color:var(--text-disabled); color:var(--text-disabled)}
+  /* A long licence name wraps INSIDE the stamp instead of overflowing its
+     row; the dashed-box look (border, rotation, mono caps) is untouched. */
+  .licence-stamp.mini{padding:2px 8px; letter-spacing:.02em; max-width:100%; white-space:normal; overflow-wrap:anywhere}
+
+  /* ---- inspector ---- */
+  #inspector{padding:14px; display:flex; flex-direction:column; gap:14px}
+  #laneNote{font-size:12px; color:var(--text-mid)}
+  #laneNote:empty{display:none}
+  #roomForm{display:flex; flex-direction:column; gap:14px}
+  #roomHeading{font-size:18px}
+  #roomBlurb{font-size:12px; color:var(--text-mid); margin:2px 0 0}
+  #roomPlainNote{font-size:13px; color:var(--text-mid); margin:0}
+  #enginePickerWrap .field-group-title{margin-top:0; border-top:1px solid var(--divider); padding-top:10px}
+  #promptHint{font-size:11px; color:var(--text-mid); margin:3px 0 0}
+  #promptHint:empty,#primaryFields:empty{display:none}
+  /* Engine picker -- ONE arrangement at every width (from the approved
+     mockup): label full-width on its own line, reason below, then a meta
+     line (estimate + mini licence stamp, or the missing words for a
+     disabled row). A right-hand column wrapped labels to 2-3 words. */
+  .engine-picker{border:1px solid var(--divider)}
+  .engine-row{display:flex; align-items:flex-start; gap:10px; padding:10px; border-bottom:1px solid var(--divider);
+    min-height:52px; cursor:pointer}
+  .engine-row:last-child{border-bottom:none}
+  .engine-row[data-disabled="true"]{opacity:.55; cursor:not-allowed}
+  .engine-row input[type=radio]{width:18px; height:18px; accent-color:var(--accent); margin:2px 0 0; flex:none}
+  .erow-body{flex:1; min-width:0; display:flex; flex-direction:column; gap:2px}
+  .erow-label{font-size:14px; color:var(--text-hi)}
+  .erow-reason{font-size:12px; color:var(--text-mid)}
+  .erow-missing{font-size:12px; color:var(--error)}
+  /* "runs on <machine>" is a routing note, not an error -- the muted tier.
+     Red stays reserved for the real `missing` words. */
+  .erow-runs{font-size:12px; color:var(--text-mid)}
+  .erow-meta{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:4px}
+  .erow-estimate{font-family:var(--mono); font-size:12px; color:var(--text-mid)}
+  label.field-label{display:block; font-size:12px; font-family:var(--mono); letter-spacing:.03em;
+    text-transform:uppercase; color:var(--text-mid); margin-bottom:4px}
+  .field-row{margin-bottom:10px; min-height:36px}
+  .field-row input[type=text],.field-row input[type=number],.field-row textarea,.field-row select{
+    width:100%; min-height:36px; background:var(--surface3); border:1px solid var(--divider);
+    color:var(--text-hi); padding:6px 8px;
+  }
+  .field-row input[type=number]{font-family:var(--mono); font-variant-numeric:tabular-nums}
+  .field-row textarea{min-height:60px; resize:vertical}
+  .field-row .hint{font-size:11px; color:var(--text-mid); margin-top:3px}
+  .field-row.checkbox-row{display:flex; align-items:center; gap:8px}
+  .field-row input[type=checkbox]{width:20px; height:20px; accent-color:var(--accent)}
+  .field-row[data-disabled="true"] label{color:var(--text-disabled)}
+  .field-row[data-disabled="true"] .hint{color:var(--text-disabled)}
+  .field-group-title{font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--text-mid);
+    margin:12px 0 6px; border-top:1px solid var(--divider); padding-top:10px}
+  .field-group-title:first-child{border-top:none; margin-top:0; padding-top:0}
+  #recipeHeadnote{font-family:var(--serif); font-style:italic; font-size:13px; color:var(--text-mid);
+    margin:6px 0 0}
+  #recipeSelect{width:100%}
+  #recipeDetails summary{cursor:pointer; font-size:12px; text-transform:uppercase; letter-spacing:.04em;
+    color:var(--text-mid); min-height:36px; display:flex; align-items:center; user-select:none}
+  #recipeDetails summary span{color:var(--text-hi); text-transform:none; margin-left:4px}
+  #recipeDetails summary::-webkit-details-marker{display:none}
+  #recipeDetails summary::before{content:'▸ '; color:var(--accent)}
+  #recipeDetails[open] summary::before{content:'▾ '}
+  #ledgerProminentTitle{margin-top:0}
+  #ledgerProminentBody,#ledgerInRecipeBody{display:flex; flex-direction:column; gap:6px}
+  .ledger-row{display:flex; align-items:baseline; gap:6px; font-size:13px}
+  .ledger-row .leader{flex:1; overflow:hidden; white-space:nowrap;
+    border-bottom:1px dotted var(--hairline); height:1em; min-width:0}
+  .ledger-row .ref-tag{font-family:var(--mono); font-size:11px; color:var(--text-mid); flex:none}
+  .ledger-slot{border:1px solid var(--divider); background:var(--surface3); padding:8px; margin-top:4px; min-width:0}
+  .ledger-slot input[type=file]{width:100%; max-width:100%; display:block; color:var(--text-mid); font-size:12px}
+  .ledger-thumbs{display:flex; gap:6px; flex-wrap:wrap; margin-top:6px}
+  .ledger-thumbs .t{width:56px; height:44px; border:1px solid var(--divider); overflow:hidden; position:relative}
+  .ledger-thumbs .t img,.ledger-thumbs .t video{width:100%; height:100%; object-fit:cover}
+  #promptBox{width:100%; min-height:90px; background:var(--surface3); border:1px solid var(--divider);
+    color:var(--text-hi); font-family:var(--serif); font-size:16px; padding:10px; resize:vertical}
+  #helperBar{display:flex; align-items:center; gap:8px; margin-top:8px}
+  #helperSpinner{font-size:12px; color:var(--text-mid)}
+  #helperPanel{margin-top:8px; padding:10px; background:var(--surface3); border:1px solid var(--divider)}
+  #helperSuggestion{font-size:14px; color:var(--text-hi); white-space:pre-wrap}
+  #helperActions{display:flex; gap:8px; margin-top:8px}
+  #helperError{color:var(--error)}
+  #qualityLadder{display:flex; border:1px solid var(--divider)}
+  #qualityLadder button{flex:1; min-height:40px; background:var(--surface2); color:var(--text-mid);
+    border-right:1px solid var(--divider); font-size:12px; text-transform:uppercase; letter-spacing:.03em}
+  #qualityLadder button:last-child{border-right:none}
+  #qualityLadder button[aria-pressed="true"]{background:var(--accent); color:var(--on-accent)}
+  #qualityLadder button[disabled]{color:var(--text-disabled); background:var(--surface3); cursor:not-allowed}
+  #qualityWhy{font-size:12px; color:var(--text-mid); margin:6px 0 0}
+  #qualityWhy .estimate{font-family:var(--mono); color:var(--text-hi)}
+  #tryThisRow{display:flex; flex-direction:column; gap:6px}
+  .try-row{display:flex; flex-wrap:wrap; align-items:baseline; gap:8px}
+  .try-row .hint{flex-basis:100%; margin:0}
+  .try-row [data-try-needs]{color:var(--text-mid)}
+  .try-row [data-try-needs] a{color:var(--accent)}
+  #advancedDisclosure summary{cursor:pointer; font-size:12px; text-transform:uppercase; letter-spacing:.04em;
+    color:var(--text-mid); min-height:36px; display:flex; align-items:center; user-select:none}
+  #advancedDisclosure summary::-webkit-details-marker{display:none}
+  #advancedDisclosure summary::before{content:'▸ '; color:var(--accent)}
+  #advancedDisclosure[open] summary::before{content:'▾ '}
+  #makeBtn{width:100%; min-height:44px; font-size:14px; text-transform:uppercase; letter-spacing:.05em}
+  #inspectorMsg{font-size:12px; min-height:0; margin:0}
+  #inspectorMsg.err{color:var(--error)}
+  #inspectorMsg.ok{color:var(--ready)}
+  #shareCleanError{color:var(--error); font-size:12px; margin:8px 0 0}
+
+  /* ---- footer / activity ---- */
+  #activityStrip{border-top:1px solid var(--divider); background:var(--surface3)}
+  #activityStrip summary{cursor:pointer; padding:6px 12px; font-size:12px; color:var(--text-mid);
+    text-transform:uppercase; letter-spacing:.05em; list-style:none; min-height:32px; display:flex; align-items:center}
+  #activityStrip summary::-webkit-details-marker{display:none}
+  #activityLog{max-height:180px; overflow:auto; padding:0 12px 8px; font-family:var(--mono); font-size:12px}
+  #activityLog .row{padding:2px 0; color:var(--text-mid); border-bottom:1px solid var(--divider)}
+  #activityLog .row.err{color:var(--error)}
+
+  /* ---- Cutting Room shell (SEQUENCE, C3 fills it) ---- */
+  #timelinePanel{border-top:1px solid var(--divider); background:var(--panel); padding:10px 12px 14px}
+  #timelinePanel .tl-title{font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:.05em;
+    color:var(--text-mid); margin-bottom:8px}
+  #tlLanes{position:relative}
+  .tl-lane{display:flex; align-items:stretch; gap:8px; margin-bottom:6px; min-height:52px}
+  .tl-lane-label{
+    width:88px; flex:none; display:flex; align-items:center; font-family:var(--mono); font-size:11px;
+    letter-spacing:.04em; text-transform:uppercase; color:var(--text-mid);
+  }
+  .tl-lane-label.locked{color:var(--asleep-label)}
+  .tl-track{flex:1; min-width:0; display:flex; gap:6px; align-items:center; padding:6px 6px 6px 14px;
+    border:1px solid var(--divider); overflow-x:auto; overflow-y:hidden}
+  .tl-track.tint-video{background:color-mix(in srgb, var(--clip-video) 65%, var(--canvas))}
+  .tl-track.tint-audio{background:color-mix(in srgb, var(--clip-audio) 65%, var(--canvas))}
+  .tl-track.tint-generated{background:color-mix(in srgb, var(--clip-generated) 65%, var(--canvas))}
+  .tl-track.locked{background:var(--surface3)}
+  .tl-slot{
+    flex:none; width:110px; height:36px; border:1px dashed var(--divider); display:flex; align-items:center;
+    justify-content:center; font-size:11px; color:var(--text-mid); font-family:var(--mono);
+  }
+  /* Real, selectable slot tiles (C3.3) -- the state comes only from the
+     server's derived `state`, never re-derived here; each class below maps
+     1:1 to one row of §1's table. */
+  button.tl-slot{
+    background:var(--surface3); color:var(--text-mid); padding:2px; position:relative;
+    overflow:hidden; text-align:center;
+  }
+  button.tl-slot[aria-pressed="true"]{outline:2px solid var(--accent); outline-offset:1px}
+  .tl-slot-label{font-size:10px; line-height:1.2; padding:0 4px; overflow:hidden; text-overflow:ellipsis}
+  .tl-slot-empty{color:var(--text-mid)}
+  .tl-slot-ghost{
+    border-style:dashed; border-color:var(--accent); color:var(--accent); font-family:var(--mono);
+    animation:tungsten 2.2s ease-in-out infinite;
+  }
+  .tl-slot-cannot-tell{border-style:dashed; border-color:var(--asleep); color:var(--asleep-label)}
+  .tl-slot-failed,.tl-slot-lost{border-color:var(--error); color:var(--error)}
+  .tl-slot-unpicked{border-style:solid; border-color:var(--accent); color:var(--accent)}
+  .tl-slot-ready{border-style:solid; border-color:var(--divider); padding:0}
+  .tl-slot-ready img,.tl-slot-ready video{width:100%; height:100%; object-fit:cover; display:block}
+  .tl-slot-add{color:var(--text-mid)}
+  .tl-stale{
+    position:absolute; top:0; right:0; left:0; background:var(--stale); color:var(--on-accent);
+    font-size:9px; font-family:var(--mono); letter-spacing:.02em; z-index:1; text-align:left;
+    padding:1px 3px; line-height:1.25; max-height:100%; overflow:hidden;
+  }
+  .tl-stale b{text-transform:uppercase}
+  .tl-stale span{display:block; text-transform:none; font-weight:400; white-space:normal}
+
+  /* ---- patch cables (C3.4) ---- */
+  #tlCableMsg{font-size:12px; color:var(--error); margin:0 0 6px; min-height:14px}
+  #tlCableSvg{position:absolute; top:0; left:0; overflow:visible; z-index:2; pointer-events:none}
+  .tl-cable-halo{fill:none; stroke:var(--canvas); stroke-width:4.5; stroke-linecap:round; opacity:.7}
+  .tl-cable{fill:none; stroke:var(--accent); stroke-width:1.5; stroke-linecap:round}
+  #tlJackLayer{position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:3}
+  .tl-jack{
+    position:absolute; width:24px; height:24px; margin:0; padding:0; border:none; background:transparent;
+    pointer-events:auto; cursor:pointer; border-radius:50%;
+  }
+  .tl-jack::after{
+    content:''; position:absolute; top:50%; left:50%; width:12px; height:12px; border-radius:50%;
+    transform:translate(-50%,-50%); background:var(--surface3); border:1.5px solid var(--accent);
+  }
+  .tl-jack-on::after{background:var(--accent)}
+  .tl-jack-pending::after{background:var(--accent); box-shadow:0 0 0 5px rgba(255,92,0,.35)}
+  .tl-jack:focus-visible{outline:2px solid var(--accent); outline-offset:1px}
+  .tl-slot-cable-target{outline:2px dashed var(--accent); outline-offset:2px}
+  /* K/G2: a "continue" (video) jack/cable reads distinct from a picture
+     cable -- same shapes, --ready green instead of --accent orange. */
+  .tl-jack[data-jack-type="video"]::after{border-color:var(--ready)}
+  .tl-jack[data-jack-type="video"].tl-jack-on::after{background:var(--ready)}
+  .tl-jack[data-jack-type="video"].tl-jack-pending::after{background:var(--ready); box-shadow:0 0 0 5px rgba(16,185,129,.35)}
+  .tl-slot-cable-target-video{outline:2px dashed var(--ready); outline-offset:2px}
+  .tl-cable-video{stroke:var(--ready)}
+  .tl-ref{font-size:12px; color:var(--asleep-label)}
+  .tl-ref-chip{
+    flex:none; display:flex; align-items:center; gap:6px; background:var(--surface2);
+    border:1px solid var(--divider); padding:4px 8px; font-size:12px;
+  }
+  .ref-role-chip{
+    font-family:var(--mono); font-size:10px; text-transform:uppercase; letter-spacing:.03em;
+    color:var(--text-mid); border:1px solid var(--divider); padding:1px 5px;
+  }
+  .tl-ref-chip button{background:transparent; border:none; color:var(--text-mid); min-height:24px; min-width:24px}
+  .tl-ref-fixed{font-size:11px; color:var(--text-mid); margin:2px 0 0 96px}
+  /* Parked at the head of the tracks (left of the first slot), so it never
+     crosses slot text the way the mockup's did. */
+  #tlPlayhead{position:absolute; top:0; bottom:6px; left:102px; width:1px; background:var(--accent); pointer-events:none}
+  #tlPlayhead::before{
+    content:''; position:absolute; top:-1px; left:-4px; width:0; height:0;
+    border-left:4.5px solid transparent; border-right:4.5px solid transparent; border-top:7px solid var(--accent);
+  }
+
+  /* ---- C3.5: the SCRIPT lane, and the storyboard rhythm ----
+     The script lives ABOVE the lanes, in the same panel, at the lanes' own
+     rhythm (F1). That costs a lane row, and the row may not come out of the
+     monitor, so in storyboard mode the four lane rows tighten instead: 44px
+     tall (36px tile + 3px padding + 1px border each side, the tightest that
+     still leaves the track's own horizontal scrollbar clear of a tile) with a
+     3px gap, plus 6px back from the title's margin and 6px from the panel's
+     bottom padding. Measured at 1440x900 with a 4-beat script imported: master
+     gives the monitor 473px, this gives it 477px (see the internal
+     storyboard commission doc F1 and the delivered report) -- the lanes
+     block itself goes 226px -> 185px and the script row takes 47px of it.
+     Sequence mode is untouched: none of these rules apply without .storyboard.
+     Typing happens in the card that has the caret: it lifts out of the rail
+     (:focus-within, position:absolute with auto offsets = its own static
+     position, so it stays put and still scrolls with the track) and becomes a
+     real 6-line paragraph box. That is what lets the rail stay one row tall. */
+  #timelinePanel.storyboard{padding-bottom:8px}
+  #timelinePanel.storyboard .tl-title{margin-bottom:2px}
+  #timelinePanel.storyboard .tl-lane{min-height:44px; margin-bottom:3px}
+  #timelinePanel.storyboard .tl-track{padding:3px 6px 3px 14px}
+  .tl-lane-script .tl-track{background:var(--canvas)}
+  .beat-card{
+    position:relative; flex:none; width:226px; height:36px; box-sizing:border-box;
+    display:flex; align-items:center; gap:4px; background:var(--surface3);
+    border:1px solid var(--divider); border-left:3px solid var(--divider); padding:0 4px 0 5px;
+  }
+  .beat-card:hover{border-color:var(--text-mid); border-left-color:var(--text-mid)}
+  .beat-card-sel{outline:2px solid var(--accent); outline-offset:1px}
+  /* A scene is a heading, not a shot: §2's slugline. Serif, caps, and the
+     accent rule so it reads as structure among the shot paragraphs. */
+  .beat-kind-scene{border-left-color:var(--accent); background:rgba(255,92,0,.07)}
+  .beat-kind-scene .beat-text{font-variant:small-caps; letter-spacing:.03em}
+  .beat-kind-note{border-left-style:dashed}
+  .beat-mark{flex:none; width:11px; font:9px/36px var(--mono); color:var(--text-mid); text-align:center}
+  .beat-text{
+    flex:1 1 auto; min-width:0; height:28px; resize:none; overflow:hidden; display:block;
+    background:transparent; border:0; outline:none; padding:0; margin:0;
+    font:11.5px/1.22 var(--serif); color:var(--text-hi);
+  }
+  .beat-shot{
+    flex:none; font:9px/14px var(--mono); color:var(--text-mid); background:transparent;
+    border:1px solid var(--divider); padding:0 2px; min-width:0;
+  }
+  .beat-shot:hover{color:var(--text-hi); border-color:var(--accent)}
+  .beat-copy{
+    flex:none; font:11px/14px var(--mono); color:var(--stale); background:rgba(245,158,11,.12);
+    border:1px solid var(--stale); padding:0 3px; min-width:0;
+  }
+  .beat-copy:hover{background:rgba(245,158,11,.28)}
+  .beat-foot{display:none}
+  .beat-add{
+    flex:none; width:110px; height:36px; background:transparent; border:1px dashed var(--divider);
+    color:var(--text-mid); font:10px var(--mono); letter-spacing:.04em;
+  }
+  .beat-add:hover{border-color:var(--accent); color:var(--accent)}
+  /* The paste box appears exactly when the op that uses it is legal (§3: import
+     goes into a zero-beat storyboard, never over a script someone is editing).
+     Its button is the one .btn in the app allowed under 40px tall: it lives
+     inside a 44px lane row. */
+  .beat-import{flex:none; display:flex; align-items:stretch; gap:6px; width:100%; height:36px}
+  .beat-import textarea{
+    flex:1 1 auto; min-width:0; height:34px; resize:none; background:var(--surface3);
+    border:1px solid var(--divider); color:var(--text-hi); padding:2px 6px;
+    font:11.5px/1.3 var(--serif);
+  }
+  .beat-import .btn{min-height:34px; padding:0 10px; font-size:12px}
+  .beat-card:focus-within, .beat-card.beat-draft{
+    position:absolute; z-index:7; width:306px; height:146px; align-items:flex-start;
+    flex-wrap:wrap; background:var(--panel); border-color:var(--accent); padding:6px 8px;
+    box-shadow:0 8px 24px rgba(0,0,0,.55);
+  }
+  .beat-card:focus-within .beat-text, .beat-card.beat-draft .beat-text{
+    flex:1 1 100%; order:2; height:74px; overflow:auto; font:13px/1.4 var(--serif);
+  }
+  .beat-card:focus-within .beat-mark, .beat-card.beat-draft .beat-mark{order:1; line-height:16px}
+  .beat-card:focus-within .beat-shot, .beat-card.beat-draft .beat-shot{order:3}
+  .beat-card:focus-within .beat-copy, .beat-card.beat-draft .beat-copy{order:4}
+  .beat-foot{
+    order:5; flex:1 1 100%; align-items:center; gap:6px; margin-top:4px; padding-top:4px;
+    border-top:1px solid var(--hairline); font:10px/1.3 var(--mono); color:var(--text-mid);
+  }
+  .beat-card:focus-within .beat-foot, .beat-card.beat-draft .beat-foot{display:flex}
+  .beat-staleword{color:var(--stale)}
+  .beat-foot button{
+    font:10px var(--mono); background:var(--surface2); color:var(--text-hi);
+    border:1px solid var(--divider); padding:1px 5px; min-height:0;
+  }
+  .beat-foot button:hover{border-color:var(--accent)}
+  .beat-del{color:#fca5a5}
+  .beat-pos{margin-left:auto; color:var(--text-mid)}
+  .beat-kindword{text-transform:uppercase; letter-spacing:.05em}
+  /* The beat -> shot link (§3 "linked both ways"), drawn on the cable layer. */
+  .tl-beat-link{fill:none; stroke:var(--text-mid); stroke-width:1; opacity:.45}
+  .tl-beat-link.sel{stroke:var(--accent); opacity:1; stroke-width:1.5}
+  /* The two mode controls: the New sequence row's, and the open sequence's. */
+  #seqNewMode, #seqModeSelect{
+    flex:none; font:11px var(--mono); background:var(--surface3); color:var(--text-hi);
+    border:1px solid var(--divider); padding:0 4px; min-height:36px;
+  }
+  #seqModeSelect{min-height:28px}
+  /* Sequence picker (Cutting Room inspector, §7's picker row) */
+  #seqPicker{border-top:1px solid var(--divider); padding-top:10px}
+  #seqMsg{font-size:12px; min-height:14px; margin:0 0 6px}
+  #seqMsg.err{color:var(--error)}
+  #seqMsg.ok{color:var(--ready)}
+  #seqList{display:flex; flex-direction:column; gap:4px; margin-bottom:8px}
+  .seq-row{width:100%; text-align:left; display:flex; flex-direction:column; gap:2px}
+  .seq-row[aria-pressed="true"]{border-color:var(--accent)}
+  #seqNewRow{display:flex; flex-wrap:wrap; gap:6px}
+  #seqNewRow input{flex:1 1 100%; min-height:36px; background:var(--surface3); border:1px solid var(--divider);
+    color:var(--text-hi); padding:6px 8px}
+  #seqOpenNote{font-size:12px; color:var(--text-mid); margin-top:8px; display:flex; align-items:center; gap:8px}
+  #slotWarnings{font-size:12px}
+  #slotWarnings .slot-stale-note{color:var(--stale); margin:0 0 6px}
+  .slot-warn-list{margin:0 0 8px; padding-left:18px; color:var(--text-mid)}
+  /* Takes strip, appended under the monitor's own actions row when a slot
+     is selected in the Cutting Room (built by renderMonitor(), same
+     full-replace pattern the rest of #monitor already uses). */
+  #takesStrip{border-top:1px solid var(--divider); padding-top:10px; margin-top:4px}
+  #takesRow{display:flex; gap:8px; flex-wrap:wrap}
+  .take-item{
+    display:flex; flex-direction:column; gap:4px; align-items:center; width:96px;
+    cursor:pointer; border:1px solid var(--divider); padding:6px; background:var(--surface2);
+  }
+  .take-item .bin-thumb{width:100%; height:52px}
+  .take-meta{font-size:10px; color:var(--text-mid); font-family:var(--mono)}
+
+  /* ---- CUT (C3.6): a single compact row at the top of the Cutting Room
+     panel (F1) -- the finished cut itself plays in the MONITOR
+     (renderMonitorCut, F4), never a second video here, so this bar can
+     never balloon the timeline panel and squeeze the history/monitor/
+     inspector row (orchestrator review, 2026-09-23) -- and the per-shot
+     trim/title panel appended under a selected video slot's takes strip
+     (F2). ---- */
+  #cutBar:empty{display:none}
+  #cutBarRow{display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:4px 0; margin-bottom:4px;
+    border-bottom:1px solid var(--divider)}
+  #cutReason{font-size:12px; color:var(--text-mid)}
+  #cutReason:empty{display:none}
+  #cutState{font-size:12px; color:var(--text-mid)}
+  #cutLicences{display:flex; gap:6px; flex-wrap:wrap}
+  #cutBedNote{font-size:12px; color:var(--text-mid); margin-left:auto}
+  #cutSlotPanel{border-top:1px solid var(--divider); padding-top:10px; margin-top:10px}
+  .cut-trim-note{font-size:12px; color:var(--text-mid); margin:0 0 6px}
+  .cut-trim-row,.cut-title-row{display:flex; align-items:center; gap:8px; font-size:13px; margin:0 0 6px}
+  .cut-trim-row input[type="number"],.cut-title-row input[type="number"]{
+    width:72px; min-height:32px; background:var(--surface3); border:1px solid var(--divider);
+    color:var(--text-hi); padding:4px 8px; font-family:var(--mono); font-variant-numeric:tabular-nums;
+  }
+  #cutTitleText{width:100%; min-height:32px; margin:0 0 6px; background:var(--surface3);
+    border:1px solid var(--divider); color:var(--text-hi); padding:4px 8px}
+
+  /* ---- phone (<=480px) ---- */
+  @media (max-width:480px){
+    #toolbar{padding:8px 12px; row-gap:8px}
+    #toolbar h1{order:1; font-size:14px}
+    #creditsBtn{order:2; min-height:32px; padding:0 10px; font-size:12px}
+    #machineModules{order:3; flex:1 1 100%}
+    .machine{min-width:0; flex:1 1 0}
+
+    .room-spacer{display:none}
+    /* Pinned at the strip's right end while the rest scrolls under it --
+       sticky/right/z-index and the own background now live in the base rule
+       (applies at every width); this just reorders it last and marks where
+       the scrolling tabs end. */
+    .room-cutting{
+      order:99; margin:6px 0; border-left:1px solid var(--divider);
+    }
+    #layout{display:flex; flex-direction:column}
+    #layout > section{flex:0 0 auto}
+    #monitor{order:1}
+    #inspector{order:2}
+    #bin{order:3}
+    .tl-lane-label{width:64px}
+    #tlPlayhead{left:78px}
+    /* The timeline scrolls horizontally INSIDE its own track, never the page:
+       each .tl-track already carries overflow-x:auto; this just stops a
+       phone-width viewport (412px) from picking up a page-level scrollbar
+       from anything else in #timelinePanel. */
+    body{overflow-x:hidden}
+    #timelinePanel{overflow-x:hidden}
+    .tl-ref-fixed{margin-left:0}
+  }
+
+  /* ---- dialogs ---- */
+  dialog{background:var(--panel); color:var(--text-hi); border:1px solid var(--divider);
+    border-radius:0; padding:0; max-width:560px; width:92vw}
+  dialog::backdrop{background:rgba(0,0,0,.6)}
+  .dialog-head{display:flex; justify-content:space-between; align-items:center; padding:12px 16px;
+    border-bottom:1px solid var(--divider)}
+  .dialog-head h2{font-size:14px; text-transform:uppercase; letter-spacing:.06em}
+  .dialog-body{padding:16px; max-height:70vh; overflow:auto}
+  .close-x{min-width:40px; min-height:40px; background:transparent; border:none; color:var(--text-mid); font-size:18px}
+  .credit-row{border-bottom:1px solid var(--divider); padding:10px 0}
+  .credit-row:last-child{border-bottom:none}
+  .credit-row .name{font-weight:600}
+  .credit-row .attribution{color:var(--text-mid); font-size:13px}
+  #shareBody p{margin-bottom:10px; font-size:13px; color:var(--text-mid)}
+  #shareActions{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px}
+  .fixture-badge{font-family:var(--mono); font-size:10px; color:var(--accent); border:1px dashed var(--accent);
+    padding:1px 6px; margin-left:6px; text-transform:uppercase}
+</style>
+</head>
+<body>
+
+<header id="toolbar">
+  <h1>Black Wire Forge</h1>
+  <div id="machineModules" role="group" aria-label="Machines"></div>
+  <button class="btn" id="creditsBtn" type="button">Credits</button>
+  <a class="btn" id="helpBtn" href="/help">Help</a>
+</header>
+
+<!-- Rooms by task: built from /api/engines "rooms" (rooms.json + what each
+     pack declares), never a fixed list in this markup. -->
+<nav id="roomStrip" aria-label="Rooms"></nav>
+
+<main id="layout">
+  <section id="bin" aria-label="History">
+    <div id="binHeader">
+      <h2>History</h2>
+      <div id="historyToggle" class="history-toggle" role="group" aria-label="Which history to show">
+        <button type="button" data-hist-scope="room" aria-pressed="true">This room (0)</button>
+        <button type="button" data-hist-scope="all" aria-pressed="false">Everything (0)</button>
+      </div>
+    </div>
+    <table id="binTable">
+      <caption class="sr-only">What was made</caption>
+      <tbody id="binBody"></tbody>
+    </table>
+    <div id="binEmpty" hidden></div>
+  </section>
+
+  <section id="monitor" aria-label="Monitor"></section>
+
+  <section id="inspector" aria-label="Recipe inspector">
+    <div>
+      <h2 id="roomHeading"></h2>
+      <p id="roomBlurb"></p>
+    </div>
+    <p id="roomPlainNote" hidden></p>
+    <!-- Sequence picker (C3.3, §7): the Cutting Room's own entry point --
+         list + "New sequence", always visible in that room regardless of
+         whether a slot is selected below it. -->
+    <div id="seqPicker" hidden>
+      <div class="field-group-title">Sequence</div>
+      <p id="seqMsg" role="status"></p>
+      <div id="seqPickerBody"></div>
+      <!-- C3.6's CUT bar: built live by renderCutBar(), called at the end
+           of every renderTimeline() so it never needs its own poll. Lives
+           in the inspector column (not the timeline panel) so its own
+           height never eats into the bin/monitor/inspector row's share of
+           the viewport (orchestrator review, 2026-09-23) -- always the
+           first thing under the sequence picker, so it is visible without
+           scrolling (F1). -->
+      <div id="cutBar"></div>
+    </div>
+    <div id="roomForm">
+    <div id="slotWarnings" hidden></div>
+    <div id="laneNote" role="status"></div>
+    <!-- H2: "Try this" -- a one-click example per mode, from the packs.
+         Sits above the engine picker so it is the first thing offered. -->
+    <div id="tryThisWrap" hidden>
+      <div class="field-group-title">Try this</div>
+      <div id="tryThisRow" role="group" aria-label="Try this"></div>
+    </div>
+    <!-- Engine picker: the room's modes as a radio list. Absent when the
+         room has one mode (the room name is then the only heading). -->
+    <div id="enginePickerWrap" hidden>
+      <div class="field-group-title" id="enginePickerTitle">Engine</div>
+      <div class="engine-picker" id="enginePicker" role="radiogroup" aria-labelledby="enginePickerTitle"></div>
+    </div>
+
+    <!-- A mode with no text field (e.g. a cutout/upscale tool) has nothing
+         for a prompt box to say -- its input picker takes this slot instead,
+         expanded, so it's the first thing a first-timer sees, not a nested
+         recipe-drawer disclosure. Hidden and empty when the mode has a
+         prompt (the ledger nests inside the recipe below in that case). -->
+    <div id="ledgerProminent" hidden>
+      <div class="field-group-title" id="ledgerProminentTitle">Add a file</div>
+      <div id="ledgerProminentBody"></div>
+    </div>
+
+    <!-- Recipe-first ordering front-loads jargon before the box everyone
+         understands (UX review #4/#2). Collapsed to one line by default;
+         opens on its own when a non-default recipe is picked, or when the
+         current mode has nothing else to show first (no prompt field). -->
+    <details id="recipeDetails">
+      <summary id="recipeSummary">Recipe: <span id="recipeSummaryLabel">Default</span></summary>
+      <div class="field-row">
+        <label class="field-label" for="recipeSelect">Recipe</label>
+        <select id="recipeSelect"></select>
+        <p id="recipeHeadnote"></p>
+      </div>
+      <div id="ledgerInRecipe" hidden>
+        <div class="field-group-title">Ingredient ledger</div>
+        <div id="ledgerInRecipeBody"></div>
+      </div>
+    </details>
+
+    <div id="promptWrap">
+      <label class="field-label" for="promptBox">Prompt</label>
+      <textarea id="promptBox"></textarea>
+      <p class="hint" id="promptHint"></p>
+      <div id="helperBar" hidden>
+        <button type="button" class="btn" id="helperWriteBtn">Help me write this</button>
+        <button type="button" class="btn" id="helperDescribeBtn" hidden>Describe this picture</button>
+        <span id="helperSpinner" hidden role="status">Thinking&hellip;</span>
+        <button type="button" class="btn" id="helperCancelBtn" hidden>Cancel</button>
+      </div>
+      <div id="helperPanel" hidden>
+        <p id="helperSuggestion"></p>
+        <div id="helperActions">
+          <button type="button" class="btn btn-primary" id="helperUseBtn">Use this</button>
+          <button type="button" class="btn" id="helperDismissBtn">Dismiss</button>
+        </div>
+        <p class="hint" id="helperError" hidden role="alert"></p>
+      </div>
+    </div>
+    <div id="qualityWrap" hidden>
+      <div class="field-group-title">Quality</div>
+      <div id="qualityLadder" role="group" aria-label="Quality"></div>
+      <p id="qualityWhy"></p>
+    </div>
+    <div id="primaryFields"></div>
+    <details id="advancedDisclosure">
+      <summary id="advancedSummary">Everything else (0)</summary>
+      <div id="advancedFields"></div>
+    </details>
+    <p id="inspectorMsg" role="status"></p>
+    <button class="btn btn-primary" id="makeBtn" type="button">Make</button>
+    </div>
+  </section>
+</main>
+
+<!-- Cutting Room shell (SEQUENCE). Built live by renderTimeline()/renderRefRoom()
+     once a sequence is open (C3.3); the tracks below are empty containers
+     until then. -->
+<div id="timelinePanel" hidden>
+  <div class="tl-title">Sequence</div>
+  <p id="tlCableMsg" role="status" hidden></p>
+  <div id="tlLanes">
+    <div id="tlPlayhead" aria-hidden="true"></div>
+    <svg id="tlCableSvg" aria-hidden="true"></svg>
+    <div id="tlJackLayer"></div>
+    <div class="tl-lane">
+      <div class="tl-lane-label">PICTURE</div>
+      <div class="tl-track tint-generated" id="tlTrackPicture"></div>
+    </div>
+    <div class="tl-lane">
+      <div class="tl-lane-label">VIDEO</div>
+      <div class="tl-track tint-video" id="tlTrackVideo"></div>
+    </div>
+    <div class="tl-lane">
+      <div class="tl-lane-label">SOUND</div>
+      <div class="tl-track tint-audio" id="tlTrackSound"></div>
+    </div>
+    <div class="tl-lane">
+      <div class="tl-lane-label locked">[LOCKED] REF ROOM</div>
+      <div class="tl-track locked" id="refTrack"><div class="tl-ref">Reference stays locked here.</div></div>
+    </div>
+  </div>
+  <!-- §5's fixed line: the app's one honest disclosure about what the room
+       cannot check. Static text, never composed. -->
+  <p class="tl-ref-fixed">The room can't see faces or framing. Check each shot at full size.</p>
+</div>
+
+<footer>
+  <details id="activityStrip">
+    <summary>Activity</summary>
+    <div id="activityLog"></div>
+  </details>
+</footer>
+
+<dialog id="creditsDialog">
+  <div class="dialog-head">
+    <h2>Credits &amp; licences</h2>
+    <button class="close-x" type="button" data-close="creditsDialog" aria-label="Close">&times;</button>
+  </div>
+  <div class="dialog-body" id="creditsBody"></div>
+</dialog>
+
+<dialog id="shareDialog">
+  <div class="dialog-head">
+    <h2>Share</h2>
+    <button class="close-x" type="button" data-close="shareDialog" aria-label="Close">&times;</button>
+  </div>
+  <div class="dialog-body" id="shareBody"></div>
+</dialog>
+
+<script>
+'use strict';
+/* Everything this page knows about a mode -- its label, its fields, its
+   presets, its quality tiers -- comes from GET /api/engines. This page
+   names no model and no engine; see the internal page-redesign spec. */
+
+const $ = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+const FIXTURE = new URLSearchParams(location.search).get('fixture') === '1';
+const UPLOAD_TYPES = ['audio', 'image', 'image_list', 'video_list', 'model'];
+// E2: request-body keys generate()/_dispatch_generic() read at the top
+// level before any pack field (server.py's RESERVED_FIELD_IDS) -- kept in
+// step with that list by hand; a field whose id is one of these
+// (yue2/cover's own "mode" select) must be sent under body.values instead.
+const RESERVED_FIELD_IDS = ['lane', 'kind', 'mode', 'quality', 'recipe', 'seed', 'sequence_id', 'slot_id'];
+
+// esc() must survive every field type this app renders, including numbers,
+// booleans and undefined -- a prior page threw here on a numeric default and
+// silently rendered zero fields. Never assume a string.
+function esc(s){ return String(s == null ? '' : s)
+  .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function fileExt(filename){
+  const m = /\.([a-z0-9]+)$/i.exec(filename || '');
+  return m ? m[1].toUpperCase() : 'FILE';
+}
+
+function humanSeconds(sec){
+  if(sec == null) return '--';
+  if(sec < 90) return Math.max(1, Math.round(sec)) + ' s';
+  const m = sec/60;
+  return (m < 10 ? Math.round(m*2)/2 : Math.round(m)) + ' min';
+}
+function ago(ts){
+  const d = Date.now()/1000 - ts;
+  if(d < 60) return 'just now';
+  if(d < 3600) return Math.round(d/60) + ' min ago';
+  if(d < 86400) return Math.round(d/3600) + ' h ago';
+  return Math.round(d/86400) + ' d ago';
+}
+function viewURL(lane, o, dl, keep){
+  return '/api/view?lane=' + encodeURIComponent(lane)
+    + '&filename=' + encodeURIComponent(o.filename)
+    + '&subfolder=' + encodeURIComponent(o.subfolder || '')
+    + '&type=' + encodeURIComponent(o.type || 'output')
+    + (dl ? '&dl=1' : '') + (keep ? '&keep_recipe=1' : '');
+}
+async function getJSON(url){
+  const r = await fetch(url);
+  if(!r.ok) throw new Error('http ' + r.status);
+  return r.json();
+}
+async function postJSON(url, body, signal){
+  const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'},
+                              body: JSON.stringify(body), signal});
+  return r.json();
+}
+
+/* ---------------------------------------------------------------------
+   State
+--------------------------------------------------------------------- */
+const STATE = {
+  lanes: [],
+  jobs: [],
+  log: [],
+  engines: {},        // cap -> {modes:[...]}  (the payload minus its "rooms" key)
+  rooms: [],          // /api/engines "rooms": [{id, name, group, order, blurb, empty, modes:[{cap, mode}]}]
+  credits: [],
+  cleanDownload: ['image', 'audio'],  // /api/credits "clean_download" -- media kinds a
+                                       // download is actually cleaned for; conservative
+                                       // default until the endpoint answers (never claims
+                                       // more than today's known-safe kinds).
+  cleanAudioExts: ['flac', 'mp3', 'opus', 'ogg'],  // /api/credits "clean_audio_exts" --
+                                       // F1: audio cleaning is per-FORMAT (sanitize.py
+                                       // does not implement WAV/M4A), so "audio" alone
+                                       // is not enough to promise a clean download.
+  activeLane: null,   // lane id the inspector generates against
+  room: null,         // the task room on screen (#room=<id>)
+  cap: null,           // the room's selected engine: cap + mode
+  mode: null,
+  histScope: 'room',   // History toggle: 'room' | 'all'
+  selectedJobId: null,
+  forgetArmed: null,   // {jobId, until} -- Forget's click-again-to-confirm window; see renderMonitor
+  uploads: {},         // field id -> array of {name, original}
+  pendingJobId: null,  // job just submitted from THIS inspector -- clears "On its way." when it settles
+  helper: false,       // /api/engines "helper": whether a prompt helper is configured at all
+  seq: null,           // the open sequence (GET /api/sequence's derived object), or null
+  seqList: [],         // GET /api/sequences -- the picker's own list
+  seqSlotId: null,     // the slot selected in the Cutting Room's timeline, or null
+  cablePending: null,  // {to: slotId, field: fieldId} -- an armed, empty jack awaiting a picture click
+  cutError: null,      // the last POST /api/sequence/cut refusal sentence, or null (C3.6/F7)
+  monitorCut: null,    // a cut id the monitor is showing instead of a job (C3.6/F4); cleared by selectSlot()
+  newSeqMode: 'sequence',  // C3.5: the New sequence row's mode, kept here because that row is rebuilt whole
+  beatDraft: null,     // C3.5: {after: beat index} for the one new-beat card open in the script lane
+};
+
+/* ---------------------------------------------------------------------
+   Machine modules -- six honest states, never idle-by-default.
+   READY / WORKING / ASLEEP / ASLEEP WITH WORK WAITING / CANNOT TELL /
+   UP BUT NOT FOR THIS. Judgment call (spec is silent on the exact mapping):
+   see the internal page-redesign spec report for the reasoning.
+--------------------------------------------------------------------- */
+function laneKindOf(lane){ return (lane && lane.kind) || 'comfy'; }
+// Is a lane answering, per STATE.lanes (/api/lanes)? A lane missing from
+// the list counts as UP, so nothing flips to CANNOT TELL while lanes are
+// still loading; a process lane runs on THIS machine, so it is up whenever
+// this app answers (same rule as the machine modules and renderLaneNote).
+function laneUp(laneId){
+  const l = STATE.lanes.find(x => x.id === laneId);
+  if(!l) return true;
+  return laneKindOf(l) === 'process' ? true : l.up;
+}
+// Write-only-on-change innerHTML (U1): the 2s poll re-renders every region,
+// and rebuilding nodes the user is hovering/clicking/playing destroys them
+// (slot buttons replaced between hover and click, a playing <video>
+// restarted, a <select> snapped back to its default). Assign only when the
+// string differs from the last one written to THIS element, and report
+// whether anything was written -- event handlers are re-attached ONLY on a
+// write, because untouched nodes still carry theirs.
+function setHTML(el, html){
+  if(el._lastHTML === html) return false;
+  el._lastHTML = html;
+  el.innerHTML = html;
+  return true;
+}
+// The machine a kind of work belongs on: an up lane of that kind if there
+// is one, else the first of that kind, else none at all.
+function laneForKind(kind){
+  const c = STATE.lanes.filter(l => laneKindOf(l) === kind);
+  return c.find(l => l.up) || c[0] || null;
+}
+function machineState(lane){
+  const ownJobsWaiting = STATE.jobs.some(j => j.lane === lane.id
+    && (j.status === 'queued' || j.status === 'running'));
+  if(laneKindOf(lane) === 'process'){
+    // A process lane has no card to sleep on and no VRAM to watch, but it
+    // is NOT always up: poll_process_lane() takes it down (lane.up false)
+    // when a needed binary (e.g. Blender, ffmpeg) is missing. Check that
+    // FIRST -- reporting READY on an idle-but-down lane hid a real "needs
+    // ..." condition behind a state that means "answering, has what it
+    // needs".
+    if(!lane.up){
+      if(ownJobsWaiting) return {state:'asleep-waiting', label:'ASLEEP, WORK WAITING'};
+      return {state:'asleep', label:'ASLEEP'};
+    }
+    // The queue on its worker slots IS the rest of the story.
+    if(lane.running > 0 || lane.pending > 0) return {state:'working', label:'WORKING'};
+    return {state:'ready', label:'READY'};
+  }
+  if(!lane.up){
+    if(ownJobsWaiting) return {state:'asleep-waiting', label:'ASLEEP, WORK WAITING'};
+    const err = (lane.err || '').toLowerCase();
+    if(err.includes('timeout') || err.includes('timed out'))
+      return {state:'cannot-tell', label:'CANNOT TELL'};
+    return {state:'asleep', label:'ASLEEP'};
+  }
+  if(lane.running > 0) return {state:'working', label:'WORKING'};
+  if(lane.discovered && lane.caps.length === 0)
+    return {state:'not-for-this', label:'UP, NOT FOR THIS'};
+  if(lane.pending > 0) return {state:'working', label:'QUEUED'};
+  return {state:'ready', label:'READY'};
+}
+function dotClassFor(state){
+  // Six states, six shapes -- see the .dot-* rules for why each shape was
+  // picked. Never fall back to color alone.
+  if(state === 'ready') return 'dot-ready';
+  if(state === 'working') return 'dot-working';
+  if(state === 'cannot-tell') return 'dot-cannot-tell';
+  if(state === 'not-for-this') return 'dot-not-for-this';
+  if(state === 'asleep-waiting') return 'dot-asleep-waiting';
+  return 'dot-asleep';
+}
+function machineChipInnerHTML(l, st){
+  const proc = laneKindOf(l) === 'process';
+  const vramBars = 10;
+  // A process lane reports no VRAM: the same segmented meter shows CPU
+  // load instead -- the load average over the box's cores, clamped 0..1.
+  // Until the lane payload ships `load`/`cores`, the meter is empty, never
+  // a guess.
+  const frac = proc
+    ? (l.cores ? Math.max(0, Math.min(1, (l.load || 0) / l.cores)) : 0)
+    : (l.vram_total ? Math.max(0, Math.min(1, 1 - (l.vram_free / l.vram_total))) : 0);
+  const on = Math.round(frac * vramBars);
+  const bars = Array.from({length: vramBars}, (_, i) =>
+    '<i class="' + (i < on ? 'on' : '') + '" style="height:' + (3 + i) + 'px"></i>').join('');
+  let detail = '';
+  if(proc){
+    detail = (l.running || 0) > 0 ? (l.running + ' running') : 'processor';
+  } else if(st.state === 'working'){
+    detail = l.running > 0 ? l.running + ' running' : l.pending + ' queued';
+  } else if(st.state === 'not-for-this'){
+    detail = 'no models installed';
+  } else if(st.state === 'asleep' || st.state === 'asleep-waiting'){
+    detail = l.err ? 'unreachable' : 'standby';
+  }
+  return '<span class="mline1"><span class="dot ' + dotClassFor(st.state) + '"></span>' + esc(l.name) + '</span>'
+    + '<span class="mline2"><span class="vram" aria-hidden="true">' + bars + '</span>'
+    + '<span class="num">' + esc(st.label) + (detail ? ' · ' + esc(detail) : '') + '</span></span>';
+}
+let MACHINES_KEY = '';
+function renderMachineModules(){
+  const el = $('#machineModules');
+  // The chip BUTTONS are rebuilt only when the set of lanes changes (key =
+  // the lane ids in order) -- a click handler is delegated at #machineModules
+  // in bindStaticUI, never a per-button closure, so a rebuilt set needs no
+  // re-attach. Every other render just updates the existing chips in place.
+  const key = STATE.lanes.map(l => l.id).join(',');
+  if(key !== MACHINES_KEY){
+    MACHINES_KEY = key;
+    el.innerHTML = STATE.lanes.map(l =>
+      '<button type="button" class="machine" data-lane="' + esc(l.id) + '"></button>'
+    ).join('') || '<span class="muted">No machines configured.</span>';
+  }
+  refreshMachineModules();
+}
+function refreshMachineModules(){
+  $$('#machineModules .machine').forEach(b => {
+    const l = STATE.lanes.find(x => x.id === b.dataset.lane);
+    if(!l) return;
+    const st = machineState(l);
+    b.setAttribute('aria-pressed', String(STATE.activeLane === l.id ? 'true' : 'false'));
+    setHTML(b, machineChipInnerHTML(l, st));
+  });
+}
+
+/* ---------------------------------------------------------------------
+   Bin
+--------------------------------------------------------------------- */
+function binMediaOf(job){
+  if(job.outputs && job.outputs.length) return job.outputs[0].media;
+  return job.kind; // best guess while running, before outputs exist
+}
+function renderHistoryToggle(){
+  // Two states, replacing the old per-media chips (which clipped at 300 px).
+  // A job's room is derived on read from (kind, mode) -- nothing is stored.
+  const cutting = isCutting(currentRoom());
+  $('#historyToggle').hidden = cutting;
+  const inRoom = STATE.jobs.filter(j => jobRoom(j) === STATE.room).length;
+  $$('#historyToggle button').forEach(b => {
+    const all = b.dataset.histScope === 'all';
+    b.textContent = all ? 'Everything (' + STATE.jobs.length + ')' : 'This room (' + inRoom + ')';
+    b.setAttribute('aria-pressed', String(b.dataset.histScope === STATE.histScope));
+  });
+}
+function renderBin(){
+  const body = $('#binBody');
+  if(isCutting(currentRoom())){
+    body.innerHTML = '';
+    body._lastHTML = '';   // setHTML's memo must not survive the clear
+    $('#binEmpty').textContent = "The Cutting Room draws from Everything, not one room's history.";
+    $('#binEmpty').hidden = false;
+    return;
+  }
+  const rows = STATE.jobs
+    .filter(j => STATE.histScope === 'all' || jobRoom(j) === STATE.room)
+    .slice()
+    .sort((a, b) => (b.created || 0) - (a.created || 0));
+  $('#binEmpty').textContent = STATE.histScope === 'all'
+    ? 'Nothing made yet. Pictures, clips, sounds and anything else you make will show up here.'
+    : 'Nothing made in this room yet. What you make here will show up in this list.';
+  $('#binEmpty').hidden = rows.length > 0;
+  const html = rows.map(j => {
+    const running = j.status === 'queued' || j.status === 'running';
+    const thumb = (!running && j.outputs && j.outputs[0])
+      ? thumbHTML(j, j.outputs[0])
+      : '<span class="num muted">' + (running ? '–' : '?') + '</span>';
+    let stepLabel = '';
+    if(running){
+      // A lane that stopped answering is not "step N / M" -- that is a
+      // claim the page cannot make. Same CANNOT TELL as the slot tile.
+      stepLabel = laneUp(j.lane)
+        ? (j.total ? ('step ' + (j.step||0) + ' / ' + j.total) : '--')
+        : 'CANNOT TELL';
+    }
+    return '<tr data-job="' + esc(j.id) + '" class="' + (running ? 'ghost' : '') + '"'
+      + ' aria-selected="' + (STATE.selectedJobId === j.id ? 'true' : 'false') + '">'
+      + '<td><div class="bin-row-main"><div class="bin-thumb">' + thumb + '</div>'
+      + '<div><div>' + esc(j.prompt || j.title || j.kind) + '</div>'
+      + '<div class="bin-meta">' + esc(j.lane_name || '') + ' · '
+      + (running ? esc(stepLabel) : esc(ago(j.created)))
+      + '</div></div></div></td>'
+      + '</tr>';
+  }).join('');
+  if(setHTML(body, html)){
+    $$('#binBody tr').forEach(tr => tr.onclick = () => {
+      STATE.selectedJobId = tr.dataset.job;
+      const job = STATE.jobs.find(j => j.id === tr.dataset.job);
+      const rid = job && jobRoom(job);
+      // Picked from Everything but made in another room: the inspector jumps
+      // to that room, so what's on the monitor and the form agree.
+      if(rid && rid !== STATE.room){ selectRoom(rid, {keepJob: true}); return; }
+      renderBin();
+      renderMonitor();
+      renderHelperBar();   // a picture picked from History may enable Describe this picture
+    });
+  }
+}
+function thumbHTML(job, o){
+  const u = viewURL(job.lane, o, false);
+  if(o.media === 'video') return '<video src="' + u + '" muted></video>';
+  if(o.media === 'audio') return '<span class="num muted">♪</span>';
+  if(o.media === 'image') return '<img src="' + u + '" alt="">';
+  // Any other output type (a 3D mesh, a raw file from a tool mode) -- never
+  // assume image/video/audio are the only three kinds of result.
+  return '<span class="num muted">' + esc(fileExt(o.filename)) + '</span>';
+}
+
+/* ---------------------------------------------------------------------
+   Monitor
+--------------------------------------------------------------------- */
+function licenceIsNonCommercial(licence){
+  // shippable:false is NOT the same claim as non-commercial -- some
+  // community licences permit commercial use under a revenue cap; others
+  // carry their own separate terms. Only say "non-commercial" where the
+  // licence NAME itself says so, never inferred from the boolean.
+  const name = (licence && licence.name) || '';
+  return /\bnc\b/i.test(name) || /non-commercial/i.test(name);
+}
+function licenceStampHTML(licence){
+  if(!licence || !licence.name)
+    return '<span class="licence-stamp unknown">Licence: cannot tell</span>';
+  if(licence.shippable)
+    return '<span class="licence-stamp shippable">' + esc(licence.name) + ', yours to use</span>';
+  if(licenceIsNonCommercial(licence))
+    return '<span class="licence-stamp noncommercial">' + esc(licence.name) + ', non-commercial</span>';
+  const readText = licence.url
+    ? '<a href="' + esc(licence.url) + '" target="_blank" rel="noopener">Read the licence.</a>'
+    : 'Read the licence.';
+  return '<span class="licence-stamp">' + esc(licence.name) + ', conditions apply. ' + readText + '</span>';
+}
+function monitorEmptyHTML(room){
+  // Guidance comes only from rooms.json (`empty`) and the packs (label +
+  // note) -- a room with several engines gets a short "Which one?".
+  if(!room) return '<div class="monitor-empty"><p>Nothing to show yet.</p></div>';
+  if(isCutting(room)){
+    // A sequence can be open with nothing selected below it yet -- that is
+    // not the same honest-empty state as no sequence being open at all, so
+    // it gets its own sentence rather than reusing rooms.json's "none open" text.
+    const text = STATE.seq ? 'Pick a slot in the timeline below.' : (room.empty || '');
+    return '<div class="monitor-banner">' + esc(text) + '</div>';
+  }
+  const ms = roomModes(room);
+  let html = '<div class="monitor-empty"><p>' + esc(room.empty || 'Set it up on the right and press Make.') + '</p>';
+  if(ms.length >= 2){
+    html += '<p class="guide-title">Which one?</p><ul class="guide-list">'
+      + ms.map(x => '<li><b>' + esc(x.info.label) + '</b>'
+        + (x.info.note ? ' — ' + esc(x.info.note) : '') + '</li>').join('')
+      + '</ul>';
+    if(ms.some(x => (x.info.examples || []).length)){
+      html += '<p class="guide-title">Not sure? Press Try this.</p>';
+    }
+  }
+  return html + '</div>';
+}
+function renderMonitor(){
+  const room = currentRoom();
+  const cutting = isCutting(room);
+  const slot = cutting ? currentSlot() : null;
+  // C3.6/F4 (orchestrator ruling 2026-09-23): a finished cut plays in the
+  // MONITOR, not a second video embedded in the timeline's CUT bar -- that
+  // second copy was ballooning the timeline panel and squeezing the
+  // history/monitor/inspector row to a sliver at 1440x900. STATE.monitorCut
+  // is cleared the moment a shot is selected (selectSlot()), so the two
+  // never fight over the monitor at once.
+  if(cutting && STATE.monitorCut && !slot){
+    const entry = STATE.seq && (STATE.seq.cuts || []).find(c => c.id === STATE.monitorCut);
+    if(entry){
+      renderMonitorCut(entry, STATE.seq);
+      return;
+    }
+    STATE.monitorCut = null;   // the cut it pointed at is gone -- fall through to the empty state
+  }
+  const job = STATE.jobs.find(j => j.id === STATE.selectedJobId);
+  if(!job || (cutting && !slot)){
+    $('#monitor').innerHTML = monitorEmptyHTML(room);
+    return;
+  }
+  const o = job.outputs && job.outputs[0];
+  const running = job.status === 'queued' || job.status === 'running';
+  // The page already knows which machines answer (/api/lanes -- the same
+  // data the header chip and machine modules use). A queued/running job on
+  // a lane that stopped answering is NOT "Still working": it may be lost,
+  // and only the machine's own answer will say. The Stop button goes with
+  // it -- a dead machine cannot be asked.
+  const laneDown = running && !laneUp(job.lane);
+  let media = laneDown
+    ? '<p class="muted">CANNOT TELL — ' + esc((job.lane_name || job.lane) || laneWord(job.lane))
+      + ' stopped answering. This render may be lost; it updates when the machine answers.</p>'
+    : '<p class="muted">Still working. It will appear here when done.</p>';
+  if(o){
+    const u = viewURL(job.lane, o, false);
+    if(o.media === 'video') media = '<video src="' + u + '" controls></video>';
+    else if(o.media === 'audio') media = '<audio src="' + u + '" controls></audio>';
+    else if(o.media === 'image') media = '<img src="' + u + '" alt="' + esc(job.prompt || '') + '">';
+    else {
+      // A result type this page has no renderer for (a 3D mesh, a raw
+      // upscaled/cutout file) -- a generic tile naming the file type, never
+      // a silent assumption that it must be a picture.
+      media = '<p class="muted">' + esc(fileExt(o.filename)) + ' file. No preview here.</p>'
+        + '<p><a class="btn" href="' + viewURL(job.lane, o, true) + '" download>Download</a></p>';
+    }
+  } else if(job.status === 'error' || job.status === 'interrupted'){
+    media = '<p style="color:var(--error)">' + esc(job.error
+      || (job.status === 'interrupted' ? 'That one was interrupted.' : 'That one failed.')) + '</p>';
+  }
+  const finished = job.status === 'done' || job.status === 'error' || job.status === 'interrupted';
+  const chips = [
+    ['machine', job.lane_name], ['model', job.model],
+    // Ghost state: the bin row already shows step progress -- the monitor
+    // (where the user is actually looking while it runs) gets the same
+    // honesty, never a guessed percentage. A lane that stopped answering is
+    // no step count at all: no chip, so the CANNOT TELL line is unchallenged.
+    ['step', running && !laneDown ? (job.total ? (job.step || 0) + ' / ' + job.total : '--') : null],
+    ['seed', job.seed], ['time', job.elapsed != null ? job.elapsed + ' s' : null],
+  ].filter(([, v]) => v != null && v !== '');
+  const provenance = chips.map(([k, v]) =>
+    '<span class="chip">' + esc(k) + ': ' + esc(v) + '</span>').join('')
+    + licenceStampHTML(job.licence);
+  // Forget's click-again-to-confirm state lives in STATE (not a DOM
+  // textContent set once, imperatively) so this render -- called by the 2s
+  // job poll too, not just a user action -- reflects it honestly instead
+  // of silently reverting an armed button to "Forget" every poll tick. A
+  // different job on screen always starts unarmed; an expired window does too.
+  if(STATE.forgetArmed && (STATE.forgetArmed.jobId !== job.id || Date.now() >= STATE.forgetArmed.until)){
+    STATE.forgetArmed = null;
+  }
+  const forgetLabel = STATE.forgetArmed ? 'Click again to remove from History' : 'Forget';
+  // C3.3 §7 item 6: a sequence open + a finished picture on screen offers
+  // "Add to the reference room" -- never for a video/audio/other result,
+  // and never before the render finished.
+  const canAddRef = cutting && STATE.seq && o && o.media === 'image' && job.status === 'done';
+  const actions = (o ? '<button class="btn" id="shareBtn" type="button">Share</button>' : '')
+    + '<button class="btn" id="useAgainBtn" type="button">Use again</button>'
+    + (running && !laneDown ? '<button class="btn" id="stopBtn" type="button">Stop</button>' : '')
+    + (finished ? '<button class="btn" id="forgetBtn" type="button">' + forgetLabel + '</button>' : '')
+    + (canAddRef ? '<span id="addRefWrap"><select id="addRefRole"><option value="set">set</option>'
+      + '<option value="character">character</option><option value="other" selected>other</option></select>'
+      + '<button class="btn" id="addRefBtn" type="button">Add to the reference room</button></span>' : '');
+  // The monitor is FOUR parts, written independently (U1): a ticking step
+  // counter changes the provenance chips and leaves a playing <video> and
+  // a half-chosen <select> alone. The parts are created once; the
+  // empty-state path above replaces the WHOLE monitor, so the next
+  // non-empty render rebuilds them.
+  const mon = $('#monitor');
+  // C3.6/F2: a VIDEO slot gets its own trim/title panel, appended after
+  // the takes strip -- the same "own container, rebuilt only when the
+  // shape changes" rule the takes strip already follows.
+  const needsCutPanel = !!(slot && slot.lane === 'video');
+  const hasParts = mon.querySelector('#monitorStage') && mon.querySelector('#monitorProvenance')
+    && mon.querySelector('#monitorActions')
+    && (!slot || mon.querySelector('#takesStrip'))
+    && (!needsCutPanel || mon.querySelector('#cutSlotPanel'));
+  if(hasParts){
+    // The takes strip belongs to a slot; no slot, no strip (and never a
+    // stale one left behind by the previous job/room).
+    const strip = mon.querySelector('#takesStrip');
+    if(!slot && strip) strip.remove();
+    const cutPanel = mon.querySelector('#cutSlotPanel');
+    if(!needsCutPanel && cutPanel) cutPanel.remove();
+  } else {
+    mon.innerHTML = '<div id="monitorStage"></div><div id="monitorProvenance"></div>'
+      + '<div id="monitorActions"></div>'
+      + (slot ? '<div id="takesStrip"></div>' : '')
+      + (needsCutPanel ? '<div id="cutSlotPanel"></div>' : '');
+  }
+  setHTML($('#monitorStage'), media);
+  setHTML($('#monitorProvenance'), provenance);
+  // setHTML skipping the DOM write is not the handlers skipping a re-target:
+  // finished jobs render byte-identical action buttons, so selecting the
+  // other of two is a no-write render, and the buttons must close over the
+  // job the monitor is NOW showing, not the last one that forced a write.
+  setHTML($('#monitorActions'), actions);
+  if($('#shareBtn')) $('#shareBtn').onclick = () => openShare(job, o);
+  if($('#useAgainBtn')) $('#useAgainBtn').onclick = () => useAgain(job);
+  if($('#stopBtn')) $('#stopBtn').onclick = () => stopJob(job);
+  if($('#forgetBtn')) $('#forgetBtn').onclick = () => forgetJob(job);
+  if($('#addRefBtn')) $('#addRefBtn').onclick = () => addRefFromMonitor(job, o);
+  if(slot){
+    setHTML($('#takesStrip'), takesStripHTML(slot));
+    wireTakesStrip(slot);
+    if(needsCutPanel){
+      setHTML($('#cutSlotPanel'), cutSlotPanelHTML(slot));
+      wireCutSlotPanel(slot);
+    }
+  }
+}
+
+/* C3.6/F4: the monitor's cut-watching branch -- same #monitorStage/
+   #monitorProvenance/#monitorActions parts a job uses, written independently
+   so a polling re-render (a "cutting..." cut ticking toward "done") never
+   tears down a video that is already playing. */
+function dedupeLicences(licences){
+  // Three identical LTX stamps (one per shot) + the bed's own is noise,
+  // not information -- one stamp per DISTINCT licence name (review fix,
+  // 2026-09-23).
+  const seen = new Set();
+  return licences.filter(l => {
+    const key = (l && l.name) || '';
+    if(seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+function renderMonitorCut(entry, seq){
+  const mon = $('#monitor');
+  const hasParts = mon.querySelector('#monitorStage') && mon.querySelector('#monitorProvenance')
+    && mon.querySelector('#monitorActions');
+  if(!hasParts){
+    mon.innerHTML = '<div id="monitorStage"></div><div id="monitorProvenance"></div><div id="monitorActions"></div>';
+  }
+  // A cut view shows ONLY the cut's own controls -- a takes strip or CUT
+  // SETTINGS panel left over from a previously selected shot belongs to a
+  // job, not a cut (review fix, 2026-09-23).
+  const strip = mon.querySelector('#takesStrip');
+  if(strip) strip.remove();
+  const cutPanel = mon.querySelector('#cutSlotPanel');
+  if(cutPanel) cutPanel.remove();
+  const rel = entry.file || ('cuts/' + entry.id + '.mp4');
+  const url = '/api/sequence/file?id=' + encodeURIComponent(seq.id) + '&path=' + encodeURIComponent(rel);
+  let media;
+  if(entry.status === 'done') media = '<video src="' + url + '" controls></video>';
+  else if(entry.status === 'error') media = '<p style="color:var(--error)">' + esc(entry.log || 'That cut failed.') + '</p>';
+  else if(entry.status === 'interrupted') media = '<p class="muted">That cut was interrupted. Cut again when ready.</p>';
+  else media = '<p class="muted">Cutting… (' + esc(entry.status) + ')</p>';
+  const licences = dedupeLicences((entry.shots || []).map(s => s.licence).filter(Boolean));
+  const loudNote = entry.status === 'done' ? cutNotesText(entry) : '';
+  const wrote = setHTML($('#monitorStage'), media);
+  setHTML($('#monitorProvenance'), licences.map(licenceStampHTML).join('')
+    + (loudNote ? '<p class="muted">' + esc(loudNote) + '</p>' : ''));
+  const actions = (entry.status === 'done' ? '<a class="btn" href="' + url + '&dl=1" download>Download</a>' : '')
+    + '<button class="btn" id="closeCutWatchBtn" type="button">Back to the sequence</button>';
+  setHTML($('#monitorActions'), actions);
+  if($('#closeCutWatchBtn')) $('#closeCutWatchBtn').onclick = () => { STATE.monitorCut = null; renderMonitor(); };
+  // A newly-loaded cut always starts scrolled to its own top -- a leftover
+  // scroll position from whatever the monitor showed before (a job's
+  // takes strip, scrolled down) must never hide the video (review fix,
+  // 2026-09-23).
+  if(wrote) mon.scrollTop = 0;
+}
+
+let FORGET_ARM_TIMER = null;
+async function stopJob(job){
+  try{
+    const r = await postJSON('/api/cancel', {lane: job.lane, job_id: job.id});
+    if(!r.ok) msgInspector(r.error || 'Could not stop that one.', 'err');
+    else pollJobs();
+  } catch(e){
+    msgInspector(String(e.message || e), 'err');
+  }
+}
+async function forgetJob(job){
+  // A native confirm() blocks automation -- a second click stands in for
+  // it. The armed window lives in STATE.forgetArmed, not a one-off DOM
+  // textContent set here, so renderMonitor's OWN labelling (which the 2s
+  // job poll's re-render runs too) stays honest instead of silently
+  // reverting to "Forget" on the next poll tick while still secretly
+  // armed underneath -- only a second click within the window calls
+  // /api/forget.
+  const armed = STATE.forgetArmed && STATE.forgetArmed.jobId === job.id && Date.now() < STATE.forgetArmed.until;
+  clearTimeout(FORGET_ARM_TIMER);
+  if(!armed){
+    STATE.forgetArmed = {jobId: job.id, until: Date.now() + 4000};
+    renderMonitor();
+    FORGET_ARM_TIMER = setTimeout(() => {
+      if(STATE.forgetArmed && STATE.forgetArmed.jobId === job.id && Date.now() >= STATE.forgetArmed.until){
+        STATE.forgetArmed = null;
+        if(STATE.selectedJobId === job.id) renderMonitor();
+      }
+    }, 4000);
+    return;
+  }
+  STATE.forgetArmed = null;
+  try{
+    const r = await postJSON('/api/forget', {job_id: job.id});
+    if(!r.ok){ msgInspector(r.error || 'Could not remove that.', 'err'); renderMonitor(); return; }
+    if(STATE.selectedJobId === job.id) STATE.selectedJobId = null;
+    pollJobs();
+    renderMonitor();
+  } catch(e){
+    msgInspector(String(e.message || e), 'err');
+    renderMonitor();
+  }
+}
+
+// F1: "audio" alone does not mean cleanable -- sanitize.py only implements
+// FLAC/MP3/Opus-in-Ogg, so WAV/M4A outputs must fall through to the plain
+// (uncleaned) share path even though their kind is "audio".
+function cleanableFor(o){
+  if(!STATE.cleanDownload.includes(o.media)) return false;
+  if(o.media === 'audio') return STATE.cleanAudioExts.includes(fileExt(o.filename).toLowerCase());
+  return true;
+}
+
+// F1: the clean-download link can now be REFUSED server-side (a strip that
+// did not actually happen must not be served under "recipe removed"). A
+// plain <a download> has no way to see a failed response's body, so this
+// fetches instead and shows the server's own sentence in the dialog rather
+// than letting the browser save a JSON error body as if it were the file.
+async function downloadClean(url, filename, btn){
+  const original = btn.textContent;
+  const errEl = $('#shareCleanError');
+  errEl.style.display = 'none';
+  btn.disabled = true;
+  btn.textContent = 'Removing recipe...';
+  try{
+    const r = await fetch(url);
+    if(!r.ok){
+      let msg = 'Could not remove the recipe from this file, so it was not downloaded.';
+      try{ const j = await r.json(); if(j && j.error) msg = j.error; } catch(e){}
+      errEl.textContent = msg;
+      errEl.style.display = '';
+      return;
+    }
+    const blob = await r.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(a.href);
+  } catch(e){
+    errEl.textContent = String(e.message || e);
+    errEl.style.display = '';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
+  }
+}
+
+async function openShare(job, o){
+  const dlg = $('#shareDialog');
+  // Lazy, same reason as openCredits(): the endpoint may not be live in
+  // every worktree, and STATE.cleanDownload's conservative default until
+  // it answers is exactly the safe behaviour we want here anyway.
+  await loadCredits();
+  const cleaned = cleanableFor(o);
+  $('#shareBody').innerHTML = (cleaned
+    ? '<p>Downloading strips the embedded recipe (model names, prompt data) from the file. '
+      + 'Nobody else surfaces this before you share. We do.</p>'
+      + '<p>' + licenceStampHTML(job.licence) + '</p>'
+      + '<div id="shareActions">'
+      + '<button type="button" class="btn btn-primary" id="shareCleanLink">Download (recipe removed)</button>'
+      + '<a class="btn" id="shareKeepLink" href="' + viewURL(job.lane, o, true, true) + '" download>Keep the recipe</a>'
+      + '</div>'
+      + '<p id="shareCleanError" style="display:none"></p>'
+    : '<p>This kind of file downloads exactly as it was made, and may carry the settings used to make it.</p>'
+      + '<p>' + licenceStampHTML(job.licence) + '</p>'
+      + '<div id="shareActions">'
+      + '<a class="btn btn-primary" id="shareDownloadLink" href="' + viewURL(job.lane, o, true, true) + '" download>Download</a>'
+      + '</div>');
+  if(cleaned){
+    $('#shareCleanLink').addEventListener('click', () =>
+      downloadClean(viewURL(job.lane, o, true, false), o.filename, $('#shareCleanLink')));
+  }
+  dlg.showModal();
+}
+
+function useAgain(job){
+  selectRoom(jobRoom(job) || STATE.room, {keepJob: true}).then(() => {
+    if(modeInfo(job.kind, job.mode)){
+      STATE.cap = job.kind;
+      STATE.mode = job.mode;
+      renderEnginePicker(true);
+    }
+    renderModeFields().then(() => {
+      const args = job.args || job;
+      $$('#inspector [data-field-id]').forEach(el => {
+        const fid = el.dataset.fieldId;
+        if(!(fid in args)) return;
+        if(el.type === 'checkbox') el.checked = !!args[fid];
+        else el.value = args[fid];
+      });
+      if(job.prompt) $('#promptBox').value = job.prompt;
+      if(job.quality) selectQualityTier(job.quality); else applyTierValues();
+    });
+  });
+}
+
+/* ---------------------------------------------------------------------
+   Recipe inspector
+--------------------------------------------------------------------- */
+/* Rooms by task. The strip, the picker and every guidance line are built
+   from /api/engines "rooms" + each mode's label/note/licence -- this page
+   holds no room list and no mode->room map of its own. */
+function roomById(id){ return STATE.rooms.find(r => r.id === id) || null; }
+function currentRoom(){ return roomById(STATE.room); }
+function isCutting(room){ return !!room && room.kind === 'cutting'; }
+function modeInfo(cap, mode){
+  return ((STATE.engines[cap] || {}).modes || []).find(m => m.id === mode) || null;
+}
+function roomModes(room){
+  return ((room && room.modes) || [])
+    .map(x => ({cap: x.cap, mode: x.mode, info: modeInfo(x.cap, x.mode)}))
+    .filter(x => x.info);
+}
+// D2 fix (P2): the media cap(s) a room's own modes span -- what "a machine
+// for this room" means, in the same terms config.json's lanes declare
+// ("caps": [...]).
+function roomCaps(room){
+  return Array.from(new Set(((room && room.modes) || []).map(x => x.cap)));
+}
+// Whether `lane` can ACTUALLY serve any of `caps` right now -- up, and
+// declaring the cap. A down lane never counts, even though server.py's
+// lanes_payload leaves its "caps" at the declared list until discovery
+// runs (discovery only ever runs for a lane that has answered at least
+// once) -- "is it configured for this" and "can it do this right now"
+// are different questions, and this is the second one.
+function laneServesCaps(lane, caps){
+  return !!(lane && lane.up && caps.some(c => (lane.caps || []).includes(c)));
+}
+// D2 fix (P2): on entering a room, the active lane must be one that can
+// actually serve it -- never left over from whatever room was open before.
+// Returns true iff it switched STATE.activeLane.
+function ensureLaneForRoom(room){
+  if(isCutting(room)) return false;   // the Cutting Room isn't cap-scoped
+  const caps = roomCaps(room);
+  if(!caps.length) return false;      // no modes at all -- "nothing installed" already covers it
+  const cur = STATE.lanes.find(l => l.id === STATE.activeLane);
+  if(laneServesCaps(cur, caps)) return false;   // already the right kind of machine
+  const up = STATE.lanes.find(l => l.up && laneServesCaps(l, caps));
+  // No UP lane serves this room -- fall back to a lane that DECLARES the
+  // cap in config.json (even asleep), so the page never keeps showing a
+  // machine of the WRONG kind (D2's actual bug: "Video Lane A" in Picture).
+  const target = up || STATE.lanes.find(l => caps.some(c => (l.declared_caps || []).includes(c)));
+  if(!target || target.id === STATE.activeLane) return false;
+  STATE.activeLane = target.id;
+  return true;
+}
+// D2 fix (P2): the plain-sentence refusal when NO lane can serve this
+// room right now -- called AFTER ensureLaneForRoom, so STATE.activeLane
+// already names the best available machine (or the room's own cap has
+// no candidate at all). Never names a lane of a DIFFERENT cap.
+function roomCapNoteText(room){
+  if(isCutting(room)) return '';
+  const caps = roomCaps(room);
+  if(!caps.length) return '';
+  const cur = STATE.lanes.find(l => l.id === STATE.activeLane);
+  if(laneServesCaps(cur, caps)) return '';
+  const cap = caps[0];
+  const declaring = STATE.lanes.some(l => caps.some(c => (l.declared_caps || []).includes(c)));
+  if(!declaring){
+    return 'No machine in config.json can make this. Add a lane with the "' + cap + '" cap.';
+  }
+  return 'No ' + cap + ' machine is reachable right now. Check that it is running, or the lanes in config.json.';
+}
+function jobRoom(job){
+  const r = STATE.rooms.find(r => (r.modes || []).some(x => x.cap === job.kind && x.mode === job.mode));
+  return r ? r.id : null;
+}
+function currentMode(){ return modeInfo(STATE.cap, STATE.mode); }
+function activeLaneName(){
+  return (STATE.lanes.find(l => l.id === STATE.activeLane) || {}).name || 'this machine';
+}
+function roomFromHash(){
+  const m = /(?:^#|&)room=([^&]+)/.exec(location.hash || '');
+  return m ? decodeURIComponent(m[1]) : null;
+}
+function tryIdFromHash(){
+  const m = /(?:^#|&)try=([^&]+)/.exec(location.hash || '');
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+function renderRoomStrip(){
+  // Groups in the order their first room appears; the Cutting Room is set
+  // apart at the right end -- it is the destination, not a peer.
+  const groups = [], byGroup = {};
+  STATE.rooms.filter(r => !isCutting(r)).forEach(r => {
+    const g = r.group || '';
+    if(!byGroup[g]){ byGroup[g] = {name: g, rooms: []}; groups.push(byGroup[g]); }
+    byGroup[g].rooms.push(r);
+  });
+  const cutting = STATE.rooms.find(isCutting);
+  $('#roomStrip').innerHTML = groups.map((g, i) =>
+      (i ? '<div class="room-divider" aria-hidden="true"></div>' : '')
+      + '<div class="room-group" role="group" aria-label="' + esc(g.name || 'Rooms') + '">'
+      + (g.name ? '<span class="room-group-label" aria-hidden="true">' + esc(g.name) + '</span>' : '')
+      + g.rooms.map(r => '<button type="button" class="room-tab" data-room-id="' + esc(r.id) + '" aria-pressed="false">'
+        + '<span class="dot" hidden></span>' + esc(r.name) + '<span class="sr-only room-state"></span></button>').join('')
+      + '</div>').join('')
+    + '<div class="room-spacer"></div>'
+    + (cutting ? '<button type="button" class="room-tab room-cutting" data-room-id="' + esc(cutting.id)
+      + '" aria-pressed="false">[ ] ' + esc(cutting.name) + '</button>' : '');
+  refreshRoomStrip();
+}
+function refreshRoomStrip(){
+  // In place (never a re-render) so a focused tab keeps focus across polls.
+  const busy = new Set(STATE.jobs
+    .filter(j => j.status === 'queued' || j.status === 'running').map(jobRoom).filter(Boolean));
+  const lane = activeLaneName();
+  const curLane = STATE.lanes.find(l => l.id === STATE.activeLane);
+  $$('#roomStrip [data-room-id]').forEach(b => {
+    const room = roomById(b.dataset.roomId);
+    if(!room) return;
+    b.setAttribute('aria-pressed', String(room.id === STATE.room));
+    if(isCutting(room)) return;
+    const ms = roomModes(room);
+    const nothing = ms.length === 0;
+    // Same availability rule the engine picker uses: a mode that belongs
+    // on another KIND of lane is not "not for this" -- it runs on that
+    // lane (picking it moves the active lane there). Only a kind with no
+    // machine at all counts as off.
+    const allOff = !nothing && ms.every(x => {
+      const m = x.info, mk = m.lane_kind || 'comfy';
+      if(curLane && laneKindOf(curLane) !== mk) return !laneForKind(mk);
+      return m.available === false;
+    });
+    let cls = '', state = '', title = '';
+    if(busy.has(room.id)){ cls = 'dot-working'; state = 'working'; title = 'Something is being made here'; }
+    else if(allOff){ cls = 'dot-not-for-this'; state = 'not available here'; }
+    if(nothing) title = 'Nothing installed makes this yet';
+    else if(allOff && !title) title = lane + " can't make this yet";
+    const dot = b.querySelector('.dot');
+    dot.className = 'dot' + (cls ? ' ' + cls : '');
+    dot.hidden = !cls;
+    b.querySelector('.room-state').textContent = state ? ', ' + state : (nothing ? ', nothing installed' : '');
+    b.classList.toggle('room-tab-dim', nothing || allOff);
+    if(title) b.title = title; else b.removeAttribute('title');
+  });
+}
+
+function miniLicenceStampHTML(licence){
+  // The picker's miniature stamp: same three honest cases as the full one,
+  // shortened so a long licence name never wraps the meta line.
+  if(!licence || !licence.name)
+    return '<span class="licence-stamp mini unknown">Licence: cannot tell</span>';
+  if(licence.shippable)
+    return '<span class="licence-stamp mini shippable">' + esc(licence.name) + ' - yours to use</span>';
+  if(licenceIsNonCommercial(licence))
+    return '<span class="licence-stamp mini noncommercial">' + esc(licence.name) + '</span>';
+  return '<span class="licence-stamp mini" title="' + esc(licence.name) + '">conditions apply</span>';
+}
+function defaultEstimate(mode){
+  // The mode's DEFAULT quality tier -- the same honest median the ladder
+  // shows, or "--" when there isn't one yet. Never guessed.
+  const q = (mode.quality || []).find(t => t.default) || (mode.quality || [])[0];
+  const est = q ? q.estimate_s : null;
+  return est == null ? '--' : 'about ' + humanSeconds(est) + ' on ' + activeLaneName();
+}
+let PICKER_KEY = '';
+function pickerKey(ms){
+  return JSON.stringify([STATE.room, STATE.cap, STATE.mode, activeLaneName(),
+    ms.map(x => [x.info.available, x.info.missing, x.info.note, defaultEstimate(x.info), x.info.licence])]);
+}
+function renderEnginePicker(force){
+  const room = currentRoom();
+  const ms = roomModes(room);
+  const wrap = $('#enginePickerWrap');
+  if(isCutting(room) || ms.length < 2){
+    wrap.hidden = true;
+    $('#enginePicker').innerHTML = '';
+    PICKER_KEY = '';
+    return;
+  }
+  wrap.hidden = false;
+  const key = pickerKey(ms);
+  if(!force && key === PICKER_KEY) return;  // polls must not steal a focused radio
+  PICKER_KEY = key;
+  const curLane = STATE.lanes.find(l => l.id === STATE.activeLane);
+  $('#enginePicker').innerHTML = ms.map((x, i) => {
+    const m = x.info, id = 'engine_' + i;
+    const mk = m.lane_kind || 'comfy';
+    const home = laneForKind(mk);
+    const foreign = laneKindOf(curLane) !== mk;
+    // A mode that belongs on another KIND of machine is not "unavailable":
+    // picking it moves the active lane there. Only a kind with no machine
+    // at all is a dead end -- and the row says so in plain words.
+    const off = foreign ? !home : m.available === false;
+    const missing = foreign
+      ? (home ? 'runs on ' + home.name : 'needs a ' + mk + ' machine; none is set up')
+      : ((m.missing && m.missing.length) ? 'needs ' + m.missing.join(', ')
+         : 'not available on ' + activeLaneName());
+    // "runs on <machine>" is information, not an error: the muted tier.
+    const missingCls = (foreign && home) ? 'erow-runs' : 'erow-missing';
+    return '<label class="engine-row" for="' + id + '" data-disabled="' + off + '">'
+      + '<input type="radio" name="engine" id="' + id + '" data-cap="' + esc(x.cap) + '" data-mode="' + esc(x.mode) + '"'
+      + (x.cap === STATE.cap && x.mode === STATE.mode ? ' checked' : '') + (off ? ' disabled' : '') + '>'
+      + '<div class="erow-body"><div class="erow-label">' + esc(m.label) + '</div>'
+      + (m.note ? '<div class="erow-reason">' + esc(m.note) + '</div>' : '')
+      + ((off || foreign) ? '<div class="' + missingCls + '">' + esc(missing) + '</div>' : '')
+      + '<div class="erow-meta"><span class="erow-estimate">' + esc(defaultEstimate(m)) + '</span>'
+      + miniLicenceStampHTML(m.licence) + '</div>'
+      + '</div></label>';
+  }).join('');
+  $$('#enginePicker input[type=radio]').forEach(r => r.onchange = async () => {
+    // The native radio already shows the pick -- no rebuild, so arrow-key
+    // navigation through the group keeps its focus.
+    STATE.cap = r.dataset.cap;
+    STATE.mode = r.dataset.mode;
+    const mk = (modeInfo(r.dataset.cap, r.dataset.mode) || {}).lane_kind || 'comfy';
+    const home = laneForKind(mk);
+    const cur = STATE.lanes.find(l => l.id === STATE.activeLane);
+    // The right machine for the job: a cross-kind pick moves the active
+    // lane to the mode's home lane. Only cross-kind picks switch, so this
+    // can never loop.
+    if(home && home.id !== STATE.activeLane && laneKindOf(cur) !== mk){
+      STATE.activeLane = home.id;
+      renderMachineModules();
+      PICKER_KEY = '';   // the manifest is about to change lanes
+      try{
+        const changed = await loadEnginesFor();
+        if(changed) renderRoomStrip(); else refreshRoomStrip();
+      }catch(e){ /* stale manifest stays; the next poll retries */ }
+      renderEnginePicker(true);
+      renderMonitor();
+      if(!$('#roomForm').hidden) renderModeFields();
+      return;
+    }
+    PICKER_KEY = pickerKey(ms);
+    renderModeFields();
+  });
+}
+
+async function selectRoom(id, opts){
+  opts = opts || {};
+  const room = roomById(id) || STATE.rooms[0] || null;   // default: first in order
+  if(!room) return;
+  const changed = STATE.room !== room.id;
+  const cuttingRoom = isCutting(room);
+  STATE.room = room.id;
+  if(cuttingRoom){
+    setSeqHash(opts.seqId !== undefined ? opts.seqId : seqIdFromHash());
+  } else {
+    try{ history.replaceState(null, '', '#room=' + encodeURIComponent(room.id)); } catch(e){ /* sandboxed */ }
+  }
+  // P2/D2 fix: the active lane must follow the room, BEFORE roomModes(room)
+  // is read below -- STATE.engines (and so every mode's available/missing)
+  // is scoped to STATE.activeLane, so picking the room's own engine off a
+  // lane left over from a DIFFERENT room's cap is exactly D2's bug.
+  if(ensureLaneForRoom(room)){
+    renderMachineModules();
+    try{ await loadEnginesFor(); } catch(e){ /* stale manifest stays; the next poll retries */ }
+  }
+  // H2: #room=<id>&try=<example id> -- find which mode owns that example
+  // (unknown ids are ignored silently) and pick it, so the example's own
+  // mode opens rather than whatever this room would default to.
+  let tryMatch = null;
+  if(opts.tryId){
+    for(const x of roomModes(room)){
+      const ex = ((x.info && x.info.examples) || []).find(e => e.id === opts.tryId);
+      if(ex){ tryMatch = {cap: x.cap, mode: x.mode, example: ex}; break; }
+    }
+  }
+  if(changed || opts.force || tryMatch){
+    // Default engine: the example's own mode if a try id matched, else the
+    // first AVAILABLE mode, else the first.
+    const ms = roomModes(room);
+    const pick = tryMatch ? {cap: tryMatch.cap, mode: tryMatch.mode}
+      : (ms.find(x => x.info.available) || ms[0] || null);
+    STATE.cap = pick ? pick.cap : null;
+    STATE.mode = pick ? pick.mode : null;
+    const sel = STATE.jobs.find(j => j.id === STATE.selectedJobId);
+    if(!opts.keepJob && !(sel && jobRoom(sel) === room.id)) STATE.selectedJobId = null;
+  }
+  refreshRoomStrip();
+  const cutting = cuttingRoom;
+  const nothing = !cutting && roomModes(room).length === 0;
+  $('#roomHeading').textContent = room.name || '';
+  $('#roomBlurb').textContent = room.blurb || '';
+  $('#roomBlurb').hidden = !room.blurb;
+  if(changed || opts.force) STATE.seqSlotId = null;
+  $('#roomForm').hidden = cutting ? !STATE.seqSlotId : nothing;
+  // P2/D2 fix: "nothing installed" (no engine pack at all) and "no reachable
+  // machine for this room" are different refusals -- the second only
+  // applies once the room DOES have a mode, just no lane to run it on.
+  const capNote = !cutting && !nothing ? roomCapNoteText(room) : '';
+  $('#roomPlainNote').hidden = !(!cutting && (nothing || capNote));
+  $('#roomPlainNote').textContent = nothing ? 'Nothing installed makes this yet.' : capNote;
+  $('#seqPicker').hidden = !cutting;
+  $('#timelinePanel').hidden = !cutting;
+  renderEnginePicker(true);
+  renderHistoryToggle();
+  renderBin();
+  if(cutting){
+    await seqEnterRoom(opts.seqId !== undefined ? opts.seqId : seqIdFromHash());
+  }
+  renderMonitor();
+  if(!cutting && !nothing){
+    await renderModeFields();
+    if(tryMatch) applyExample(tryMatch.example);
+  }
+}
+
+function fieldsFor(mode){ return (mode && mode.fields) || []; }
+function tierOf(f){ return f.tier === 'primary' ? 'primary' : 'advanced'; }
+
+function evalEnabled(f, values){
+  if(!f.enabled_when) return true;
+  const cond = f.enabled_when;
+  const v = values[cond.field];
+  if('equals' in cond) return v === cond.equals;
+  if('not_equals' in cond) return v !== cond.equals;
+  return !!v; // truthy
+}
+
+function currentValues(){
+  const out = {};
+  $$('#inspector [data-field-id]').forEach(el => {
+    out[el.dataset.fieldId] = el.type === 'checkbox' ? el.checked : el.value;
+  });
+  return out;
+}
+
+function fieldControlHTML(f){
+  const id = 'f_' + f.id;
+  const val = f.default;
+  if(f.type === 'textarea'){
+    return '<textarea id="' + id + '" data-field-id="' + esc(f.id) + '" data-field-tier="' + tierOf(f) + '">'
+      + esc(val) + '</textarea>';
+  }
+  if(f.type === 'select'){
+    return '<select id="' + id + '" data-field-id="' + esc(f.id) + '" data-field-tier="' + tierOf(f) + '">'
+      + (f.options || []).map(o => '<option value="' + esc(o) + '"' + (o === val ? ' selected' : '') + '>' + esc(o) + '</option>').join('')
+      + '</select>';
+  }
+  if(f.type === 'checkbox'){
+    return '<input type="checkbox" id="' + id + '" data-field-id="' + esc(f.id) + '" data-field-tier="' + tierOf(f) + '"'
+      + (val ? ' checked' : '') + '>';
+  }
+  if(f.type === 'number' || f.type === 'int'){
+    return '<input type="number" id="' + id + '" data-field-id="' + esc(f.id) + '" data-field-tier="' + tierOf(f) + '"'
+      + (f.range ? (' min="' + esc(f.range[0]) + '" max="' + esc(f.range[1]) + '"') : '')
+      + (f.type === 'int' ? ' step="1"' : ' step="any"')
+      + ' value="' + esc(val) + '">';
+  }
+  // text / fallback
+  return '<input type="text" id="' + id + '" data-field-id="' + esc(f.id) + '" data-field-tier="' + tierOf(f) + '"'
+    + ' value="' + esc(val) + '">';
+}
+
+function fieldRowHTML(f, values){
+  const enabled = evalEnabled(f, values || {});
+  // Some packs already fold the unit into the label text itself (e.g.
+  // "Duration (seconds)"); do not print it twice.
+  const unit = (f.units && (f.label || '').toLowerCase().indexOf(String(f.units).toLowerCase()) === -1)
+    ? ' <span class="muted">(' + esc(f.units) + ')</span>' : '';
+  const isCheckbox = f.type === 'checkbox';
+  return '<div class="field-row' + (isCheckbox ? ' checkbox-row' : '') + '" data-disabled="' + (!enabled) + '">'
+    + (isCheckbox
+        ? (fieldControlHTML(f) + '<label class="field-label" style="margin:0" for="f_' + esc(f.id) + '">' + esc(f.label) + '</label>')
+        : ('<label class="field-label" for="f_' + esc(f.id) + '">' + esc(f.label) + unit + '</label>' + fieldControlHTML(f)))
+    + (f.hint ? '<p class="hint">' + esc(f.hint) + '</p>' : '')
+    + (!enabled && f.disabled_reason ? '<p class="hint">' + esc(f.disabled_reason) + '</p>' : '')
+    + '</div>';
+}
+
+function groupedHTML(fields, values){
+  const groups = [];
+  const seen = {};
+  fields.slice().sort((a, b) => (a.order||0) - (b.order||0)).forEach(f => {
+    const g = f.group || '';
+    if(!(g in seen)){ seen[g] = {name: g, fields: []}; groups.push(seen[g]); }
+    seen[g].fields.push(f);
+  });
+  return groups.map(g =>
+    (g.name ? '<div class="field-group-title">' + esc(g.name) + '</div>' : '')
+    + g.fields.map(f => fieldRowHTML(f, values)).join('')).join('');
+}
+
+async function ensureLedgerUploads(){
+  /* fires when an upload input changes: sends the files to the active lane,
+     stores the returned filenames, and re-renders that one slot's thumbs */
+}
+
+function ledgerRowHTML(f, values){
+  const uploaded = STATE.uploads[f.id] || [];
+  const multi = f.type === 'image_list' || f.type === 'video_list';
+  const accept = f.type === 'video_list' ? 'video/*'
+    : f.type === 'audio' ? 'audio/*'
+    : f.type === 'model' ? '.glb,.gltf,model/gltf-binary'
+    : 'image/*';
+  return '<div class="ledger-row" data-ledger-row="' + esc(f.id) + '"><span>' + esc(f.label) + '</span><span class="leader"></span>'
+    + '<span class="ref-tag">' + (uploaded.length ? uploaded.length + ' loaded' : 'none yet') + '</span></div>'
+    + '<div class="ledger-slot" data-field-tier="' + tierOf(f) + '" data-field-id="' + esc(f.id) + '" data-ledger="' + esc(f.id) + '">'
+    + '<label class="field-label" for="upload_' + esc(f.id) + '">' + (multi ? 'Add one or more' : 'Choose one') + '</label>'
+    + '<input type="file" id="upload_' + esc(f.id) + '" accept="' + accept + '"' + (multi ? ' multiple' : '') + '>'
+    + '<div class="ledger-thumbs" id="thumbs_' + esc(f.id) + '"></div>'
+    + (f.hint ? '<p class="hint">' + esc(f.hint) + '</p>' : '')
+    + '</div>';
+}
+
+function jackNoteHTML(f){
+  // A "video" field is a cable jack (C3.4b K1/K5): one read-only ledger
+  // row, same shape as an upload row, but with no file input -- it is
+  // filled by patching the timeline's own jack, never chosen here.
+  return '<div class="ledger-row" data-ledger-row="' + esc(f.id) + '"><span>' + esc(f.label) + '</span><span class="leader"></span>'
+    + '<span class="ref-tag">timeline cable</span></div>'
+    + '<div class="ledger-slot" data-field-tier="' + tierOf(f) + '">'
+    + (f.hint ? '<p class="hint">' + esc(f.hint) + '</p>' : '')
+    + '</div>';
+}
+
+function fixtureQuality(){
+  // FIXTURE ONLY: /api/engines does not carry a `quality` list yet (C2a is
+  // landing it in parallel, outside this worktree). Off by default; never
+  // passed to a gate. See the internal page-redesign spec.
+  return [
+    {id:'draft', label:'Draft', why:'fastest, a bit rough', default:false, estimate_s:14, available:true},
+    {id:'standard', label:'Standard', why:'the everyday balance', default:true, estimate_s:32, available:true},
+    {id:'high', label:'High', why:'more detail, slower', default:false, estimate_s:58, available:true},
+    {id:'max', label:'Max', why:'slowest, most detail', default:false, estimate_s:null, available:true},
+  ];
+}
+
+let SELECTED_QUALITY = null;
+function selectQualityTier(id){
+  SELECTED_QUALITY = id;
+  renderQualityLadder(currentMode());
+  applyTierValues();   // picking the tier IS the user's latest action; it wins over the recipe
+}
+function applyTierValues(){
+  // Tier values fill the fields; the user may change any of them.
+  const mode = currentMode();
+  const tier = ((mode && mode.quality) || []).find(t => t.id === SELECTED_QUALITY);
+  Object.entries((tier && tier.values) || {}).forEach(([k, v]) => {
+    const el = $('#inspector [data-field-id="' + k + '"]');
+    if(!el || !('value' in el)) return;
+    if(el.type === 'checkbox') el.checked = !!v; else el.value = v;
+  });
+  refreshEnabled(fieldsFor(mode));
+}
+function renderQualityLadder(mode){
+  const wrap = $('#qualityWrap');
+  let quality = mode && mode.quality;
+  if(!quality && FIXTURE) quality = fixtureQuality();
+  if(!quality || !quality.length){
+    wrap.hidden = true;
+    SELECTED_QUALITY = null;
+    return;
+  }
+  wrap.hidden = false;
+  if(!SELECTED_QUALITY || !quality.some(q => q.id === SELECTED_QUALITY)){
+    SELECTED_QUALITY = (quality.find(q => q.default) || quality[0]).id;
+  }
+  const laneName = (STATE.lanes.find(l => l.id === STATE.activeLane) || {}).name || 'this machine';
+  $('#qualityLadder').innerHTML = quality.map(q => {
+    const off = q.available === false;
+    return '<button type="button" data-quality="' + esc(q.id) + '"'
+      + ' aria-pressed="' + (q.id === SELECTED_QUALITY ? 'true' : 'false') + '"'
+      + (off ? ' disabled' : '') + '>' + esc(q.label) + '</button>';
+  }).join('');
+  $$('#qualityLadder button').forEach(b => b.onclick = () => selectQualityTier(b.dataset.quality));
+  const sel = quality.find(q => q.id === SELECTED_QUALITY);
+  if(sel){
+    const est = sel.estimate_s === undefined ? null : sel.estimate_s;
+    $('#qualityWhy').innerHTML = esc(sel.why || '')
+      + (sel.available === false && sel.unavailable_reason ? '. ' + esc(sel.unavailable_reason) : '')
+      + ' <span class="estimate num">(' + (est == null ? '--' : ('about ' + esc(humanSeconds(est)) + ' on ' + esc(laneName))) + ')</span>';
+  } else {
+    $('#qualityWhy').textContent = '';
+  }
+}
+
+/* ---------------------------------------------------------------------
+   H2: "Try this" -- a one-click example, declared by the pack. Never
+   presses Make; the same "latest action wins" order the page already
+   uses (recipe, then quality, then the example's own values on top).
+--------------------------------------------------------------------- */
+function setFieldValue(k, v){
+  const el = $('#inspector [data-field-id="' + k + '"]');
+  if(!el) return;
+  if(el.type === 'checkbox') el.checked = !!v; else el.value = v;
+}
+function applyExample(ex){
+  const mode = currentMode();
+  if(!mode || !ex) return;
+  if(ex.recipe && $$('#recipeSelect option').some(o => o.value === ex.recipe)){
+    $('#recipeSelect').value = ex.recipe;
+    if($('#recipeSelect').onchange) $('#recipeSelect').onchange();
+  }
+  if(ex.quality) selectQualityTier(ex.quality);
+  Object.entries(ex.values || {}).forEach(([k, v]) => setFieldValue(k, v));
+  refreshEnabled(fieldsFor(mode));
+}
+function tryThisModeSupplied(mode){
+  // Whether the current mode's own main upload field already has a file --
+  // an example's "needs" is about THIS mode's own input, not a global check.
+  const fields = fieldsFor(mode);
+  const uploadField = fields.find(f => UPLOAD_TYPES.includes(f.type));
+  if(uploadField) return !!(STATE.uploads[uploadField.id] && STATE.uploads[uploadField.id].length);
+  // A "video" jack field (C3.4b) has no upload of its own -- it is only
+  // ever satisfied by a cable plugged in on a sequence's own timeline,
+  // which this mode-level check has no view of, so it is never "supplied"
+  // here.
+  if(fields.some(f => f.type === 'video')) return false;
+  return true;
+}
+function roomAndExampleForCapWord(word){
+  // The first room/example whose cap declares this exact cap word (e.g.
+  // "picture" -> the Picture room's t2i example) -- so a "Needs a picture
+  // first" line can point somewhere that actually makes one.
+  for(const cap in STATE.engines){
+    if((STATE.engines[cap] || {}).cap_word !== word) continue;
+    for(const room of STATE.rooms){
+      for(const x of (room.modes || [])){
+        if(x.cap !== cap) continue;
+        const info = modeInfo(x.cap, x.mode);
+        if(info && info.examples && info.examples.length) return {room, example: info.examples[0]};
+      }
+    }
+  }
+  return null;
+}
+function renderTryThis(){
+  const mode = currentMode();
+  const wrap = $('#tryThisWrap');
+  const examples = (mode && mode.examples) || [];
+  if(!examples.length){
+    wrap.hidden = true;
+    $('#tryThisRow').innerHTML = '';
+    return;
+  }
+  wrap.hidden = false;
+  const supplied = tryThisModeSupplied(mode);
+  $('#tryThisRow').innerHTML = examples.map(ex => {
+    let needsHTML = '';
+    if(ex.needs && !supplied){
+      const target = roomAndExampleForCapWord(ex.needs);
+      needsHTML = '<p class="hint" data-try-needs>Needs a ' + esc(ex.needs) + ' first.'
+        + (target ? ' <a href="#room=' + esc(target.room.id) + '&try=' + esc(target.example.id) + '">Make one in '
+                     + esc(target.room.name) + '</a>' : '')
+        + '</p>';
+    }
+    return '<div class="try-row"><button type="button" class="btn" data-try="' + esc(ex.id) + '"'
+      + ' title="' + esc(ex.why || '') + '">' + esc(ex.label) + '</button>'
+      + '<span class="hint">' + esc(ex.why || '') + '</span>' + needsHTML + '</div>';
+  }).join('');
+  $$('#tryThisRow [data-try]').forEach(b => b.onclick = () => {
+    applyExample(examples.find(e => e.id === b.dataset.try));
+  });
+}
+
+function renderLaneNote(mode){
+  // "If the only machine that can do the selected media is asleep or down,
+  // say which one and what that means, rather than showing a Make button
+  // that will fail" (UX review #1). STATE.engines was fetched scoped to
+  // STATE.activeLane, so mode.available already reflects THAT lane.
+  const el = $('#laneNote');
+  if(!STATE.lanes.length){ el.textContent = 'No machines configured.'; return; }
+  const lane = STATE.lanes.find(l => l.id === STATE.activeLane);
+  if(!mode || !lane || mode.available !== false){ el.textContent = ''; return; }
+  // A process lane runs ON this machine: it is up whenever this app
+  // answers (the machine module's state says the same), so "asleep"
+  // can never be its story.
+  const up = laneKindOf(lane) === 'process' ? true : lane.up;
+  if(!up){
+    el.textContent = lane.name + ' is asleep right now, so Make would fail. Wake it, or pick another machine above.';
+  } else if(mode.missing && mode.missing.length){
+    el.textContent = lane.name + " doesn't have what this needs yet (missing " + mode.missing.join(', ') + '). Pick another machine above.';
+  } else {
+    el.textContent = lane.name + " can't do this yet. Pick another machine above.";
+  }
+}
+
+async function renderModeFields(){
+  const mode = currentMode();
+  const fields = fieldsFor(mode);
+  const values = currentValues();
+
+  renderLaneNote(mode);
+
+  // recipe / preset
+  const presets = (mode && mode.presets) || [];
+  $('#recipeSelect').innerHTML = presets.length
+    ? presets.map(p => '<option value="' + esc(p.id) + '">' + esc(p.label) + '</option>').join('')
+    : '<option value="">No recipes for this mode</option>';
+  $('#recipeSelect').disabled = !presets.length;
+  const applyPreset = () => {
+    const p = presets.find(p => p.id === $('#recipeSelect').value);
+    $('#recipeHeadnote').textContent = p ? (p.note || '') : '';
+    $('#recipeSummaryLabel').textContent = p ? p.label : 'None';
+    // Collapsed by default; the mode's own first-listed recipe is exactly
+    // what a first-timer doesn't need to see (UX review #4) -- picking
+    // anything else opens it on its own, since that's when the headnote is
+    // the thing explaining a deviation. Not every pack literally names its
+    // first preset "default" (audio's is "full-verse"/"one-shot"/etc.), so
+    // this checks LIST POSITION, not the id string.
+    if(p && presets.indexOf(p) !== 0) $('#recipeDetails').open = true;
+    else $('#recipeDetails').open = false;
+    applyTierValues();   // tier first, then the recipe's numbers on top
+    if(p && p.values){
+      Object.entries(p.values).forEach(([k, v]) => {
+        const el = $('#inspector [data-field-id="' + k + '"]');
+        if(!el) return;
+        if(el.type === 'checkbox') el.checked = !!v; else el.value = v;
+      });
+    }
+  };
+  $('#recipeSelect').onchange = applyPreset;
+
+  // split fields: prompt (first text/textarea), uploads (ingredient
+  // ledger), then primary / advanced for everything else.
+  const promptField = fields.find(f => f.type === 'text' || f.type === 'textarea')
+    ? fields.slice().sort((a,b)=>(a.order||0)-(b.order||0)).find(f => f.type === 'text' || f.type === 'textarea')
+    : null;
+  const uploadFields = fields.filter(f => UPLOAD_TYPES.includes(f.type));
+  // A "video" field is a jack (C3.4b K1/K5), never a manual upload or a
+  // typed value -- it is only ever filled by patching a cable in on the
+  // timeline. It still gets one read-only row in the ingredient ledger
+  // (jackNoteHTML), alongside the uploads, so the form still SHOWS it --
+  // just with no file input to choose one from.
+  const jackFields = fields.filter(f => f.type === 'video');
+  const ledgerFields = uploadFields.concat(jackFields);
+  const rest = fields.filter(f => f !== promptField && !ledgerFields.includes(f));
+
+  $('#promptWrap').hidden = !promptField;
+  const promptBox = $('#promptBox');
+  if(promptField){
+    promptBox.value = promptField.default || '';
+    promptBox.placeholder = promptField.label || '';
+    promptBox.dataset.fieldId = promptField.id;
+    promptBox.dataset.fieldTier = tierOf(promptField);
+    $('#promptHint').textContent = promptField.hint || '';
+  } else {
+    // A prompt-less mode (cutout, upscale, 3D): the hidden box must stop
+    // being a field -- a stale id/tier here made it count as a primary field
+    // and let the previous mode's words ride along on Make.
+    promptBox.value = '';
+    delete promptBox.dataset.fieldId;
+    delete promptBox.dataset.fieldTier;
+    $('#promptHint').textContent = '';
+  }
+  $('#helperPanel').hidden = true;   // a new mode means a stale suggestion, if any, no longer applies
+  renderHelperBar();
+
+  // A mode with no prompt (a cutout/upscale-style tool) has nothing else to
+  // lead with, so its input picker takes the prominent slot, expanded, and
+  // the recipe drawer -- if it has one -- stays a plain collapsed line below
+  // it rather than swallowing the only input the mode has.
+  STATE.uploads = {};
+  const ledgerHTML = uploadFields.map(f => ledgerRowHTML(f, values)).join('')
+    + jackFields.map(f => jackNoteHTML(f)).join('');
+  let ledgerContainer;
+  if(promptField){
+    $('#ledgerProminent').hidden = true;
+    $('#ledgerProminentBody').innerHTML = '';
+    $('#ledgerInRecipe').hidden = !ledgerFields.length;
+    $('#ledgerInRecipeBody').innerHTML = ledgerHTML;
+    ledgerContainer = '#ledgerInRecipeBody';
+  } else {
+    $('#ledgerInRecipe').hidden = true;
+    $('#ledgerInRecipeBody').innerHTML = '';
+    $('#ledgerProminent').hidden = !ledgerFields.length;
+    $('#ledgerProminentTitle').textContent = uploadFields.length > 1 ? 'Add files' : 'Add a file';
+    $('#ledgerProminentBody').innerHTML = ledgerHTML;
+    ledgerContainer = '#ledgerProminentBody';
+  }
+  uploadFields.forEach(f => {
+    const input = $('#upload_' + f.id);
+    if(!input) return;
+    input.onchange = async () => {
+      const lane = STATE.activeLane;
+      if(!lane){ msgInspector('Pick a machine first.', 'err'); input.value = ''; return; }
+      try{
+        const fd = new FormData();
+        fd.append('lane', lane);
+        Array.from(input.files).forEach(file => fd.append('file', file, file.name));
+        const r = await fetch('/api/upload', {method:'POST', body: fd});
+        const j = await r.json();
+        if(!j.ok) throw new Error(j.error || 'upload failed');
+        STATE.uploads[f.id] = j.files;
+        const thumbs = $('#thumbs_' + f.id);
+        thumbs.innerHTML = j.files.map((uf, i) =>
+          '<div class="t"><span class="num" style="padding:4px;display:block">' + (i+1) + '</span></div>').join('');
+        const tag = $(ledgerContainer + ' [data-ledger-row="' + f.id + '"] .ref-tag');
+        if(tag) tag.textContent = j.files.length + ' loaded';
+        renderTryThis();   // a "Needs a … first" note clears once the file is here
+        renderHelperBar();   // "Describe this picture" appears once a file is here
+      } catch(e){
+        msgInspector(String(e.message || e), 'err');
+      }
+    };
+  });
+
+  renderQualityLadder(mode);
+  renderTryThis();
+
+  const primary = rest.filter(f => tierOf(f) === 'primary');
+  const advanced = rest.filter(f => tierOf(f) === 'advanced');
+  $('#primaryFields').innerHTML = groupedHTML(primary, values);
+  $('#advancedFields').innerHTML = groupedHTML(advanced, values);
+  // The count states EVERY advanced-tier field, including an advanced-tier
+  // upload (e.g. fl2va's "last_frame") that renders in the ingredient ledger
+  // rather than in this disclosure -- "Everything else" promises a total,
+  // not "everything else that happens to also be a text/number field".
+  const advancedTotal = fields.filter(f => tierOf(f) === 'advanced').length;
+  $('#advancedSummary').textContent = 'Everything else (' + advancedTotal + ')';
+
+  // Only now does every field exist: the quality tier's values, then the
+  // recipe's on top (applyPreset runs applyTierValues first). Run earlier,
+  // the lookups found nothing and a recipe's numbers never reached its fields.
+  if(presets.length) applyPreset(); else applyTierValues();
+
+  // re-evaluate enabled_when whenever any field changes
+  $$('#inspector [data-field-id]').forEach(el => {
+    el.addEventListener('input', () => refreshEnabled(fields));
+    el.addEventListener('change', () => refreshEnabled(fields));
+  });
+}
+
+/* ---------------------------------------------------------------------
+   L5: the prompt helper -- "Help me write this" / "Describe this picture".
+   Never sends a job; a user action (typing, or Use this) always wins over
+   a suggestion. Hidden entirely when STATE.helper is false.
+--------------------------------------------------------------------- */
+let HELPER_SUGGESTION = '';
+function currentImageSource(){
+  const mode = currentMode();
+  if(!mode) return null;
+  const imgField = fieldsFor(mode).find(f => f.type === 'image' || f.type === 'image_list');
+  const uploaded = imgField && STATE.uploads[imgField.id];
+  if(uploaded && uploaded.length) return {upload: uploaded[0].name, lane: STATE.activeLane};
+  const job = STATE.jobs.find(j => j.id === STATE.selectedJobId);
+  const idx = job && job.outputs ? job.outputs.findIndex(o => o.media === 'image') : -1;
+  return idx >= 0 ? {job_id: job.id, output: idx} : null;
+}
+function renderHelperBar(){
+  const mode = currentMode();
+  if(!STATE.helper || !mode || $('#promptWrap').hidden){
+    $('#helperBar').hidden = true;
+    return;
+  }
+  $('#helperBar').hidden = false;
+  $('#helperDescribeBtn').hidden = !currentImageSource();
+}
+let HELPER_ABORT = null;
+async function runHelper(action){
+  if(!currentMode()) return;
+  $('#helperSpinner').hidden = false;
+  $('#helperCancelBtn').hidden = false;
+  $('#helperWriteBtn').disabled = true;
+  $('#helperDescribeBtn').disabled = true;
+  HELPER_ABORT = new AbortController();
+  try{
+    const body = {cap: STATE.cap, mode: STATE.mode, action};
+    if(action === 'write') body.text = $('#promptBox').value;
+    else {
+      const src = currentImageSource();
+      if(!src) throw new Error('No picture to describe yet.');
+      body.image = src;
+    }
+    const r = await postJSON('/api/helper', body, HELPER_ABORT.signal);
+    if(!r.ok) throw new Error(r.error || 'The helper is busy or switched off right now.');
+    HELPER_SUGGESTION = r.text || '';
+    $('#helperSuggestion').textContent = HELPER_SUGGESTION;
+    $('#helperSuggestion').hidden = false;
+    $('#helperActions').hidden = false;
+    $('#helperError').hidden = true;
+  } catch(e){
+    $('#helperSuggestion').hidden = true;
+    $('#helperActions').hidden = true;
+    if(e.name !== 'AbortError'){
+      $('#helperError').textContent = String(e.message || e);
+      $('#helperError').hidden = false;
+    }
+  } finally {
+    $('#helperSpinner').hidden = true;
+    $('#helperCancelBtn').hidden = true;
+    $('#helperWriteBtn').disabled = false;
+    $('#helperDescribeBtn').disabled = false;
+    $('#helperPanel').hidden = false;
+    HELPER_ABORT = null;
+  }
+}
+$('#helperWriteBtn').onclick = () => runHelper('write');
+$('#helperDescribeBtn').onclick = () => runHelper('describe');
+$('#helperCancelBtn').onclick = () => { if(HELPER_ABORT) HELPER_ABORT.abort(); };
+$('#helperUseBtn').onclick = () => { $('#promptBox').value = HELPER_SUGGESTION; $('#helperPanel').hidden = true; };
+$('#helperDismissBtn').onclick = () => { $('#helperPanel').hidden = true; };
+
+function refreshEnabled(fields){
+  const values = currentValues();
+  fields.forEach(f => {
+    const row = $('#inspector [data-field-id="' + f.id + '"]');
+    if(!row) return;
+    const container = row.closest('.field-row') || row.closest('.ledger-slot');
+    if(!container) return;
+    const enabled = evalEnabled(f, values);
+    container.dataset.disabled = String(!enabled);
+    if(row.disabled !== undefined) row.disabled = !enabled;
+  });
+}
+
+function focusFirstInput(){
+  if($('#roomForm').hidden) return;
+  // Prompt-first: focus the box everyone understands. A mode with no prompt
+  // (upload-only tools) focuses its first input picker instead -- never an
+  // empty, inert prompt box (UX review #1/#4, structural note on tool modes).
+  // preventScroll: on a phone the inspector sits below the monitor, and a
+  // focus-scroll opened the page past the room strip.
+  if(!$('#promptWrap').hidden){ $('#promptBox').focus({preventScroll: true}); return; }
+  const firstUpload = $('#ledgerProminentBody input[type=file]');
+  if(firstUpload){ firstUpload.focus({preventScroll: true}); return; }
+  const firstPrimary = $('#primaryFields [data-field-id]');
+  if(firstPrimary) firstPrimary.focus({preventScroll: true});
+}
+
+function msgInspector(text, kind){
+  const el = $('#inspectorMsg');
+  el.textContent = text;
+  el.className = kind || '';
+}
+
+async function handleSlotMake(slot){
+  $('#makeBtn').disabled = true;
+  msgInspector('Saving...', '');
+  const saved = await saveSlotNow();
+  if(!saved){ $('#makeBtn').disabled = false; return; }
+  msgInspector('Sending it over...', '');
+  try{
+    const r = await postJSON('/api/sequence/generate', {id: STATE.seq.id, slot_id: slot.id});
+    if(!r.ok){ msgInspector(r.error || 'That did not go through.', 'err'); return; }
+    msgInspector('On its way.', 'ok');
+    if(r.job){
+      STATE.jobs = [r.job, ...STATE.jobs.filter(j => j.id !== r.job.id)];
+      STATE.selectedJobId = r.job.id;
+      STATE.pendingJobId = r.job.id;
+    }
+    try{
+      const d = await getJSON('/api/sequence?id=' + encodeURIComponent(STATE.seq.id));
+      if(d && d.id) STATE.seq = d;
+    }catch(e){ /* the next poll picks it up */ }
+    renderTimeline();
+    renderMonitor();
+    pollJobs();
+  } catch(e){
+    msgInspector(String(e.message || e), 'err');
+  } finally {
+    $('#makeBtn').disabled = false;
+  }
+}
+async function handleMake(){
+  const mode = currentMode();
+  if(!mode){ msgInspector('Nothing to make yet.', 'err'); return; }
+  const lane = STATE.activeLane;
+  if(!lane){ msgInspector('Pick a machine in the toolbar first.', 'err'); return; }
+  const slot = isCutting(currentRoom()) ? currentSlot() : null;
+  if(slot){ return handleSlotMake(slot); }
+  const values = currentValues();
+  const fields = fieldsFor(mode);
+  const body = {lane, kind: STATE.cap, mode: STATE.mode};
+  // E2: a field whose id collides with a dispatch-level request key
+  // (currently only yue2/cover's own "mode" select) is sent nested under
+  // body.values instead of at the top level, where it would otherwise
+  // overwrite the dispatch mode this Make actually runs
+  // (server.py's RESERVED_FIELD_IDS / _field_request_value). Every other
+  // field keeps going top-level exactly as before.
+  const setField = (fid, v) => {
+    if(RESERVED_FIELD_IDS.includes(fid)){
+      body.values = body.values || {};
+      body.values[fid] = v;
+    } else {
+      body[fid] = v;
+    }
+  };
+  fields.forEach(f => {
+    if(UPLOAD_TYPES.includes(f.type)){
+      const files = (STATE.uploads[f.id] || []).map(u => u.name);
+      setField(f.id, (f.type === 'image_list' || f.type === 'video_list') ? files : (files[0] || ''));
+      return;
+    }
+    let v = values[f.id];
+    if(v === undefined) return;
+    if(f.type === 'number') v = parseFloat(v);
+    else if(f.type === 'int') v = parseInt(v, 10);
+    setField(f.id, v);
+  });
+  // The WRAPPER is what hides for a prompt-less mode; the box itself never
+  // does, so testing the box sent a stale prompt on every cutout/upscale.
+  if(!$('#promptWrap').hidden) body.prompt = $('#promptBox').value;
+  if(SELECTED_QUALITY) body.quality = SELECTED_QUALITY;
+  $('#makeBtn').disabled = true;
+  msgInspector('Sending it over...', '');
+  try{
+    const r = await postJSON('/api/generate', body);
+    if(!r.ok){ msgInspector(r.error || 'That did not go through.', 'err'); return; }
+    msgInspector('On its way.', 'ok');
+    if(r.job){
+      STATE.jobs = [r.job, ...STATE.jobs.filter(j => j.id !== r.job.id)];
+      STATE.selectedJobId = r.job.id;
+      STATE.pendingJobId = r.job.id;
+      renderBin();
+      renderMonitor();
+    }
+    pollJobs();
+  } catch(e){
+    msgInspector(String(e.message || e), 'err');
+  } finally {
+    $('#makeBtn').disabled = false;
+  }
+}
+
+/* ---------------------------------------------------------------------
+   Credits dialog
+--------------------------------------------------------------------- */
+async function openCredits(){
+  const dlg = $('#creditsDialog');
+  // Lazy on purpose: /api/credits does not exist in every worktree yet (C2a
+  // lands it separately). Fetching it only on open, rather than at init,
+  // keeps a normal page load free of a same-origin 404 in the console.
+  await loadCredits();
+  let credits = STATE.credits;
+  let fixtureNote = '';
+  if(!credits.length && FIXTURE){
+    credits = [
+      {engine:'fixture', name:'MIT', shippable:true, attribution:'Fixture credit A. /api/credits not live in this worktree'},
+      {engine:'fixture', name:'CC BY-NC 4.0', shippable:false, attribution:'Fixture credit B, non-commercial'},
+    ];
+    fixtureNote = '<p class="hint"><span class="fixture-badge">Fixture</span> /api/credits is not available in this worktree yet.</p>';
+  }
+  $('#creditsBody').innerHTML = fixtureNote + (credits.length
+    ? credits.map(c => {
+        const readLink = c.url
+          ? '<a href="' + esc(c.url) + '" target="_blank" rel="noopener">read the licence</a>'
+          : 'read the licence';
+        const tag = c.shippable
+          ? '<span style="color:var(--ready)">· yours to use</span>'
+          : (licenceIsNonCommercial(c)
+              ? '<span style="color:var(--error)">· non-commercial</span>'
+              : '<span style="color:var(--text-mid)">· conditions apply, ' + readLink + '</span>');
+        const note = c.note ? '<div class="hint">' + esc(c.note) + '</div>' : '';
+        return '<div class="credit-row"><div class="name">' + esc(c.name) + ' ' + tag
+          + '</div><div class="attribution">' + esc(c.attribution) + '</div>' + note + '</div>';
+      }).join('')
+    : '<p class="muted">No licence data available yet.</p>');
+  dlg.showModal();
+}
+
+/* ---------------------------------------------------------------------
+   C3.3 -- the sequence UI in the Cutting Room
+   (the internal sequence/storyboard design spec §7's Minimum UI, "seq" rows).
+   The server's `state`/`stale`/`warnings` on GET /api/sequence are the only
+   source of truth for a slot's derived condition -- nothing here re-derives
+   it; this section only composes the label TEXT around what the server
+   already decided.
+--------------------------------------------------------------------- */
+const TL_LANE_CAP = {picture: 'image', video: 'video', sound: 'audio'};
+
+function seqIdFromHash(){
+  const m = /(?:^#|&)seq=([^&]+)/.exec(location.hash || '');
+  return m ? decodeURIComponent(m[1]) : null;
+}
+function setSeqHash(id){
+  const h = '#room=cutting' + (id ? '&seq=' + encodeURIComponent(id) : '');
+  try{ history.replaceState(null, '', h); } catch(e){ /* sandboxed */ }
+}
+function msgSeq(text, kind){
+  const el = $('#seqMsg');
+  if(!el) return;
+  el.textContent = text || '';
+  el.className = kind || '';
+}
+function findJob(jid){ return STATE.jobs.find(j => j.id === jid) || null; }
+function currentSlot(){
+  if(!STATE.seq || !STATE.seqSlotId) return null;
+  return (STATE.seq.slots || []).find(s => s.id === STATE.seqSlotId) || null;
+}
+
+/* The one place every sequence mutation goes through: builds {id, rev, op,
+   ...extra}, and on a 409 replaces STATE.seq with the server's current
+   object and says so (§7 item 7). `retry` re-sends the SAME extra (which
+   for update_slot was built from the live DOM a moment ago, so a user's
+   just-typed text is never lost even though it was never separately
+   stashed) against the refreshed rev. */
+async function seqOp(op, extra, opts){
+  opts = opts || {};
+  if(!STATE.seq) return null;
+  const body = Object.assign({id: STATE.seq.id, rev: STATE.seq.rev, op}, extra);
+  let r;
+  try{ r = await postJSON('/api/sequence/op', body); }
+  catch(e){ msgSeq(String(e.message || e), 'err'); return null; }
+  if(r && typeof r.rev === 'number' && r.id === STATE.seq.id){
+    STATE.seq = r;
+    STATE.cutError = null;   // whatever changed may have fixed the last cut refusal
+    renderSeqPickerList();   // the open sequence's own ready/N count, e.g. after pick_take
+    // move_slot's own extra field (server.py's _drop_stale_video_cables):
+    // a reorder that put a continue link's source no longer earlier than
+    // its target drops that link -- say so, plain text, in the same line
+    // every other op result uses.
+    if(r.removed_cables && r.removed_cables.length){
+      msgSeq('That move removed ' + r.removed_cables.length + ' continue link'
+        + (r.removed_cables.length > 1 ? 's' : '') + ': '
+        + r.removed_cables.map(c => c.from + ' → ' + c.to).join(', ') + '.', '');
+    }
+    return r;
+  }
+  if(r && r.sequence){
+    STATE.seq = r.sequence;
+    msgSeq('This sequence changed elsewhere — refreshed.', 'err');
+    renderTimeline();
+    renderRefRoom();
+    if(opts.retry){
+      const retryBody = Object.assign({}, body, {rev: STATE.seq.rev});
+      let r2;
+      try{ r2 = await postJSON('/api/sequence/op', retryBody); } catch(e){ r2 = null; }
+      if(r2 && typeof r2.rev === 'number' && r2.id === STATE.seq.id){
+        STATE.seq = r2;
+        renderTimeline();
+        renderRefRoom();
+        return r2;
+      }
+    }
+    return null;
+  }
+  msgSeq((r && r.error) || 'That did not go through.', 'err');
+  return null;
+}
+
+async function seqLoadList(){
+  try{
+    STATE.seqList = await getJSON('/api/sequences');
+  }catch(e){
+    STATE.seqList = [];
+  }
+}
+function renderSeqPickerList(){
+  const body = $('#seqPickerBody');
+  if(!body) return;
+  // Never rebuild out from under someone typing a new sequence title, or
+  // mid-choice on its mode select -- this rewrites the whole row list
+  // (including those controls) every call. The New sequence BUTTON does not
+  // count: a click on it is a completed submit, and it keeps focus after the
+  // click resolves, so bailing on it here would silently freeze this whole
+  // list (including the just-opened sequence's own "Open: <title>" note and
+  // its #seqModeSelect) until focus happened to move elsewhere.
+  const ae = document.activeElement;
+  if(ae && (ae.id === 'seqNewTitle' || ae.id === 'seqNewMode')) return;
+  const list = STATE.seqList || [];
+  const rows = list.map(s => {
+    // The picker's own list (GET /api/sequences) does not refresh on
+    // every op -- for the OPEN sequence, its counts come from STATE.seq
+    // instead, which every op/poll already keeps current (review fix,
+    // 2026-09-23: "0/4 ready" stuck after every shot was picked).
+    let slots = s.slots || 0, ready = s.ready || 0;
+    if(STATE.seq && STATE.seq.id === s.id){
+      slots = (STATE.seq.slots || []).length;
+      ready = (STATE.seq.slots || []).filter(x => x.state === 'ready').length;
+    }
+    return '<button type="button" class="btn seq-row" data-seq-id="' + esc(s.id) + '"'
+      + (STATE.seq && STATE.seq.id === s.id ? ' aria-pressed="true"' : '') + '>'
+      + '<span>' + esc(s.title || 'Untitled sequence') + '</span>'
+      + '<span class="muted num">' + ready + '/' + slots + ' ready · ' + ago(s.updated || 0) + '</span>'
+      + '</button>';
+  }).join('');
+  body.innerHTML = '<div id="seqList">' + (rows || '<p class="muted">No sequences yet.</p>') + '</div>'
+    + '<div id="seqNewRow"><input type="text" id="seqNewTitle" placeholder="New sequence title">'
+    + '<select id="seqNewMode" aria-label="What kind of sequence">'
+    + '<option value="sequence"' + (STATE.newSeqMode === 'storyboard' ? '' : ' selected') + '>sequence</option>'
+    + '<option value="storyboard"' + (STATE.newSeqMode === 'storyboard' ? ' selected' : '') + '>storyboard</option>'
+    + '</select>'
+    + '<button type="button" class="btn" id="seqNewBtn">New sequence</button></div>'
+    + (STATE.seq ? '<p id="seqOpenNote">Open: <b>' + esc(STATE.seq.title) + '</b> '
+      // §2: the two modes are the SAME room, so the mode is a setting on the
+      // open sequence rather than a different door -- and the beats survive the
+      // trip either way, because set_mode never touches them.
+      + '<select id="seqModeSelect" aria-label="Mode of the open sequence">'
+      + '<option value="sequence"' + (STATE.seq.mode === 'storyboard' ? '' : ' selected') + '>sequence</option>'
+      + '<option value="storyboard"' + (STATE.seq.mode === 'storyboard' ? ' selected' : '') + '>storyboard</option>'
+      + '</select>'
+      + '<button type="button" class="btn" id="seqCloseBtn">Close</button></p>' : '');
+  $$('#seqList [data-seq-id]').forEach(b => b.onclick = () => seqOpenById(b.dataset.seqId));
+  if($('#seqNewBtn')) $('#seqNewBtn').onclick = seqCreateNew;
+  if($('#seqNewMode')) $('#seqNewMode').onchange = e => { STATE.newSeqMode = e.target.value; };
+  if($('#seqModeSelect')) $('#seqModeSelect').onchange = e => seqSetMode(e.target.value);
+  if($('#seqCloseBtn')) $('#seqCloseBtn').onclick = seqClose;
+}
+/* storyboard <-> sequence (C3.5). The lanes, the cables and the cut do not
+   move; the script lane appears or goes, and the beats stay in the data either
+   way (§2: one room, not a parallel app). */
+async function seqSetMode(mode){
+  const r = await seqOp('set_mode', {mode: mode});
+  if(!r){ renderSeqPickerList(); return; }
+  renderTimeline();
+}
+function seqClose(){
+  STATE.seq = null;
+  STATE.seqSlotId = null;
+  STATE.cutError = null;
+  STATE.beatDraft = null;   // C3.5: an un-typed draft dies with the sequence
+  BEAT_SAVES = {};
+  setSeqHash(null);
+  renderSeqPickerList();
+  renderTimeline();
+  renderRefRoom();
+  $('#roomForm').hidden = true;
+  renderMonitor();
+}
+async function seqCreateNew(){
+  const input = $('#seqNewTitle');
+  const title = (input && input.value.trim()) || 'Untitled sequence';
+  const modeSel = $('#seqNewMode');
+  const mode = (modeSel && modeSel.value) || STATE.newSeqMode || 'sequence';
+  try{
+    const r = await postJSON('/api/sequence', {title: title, mode: mode});
+    if(!r || !r.id){ msgSeq((r && r.error) || 'Could not start that sequence.', 'err'); return; }
+  }catch(e){ msgSeq(String(e.message || e), 'err'); return; }
+  await seqLoadList();
+  const r = STATE.seqList.find(s => s.title === title) || null;
+  const newId = (r && r.id) || null;
+  if(newId) await seqOpenById(newId);
+  else renderSeqPickerList();
+}
+async function seqOpenById(id){
+  try{
+    const d = await getJSON('/api/sequence?id=' + encodeURIComponent(id));
+    if(!d || !d.id){ msgSeq('There is no such sequence.', 'err'); return; }
+    STATE.seq = d;
+  }catch(e){ msgSeq(String(e.message || e), 'err'); return; }
+  STATE.seqSlotId = null;
+  STATE.cutError = null;
+  setSeqHash(id);
+  renderSeqPickerList();
+  renderTimeline();
+  renderRefRoom();
+  $('#roomForm').hidden = true;
+  renderMonitor();
+}
+async function seqEnterRoom(sid){
+  await seqLoadList();
+  renderSeqPickerList();
+  if(sid && STATE.seqList.some(s => s.id === sid)){
+    await seqOpenById(sid);
+  } else {
+    STATE.seq = null;
+    STATE.seqSlotId = null;
+    if(sid) setSeqHash(null);
+    renderSeqPickerList();
+    renderTimeline();
+    renderRefRoom();
+  }
+}
+
+function firstAvailableModeFor(cap){
+  // Bug fix (orchestrator review): "room order" (spec's own words) means
+  // STATE.rooms' order -- NOT STATE.engines[cap].modes' pack-declaration
+  // order, which is a different, unrelated ordering (cutout/upscale/
+  // pixelart/t2i/edit) that put a tool mode first on the Picture lane.
+  // Walk every room in its displayed order, and within it every mode it
+  // lists for this cap, taking the first that is actually available.
+  for(const room of STATE.rooms){
+    for(const x of (room.modes || [])){
+      if(x.cap !== cap) continue;
+      const info = modeInfo(x.cap, x.mode);
+      if(info && info.available) return info;
+    }
+  }
+  // Nothing available anywhere in room order: fall back to the cap's own
+  // first-declared mode (better than refusing outright), same as before.
+  const modes = (STATE.engines[cap] && STATE.engines[cap].modes) || [];
+  return modes.find(m => m.available) || modes[0] || null;
+}
+async function addSlot(lane){
+  const cap = TL_LANE_CAP[lane];
+  const mode = firstAvailableModeFor(cap);
+  if(!mode){ msgSeq('No installed engine makes a ' + lane + ' shot yet.', 'err'); return; }
+  const before = (STATE.seq.slots || []).length;
+  const r = await seqOp('add_slot', {lane: lane, cap: cap, mode: mode.id});
+  if(!r) return;
+  renderTimeline();
+  const added = r.slots.filter(s => s.lane === lane);
+  const newSlot = added[added.length - 1];
+  if(newSlot && r.slots.length > before) selectSlot(newSlot.id);
+}
+
+function coercedValues(mode){
+  const values = currentValues();
+  const out = {};
+  fieldsFor(mode).forEach(f => {
+    if(UPLOAD_TYPES.includes(f.type)){
+      const files = (STATE.uploads[f.id] || []).map(u => u.name);
+      if(files.length || f.id in values)
+        out[f.id] = (f.type === 'image_list' || f.type === 'video_list') ? files : (files[0] || '');
+      return;
+    }
+    let v = values[f.id];
+    if(v === undefined) return;
+    if(f.type === 'number') v = parseFloat(v);
+    else if(f.type === 'int') v = parseInt(v, 10);
+    out[f.id] = v;
+  });
+  return out;
+}
+
+let SEQ_SAVE_TIMER = null;
+function scheduleSlotSave(){
+  if(!STATE.seqSlotId) return;
+  clearTimeout(SEQ_SAVE_TIMER);
+  SEQ_SAVE_TIMER = setTimeout(saveSlotNow, 600);
+}
+async function saveSlotNow(){
+  const slot = currentSlot();
+  if(!slot) return null;
+  const mode = currentMode();
+  const patch = {slot_id: slot.id, values: coercedValues(mode)};
+  if($('#recipeSelect') && !$('#recipeSelect').disabled) patch.recipe = $('#recipeSelect').value || null;
+  if(SELECTED_QUALITY) patch.quality = SELECTED_QUALITY;
+  const r = await seqOp('update_slot', patch, {retry: true});
+  if(r){ renderTimeline(); renderSlotMeta(currentSlot()); }
+  return r;
+}
+
+function renderSlotMeta(slot){
+  const el = $('#slotWarnings');
+  if(!el) return;
+  if(!slot){ el.hidden = true; el.innerHTML = ''; return; }
+  const bits = [];
+  if(slot.stale && slot.stale.length){
+    bits.push('<p class="slot-stale-note" data-stale-reason>STALE: ' + esc(slot.stale.join('; ')) + '</p>');
+    // F4: the way out of "script changed" sits next to the words -- and it is
+    // the server's own op, the only path from a beat into a prompt (§3).
+    const beat = ((STATE.seq && STATE.seq.beats) || []).find(b => b.id === slot.beat_id);
+    if(beat && slot.stale.indexOf('script changed') >= 0)
+      bits.push('<p><button type="button" class="btn" data-copy-beat="' + esc(beat.id) + '">'
+        + 'Copy beat into prompt</button></p>');
+  }
+  if(slot.warnings && slot.warnings.length)
+    bits.push('<ul class="slot-warn-list">' + slot.warnings.map(w => '<li>' + esc(w) + '</li>').join('') + '</ul>');
+  el.innerHTML = bits.join('');
+  el.hidden = bits.length === 0;
+  el.querySelectorAll('[data-copy-beat]').forEach(b => {
+    b.onclick = () => copyBeatToPrompt(b.dataset.copyBeat);
+  });
+}
+
+async function selectSlot(slotId){
+  const slot = (STATE.seq.slots || []).find(s => s.id === slotId);
+  if(!slot) return;
+  STATE.seqSlotId = slotId;
+  STATE.monitorCut = null;   // picking a shot always leaves "watch the cut" mode
+  STATE.cap = slot.cap;
+  STATE.mode = slot.mode;
+  $('#roomForm').hidden = false;
+  renderEnginePicker(true);   // Cutting Room has no room modes, so this stays hidden
+  await renderModeFields();
+  applySlotValues(slot);
+  renderSlotMeta(slot);
+  $$('#inspector [data-field-id]').forEach(el => {
+    el.addEventListener('input', scheduleSlotSave);
+    el.addEventListener('change', scheduleSlotSave);
+  });
+  // Recipe and quality both rebuild their own DOM on every pick (renderModeFields/
+  // renderQualityLadder), so their autosave hook is wrapped/delegated onto the
+  // PARENT element (which survives that rebuild), never attached to a child that
+  // is about to be replaced.
+  const origApplyPreset = $('#recipeSelect').onchange;
+  $('#recipeSelect').onchange = () => { if(origApplyPreset) origApplyPreset(); scheduleSlotSave(); };
+  $('#qualityLadder').onclick = e => { if(e.target.closest('button[data-quality]')) scheduleSlotSave(); };
+  const showJob = slot.pick || ((slot.takes || []).length ? slot.takes[slot.takes.length - 1].job_id : null);
+  STATE.selectedJobId = showJob || null;
+  renderTimeline();
+  renderMonitor();
+}
+function applySlotValues(slot){
+  if(slot.recipe && $$('#recipeSelect option').some(o => o.value === slot.recipe)){
+    $('#recipeSelect').value = slot.recipe;
+    if($('#recipeSelect').onchange) $('#recipeSelect').onchange();
+  }
+  if(slot.quality) selectQualityTier(slot.quality);
+  Object.entries(slot.values || {}).forEach(([k, v]) => setFieldValue(k, v));
+  refreshEnabled(fieldsFor(currentMode()));
+}
+
+function laneWord(lane){ return lane === 'picture' ? 'the picture lane' : lane === 'video' ? 'the video lane' : 'the sound lane'; }
+
+function slotTileHTML(slot){
+  const cls = ['tl-slot'];
+  let label = '';
+  let title = '';
+  let thumb = '';
+  if(slot.state === 'empty'){
+    cls.push('tl-slot-empty');
+    label = 'nothing made yet';
+  } else if(slot.state === 'rendering'){
+    cls.push('tl-slot-ghost');
+    label = slot.progress || '--';
+  } else if(slot.state === 'cannot-tell'){
+    cls.push('tl-slot-cannot-tell');
+    const take = (slot.takes || [])[slot.takes.length - 1];
+    const job = take && findJob(take.job_id);
+    const laneName = (job && (job.lane_name || job.lane)) || laneWord(slot.lane);
+    label = 'CANNOT TELL';
+    title = 'CANNOT TELL — ' + laneName + ' stopped answering';
+  } else if(slot.state === 'failed' || slot.state === 'lost'){
+    cls.push(slot.state === 'failed' ? 'tl-slot-failed' : 'tl-slot-lost');
+    const take = (slot.takes || [])[slot.takes.length - 1];
+    const job = take && findJob(take.job_id);
+    label = slot.state === 'failed' ? 'FAILED' : 'LOST';
+    title = (job && job.error) || label;
+  } else if(slot.state === 'unpicked'){
+    cls.push('tl-slot-unpicked');
+    label = 'a take is ready — pick it';
+  } else if(slot.state === 'ready'){
+    cls.push('tl-slot-ready');
+    const job = findJob(slot.pick);
+    const o = job && job.outputs && job.outputs[0];
+    // The harvest keeps its own local copy of a picked take (data/seq/<id>/takes/) --
+    // the whole point of it is a tile that still shows something with the lane off.
+    // Prefer that copy when it exists; the lane's own /api/view stays the fallback
+    // (a take not yet harvested, or an older sequence with no local file).
+    const take = (slot.takes || []).find(t => t.job_id === slot.pick);
+    const localURL = (take && take.file && STATE.seq)
+      ? '/api/sequence/file?id=' + encodeURIComponent(STATE.seq.id) + '&path=' + encodeURIComponent(take.file)
+      : null;
+    if(o){
+      const src = localURL || viewURL(job.lane, o, false);
+      if(o.media === 'video') thumb = '<video src="' + src + '" muted></video>';
+      else if(o.media === 'audio') thumb = '<span class="num muted">♪</span>';
+      else if(o.media === 'image') thumb = '<img src="' + src + '" alt="">';
+      else thumb = '<span class="num muted">' + esc(fileExt(o.filename)) + '</span>';
+    }
+  }
+  // The reason is printed on the tile itself, not only in a hover title --
+  // a stale shot must say why without the owner hovering over it.
+  const staleTag = (slot.stale && slot.stale.length)
+    ? '<span class="tl-stale" data-stale-reason><b>STALE</b><span>' + esc(slot.stale[0]) + '</span></span>' : '';
+  return '<button type="button" class="' + cls.join(' ') + '" data-slot-id="' + esc(slot.id) + '"'
+    + (STATE.seqSlotId === slot.id ? ' aria-pressed="true"' : '')
+    + (title ? ' title="' + esc(title) + '"' : '') + '>'
+    + staleTag + thumb + (label ? '<span class="tl-slot-label">' + esc(label) + '</span>' : '') + '</button>';
+}
+
+function renderTimeline(){
+  const seq = STATE.seq;
+  ['picture', 'video', 'sound'].forEach(lane => {
+    const track = $('#tlTrack' + lane[0].toUpperCase() + lane.slice(1));
+    if(!track) return;
+    const slots = seq ? (seq.slots || []).filter(s => s.lane === lane) : [];
+    const html = slots.map(slotTileHTML).join('')
+      + '<button type="button" class="tl-slot tl-slot-add" data-add-lane="' + lane + '"'
+      + (seq ? '' : ' disabled') + '>+ generate here</button>';
+    // Write only on change: the slot tiles are the nodes the user hovers
+    // and clicks, and they must not be replaced out from under a click.
+    if(setHTML(track, html)){
+      Array.from(track.querySelectorAll('[data-slot-id]')).forEach(b => b.onclick = () => onSlotTileClick(b.dataset.slotId));
+      const addBtn = track.querySelector('[data-add-lane]');
+      if(addBtn) addBtn.onclick = () => addSlot(lane);
+    }
+  });
+  renderScriptLane();     // C3.5: the script rides the same cadence as the lanes
+  refreshCableLayer();
+  renderCutBar();
+}
+
+/* ---------------------------------------------------------------------
+   CUT (C3.6). The bar lives at the top of the timeline panel (F1: visible
+   without scrolling the moment a sequence is open) and is rebuilt every
+   time renderTimeline() runs -- the same cadence the timeline itself
+   already gets from pollJobs()'s 2s re-fetch of /api/sequence, so a
+   started cut's state (F4) needs no poll of its own.
+--------------------------------------------------------------------- */
+function bedSlotLabel(seq){
+  const s = (seq.slots || []).find(x => x.lane === 'sound' && x.pick);
+  if(!s) return 'Music bed: none picked yet.';
+  const job = findJob(s.pick);
+  return 'Music bed: ' + esc((job && job.prompt) || 'a sound shot') + '.';
+}
+/* Never silently degrade (review fix, 2026-09-23): the cut's own
+   `loudness` field says which of loudnorm's three real shapes actually
+   happened -- "two-pass" (the normal, accurate path) says nothing extra;
+   "estimated" (the measure pass itself failed, so loudnorm fell back to
+   its own single-pass guess) and "silent" (every picked shot was silent,
+   so normalising was skipped outright) each get their own honest line. */
+function loudnessNoteText(mode){
+  if(mode === 'estimated') return 'loudness: estimated — the measuring pass failed';
+  if(mode === 'silent') return 'loudness: silent — no audio to normalise';
+  return '';
+}
+/* P4: the limiter is a backstop, not a guarantee -- when the true-peak
+   measurement that would confirm it held could not run, the cut's own
+   `peak_unverified` field says so, same honest-note discipline as
+   loudnessNoteText above. */
+function peakNoteText(entry){
+  return entry && entry.peak_unverified ? 'true peak could not be measured' : '';
+}
+function cutNotesText(entry){
+  return [loudnessNoteText(entry.loudness), peakNoteText(entry)].filter(Boolean).join(' · ');
+}
+/* The CUT bar's own one-line summary of the latest cut -- the actual
+   video plays in the MONITOR (renderMonitorCut, F4), never a second copy
+   here; this stays a compact status line + "Watch the cut" + Download +
+   licences, so the bar can never balloon the timeline panel and squeeze
+   the history/monitor/inspector row (orchestrator review, 2026-09-23). */
+function cutStatusHTML(seq, c){
+  if(c.status === 'done'){
+    const rel = c.file || ('cuts/' + c.id + '.mp4');
+    const url = '/api/sequence/file?id=' + encodeURIComponent(seq.id) + '&path=' + encodeURIComponent(rel);
+    const licences = dedupeLicences((c.shots || []).map(s => s.licence).filter(Boolean));
+    const loudNote = cutNotesText(c);
+    return '<span id="cutState">Last cut: done.</span>'
+      + '<button type="button" class="btn" id="watchCutBtn" data-cut-id="' + esc(c.id) + '">Watch the cut</button>'
+      + '<a class="btn" href="' + url + '&dl=1" download>Download</a>'
+      + '<span id="cutLicences">' + licences.map(miniLicenceStampHTML).join('') + '</span>'
+      + (loudNote ? '<span id="cutLoudnessNote" class="muted">' + esc(loudNote) + '</span>' : '');
+  }
+  if(c.status === 'error')
+    return '<span id="cutState" style="color:var(--error)">Last cut failed: ' + esc((c.log || 'error').split('\n')[0]) + '</span>';
+  if(c.status === 'interrupted')
+    return '<span id="cutState">Last cut was interrupted. Cut again when ready.</span>';
+  return '<span id="cutState">Cutting… (' + esc(c.status) + ')</span>';
+}
+async function doCut(){
+  if(!STATE.seq) return;
+  STATE.cutError = null;
+  const r = await postJSON('/api/sequence/cut', {id: STATE.seq.id});
+  if(!r || !r.ok){
+    // F7: every refusal the server sends (R2/R3/R5/R6/the bed's own copy
+    // failure, R8's 409...) reaches the user as the SERVER's sentence --
+    // shown right next to the button the user just pressed, not only in
+    // the sequence picker's #seqMsg (which may be off screen), and never
+    // reworded to "error 409".
+    STATE.cutError = (r && r.error) || 'Could not start the cut.';
+    msgSeq(STATE.cutError, 'err');
+    renderCutBar();
+    return;
+  }
+  try{
+    const d = await getJSON('/api/sequence?id=' + encodeURIComponent(STATE.seq.id));
+    if(d && d.id) STATE.seq = d;
+  }catch(e){ /* the next poll tick picks it up */ }
+  renderCutBar();
+}
+function renderCutBar(){
+  const wrap = $('#cutBar');
+  if(!wrap) return;
+  const seq = STATE.seq;
+  if(!seq){ setHTML(wrap, ''); return; }
+  const included = (seq.slots || []).filter(s => s.lane === 'video' && s.pick);
+  const disabled = !seq.can_cut || included.length === 0;
+  // F3/F7: every reason a disabled CUT (or a refusal) carries is the
+  // server's OWN sentence -- cut_reason for "no ffmpeg", STATE.cutError
+  // for the last POST /api/sequence/cut refusal (R2/R3/R5/R6/the bed's own
+  // copy failure/R8's 409), one line of ours only for "nothing picked yet"
+  // (there is no server call to ask before any shot exists to refuse).
+  const reason = STATE.cutError || (!seq.can_cut ? seq.cut_reason
+    : (included.length === 0 ? 'Pick a take for at least one video shot before cutting.' : ''));
+  const cuts = (seq.cuts || []).slice().sort((a, b) => (b.made || 0) - (a.made || 0));
+  const latest = cuts[0];
+  const html = '<div id="cutBarRow">'
+    + '<button type="button" class="btn btn-primary" id="cutBtn" data-cut-button'
+    + (disabled ? ' disabled' : '') + '>Cut the sequence</button>'
+    + '<span id="cutReason" data-cut-reason>' + esc(reason) + '</span>'
+    + (latest ? cutStatusHTML(seq, latest) : '')
+    + '<span id="cutBedNote">' + esc(bedSlotLabel(seq)) + '</span>'
+    + '</div>';
+  if(setHTML(wrap, html)){
+    const btn = $('#cutBtn');
+    if(btn) btn.onclick = doCut;
+    const watchBtn = $('#watchCutBtn');
+    if(watchBtn) watchBtn.onclick = () => {
+      STATE.monitorCut = watchBtn.dataset.cutId;
+      STATE.seqSlotId = null;
+      renderTimeline();
+      renderMonitor();
+    };
+  }
+}
+
+/* ---------------------------------------------------------------------
+   Patch cables (C3.4). A jack is a small circle drawn on top of a video
+   slot's left edge, one per image-type field its mode declares (§4/§7's
+   `jacks`); a cable is a thin line from a picture slot's right edge to the
+   jack it feeds. Both are a separate absolutely-positioned overlay on top
+   of the timeline's own DOM (never replacing it), positioned every render
+   from the real slot-tile rects -- this keeps working across each lane's
+   own independent horizontal scroll for free, and never disturbs the slot
+   tiles' own DOM node identity (test_sequence_ui.py's requirement).
+
+   Interaction (stage 1's pick -- see the build log): click an empty jack to
+   arm it, then click any picture-lane tile to patch; click a plugged jack
+   to unplug at once; Escape or clicking anything else cancels an armed
+   jack. Mouse-only, no typing, no id entry.
+--------------------------------------------------------------------- */
+function msgCable(text, kind){
+  const el = $('#tlCableMsg');
+  if(!el) return;
+  el.textContent = text || '';
+  el.className = kind || '';
+  el.hidden = !text;
+}
+
+async function cableOp(op, extra){
+  if(!STATE.seq) return null;
+  const body = Object.assign({id: STATE.seq.id, rev: STATE.seq.rev, op}, extra);
+  let r;
+  try{ r = await postJSON('/api/sequence/op', body); }
+  catch(e){ msgCable(String(e.message || e), 'err'); return null; }
+  if(r && typeof r.rev === 'number' && r.id === STATE.seq.id){
+    STATE.seq = r;
+    msgCable('', '');
+    renderTimeline();
+    return r;
+  }
+  if(r && r.sequence){
+    STATE.seq = r.sequence;
+    msgCable('This sequence changed elsewhere — refreshed.', 'err');
+    renderTimeline();
+    return null;
+  }
+  msgCable((r && r.error) || 'That did not go through.', 'err');
+  return null;
+}
+
+function onJackClick(slotId, fieldId, cableId){
+  if(cableId){
+    cableOp('unpatch', {cable_id: cableId});
+    return;
+  }
+  if(STATE.cablePending && STATE.cablePending.to === slotId && STATE.cablePending.field === fieldId){
+    STATE.cablePending = null;
+  } else {
+    const seq = STATE.seq;
+    const slot = seq && (seq.slots || []).find(s => s.id === slotId);
+    const jack = slot && (slot.jacks || []).find(j => j.field === fieldId);
+    const type = jack && jack.type;
+    STATE.cablePending = {to: slotId, field: fieldId, type: type};
+    msgCable(type === 'video' ? 'Click an earlier shot to patch it in, or press Escape.'
+      : 'Click a picture shot to patch it in, or press Escape.', '');
+  }
+  refreshCableLayer();
+}
+
+function onSlotTileClick(slotId){
+  const seq = STATE.seq;
+  const slot = seq && (seq.slots || []).find(s => s.id === slotId);
+  if(STATE.cablePending){
+    const pending = STATE.cablePending;
+    STATE.cablePending = null;
+    const eligible = pending.type === 'video'
+      ? !!(slot && slot.lane === 'video' && slot.id !== pending.to)
+      : !!(slot && slot.lane === 'picture');
+    if(eligible){
+      cableOp('patch', {from: slot.id, to: pending.to, field: pending.field});
+      return;
+    }
+    refreshCableLayer();
+    return;
+  }
+  selectSlot(slotId);
+}
+
+function refreshCableLayer(){
+  const lanes = $('#tlLanes'), svg = $('#tlCableSvg'), jackLayer = $('#tlJackLayer');
+  if(!lanes || !svg || !jackLayer) return;
+  if(!STATE.seq){ svg.innerHTML = ''; jackLayer.innerHTML = ''; return; }
+  const lanesRect = lanes.getBoundingClientRect();
+  svg.setAttribute('width', lanesRect.width);
+  svg.setAttribute('height', lanesRect.height);
+  jackLayer.style.width = lanesRect.width + 'px';
+  jackLayer.style.height = lanesRect.height + 'px';
+
+  const tileEls = {};
+  $$('.tl-slot[data-slot-id]').forEach(el => { tileEls[el.dataset.slotId] = el; });
+  const slots = STATE.seq.slots || [];
+  const cables = STATE.seq.cables || [];
+
+  const jackPos = {};
+  let jackHTML = '';
+  slots.forEach(slot => {
+    const jacks = slot.jacks || [];
+    const el = tileEls[slot.id];
+    if(!jacks.length || !el) return;
+    const r = el.getBoundingClientRect();
+    const x = r.left - lanesRect.left, mid = r.top - lanesRect.top + r.height / 2;
+    // A fixed >=24px gap between jack centres, centred on the tile, so two
+    // jacks' 24x24 hit areas never overlap regardless of the tile's own
+    // (much shorter) height -- they may extend past its top/bottom edge,
+    // which is fine on this overlay.
+    const gap = 26;
+    const span = (jacks.length - 1) * gap;
+    jacks.forEach((jack, i) => {
+      const y = mid - span / 2 + i * gap;
+      jackPos[slot.id + '|' + jack.field] = {x, y, type: jack.type};
+      const cable = cables.find(c => c.to === slot.id && c.field === jack.field);
+      const pending = STATE.cablePending && STATE.cablePending.to === slot.id && STATE.cablePending.field === jack.field;
+      const cls = ['tl-jack'];
+      if(cable) cls.push('tl-jack-on');
+      if(pending) cls.push('tl-jack-pending');
+      const source = jack.type === 'video' ? 'an earlier shot' : 'a picture shot';
+      const hint = cable ? (jack.label + ' — plugged. Click to unplug.') : (jack.label + ' — click, then click ' + source + '.');
+      jackHTML += '<button type="button" class="' + cls.join(' ') + '" style="left:' + (x - 12) + 'px; top:' + (y - 12) + 'px"'
+        + ' title="' + esc(hint) + '" aria-label="' + esc(hint) + '"'
+        + ' data-jack-slot="' + esc(slot.id) + '" data-jack-field="' + esc(jack.field) + '"'
+        + ' data-jack-type="' + esc(jack.type || '') + '"'
+        + (cable ? ' data-jack-cable="' + esc(cable.id) + '"' : '') + '></button>';
+    });
+  });
+  if(setHTML(jackLayer, jackHTML)){
+    $$('#tlJackLayer .tl-jack').forEach(b => {
+      b.onclick = e => {
+        e.stopPropagation();
+        onJackClick(b.dataset.jackSlot, b.dataset.jackField, b.dataset.jackCable || null);
+      };
+    });
+  }
+
+  let pathHTML = '';
+  cables.forEach(c => {
+    const to = jackPos[c.to + '|' + c.field];
+    const fromEl = tileEls[c.from];
+    if(!to || !fromEl) return;
+    const fr = fromEl.getBoundingClientRect();
+    const x1 = fr.right - lanesRect.left, y1 = fr.top - lanesRect.top + fr.height / 2;
+    const dx = Math.max(30, Math.abs(to.x - x1) * 0.4);
+    const d = 'M ' + x1 + ' ' + y1 + ' C ' + (x1 + dx) + ' ' + y1 + ', ' + (to.x - dx) + ' ' + to.y + ', ' + to.x + ' ' + to.y;
+    const cableCls = 'tl-cable' + (to.type === 'video' ? ' tl-cable-video' : '');
+    pathHTML += '<path d="' + d + '" class="tl-cable-halo"></path><path d="' + d + '" class="' + cableCls + '"></path>';
+  });
+  // C3.5: the beat -> shot links, under the cables (a cable is a dependency,
+  // a beat link is only provenance) and drawn in the same coordinate space.
+  svg.innerHTML = beatLinkHTML(lanesRect, tileEls) + pathHTML;
+
+  $$('.tl-slot[data-slot-id]').forEach(el => {
+    const slot = slots.find(s => s.id === el.dataset.slotId);
+    const pending = STATE.cablePending;
+    const isVideoPending = !!(pending && pending.type === 'video');
+    const eligible = !!(pending && slot && (isVideoPending
+      ? slot.lane === 'video' && slot.id !== pending.to
+      : slot.lane === 'picture'));
+    el.classList.toggle('tl-slot-cable-target', eligible && !isVideoPending);
+    el.classList.toggle('tl-slot-cable-target-video', eligible && isVideoPending);
+  });
+}
+document.addEventListener('scroll', e => {
+  if(e.target && e.target.classList && e.target.classList.contains('tl-track')) refreshCableLayer();
+}, true);
+window.addEventListener('resize', () => { if(STATE.seq) refreshCableLayer(); });
+document.addEventListener('keydown', e => {
+  if(e.key === 'Escape' && STATE.cablePending){
+    STATE.cablePending = null;
+    msgCable('', '');
+    refreshCableLayer();
+  }
+});
+
+/* ---------------------------------------------------------------------
+   C3.5 -- the SCRIPT lane (spec §2/§3, commission F1-F5)
+
+   Three shapes were on the table for "the script, in the Cutting Room":
+
+   (a) a typewriter RAIL above the lanes -- one card per paragraph, each card
+       about two slot-pitches wide, and the paragraph that has the caret
+       lifting OUT of the rail (:focus-within, position:absolute) into a real
+       6-line box;
+   (b) a true fifth take on the timeline -- cards at the exact 116px slot
+       pitch, a hairline straight down into the shot each beat made;
+   (c) an outline list with its own Make button per row (the shape every
+       storyboard tool ships).
+
+   (c) is the second workspace §2 forbids: it wants its own selection and its
+   own run, and it pulls work out of the lanes. (b) honours §3's 1:1 rule most
+   literally, but 110px is eight characters of a paragraph, and the moment a
+   beat carries no shot -- a scene heading, a note, a deleted beat's orphan --
+   the alignment stops being true and starts being decoration. (a) is what is
+   built: one lane-row of the lanes' own rhythm (so the monitor keeps its
+   master height, F1 -- measured, see the note on #timelinePanel.storyboard), a
+   real <textarea> per beat so typing is typing and nothing else has to be
+   clicked first (F2), the shot's own id printed on the beat AND a hairline
+   down into its tile (F3 -- the id is the truth, the hairline is the
+   convenience), and the kind, the shot and Delete revealed only in the card
+   that has the caret, because a rail of 11 rows cannot show 11 toolbars.
+--------------------------------------------------------------------- */
+const BEAT_MARK = {scene: '\u25a3', film: '\u25b6', picture: '\u25ad', sound: '\u266a', note: '\u270e'};
+// §2: `scene` is never chosen, it is detected from the slugline; the four
+// choices below are what a beat can be ADDED as.
+const BEAT_KIND_CHOICE = ['film', 'picture', 'sound', 'note'];
+const BEAT_SAVE_MS = 700;
+let BEAT_SAVE_TIMER = null;
+let BEAT_SAVES = {};      // beat id -> the text still owed to the server (latest wins)
+let BEAT_PENDING = 0;     // in-flight update_beat count -- a poll must not rebuild mid-save
+
+function isStoryboard(){ return !!(STATE.seq && STATE.seq.mode === 'storyboard'); }
+function beatSlot(beat){
+  if(!beat || !beat.slot_id || !STATE.seq) return null;
+  return (STATE.seq.slots || []).find(s => s.id === beat.slot_id) || null;
+}
+function beatScriptStale(beat){
+  const slot = beatSlot(beat);
+  // The server's own reason list, never re-derived here.
+  return (slot && (slot.stale || []).indexOf('script changed') >= 0) ? slot : null;
+}
+/* F2: the rail is never rewritten while someone is typing into it -- a beat
+   (or the draft) text field holding the caret, or a save of theirs still in
+   flight. A BUTTON in the rail does not count: clicking Import / Delete beat /
+   Add beat is an explicit request to rebuild the rail right there. */
+function scriptBusy(){
+  if(BEAT_PENDING > 0) return true;
+  const a = document.activeElement;
+  if(!a || !a.closest || !a.closest('[data-script-lane]')) return false;
+  return ['TEXTAREA', 'INPUT', 'SELECT'].indexOf(a.tagName) >= 0;
+}
+
+function beatCardHTML(beat, i){
+  const slot = beatSlot(beat), staleSlot = beatScriptStale(beat);
+  const cls = ['beat-card', 'beat-kind-' + beat.kind];
+  if(slot && STATE.seqSlotId === slot.id) cls.push('beat-card-sel');
+  const shotBtn = slot
+    ? '<button type="button" class="beat-shot" data-beat-goto="' + esc(slot.id) + '"'
+      + ' title="Beat ' + (i + 1) + ' made shot ' + slot.id + ' in the ' + esc(slot.lane) + ' lane. Click to select it."'
+      + ' aria-label="Select shot ' + esc(slot.id) + ', which this beat made">' + esc(slot.id) + '</button>'
+    : '';
+  const copyBtn = (staleSlot)
+    ? '<button type="button" class="beat-copy" data-copy-beat="' + esc(beat.id) + '"'
+      + ' title="Copy this beat\u2019s words into ' + esc(staleSlot.id) + '\u2019s prompt (the prompt is yours after that)"'
+      + ' aria-label="Copy beat ' + esc(beat.id) + ' into shot ' + esc(staleSlot.id) + ' prompt">\u21b7</button>'
+    : '';
+  return '<div class="' + cls.join(' ') + '" data-beat-id="' + esc(beat.id) + '"'
+    + ' data-beat-kind="' + esc(beat.kind) + '"'
+    + (slot ? ' data-beat-slot="' + esc(slot.id) + '"' : '')
+    + ' aria-label="' + esc(beat.kind + ' beat ' + (i + 1) + (slot ? ', shot ' + slot.id : '')) + '">'
+    + '<span class="beat-mark" aria-hidden="true">' + (BEAT_MARK[beat.kind] || '') + '</span>'
+    + '<textarea class="beat-text" data-beat-text rows="2" spellcheck="false"'
+    + ' aria-label="' + esc(beat.kind + ' beat ' + (i + 1) + ' text') + '">' + esc(beat.text) + '</textarea>'
+    + copyBtn + shotBtn
+    + '<span class="beat-foot">'
+      + '<span class="beat-kindword" title="A paragraph starting INT. or EXT. is a scene. The kind is set when the beat is added \u2014 to make this one a different kind, delete it and add it again.">'
+      + esc(beat.kind) + '</span>'
+      + (staleSlot ? '<span class="beat-staleword" data-stale-reason>script changed \u2014 ' + esc(staleSlot.id) + ' is out of date</span>' : '')
+      + '<button type="button" data-copy-beat="' + esc(beat.id) + '"' + (staleSlot ? '' : ' hidden') + '>Copy into prompt</button>'
+      + '<button type="button" class="beat-del" data-delete-beat="' + esc(beat.id) + '"'
+      + ' title="Remove this paragraph from the script. Its shot stays in the lane.">Delete beat</button>'
+      + '<span class="beat-pos num">' + (i + 1) + '</span>'
+    + '</span>'
+    + '</div>';
+}
+
+function beatDraftHTML(draft){
+  return '<div class="beat-card beat-draft" data-beat-draft="1">'
+    + '<span class="beat-mark" aria-hidden="true">+</span>'
+    + '<textarea class="beat-text" data-beat-draft-text rows="2" spellcheck="false"'
+    + ' placeholder="One paragraph. Start it INT. or EXT. for a scene."'
+    + ' aria-label="New beat text"></textarea>'
+    + '<span class="beat-foot">'
+      + '<select data-beat-draft-kind aria-label="New beat kind">'
+      + BEAT_KIND_CHOICE.map(k => '<option value="' + k + '">' + k + '</option>').join('')
+      + '</select>'
+      + '<button type="button" data-draft-add>Add beat</button>'
+      + '<button type="button" data-draft-cancel>Cancel</button>'
+      + '<span class="beat-pos num">' + (draft.after + 2) + '</span>'
+    + '</span>'
+    + '</div>';
+}
+
+function scriptTrackHTML(seq){
+  const beats = seq.beats || [];
+  // The paste box is here exactly when import_script would be legal (S5).
+  const head = beats.length ? '' : '<div class="beat-import">'
+    + '<textarea id="scriptImportText" placeholder="Paste the whole script \u2014 blank line between paragraphs. INT. / EXT. starts a scene."'
+    + ' aria-label="Script to import"></textarea>'
+    + '<button type="button" class="btn btn-primary" id="scriptImportBtn">Import script</button>'
+    + '</div>';
+  const cards = beats.map(beatCardHTML);
+  if(STATE.beatDraft) cards.splice(STATE.beatDraft.after + 1, 0, beatDraftHTML(STATE.beatDraft));
+  return head + cards.join('')
+    + '<button type="button" class="beat-add" data-add-beat="1"'
+    + ' title="Add a beat at the end' + (beats.length ? '. Pasting a whole script only works on an empty storyboard \u2014 start a new storyboard to import again.' : '')
+    + '">+ beat</button>';
+}
+
+/* The lane is created and destroyed, never hidden: §3 makes sequence mode the
+   same room without the script, and the commission wants it gone from the DOM,
+   not merely invisible. */
+function renderScriptLane(force){
+  const panel = $('#timelinePanel'), lanes = $('#tlLanes');
+  if(!panel || !lanes) return;
+  const story = isStoryboard();
+  panel.classList.toggle('storyboard', story);
+  let el = lanes.querySelector('[data-script-lane]');
+  if(!story){ if(el) el.remove(); return; }
+  if(!el){
+    el = document.createElement('div');
+    el.className = 'tl-lane tl-lane-script';
+    el.setAttribute('data-script-lane', '');
+    el.innerHTML = '<div class="tl-lane-label">SCRIPT</div><div class="tl-track" id="tlTrackScript"></div>';
+    lanes.insertBefore(el, lanes.querySelector('.tl-lane'));   // above PICTURE / VIDEO / SOUND / REF
+  }
+  if(!force && scriptBusy()) return;
+  if(setHTML(el, '<div class="tl-lane-label">SCRIPT</div>'
+               + '<div class="tl-track" id="tlTrackScript">' + scriptTrackHTML(STATE.seq) + '</div>')){
+    wireScriptLane(el);
+  }
+}
+
+function wireScriptLane(lane){
+  const importBtn = lane.querySelector('#scriptImportBtn');
+  if(importBtn) importBtn.onclick = importScriptText;
+  const addBtn = lane.querySelector('[data-add-beat]');
+  if(addBtn) addBtn.onclick = () => startBeatDraft(((STATE.seq && STATE.seq.beats) || []).length - 1);
+
+  lane.querySelectorAll('[data-copy-beat]').forEach(b => {
+    b.onclick = e => { e.stopPropagation(); copyBeatToPrompt(b.dataset.copyBeat); };
+  });
+  lane.querySelectorAll('[data-delete-beat]').forEach(b => {
+    b.onclick = e => { e.stopPropagation(); deleteBeat(b.dataset.deleteBeat); };
+  });
+  lane.querySelectorAll('[data-beat-goto]').forEach(b => {
+    b.onclick = e => { e.stopPropagation(); selectSlot(b.dataset.beatGoto); };
+  });
+
+  lane.querySelectorAll('[data-beat-id]').forEach(card => {
+    const ta = card.querySelector('[data-beat-text]');
+    if(ta){
+      ta.addEventListener('input', () => scheduleBeatSave(card.dataset.beatId, ta.value));
+      ta.addEventListener('blur', () => flushBeatSave());
+    }
+    // F3: the beat is a handle on its shot -- clicking anywhere on the card
+    // (the text, the rule, the mark) selects the shot it made, so the recipe
+    // the paragraph would run is on screen one glance later.
+    //
+    // mousedown, not click: taking the caret into a collapsed beat is what
+    // makes the card stand up, and that re-layout moves the tile under the
+    // cursor, so a `click` listener either never fires on this card or fires
+    // with a target that has drifted a row over. mousedown sees the geometry
+    // as the user aimed at it. (click is kept for synthetic clicks, which
+    // carry no mousedown; the already-selected bail stops either path from
+    // doing the work twice.)
+    const pickShot = e => {
+      if(e.target.closest && e.target.closest('button')) return;
+      if(!card.dataset.beatSlot || STATE.seqSlotId === card.dataset.beatSlot) return;
+      selectSlot(card.dataset.beatSlot);
+    };
+    card.addEventListener('mousedown', pickShot);
+    card.addEventListener('click', pickShot);
+  });
+
+  const draft = lane.querySelector('[data-beat-draft]');
+  if(draft){
+    const ta = draft.querySelector('[data-beat-draft-text]');
+    const add = draft.querySelector('[data-draft-add]');
+    const cancel = draft.querySelector('[data-draft-cancel]');
+    if(add) add.onclick = () => commitBeatDraft();
+    if(cancel) cancel.onclick = () => { STATE.beatDraft = null; renderScriptLane(true); };
+    if(ta){
+      ta.addEventListener('blur', () => {
+        if(!STATE.beatDraft) return;   // already committed or cancelled by the button
+        // A draft nobody typed into disappears; one they did is a beat.
+        if(ta.value.trim()) commitBeatDraft();
+        else { STATE.beatDraft = null; renderScriptLane(true); }
+      });
+      ta.addEventListener('keydown', e => {
+        if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); commitBeatDraft(); }
+        if(e.key === 'Escape'){ STATE.beatDraft = null; renderScriptLane(true); }
+      });
+    }
+  }
+}
+
+/* -- typing (F2): debounced, latest text wins, a blur never loses it -- */
+function scheduleBeatSave(beatId, text){
+  BEAT_SAVES[beatId] = text;
+  clearTimeout(BEAT_SAVE_TIMER);
+  BEAT_SAVE_TIMER = setTimeout(flushBeatSave, BEAT_SAVE_MS);
+}
+async function flushBeatSave(){
+  clearTimeout(BEAT_SAVE_TIMER);
+  const ids = Object.keys(BEAT_SAVES);
+  if(!ids.length) return;
+  for(const id of ids){
+    const text = BEAT_SAVES[id];
+    delete BEAT_SAVES[id];
+    BEAT_PENDING++;
+    try{
+      // retry: on a 409 the rev is refreshed and the SAME text re-sent --
+      // the text came off the live DOM a moment ago, so a slow network costs a
+      // moment, never a keystroke.
+      await seqOp('update_beat', {beat_id: id, text: text}, {retry: true});
+    } finally { BEAT_PENDING--; }
+  }
+  // One read of the refreshed sequence, so "script changed" is on the tile and
+  // in the beat's own line without waiting for the next poll (F4).
+  renderTimeline();
+  renderSlotMeta(currentSlot());
+}
+
+async function importScriptText(){
+  const ta = document.querySelector('#scriptImportText');
+  if(!ta) return;
+  const r = await seqOp('import_script', {text: ta.value});
+  if(!r) return;
+  msgSeq('Script imported \u2014 ' + ((r.beats || []).length) + ' beats, ' 
+    + (r.slots || []).length + ' shots laid in.', 'ok');
+  renderTimeline();
+}
+
+async function copyBeatToPrompt(beatId){
+  const r = await seqOp('copy_beat_to_prompt', {beat_id: beatId});
+  if(!r) return;
+  const beat = (r.beats || []).find(b => b.id === beatId);
+  const slot = beatSlot(beat);
+  // The prompt box the copy just overwrote is on screen if that shot is the
+  // selected one -- push the server's new value into it (F5: the copy is
+  // visible in the field, not only in the data).
+  if(slot && STATE.seqSlotId === slot.id){ applySlotValues(slot); renderSlotMeta(slot); }
+  renderTimeline();
+}
+
+async function deleteBeat(beatId){
+  const r = await seqOp('delete_beat', {beat_id: beatId});
+  if(!r) return;
+  msgSeq('That beat is out of the script. Its shot stays in the lane \u2014 pick it again or delete the sequence.', 'ok');
+  renderTimeline();
+  renderSlotMeta(currentSlot());
+}
+
+function startBeatDraft(after){
+  STATE.beatDraft = {after: after};
+  renderScriptLane(true);
+  const ta = document.querySelector('[data-beat-draft-text]');
+  if(ta){ ta.focus(); ta.scrollIntoView({block: 'nearest', inline: 'nearest'}); }
+}
+async function commitBeatDraft(){
+  const draft = STATE.beatDraft;
+  if(!draft) return;
+  const ta = document.querySelector('[data-beat-draft-text]');
+  const sel = document.querySelector('[data-beat-draft-kind]');
+  const text = ta ? ta.value : '';
+  if(!text.trim()){ STATE.beatDraft = null; renderScriptLane(true); return; }
+  const r = await seqOp('insert_beat', {text: text, kind: (sel && sel.value) || 'film', at: draft.after + 1});
+  if(!r) return;
+  STATE.beatDraft = null;
+  // The caret has to be put down before the rail is rebuilt (the draft card is
+  // being replaced by the real beat, so its caret has nowhere to live).
+  const live = document.querySelector('[data-beat-draft-text]');
+  if(live) live.blur();
+  const made = (r.beats || [])[draft.after + 1];
+  renderTimeline();
+  // Select the shot the beat just brought (§3: it arrives with one), so the
+  // pre-filled prompt is visible at the moment it is filled -- and so it is
+  // obvious which shot this paragraph made.
+  if(made && made.slot_id) selectSlot(made.slot_id);
+}
+
+/* A beat's card sits above the lane its shot was laid in; the hairline is the
+   one honest way to say "that paragraph made that tile" across the gap, and it
+   is the same overlay the cables already use. Muted -- a cable is a dependency,
+   this is only provenance. */
+function beatLinkHTML(lanesRect, tileEls){
+  const beats = (STATE.seq && STATE.seq.beats) || [];
+  let html = '';
+  beats.forEach(beat => {
+    if(!beat.slot_id) return;
+    const card = document.querySelector('[data-beat-id="' + beat.id + '"]');
+    const tile = tileEls[beat.slot_id];
+    if(!card || !tile) return;
+    const cr = card.getBoundingClientRect(), tr = tile.getBoundingClientRect();
+    const x1 = cr.left + 22 - lanesRect.left, y1 = cr.bottom - lanesRect.top;
+    const x2 = tr.left + tr.width / 2 - lanesRect.left, y2 = tr.top - lanesRect.top;
+    const dy = Math.max(8, (y2 - y1) * 0.45);
+    const d = 'M ' + x1 + ' ' + y1 + ' C ' + x1 + ' ' + (y1 + dy) + ', ' + x2 + ' ' + (y2 - dy) + ', ' + x2 + ' ' + y2;
+    html += '<path d="' + d + '" class="tl-beat-link'
+      + (STATE.seqSlotId === beat.slot_id ? ' sel' : '') + '"></path>';
+  });
+  return html;
+}
+
+function renderRefRoom(){
+  const track = $('#refTrack');
+  if(!track) return;
+  const refs = STATE.seq ? (STATE.seq.refs || []) : [];
+  const html = refs.length
+    ? refs.map(r => '<div class="tl-ref-chip" data-ref-id="' + esc(r.id) + '">'
+      + '<span class="ref-role-chip">' + esc(r.role) + '</span>'
+      + '<span>' + esc(r.label || 'Reference') + '</span>'
+      + '<button type="button" data-remove-ref="' + esc(r.id) + '" aria-label="Remove reference">&times;</button>'
+      + '</div>').join('')
+    : '<div class="tl-ref">' + (STATE.seq ? 'No references yet.' : 'Reference stays locked here.') + '</div>';
+  if(setHTML(track, html)){
+    Array.from(track.querySelectorAll('[data-remove-ref]')).forEach(b => b.onclick = async () => {
+      const r = await seqOp('remove_ref', {ref_id: b.dataset.removeRef});
+      if(r){ renderRefRoom(); }
+    });
+  }
+}
+
+function takesStripHTML(slot){
+  // Inner content of the #takesStrip container (which renderMonitor creates
+  // once and rewrites via setHTML) -- not the container itself.
+  const takes = slot.takes || [];
+  if(!takes.length) return '<div class="field-group-title">Takes</div><p class="muted">No takes yet.</p>';
+  const rows = takes.map(t => {
+    const job = findJob(t.job_id);
+    const o = job && job.outputs && job.outputs[0];
+    const thumb = (job && o) ? thumbHTML(job, o) : '<span class="num muted">' + (job && (job.status === 'queued' || job.status === 'running') ? '–' : '?') + '</span>';
+    const picked = slot.pick === t.job_id;
+    const canPick = job && job.status === 'done' && !picked;
+    return '<div class="take-item" data-job-id="' + esc(t.job_id) + '" aria-selected="' + (STATE.selectedJobId === t.job_id ? 'true' : 'false') + '">'
+      + '<div class="bin-thumb">' + thumb + '</div>'
+      + '<div class="take-meta">' + esc(ago(t.made)) + (picked ? ' · picked' : '') + '</div>'
+      + (canPick ? '<button type="button" class="btn" data-pick="' + esc(t.job_id) + '">Pick this take</button>' : '')
+      + '</div>';
+  }).join('');
+  return '<div class="field-group-title">Takes</div><div id="takesRow">' + rows + '</div>';
+}
+function wireTakesStrip(slot){
+  $$('#takesRow .take-item').forEach(el => el.onclick = e => {
+    if(e.target.closest('[data-pick]')) return;
+    STATE.selectedJobId = el.dataset.jobId;
+    renderMonitor();
+  });
+  $$('#takesRow [data-pick]').forEach(b => b.onclick = async e => {
+    e.stopPropagation();
+    const jid = b.dataset.pick;
+    const r = await seqOp('pick_take', {slot_id: slot.id, job_id: jid});
+    if(r){
+      renderTimeline();
+      STATE.selectedJobId = jid;
+      renderMonitor();
+    }
+  });
+}
+/* C3.6/F2: a picked video shot's trim (whole take, or a length -- always
+   tail-keep, the only trim shape this panel writes) and title card,
+   without typing JSON. `trim_effective` is the server's own computed
+   in/len (§1/R3); this panel only ever shows it and writes a plain
+   {in:null, len} back through set_trim. */
+function cutSlotPanelHTML(slot){
+  const eff = slot.trim_effective;
+  const whole = !slot.trim;
+  const len = slot.trim ? slot.trim.len : (eff ? eff.len : '');
+  const title = slot.title;
+  // Review fix (2026-09-23): "not copied yet" was shown even for a slot
+  // with no pick at all, which reads as a lane/copy problem that does not
+  // exist yet -- the two null-eff causes need their own sentences.
+  const effLine = !eff
+    ? (!slot.pick ? 'Pick a take to set its trim.'
+                  : 'Trim: not known yet — this shot’s take is not copied locally yet.')
+    : (whole ? ('Whole take (' + eff.len.toFixed(1) + 's).')
+             : ('Plays the last ' + eff.len.toFixed(1) + 's of the take, starting at '
+                + eff.in.toFixed(1) + 's.'));
+  return '<div class="field-group-title">Cut settings</div>'
+    + '<p class="cut-trim-note">' + esc(effLine) + '</p>'
+    + '<label class="cut-trim-row"><input type="checkbox" id="cutWholeTake"' + (whole ? ' checked' : '')
+      + '> Use the whole take</label>'
+    + '<label class="cut-trim-row">Length in the cut (seconds) <input type="number" min="0.1" step="0.1" '
+      + 'id="cutTrimLen" value="' + esc(len) + '"' + (whole ? ' disabled' : '') + '></label>'
+    + '<label class="cut-title-row"><input type="checkbox" id="cutHasTitle"' + (title ? ' checked' : '')
+      + '> Title card</label>'
+    + '<input type="text" id="cutTitleText" placeholder="Title text" value="' + esc(title ? title.text : '')
+      + '"' + (title ? '' : ' disabled') + '>'
+    + '<label class="cut-title-row">starts at (s) <input type="number" min="0" step="0.1" id="cutTitleAt" '
+      + 'value="' + esc(title ? title.at : 0) + '"' + (title ? '' : ' disabled') + '></label>'
+    + '<label class="cut-title-row">for (s) <input type="number" min="0.1" step="0.1" id="cutTitleDur" '
+      + 'value="' + esc(title ? title.dur : 2) + '"' + (title ? '' : ' disabled') + '></label>';
+}
+function wireCutSlotPanel(slot){
+  const whole = $('#cutWholeTake'), lenInput = $('#cutTrimLen');
+  if(whole) whole.onclick = async () => {
+    if(whole.checked){
+      lenInput.disabled = true;
+      await seqOp('set_trim', {slot_id: slot.id, trim: null});
+    } else {
+      lenInput.disabled = false;
+      const len = parseFloat(lenInput.value) || (slot.trim_effective ? slot.trim_effective.len : 1);
+      await seqOp('set_trim', {slot_id: slot.id, trim: {in: null, len: len}});
+    }
+    renderTimeline();
+    renderMonitor();
+  };
+  if(lenInput) lenInput.onchange = async () => {
+    const len = parseFloat(lenInput.value);
+    if(!(len > 0)) return;
+    const r = await seqOp('set_trim', {slot_id: slot.id, trim: {in: null, len: len}});
+    if(r) renderMonitor();
+  };
+  const hasTitle = $('#cutHasTitle'), textEl = $('#cutTitleText'), atEl = $('#cutTitleAt'), durEl = $('#cutTitleDur');
+  async function saveTitle(){
+    if(!hasTitle.checked){
+      await seqOp('set_title_card', {slot_id: slot.id, title: null});
+      return;
+    }
+    const text = textEl.value.trim();
+    if(!text) return;
+    await seqOp('set_title_card', {slot_id: slot.id,
+      title: {text: text, at: parseFloat(atEl.value) || 0, dur: parseFloat(durEl.value) || 1}});
+  }
+  if(hasTitle) hasTitle.onclick = async () => {
+    [textEl, atEl, durEl].forEach(el => { if(el) el.disabled = !hasTitle.checked; });
+    await saveTitle();
+    renderTimeline();
+  };
+  [textEl, atEl, durEl].forEach(el => { if(el) el.onchange = async () => { await saveTitle(); renderTimeline(); }; });
+}
+async function addRefFromMonitor(job, o){
+  const idx = job.outputs.indexOf(o);
+  const role = $('#addRefRole') ? $('#addRefRole').value : 'other';
+  const r = await seqOp('add_ref', {job_id: job.id, output: idx, role: role});
+  if(r){
+    renderRefRoom();
+    renderTimeline();
+    msgSeq('Added to the reference room.', 'ok');
+  }
+}
+
+/* ---------------------------------------------------------------------
+   Activity strip
+--------------------------------------------------------------------- */
+function renderActivity(){
+  $('#activityLog').innerHTML = STATE.log.map(l =>
+    '<div class="row' + (l.level === 'error' ? ' err' : '') + '">' + esc(l.text || l) + '</div>').join('');
+}
+
+/* ---------------------------------------------------------------------
+   Polling
+--------------------------------------------------------------------- */
+async function pollLanes(){
+  try{
+    const d = await getJSON('/api/lanes');
+    STATE.lanes = d.lanes || [];
+    if(!STATE.activeLane || !STATE.lanes.some(l => l.id === STATE.activeLane)){
+      STATE.activeLane = (STATE.lanes.find(l => l.up) || STATE.lanes[0] || {}).id || null;
+    }
+    renderMachineModules();
+  } catch(e){ /* transient -- next poll retries */ }
+}
+async function pollJobs(){
+  try{
+    const d = await getJSON('/api/jobs?limit=60');
+    STATE.jobs = d.jobs || [];
+    STATE.log = d.log || [];
+    if(STATE.pendingJobId){
+      const j = STATE.jobs.find(x => x.id === STATE.pendingJobId);
+      // "On its way." is a submission receipt, not a permanent status line --
+      // clear it once the job it was about has actually left the queue.
+      if(j && j.status !== 'queued' && j.status !== 'running'){
+        msgInspector('', '');
+        STATE.pendingJobId = null;
+      }
+    }
+    refreshRoomStrip();
+    renderHistoryToggle();
+    renderBin();
+    renderActivity();
+    // The open sequence's derived state (rendering/cannot-tell/stale, ...)
+    // depends on the same jobs+lane-up data just refreshed above, so it is
+    // re-fetched right alongside it rather than on its own timer.
+    if(STATE.seq){
+      try{
+        const sd = await getJSON('/api/sequence?id=' + encodeURIComponent(STATE.seq.id));
+        if(sd && sd.id){ STATE.seq = sd; renderTimeline(); renderRefRoom(); renderSeqPickerList(); }
+      }catch(e){ /* transient */ }
+    }
+    if(STATE.selectedJobId || STATE.monitorCut) renderMonitor();
+  } catch(e){ /* transient */ }
+}
+
+/* ---------------------------------------------------------------------
+   Init
+--------------------------------------------------------------------- */
+let ROOMS_KEY = '';
+async function loadEnginesFor(){
+  // One call covers every cap. The payload is a dict of caps PLUS a
+  // top-level "rooms" key -- split it off so nothing iterates it as a cap.
+  // Returns whether the room list itself changed (the strip is rebuilt then).
+  const d = await getJSON('/api/engines' + (STATE.activeLane ? ('?lane=' + encodeURIComponent(STATE.activeLane)) : ''));
+  const rooms = Array.isArray(d.rooms) ? d.rooms : [];
+  delete d.rooms;
+  STATE.helper = !!d.helper;
+  delete d.helper;
+  STATE.engines = d;
+  STATE.rooms = rooms.slice().sort((a, b) => (a.order == null ? 1000 : a.order) - (b.order == null ? 1000 : b.order));
+  const key = JSON.stringify(STATE.rooms);
+  const changed = key !== ROOMS_KEY;
+  ROOMS_KEY = key;
+  return changed;
+}
+async function loadCredits(){
+  try{
+    const d = await getJSON('/api/credits');
+    STATE.credits = Array.isArray(d) ? d : (d.credits || []);
+    if(!Array.isArray(d) && Array.isArray(d.clean_download)) STATE.cleanDownload = d.clean_download;
+    if(!Array.isArray(d) && Array.isArray(d.clean_audio_exts)) STATE.cleanAudioExts = d.clean_audio_exts;
+  } catch(e){
+    STATE.credits = []; // endpoint not live yet -- handled at render time
+  }
+}
+
+function bindStaticUI(){
+  $('#historyToggle').addEventListener('click', e => {
+    const b = e.target.closest('button[data-hist-scope]');
+    if(!b) return;
+    STATE.histScope = b.dataset.histScope;
+    renderHistoryToggle();
+    renderBin();
+  });
+  // Delegated: the strip is rebuilt whenever the room list changes.
+  $('#roomStrip').addEventListener('click', e => {
+    const b = e.target.closest('[data-room-id]');
+    if(b) selectRoom(b.dataset.roomId);
+  });
+  // Delegated: chip buttons survive polls (see renderMachineModules), so a
+  // per-button closure would be re-attached on a rebuild that never happens.
+  $('#machineModules').addEventListener('click', e => {
+    const b = e.target.closest('.machine');
+    if(!b) return;
+    STATE.activeLane = b.dataset.lane;
+    renderMachineModules();
+    // Availability, missing-model reasons and quality estimates are all
+    // per-lane, so switching the active machine re-fetches the manifest.
+    loadEnginesFor().then(changed => {
+      if(changed) renderRoomStrip(); else refreshRoomStrip();
+      renderEnginePicker(true);
+      renderMonitor();
+      if(!$('#roomForm').hidden) renderModeFields();
+    });
+  });
+  window.addEventListener('hashchange', () => {
+    const id = roomFromHash();
+    const tryId = tryIdFromHash();
+    // A try id must still apply even when the hash's room half is unchanged
+    // (a "Make one in <room>" link back to the room already on screen).
+    if(id && roomById(id) && (id !== STATE.room || tryId)) selectRoom(id, {tryId});
+  });
+  $('#creditsBtn').onclick = openCredits;
+  $$('[data-close]').forEach(b => b.onclick = () => $('#' + b.dataset.close).close());
+  $('#makeBtn').onclick = handleMake;
+
+  // A thumbnail that fails to load (lane down, file swept) must never show
+  // an empty grey box -- that reads as a broken page, not as "gone". `error`
+  // does not bubble on img/video, so this listens on the CAPTURE phase at
+  // the document instead of delegating per-element.
+  document.addEventListener('error', e => {
+    const el = e.target;
+    if(!(el instanceof HTMLElement)) return;
+    if(el.matches('.bin-thumb img, .bin-thumb video')){
+      const glyph = el.tagName === 'VIDEO' ? '▶' : '▢';
+      el.outerHTML = '<span class="num muted" title="Not reachable right now">' + glyph + '</span>';
+    } else if(el.matches('#monitorStage img, #monitorStage video')){
+      const glyph = el.tagName === 'VIDEO' ? '▶' : '▢';
+      el.outerHTML = '<p class="muted">' + glyph + ' Not reachable right now.</p>';
+    }
+  }, true);
+}
+
+async function init(){
+  bindStaticUI();
+  await pollLanes();
+  await loadEnginesFor();
+  renderRoomStrip();
+  // #room=<id> survives a reload; #room=<id>&try=<example id> also survives one.
+  await selectRoom(roomFromHash(), {force: true, tryId: tryIdFromHash()});
+  // Prompt-first: the box everyone understands gets focus on first load
+  // (UX review #1/#4) -- but only if it's actually the mode's first field;
+  // renderModeFields() already redirects focus to an upload picker instead
+  // when the current mode has no prompt field at all.
+  focusFirstInput();
+  await pollJobs();
+  setInterval(pollLanes, 3000);
+  setInterval(async () => {
+    const changed = await loadEnginesFor();
+    if(changed) renderRoomStrip(); else refreshRoomStrip();
+    renderEnginePicker(false);
+  }, 8000);
+  setInterval(pollJobs, 2000);
+}
+init();
+</script>
+</body>
+</html>

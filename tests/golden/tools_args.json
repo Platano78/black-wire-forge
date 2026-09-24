@@ -1,0 +1,12 @@
+{
+  "cutout": {
+    "image_filename": "test_input.png"
+  },
+  "upscale": {
+    "image_filename": "test_input.png"
+  },
+  "mesh": {
+    "image_filename": "test_input.png",
+    "seed": 4242
+  }
+}

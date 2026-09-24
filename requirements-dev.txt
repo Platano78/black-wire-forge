@@ -1,0 +1,7 @@
+# Optional. Only needed to run the browser-driven test suites
+# (tests/test_*_ui.py, tests/test_room_lane_follow.py,
+# tests/test_timeline_local_thumb.py) -- every other suite runs without it.
+# Those suites SKIP cleanly (no failure) when this is not installed.
+#   python3 -m pip install -r requirements-dev.txt
+#   python3 -m playwright install --with-deps chromium
+playwright

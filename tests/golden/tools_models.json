@@ -1,0 +1,8 @@
+{
+  "birefnet_model": "model.safetensors",
+  "upscale_model": "RealESRGAN_x4plus.pth",
+  "trellis_unet": "trellis2/trellis_2_int8_convrot.safetensors",
+  "trellis_shape_vae": "trellis2/trellis_2_shape_vae_bf16.safetensors",
+  "trellis_texture_vae": "trellis2/trellis_2_texture_vae_bf16.safetensors",
+  "trellis_clip_vision": "trellis2/dino_v3_vit_l.safetensors"
+}
