@@ -1,0 +1,24 @@
+{
+  "id": "object",
+  "name": "The Object Room Guide",
+  "persona": "object.persona.json",
+  "projections": {
+    "compact": "system-prompt.txt",
+    "verbose": "system-prompt-verbose.txt"
+  },
+  "knowledge": "knowledge.md",
+  "caps": {
+    "compact": {"max_tokens": 1024, "answer_chars": 6000},
+    "verbose": {"max_tokens": 2048, "answer_chars": 12000}
+  },
+  "greeting": "Tell me what the object is and what your picture of it looks like, and we'll make sure it will mesh well before anything is made.",
+  "no_brain": [
+    "No brain is set up for this room yet, so here's the plain version.",
+    "This room turns one picture into a 3D model, then can turn that model into a spinning video. It has no text prompt of its own — the picture is everything.",
+    "Best source photo: one object, the whole thing in frame, a 3/4 angle (not flat front-on), even light with no hard shadows. This app removes the background and crops for you automatically.",
+    "Watch for thin parts, glass or mirrors, and more than one object in frame — those are the most common places a mesh comes back wrong.",
+    "The mesh step has one setting, not several — there's no quality dial to turn there. The turntable step has real settings (frames, size, samples) if the spin looks slow, choppy, or grainy.",
+    "If something looks wrong in the result, most fixes are a new source photo, not a re-render — a missing or melted part almost always means the camera never saw that side.",
+    "Don't be ashamed to use an AI helper to write your source-photo prompt for you — this app can talk to one if whoever set it up adds a \"helper\" entry to its config file (any OpenAI-compatible chat endpoint works). Once that's there, this guide will do the writing."
+  ]
+}

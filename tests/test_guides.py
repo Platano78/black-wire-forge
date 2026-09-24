@@ -1,8 +1,9 @@
-"""Gate for room guides P1 -- guides.py, GET /api/guide, POST /api/guide/chat.
+"""Gate for room guides (P1, P1b, P1c) -- guides.py, GET /api/guide, POST /api/guide/chat.
 
 Everything runs against:
   - a fake OpenAI-compatible helper (stdlib http.server) that records every
-    chat request and answers GET /models with whatever the test sets;
+    chat request and answers GET /models and GET /props (llama.cpp's, at the
+    server root) with whatever the test sets;
   - a scratch GENCENTER_CONFIG / GENCENTER_DATA (mkdtemp), set BEFORE
     server.py is imported, the same pattern as test_helper.py;
   - the real HTTP API, served in-process on a free 127.0.0.1 port.
@@ -51,7 +52,7 @@ def free_port():
 # Fake OpenAI-compatible helper: POST /v1/chat/completions, GET /v1/models
 # ---------------------------------------------------------------------------
 HELPER_STATE = {"reply": "Start with the ending.", "finish": "stop", "status": 200,
-                "models": None, "requests": [], "model_gets": 0}
+                "models": None, "props": None, "requests": [], "model_gets": 0, "props_gets": 0}
 
 
 class FakeHelperHandler(BaseHTTPRequestHandler):
@@ -64,6 +65,11 @@ class FakeHelperHandler(BaseHTTPRequestHandler):
         self.wfile.write(resp)
 
     def do_GET(self):
+        if self.path.rstrip("/") == "/props":
+            HELPER_STATE["props_gets"] += 1
+            if HELPER_STATE["props"] is None:
+                return self._send(404, {"error": "no"})
+            return self._send(200, HELPER_STATE["props"])
         if self.path.rstrip("/").endswith("/models"):
             HELPER_STATE["model_gets"] += 1
             if HELPER_STATE["models"] is None:
@@ -140,8 +146,20 @@ def reset_context_cache():
     srv._GUIDE_CONTEXT.update(at=None, value=None)
 
 
-def chat(messages, verbosity="compact", room="cutting", port=None):
-    return http("/api/guide/chat", {"room": room, "verbosity": verbosity, "messages": messages}, port=port)
+def chat(messages, verbosity="compact", room="cutting", port=None, context=None):
+    body = {"room": room, "verbosity": verbosity, "messages": messages}
+    if context is not None:
+        body["context"] = context
+    return http("/api/guide/chat", body, port=port)
+
+
+NO_PICTURE = "\n\n[No picture is attached to this message.]"
+
+
+def as_sent(messages):
+    """What the helper should receive for this history with no room context:
+    every user turn carries the server's grounding line."""
+    return [dict(m, content=m["content"] + NO_PICTURE) if m["role"] == "user" else m for m in messages]
 
 
 COMPACT = read("guides/film/system-prompt.txt")
@@ -155,16 +173,39 @@ print("loader: every guide rooms.json names loads")
 import guides  # noqa: E402  (ROOT is on sys.path above)
 named = {r["guide"] for r in json.loads(read("rooms.json")) if r.get("guide")}
 loaded = guides.load_all()
-check("loader: the Cutting Room names the film guide",
-      any(r.get("id") == "cutting" and r.get("guide") == "film" for r in json.loads(read("rooms.json"))))
+ROOMS = json.loads(read("rooms.json"))
+check("loader: every room in rooms.json names a guide", all(r.get("guide") for r in ROOMS),
+      repr([r["id"] for r in ROOMS if not r.get("guide")]))
+EXPECTED_GUIDES = {"music": "sound", "cover": "sound", "sfx": "sound", "picture": "picture",
+                   "pixelart": "picture", "cleanup": "picture", "textures": "picture", "video": "motion",
+                   "talking": "motion", "3d": "object", "cutting": "film"}
+check("loader: each room names its group's guide", {r["id"]: r.get("guide") for r in ROOMS} == EXPECTED_GUIDES,
+      repr({r["id"]: r.get("guide") for r in ROOMS}))
 check("loader: every named guide loaded", named and set(loaded) == named, repr((named, set(loaded))))
 check("loader: the server holds the same guides", set(srv.GUIDES) == named, repr(set(srv.GUIDES)))
+for gid in sorted(named):
+    gdir = "guides/%s/" % gid
+    gmeta = json.loads(read(gdir + "guide.json"))
+    c, v = read(gdir + "system-prompt.txt"), read(gdir + "system-prompt-verbose.txt")
+    check("guide %s: compact is a byte-exact prefix of verbose" % gid, v.startswith(c) and len(v) > len(c))
+    check("guide %s: caps are 1024/6000 compact, 2048/12000 verbose" % gid,
+          gmeta["caps"] == {"compact": {"max_tokens": 1024, "answer_chars": 6000},
+                            "verbose": {"max_tokens": 2048, "answer_chars": 12000}}, repr(gmeta["caps"]))
+    check("guide %s: the name is the persona's own" % gid,
+          loaded[gid]["name"] == json.loads(read(gdir + gmeta["persona"]))["name"], loaded[gid]["name"])
+    check("guide %s: a one-line greeting and plain no-brain lines" % gid,
+          "\n" not in gmeta["greeting"] and all("\n" not in l for l in gmeta["no_brain"]), repr(gmeta["greeting"]))
+    check("guide %s: every room in its group gets it from the server" % gid,
+          all(srv._room_guide(r["id"])[1] is srv.GUIDES[gid] for r in ROOMS if r.get("guide") == gid))
+    check("guide %s: skills.md ships (film has none)" % gid,
+          os.path.isfile(os.path.join(ROOT, gdir, "skills.md")) == (gid != "film"))
 check("loader: token estimate is chars/4",
       loaded["film"]["projections"]["compact"]["tokens"] == (len(COMPACT) + 3) // 4
       and loaded["film"]["projections"]["verbose"]["tokens"] == (len(VERBOSE) + 3) // 4)
 check("guide files: compact is a verbatim prefix of verbose", VERBOSE.startswith(COMPACT))
-check("guide files: no live-trial or README ships",
-      not any(os.path.exists(os.path.join(ROOT, "guides/film", f)) for f in ("live-trial.md", "README.md")))
+check("guide files: no live-trial, README or no-brain.txt ships", not [
+    os.path.join(d, f) for d, _, fs in os.walk(os.path.join(ROOT, "guides")) for f in fs
+    if f in ("live-trial.md", "README.md", "no-brain.txt")])
 
 print("loader: a broken guide is refused with a sentence naming the file")
 tmp = tempfile.mkdtemp(prefix="bwf_guides_broken_")
@@ -248,9 +289,66 @@ http("/api/guide?room=cutting")
 check("context: a failure is cached too", HELPER_STATE["model_gets"] == gets + 1,
       repr((gets, HELPER_STATE["model_gets"])))
 
+print("GET /api/guide: helper_context precedence -- config > /props > /models n_ctx > n_ctx_train")
+
+
+def ctx_now():
+    reset_context_cache()
+    return http("/api/guide?room=cutting")[1].get("helper_context")
+
+
+HELPER_STATE["models"] = {"data": [{"id": "test-model", "meta": {"n_ctx": 8192, "n_ctx_train": 131072}}]}
+HELPER_STATE["props"] = {"default_generation_settings": {"n_ctx": 16384}, "n_ctx": 999}
+props_gets = HELPER_STATE["props_gets"]
+check("precedence: /props default_generation_settings.n_ctx beats /models", ctx_now() == 16384)
+check("precedence: /props is read at the server root, not under /v1", HELPER_STATE["props_gets"] == props_gets + 1,
+      repr((props_gets, HELPER_STATE["props_gets"])))
+HELPER_STATE["props"] = {"n_ctx": 20480}
+check("precedence: /props top-level n_ctx is read too", ctx_now() == 20480)
+HELPER_STATE["props"] = {"default_generation_settings": {}}
+check("precedence: /props that says nothing falls back to /models n_ctx", ctx_now() == 8192)
+HELPER_STATE["props"] = None
+HELPER_STATE["models"] = {"data": [{"id": "test-model", "meta": {"n_ctx_train": 131072}}]}
+check("precedence: n_ctx_train (the training context) only when nothing else says", ctx_now() == 131072)
+HELPER_STATE["props"] = {"default_generation_settings": {"n_ctx": 16384}}
+srv.HELPER["context"] = 12288
+gets, props_gets = HELPER_STATE["model_gets"], HELPER_STATE["props_gets"]
+check("precedence: config helper.context beats everything", ctx_now() == 12288)
+check("precedence: config helper.context probes nothing",
+      (HELPER_STATE["model_gets"], HELPER_STATE["props_gets"]) == (gets, props_gets))
+del srv.HELPER["context"]
+HELPER_STATE["props"] = None
+
+print("startup: a helper.context that is not a whole number of tokens is refused")
+bad_dir = tempfile.mkdtemp(prefix="bwf_guides_badctx_")
+bad_cfg = os.path.join(bad_dir, "config.json")
+with open(bad_cfg, "w") as f:
+    json.dump({"port": free_port(), "bind": "127.0.0.1",
+               "lanes": [{"id": "c1", "name": "Comfy lane", "host": "127.0.0.1", "port": 1, "caps": ["image"]}],
+               "helper": {"url": "http://127.0.0.1:1/v1", "context": "big"}}, f)
+import subprocess  # noqa: E402
+try:
+    proc = subprocess.run([sys.executable, os.path.join(ROOT, "server.py")], capture_output=True, text=True,
+                          timeout=20, env=dict(os.environ, GENCENTER_CONFIG=bad_cfg,
+                                               GENCENTER_DATA=os.path.join(bad_dir, "data")))
+    refused = (proc.returncode, proc.stdout + proc.stderr)
+except subprocess.TimeoutExpired:   # it started and kept serving: not refused
+    refused = (None, "still running after 20s")
+check("startup: refused with a sentence naming helper.context",
+      refused[0] not in (0, None) and "\"context\"" in refused[1], repr((refused[0], refused[1][-300:])))
+
 print("GET /api/guide: a room without a guide, an unknown room")
-code, body = http("/api/guide?room=music")
+_real_rooms = srv.engines.rooms
+
+
+def rooms_with_a_bare_room(*a, **kw):
+    return _real_rooms(*a, **kw) + [{"id": "bare", "name": "Bare", "modes": []}]
+
+
+srv.engines.rooms = rooms_with_a_bare_room
+code, body = http("/api/guide?room=bare")
 check("no-guide room: 200 with guide null", code == 200 and body.get("guide") is None, repr((code, body)))
+srv.engines.rooms = _real_rooms
 code, body = http("/api/guide?room=no-such-room")
 check("unknown room: 404 with a sentence", code == 404 and isinstance(body.get("error"), str) and body["error"],
       repr((code, body)))
@@ -284,7 +382,8 @@ hist = [{"role": "user", "content": "idea one"}, {"role": "assistant", "content"
         {"role": "user", "content": "and now?"}]
 code, body = chat(hist)
 req = HELPER_STATE["requests"][-1]
-check("history: sent in order", req["messages"][1:] == hist, repr(req["messages"][1:]))
+check("history: sent in order, each user turn grounded", req["messages"][1:] == as_sent(hist),
+      repr(req["messages"][1:]))
 
 print("chat: guide chat uses timeout_s (default 120); /api/helper keeps its own default")
 seen = []
@@ -316,7 +415,7 @@ kept = req["messages"][1:]
 check("trim turns: dropped counted", body.get("dropped") == 12, repr(body.get("dropped")))
 check("trim turns: 39 kept", len(kept) == 39, repr(len(kept)))
 check("trim turns: first kept is a user message", kept and kept[0]["role"] == "user", repr(kept[:1]))
-check("trim turns: newest kept, last user intact", kept and kept[-1] == many[-1] and kept == many[12:])
+check("trim turns: newest kept, last user intact", kept and kept == as_sent(many)[12:])
 big = []
 for i in range(7):
     big.append({"role": "user" if i % 2 == 0 else "assistant", "content": ("b%d " % i) + "y" * 3896})
@@ -324,14 +423,14 @@ code, body = chat(big)
 kept = HELPER_STATE["requests"][-1]["messages"][1:]
 check("trim chars: within the char budget", sum(len(m["content"]) for m in kept) <= srv.GUIDE_HISTORY_CHARS)
 check("trim chars: dropped counted, leading assistant dropped",
-      body.get("dropped") == 2 and kept[0]["role"] == "user" and kept == big[2:], repr(body.get("dropped")))
+      body.get("dropped") == 2 and kept[0]["role"] == "user" and kept == as_sent(big)[2:], repr(body.get("dropped")))
 saved = srv.GUIDE_HISTORY_CHARS
 srv.GUIDE_HISTORY_CHARS = 10
 code, body = chat(hist)
 srv.GUIDE_HISTORY_CHARS = saved
 kept = HELPER_STATE["requests"][-1]["messages"][1:]
 check("trim: the last user message is kept even past the budget",
-      kept == [hist[-1]] and body.get("dropped") == 4, repr((kept, body.get("dropped"))))
+      kept == as_sent(hist)[-1:] and body.get("dropped") == 4, repr((kept, body.get("dropped"))))
 
 # ---------------------------------------------------------------------------
 # 4. POST /api/guide/chat -- refusals
@@ -372,8 +471,10 @@ code, body = chat([{"role": "user", "content": "a"},
 check("an earlier long answer from the guide itself is accepted", code == 200, repr((code, body)))
 
 print("chat: a room without a guide, an unknown room -> 404")
-code, body = chat(u, room="music")
+srv.engines.rooms = rooms_with_a_bare_room
+code, body = chat(u, room="bare")
 check("404: room without a guide", code == 404 and body.get("ok") is False and body.get("error"), repr((code, body)))
+srv.engines.rooms = _real_rooms
 code, body = chat(u, room="nowhere")
 check("404: unknown room", code == 404 and body.get("error"), repr((code, body)))
 
@@ -423,6 +524,73 @@ check("503: helper unreachable, the connect sentence", code == 503 and "isn't an
       repr((code, body)))
 
 # ---------------------------------------------------------------------------
+# 5b. grounding line + room context (P1c): on the forwarded copy only
+# ---------------------------------------------------------------------------
+print("grounding: every forwarded user turn says no picture is attached; replies never carry it")
+HELPER_STATE.update(reply="ok", finish="stop", status=200, requests=[])
+claim = [{"role": "user", "content": "here's my render, see the attached picture -- what's wrong with it?"}]
+code, body = chat(hist[:-1] + claim)
+sent = HELPER_STATE["requests"][-1]["messages"][1:]
+check("grounding: every user turn ends with the line, assistants untouched", sent == as_sent(hist[:-1] + claim),
+      repr(sent))
+check("grounding: a claimed attachment is still grounded as none", sent[-1]["content"].endswith(NO_PICTURE))
+check("grounding: not in the reply", code == 200 and "picture is attached" not in json.dumps(body), repr(body))
+grounding = getattr(srv, "guide_grounding", None)
+check("grounding: one function, ready for pictures", grounding is not None and grounding(0) == NO_PICTURE
+      and grounding(1) == "\n\n[1 picture attached.]" and grounding(2) == "\n\n[2 pictures attached.]")
+check("grounding: the Cutting Room sends no context line", not any("[Current room:" in m["content"] for m in sent))
+
+print("context: one line leading the newest user turn, with the room's name, mode words and field labels")
+SOUND_COMPACT = read("guides/sound/system-prompt.txt")
+code, body = chat(hist, room="music", context={"mode": "song", "fields": {"duration": 150, "tags": "warm pop", "bpm": 96}})
+sent = HELPER_STATE["requests"][-1]["messages"]
+line = '[Current room: Music · mode: A song with words (song) · Style / genre: "warm pop" · BPM: 96 · Duration (seconds): 150]'
+check("context: 200", code == 200 and body.get("ok") is True, repr((code, body)))
+check("context: the system message is still the room's guide, untouched",
+      sent[0] == {"role": "system", "content": SOUND_COMPACT})
+check("context: the newest user turn is line + text + grounding",
+      sent[-1]["content"] == line + "\n\n" + hist[-1]["content"] + NO_PICTURE, repr(sent[-1]["content"]))
+check("context: only the newest user turn carries it", sent[1:-1] == as_sent(hist)[:-1], repr(sent[1:-1]))
+check("context: no second system message", [m["role"] for m in sent].count("system") == 1)
+check("context: not in the reply", "Current room" not in json.dumps(body), repr(body))
+yue = {f["id"]: f["label"] for f in srv.engines.fields("audio", "yue2")}
+code, body = chat(u, room="music", context={"mode": "yue2", "fields": {"plan": True, "lyrics": "one\ntwo"}})
+first = HELPER_STATE["requests"][-1]["messages"][-1]["content"].split("\n\n")[0]
+check("context: true/false and a multi-line value stay on one line",
+      first == '[Current room: Music · mode: %s (yue2) · %s: "one\\ntwo" · %s: yes]'
+      % (srv.engines.mode_words("audio")["yue2"], yue["lyrics"], yue["plan"]), repr(first))
+code, body = chat(u, room="music", context={"mode": "song", "fields": {"tags": "t" * 500}})
+check("context: a 500-character value is accepted", code == 200, repr((code, body)))
+code, body = chat(u, room="music")
+check("context: a room sending no context gets no line",
+      HELPER_STATE["requests"][-1]["messages"][1:] == as_sent(u), repr(HELPER_STATE["requests"][-1]["messages"][1:]))
+
+print("context: each malformed context is a 400 with a sentence, and nothing reaches the helper")
+n_before = len(HELPER_STATE["requests"])
+bad_contexts = [
+    ("context not an object", "music", "song"),
+    ("mode missing", "music", {"fields": {}}),
+    ("mode not a string", "music", {"mode": 5}),
+    ("mode over 64 characters", "music", {"mode": "s" * 65}),
+    ("a mode of another room", "music", {"mode": "t2i"}),
+    ("any mode in the Cutting Room", "cutting", {"mode": "song"}),
+    ("fields not an object", "music", {"mode": "song", "fields": ["tags"]}),
+    ("an unknown field id", "music", {"mode": "song", "fields": {"prompt": "x"}}),
+    ("a value over 500 characters", "music", {"mode": "song", "fields": {"tags": "t" * 501}}),
+    ("more than 24 fields", "music", {"mode": "song", "fields": {"f%d" % i: 1 for i in range(25)}}),
+    ("a list value", "music", {"mode": "song", "fields": {"tags": ["a"]}}),
+    ("an object value", "music", {"mode": "song", "fields": {"tags": {"a": 1}}}),
+    ("a null value", "music", {"mode": "song", "fields": {"tags": None}}),
+]
+for label, room, context in bad_contexts:
+    code, body = chat(u, room=room, context=context)
+    check("400: " + label, code == 400 and body.get("ok") is False and isinstance(body.get("error"), str)
+          and body["error"], repr((code, body)))
+check("400s: none reached the helper", len(HELPER_STATE["requests"]) == n_before)
+code, body = chat(u, room="music", port=PORT2, context={"mode": "t2i"})
+check("400: a bad context is refused even with no brain", code == 400, repr((code, body)))
+
+# ---------------------------------------------------------------------------
 # 6. /api/helper is unchanged
 # ---------------------------------------------------------------------------
 print("/api/helper write: still 512 tokens, same response shape")
@@ -469,6 +637,20 @@ else:
                 text = f.read().lower()
             hits += ["%s: %s" % (os.path.relpath(path, ROOT), w) for w in words if w in text]
     check("forbidden: guides/ is clean (%d strings checked)" % len(words), not hits, repr(hits[:10]))
+
+print("guides/: no owner/fleet wording, private tag, decision id or local port")
+import re  # noqa: E402
+LEAKS = [r"owner ruling", r"owner's (ear|box|machine|setup)", r"this fleet", r"our fleet", r"\(private\)",
+         r"\bD-[0-9a-f]{8}\b", r":808[0-9]\b", r"live-trial\.md"]
+hits = []
+for dirpath, _, files in os.walk(os.path.join(ROOT, "guides")):
+    for fname in files:
+        path = os.path.join(dirpath, fname)
+        with open(path, encoding="utf-8", errors="replace") as f:
+            text = f.read()
+        hits += ["%s: %s" % (os.path.relpath(path, ROOT), m.group(0)) for pat in LEAKS
+                 for m in re.finditer(pat, text, re.IGNORECASE)]
+check("leaks: guides/ is clean (%d patterns)" % len(LEAKS), not hits, repr(hits[:10]))
 
 if FAILED:
     print("FAILED: %d checks: %s" % (len(FAILED), ", ".join(FAILED)))

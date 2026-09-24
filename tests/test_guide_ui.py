@@ -1,5 +1,6 @@
-"""Browser gate for the room guide panel (P1: the Film Room Guide in the
-Cutting Room).
+"""Browser gate for the room guide panel: the Film Room Guide in the Cutting
+Room (P1), every other room's guide, and the room context a generator room
+sends with each turn (P1b/P1c).
 
 Drives the real page in a real browser (Playwright) against its own
 server.py subprocesses (scratch config + scratch data, random free ports),
@@ -7,8 +8,9 @@ its own fake ComfyUI lane, and an in-process fake OpenAI-compatible helper
 that records every chat request. One server has the helper configured, one
 has none (the no-brain state).
 
-Set BWF_GUIDE_SHOTS=<dir> to also save screenshots (1280x800 and 390 wide,
-brain and no-brain) into that directory.
+Set BWF_GUIDE_SHOTS=<dir> to also save screenshots (the Cutting Room at
+1280x800 and 390 wide, brain and no-brain; every room's panel at 1280x800;
+Music and 3D at 390 wide, brain and no-brain) into that directory.
 
 Run: python3 tests/test_guide_ui.py
 """
@@ -138,6 +140,34 @@ def enter_cutting(page, url):
                            "document.querySelector('#guideName').textContent.includes('Film Room Guide')",
                            timeout=15000)
 
+ROOM_GUIDES = {r["id"]: r["guide"] for r in json.loads(read("rooms.json"))}
+GUIDE_META = {gid: json.loads(read("guides/%s/guide.json" % gid)) for gid in set(ROOM_GUIDES.values())}
+
+def size_note(gid):
+    t = {v: (len(read("guides/%s/%s" % (gid, GUIDE_META[gid]["projections"][v]))) + 3) // 4
+         for v in ("compact", "verbose")}
+    return "Compact needs a model with about {:,} tokens of context; verbose about {:,}.".format(
+        t["compact"] + 4096, t["verbose"] + 4096)
+
+CHAT_BODIES = []   # every POST /api/guide/chat body the page sent
+def record_chat(req):
+    if req.url.endswith("/api/guide/chat") and req.method == "POST":
+        CHAT_BODIES.append(json.loads(req.post_data or "{}"))
+
+def enter_room(page, url, room_id):
+    page.goto("about:blank")   # a hash-only goto would not reload the page
+    page.goto(url + "#room=" + room_id, wait_until="networkidle", timeout=30000)
+    page.wait_for_function("n => document.querySelector('#guideName') && "
+                           "document.querySelector('#guideName').textContent === n",
+                           arg=GUIDE_META[ROOM_GUIDES[room_id]]["name"], timeout=15000)
+
+NO_PICTURE = "\n\n[No picture is attached to this message.]"
+
+def text_of(page, sel):
+    """The element's text, or "" when it does not exist (so a RED run fails a check, not the run)."""
+    el = page.query_selector(sel)
+    return el.inner_text() if el else ""
+
 def guide_msgs(page):
     return page.eval_on_selector_all("#guideLog .guide-msg .guide-text", "els => els.map(e => e.textContent)")
 
@@ -184,6 +214,7 @@ try:
         # ---------------- brain ----------------
         print("brain: summary visible on entry, compact by default")
         page = browser.new_page(viewport={"width": 1280, "height": 800})
+        page.on("request", record_chat)
         enter_cutting(page, url_brain)
         box = page.eval_on_selector("#guidePanel > summary", "e => { const r = e.getBoundingClientRect(); "
                                     "return [r.top, r.bottom, window.innerHeight]; }")
@@ -207,10 +238,10 @@ try:
         HELPER.update(reply="Two characters, one room.")
         send(page, "who is in it?", 5)
         req = HELPER["requests"][-1]
-        check("history: second request carries both turns in order", req["messages"][1:] == [
-            {"role": "user", "content": "a lighthouse keeper's last night"},
+        check("history: second request carries both turns in order, each user turn grounded", req["messages"][1:] == [
+            {"role": "user", "content": "a lighthouse keeper's last night" + NO_PICTURE},
             {"role": "assistant", "content": '<img src=x onerror="window.__xss=1">Decide the ending first.'},
-            {"role": "user", "content": "who is in it?"}], req["messages"][1:])
+            {"role": "user", "content": "who is in it?" + NO_PICTURE}], req["messages"][1:])
 
         print("brain: verbose switches the system prompt and warns, never flips back")
         page.click('#guideVerbosity [data-verbosity="verbose"]')
@@ -258,6 +289,57 @@ try:
         page.reload(wait_until="networkidle")
         page.wait_for_timeout(800)
         check("clear: still empty after reload", guide_msgs(page) == [META["greeting"]], guide_msgs(page))
+        check("cutting: the page sent no context with any turn", CHAT_BODIES and
+              not any("context" in b for b in CHAT_BODIES), CHAT_BODIES[-1:])
+        check("size note: shown under the toggle", text_of(page, "#guideSizeNote") == size_note("film"),
+              text_of(page, "#guideSizeNote"))
+        page.close()
+
+        print("Music: the Sound Room Guide, with the room's mode and primary fields sent as context")
+        page = browser.new_page(viewport={"width": 1280, "height": 800})
+        page.on("request", record_chat)
+        enter_room(page, url_brain, "music")
+        check("music: the panel is visible", page.is_visible("#guidePanel"))
+        check("music: greeting shown first", guide_msgs(page)[:1] == [GUIDE_META["sound"]["greeting"]], guide_msgs(page))
+        check("music: size note", text_of(page, "#guideSizeNote") == size_note("sound"), text_of(page, "#guideSizeNote"))
+        mode = page.evaluate("STATE.mode")
+        check("music: A song with words is the selected mode", mode == "song", mode)
+        page.fill("#promptBox", "warm pop, clear female vocals, singing")
+        page.fill("#f_duration", "150")
+        del CHAT_BODIES[:]
+        HELPER.update(reply="Sung, then.", finish="stop")
+        send(page, "a song about the last ferry home", 3)
+        body = CHAT_BODIES[-1] if CHAT_BODIES else {}
+        ctx = body.get("context") or {}
+        check("music: the turn carries the selected mode", ctx.get("mode") == "song", body)
+        check("music: and the primary field values, numbers as numbers",
+              (ctx.get("fields") or {}).get("tags") == "warm pop, clear female vocals, singing"
+              and (ctx.get("fields") or {}).get("duration") == 150, ctx)
+        sent = HELPER["requests"][-1]["messages"][-1]["content"] if HELPER["requests"] else ""
+        check("music: the helper sees the context line, with real labels",
+              sent.startswith('[Current room: Music · mode: A song with words (song) · Style / genre: '
+                              '"warm pop, clear female vocals, singing"') and "Duration (seconds): 150" in sent, sent)
+        check("music: the log shows the user's own words, not the context line",
+              guide_msgs(page)[1] == "a song about the last ferry home", guide_msgs(page))
+        page.close()
+
+        print("every room: the right guide, screenshots at 1280x800 (brain)")
+        page = browser.new_page(viewport={"width": 1280, "height": 800})
+        for room_id, gid in ROOM_GUIDES.items():
+            enter_room(page, url_brain, room_id)
+            check("%s: shows %s" % (room_id, GUIDE_META[gid]["name"]), page.is_visible("#guidePanel")
+                  and page.inner_text("#guideName") == GUIDE_META[gid]["name"], page.inner_text("#guideName"))
+            page.locator("#guidePanel").scroll_into_view_if_needed()
+            shot(page, "brain-%s-1280x800" % room_id)
+        page.close()
+        for label, url in (("brain", url_brain), ("nobrain", url_none)):
+            page = browser.new_page(viewport={"width": 390, "height": 844})
+            for room_id in ("music", "3d"):
+                enter_room(page, url, room_id)
+                check("%s %s: no horizontal scroll at 390" % (label, room_id), no_hscroll(page))
+                page.locator("#guidePanel").scroll_into_view_if_needed()
+                shot(page, "%s-%s-390" % (label, room_id))
+            page.close()
         browser.close()
 finally:
     for p in PROCS:

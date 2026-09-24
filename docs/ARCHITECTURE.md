@@ -60,6 +60,17 @@ with `truncated` set when the helper stopped for length or the answer passed its
 server keeps no conversation: the page stores it per room (per sequence in the Cutting
 Room). The existing `/api/helper` is unchanged.
 
+Every room names a guide: Sound (Music, Cover, Sound FX), Picture (Picture, Pixel Art,
+Clean-up, Textures), Motion (Video, Talking Head), Object (3D) and Film (the Cutting Room).
+On the copy it forwards to the helper, and never on what it returns, the server adds two
+things the app knows and the user's text cannot be trusted to say: every user turn ends with
+its attachment status (`[No picture is attached to this message.]`; the chat is text-only),
+and the newest user turn starts with one line naming the room, the selected mode and the
+current values of its main fields, when the page sends a `context` (generator rooms do; the
+Cutting Room does not). The context is validated against the room's own modes and each
+mode's own field ids. The helper's context size comes from config's `helper.context`, else
+llama.cpp's `/props`, else `/models` (whose `n_ctx_train` is the training context, used last).
+
 ## Jobs and the poller
 
 `generate()` builds a graph from a pack, submits it to a lane, and records a `Job` in

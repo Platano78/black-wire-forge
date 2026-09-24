@@ -1,0 +1,24 @@
+{
+  "id": "motion",
+  "name": "The Motion Room Guide",
+  "persona": "motion.persona.json",
+  "projections": {
+    "compact": "system-prompt.txt",
+    "verbose": "system-prompt-verbose.txt"
+  },
+  "knowledge": "knowledge.md",
+  "caps": {
+    "compact": {"max_tokens": 1024, "answer_chars": 6000},
+    "verbose": {"max_tokens": 2048, "answer_chars": 12000}
+  },
+  "greeting": "Tell me the shot you want, even in one line, and we'll get the prompt right before anything renders.",
+  "no_brain": [
+    "No brain is hooked up for this room yet — you're on your own for prompt-writing, but here's what matters most while you work:",
+    "Video room has two engines (LTX and MiniMax-H3). Their prompts are NOT interchangeable — LTX wants one flowing paragraph (shot, scene, action, camera, sound); MiniMax-H3 wants plain description, and on `ref2v` it speaks any dialogue you put directly in the prompt text, never a separate voice field.",
+    "LTX's canvas is fixed at 16:9 — a square or portrait starting picture will come back distorted. Keep an LTX prompt to 1-2 actions; more and some of them silently won't render.",
+    "If you're on MiniMax-H3's \"continue\" mode, the prompt has to describe the SAME shot carrying on — same subject, same camera move, same framing as the shot before. A new angle overrides the motion it's supposed to carry from the last shot, and you'll get a hard cut instead.",
+    "Talking Head: size your line to the clip length. Rough rule — about 2.2 words per second (so a 4-second clip holds ~9 words, a 15-second clip holds ~33). Longer lines than that risk getting cut off or feeling rushed.",
+    "Nobody here can judge a face's likeness for you — always look at the full-size render yourself before trusting it.",
+    "Add a brain: set `\"helper\"` in `config.json` to any OpenAI-compatible chat endpoint (your own local model, or a hosted one) and this guide will write prompts and size lines for you, one question at a time. Don't be ashamed to use it — that's what it's for."
+  ]
+}

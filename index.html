@@ -317,7 +317,7 @@
     border-right:1px solid var(--divider); font-size:12px; text-transform:uppercase; letter-spacing:.03em}
   #guideVerbosity button:last-child{border-right:none}
   #guideVerbosity button[aria-pressed="true"]{background:var(--accent); color:var(--on-accent)}
-  #guideCtxNote{font-size:11px; color:var(--text-mid); margin:4px 0 0}
+  #guideSizeNote, #guideCtxNote{font-size:11px; color:var(--text-mid); margin:4px 0 0}
   #guideCtxNote.warn{color:var(--stale)}
   #guideLog{margin-top:8px; max-height:240px; overflow-y:auto; overflow-x:hidden; background:var(--surface3);
     border:1px solid var(--divider); padding:8px; display:flex; flex-direction:column; gap:8px}
@@ -802,6 +802,7 @@
           <button type="button" data-verbosity="compact" aria-pressed="true">Compact</button>
           <button type="button" data-verbosity="verbose" aria-pressed="false">Verbose</button>
         </div>
+        <p id="guideSizeNote"></p>
         <p id="guideCtxNote" hidden></p>
         <div id="guideLog" role="log" aria-label="Conversation with the guide"></div>
         <label class="sr-only" for="guideInput">Message the guide</label>
@@ -2436,6 +2437,35 @@ function renderGuideToggle(){
   $('#guideCtxNote').textContent = text;
   $('#guideCtxNote').hidden = !text;
   $('#guideCtxNote').classList.toggle('warn', warn);
+  const p = GUIDE.guide.projections;
+  $('#guideSizeNote').textContent = 'Compact needs a model with about ' + n(p.compact.tokens + GUIDE_CTX_HEADROOM)
+    + ' tokens of context; verbose about ' + n(p.verbose.tokens + GUIDE_CTX_HEADROOM) + '.';
+}
+// The room's selected mode and the current values of its primary fields,
+// sent with every turn so the guide never has to ask which mode is picked.
+// The Cutting Room has no modes and sends none. File inputs are left out
+// (the server states what is attached); a long value is cut to the server's
+// 500 characters and says so with a trailing ellipsis.
+const GUIDE_CONTEXT_TYPES = ['text', 'textarea', 'select', 'number', 'int', 'checkbox'];
+function guideContext(){
+  const room = currentRoom(), mode = currentMode();
+  if(!room || isCutting(room) || !mode || !STATE.mode) return null;
+  const values = currentValues(), fields = {};
+  fieldsFor(mode).filter(f => tierOf(f) === 'primary' && GUIDE_CONTEXT_TYPES.includes(f.type))
+    .slice(0, 24).forEach(f => {
+      let v = values[f.id];
+      if(v === undefined || v === null) return;
+      if(f.type === 'number' || f.type === 'int'){
+        if(String(v).trim() === '' || !isFinite(Number(v))) return;
+        v = Number(v);
+      } else if(typeof v === 'string'){
+        v = v.trim();
+        if(!v) return;
+        if(v.length > 500) v = v.slice(0, 499) + '…';
+      }
+      fields[f.id] = v;
+    });
+  return {mode: STATE.mode, fields: fields};
 }
 function guideMsgEl(role, text, hints){
   const d = document.createElement('div');
@@ -2489,8 +2519,11 @@ async function guideSend(){
   guideBusy(true);
   GUIDE_ABORT = new AbortController();
   try{
-    const r = await postJSON('/api/guide/chat', {room: room, verbosity: verbosity,
-      messages: hist.slice(-GUIDE_HIST_MAX).map(m => ({role: m.role, content: m.content}))}, GUIDE_ABORT.signal);
+    const body = {room: room, verbosity: verbosity,
+      messages: hist.slice(-GUIDE_HIST_MAX).map(m => ({role: m.role, content: m.content}))};
+    const context = guideContext();
+    if(context) body.context = context;
+    const r = await postJSON('/api/guide/chat', body, GUIDE_ABORT.signal);
     if(!r || !r.ok){
       if(r && r.no_brain) GUIDE_ROOM = null;   // the helper went away: reload the panel's state
       throw new Error((r && r.error) || 'The helper is busy or switched off right now.');

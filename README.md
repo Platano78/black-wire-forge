@@ -142,15 +142,22 @@ own.
   picture". Omit it entirely to hide those buttons. If configured, your text (and, for
   "Describe this picture", the image) is sent to that endpoint -- see `SECURITY.md`.
 
-  The same helper also powers each room's **guide**: a persona (P1: the Film Room Guide, in
-  the Cutting Room) that talks the idea through with you inside the room, from the files in
-  `guides/`. A **Compact / Verbose** toggle picks how much the guide knows; Compact is the
+  The same helper also powers each room's **guide**: a persona (the Sound, Picture, Motion and
+  Object guides in their rooms, the Film Room Guide in the Cutting Room) that talks the idea
+  through with you inside the room, from the files in `guides/`. Each turn tells the guide the
+  room's selected mode and main field values, and that no picture is attached (the chat is
+  text-only), so it never has to take your word for either. A **Compact / Verbose** toggle picks how much the guide knows; Compact is the
   default and suits small models, and if the helper reports a context too small for your
   choice the panel says so but never switches it for you. A reply cut short by its length
   limit is flagged, never silently trimmed. The conversation stays in your browser (per
   sequence in the Cutting Room) and is sent with each turn. With no `helper` configured the
   panel still shows the guide's plain guidance and how to add a helper. Guide chat waits up
-  to `timeout_s` (120 seconds when unset), since a verbose guide is slow on a small box.
+  to `timeout_s` (120 seconds when unset), since a verbose guide is slow on a small box. The
+  panel states how much context each choice needs (the guide plus 4,096 tokens for the
+  conversation). The app reads the helper's context from llama.cpp's `/props`, else from
+  `/models`, which on llama.cpp reports the model's TRAINING context rather than what the
+  server was started with; set `"context": 16384` (a whole number of tokens) in `helper` to
+  state it yourself, and that wins.
 - **cut.fontfile**: `{"cut": {"fontfile": "/path/to/a/TrueType/font.ttf"}}` -- the font the
   cut's title cards use. Without it the app looks for a handful of common DejaVu/Liberation
   paths. A cut with no title cards still works either way; a cut that DOES include one is

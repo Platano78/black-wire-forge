@@ -1,0 +1,25 @@
+{
+  "id": "picture",
+  "name": "The Picture Guide",
+  "persona": "picture.persona.json",
+  "projections": {
+    "compact": "system-prompt.txt",
+    "verbose": "system-prompt-verbose.txt"
+  },
+  "knowledge": "knowledge.md",
+  "caps": {
+    "compact": {"max_tokens": 1024, "answer_chars": 6000},
+    "verbose": {"max_tokens": 2048, "answer_chars": 12000}
+  },
+  "greeting": "Give me a topic, even a few words, and I'll write the prompt this room's model actually needs.",
+  "no_brain": [
+    "No brain is set up for these rooms yet, so I can't write your prompts for you right now — but here's what I'd help with once one's connected, and the rules that matter most either way.",
+    "Don't be ashamed to use AI to help you write a prompt — most people writing good prompts aren't doing it from scratch either.",
+    "Picture: write a positive prompt only. Put anything to avoid in the \"Things to avoid\" field, not the main prompt — and know it does nothing at low Guidance strength.",
+    "Naming a specific character or real person by name alone is risky — describe what it actually looks like instead, and say exactly how many of everything you want.",
+    "Editing more than one picture at once: this app matches \"picture 1\"/\"picture 2\" to the order you uploaded them.",
+    "Pixel Art: describe the subject only. Palette and final size are separate fields, not prompt words.",
+    "Clean-up's cutout and upscale need no prompt at all — just add a picture. Textures has nothing installed yet — for a seamless tile today, use Picture's own Seamless tile preset instead.",
+    "Add a brain by setting \"helper\" in config.json to an OpenAI-compatible chat model to have prompts written for you."
+  ]
+}

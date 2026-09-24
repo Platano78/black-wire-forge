@@ -210,6 +210,10 @@ def load_config():
     if helper is not None and (not isinstance(helper, dict) or not helper.get("url")):
         die("\"helper\" in %s must be an object with at least a \"url\" "
             "(ending in \"/v1\")." % CONFIG_FILE)
+    ctx = helper.get("context") if helper is not None else None
+    if ctx is not None and (not isinstance(ctx, int) or isinstance(ctx, bool) or ctx <= 0):
+        die("\"helper\".\"context\" in %s must be a whole number of tokens (the context "
+            "the helper model actually serves), e.g. 16384." % CONFIG_FILE)
     return cfg
 
 
@@ -3144,32 +3148,54 @@ def _room_guide(room_id):
     return True, GUIDES.get(room.get("guide")) if room.get("guide") else None
 
 
+def _ctx_int(v):
+    return v if isinstance(v, int) and not isinstance(v, bool) and v > 0 else None
+
+
+def _get_json(url):
+    with urllib.request.urlopen(url, timeout=3.0) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
 def _helper_context():
-    """The helper's context size in tokens, as its GET /models reports it,
-    or None when it does not say (or cannot be reached). Probed at most once
-    per GUIDE_CONTEXT_TTL, failures included; never raises."""
+    """The helper's context size in tokens, or None when nothing says.
+
+    First answer wins: config's "helper": {"context": N}; then GET /props
+    (llama.cpp's served -c, at the helper url minus a trailing /v1); then
+    GET /models (n_ctx / context_length / max_context_length, and last the
+    TRAINING context n_ctx_train, which can overstate the served window).
+    Probed at most once per GUIDE_CONTEXT_TTL, failures included; never raises."""
     if not HELPER:
         return None
+    if _ctx_int(HELPER.get("context")):
+        return HELPER["context"]
     with _GUIDE_CONTEXT_LOCK:
         now = time.time()
         if _GUIDE_CONTEXT["at"] is not None and now - _GUIDE_CONTEXT["at"] < GUIDE_CONTEXT_TTL:
             return _GUIDE_CONTEXT["value"]
         value = None
+        base = HELPER["url"].rstrip("/")
         try:
-            url = HELPER["url"].rstrip("/") + "/models"
-            with urllib.request.urlopen(url, timeout=3.0) as r:
-                raw = json.loads(r.read().decode("utf-8"))
-            entries = [e for e in (raw.get("data") or raw.get("models") or []) if isinstance(e, dict)]
-            entry = next((e for e in entries if e.get("id") == HELPER.get("model")),
-                         entries[0] if entries else {})
-            meta = entry.get("meta") if isinstance(entry.get("meta"), dict) else {}
-            for v in (meta.get("n_ctx"), entry.get("context_length"),
-                      entry.get("max_context_length"), meta.get("n_ctx_train")):
-                if isinstance(v, int) and not isinstance(v, bool) and v > 0:
-                    value = v
-                    break
+            props = _get_json((base[:-3] if base.endswith("/v1") else base) + "/props")
+            settings = props.get("default_generation_settings")
+            value = _ctx_int((settings or {}).get("n_ctx") if isinstance(settings, dict) else None) \
+                or _ctx_int(props.get("n_ctx"))
         except Exception:
             value = None
+        if value is None:
+            try:
+                raw = _get_json(base + "/models")
+                entries = [e for e in (raw.get("data") or raw.get("models") or []) if isinstance(e, dict)]
+                entry = next((e for e in entries if e.get("id") == HELPER.get("model")),
+                             entries[0] if entries else {})
+                meta = entry.get("meta") if isinstance(entry.get("meta"), dict) else {}
+                for v in (meta.get("n_ctx"), entry.get("context_length"),
+                          entry.get("max_context_length"), meta.get("n_ctx_train")):
+                    if _ctx_int(v):
+                        value = v
+                        break
+            except Exception:
+                value = None
         _GUIDE_CONTEXT.update(at=now, value=value)
         return value
 
@@ -3214,6 +3240,65 @@ def _cap_guide_answer(text, cap):
     return window
 
 
+GUIDE_CONTEXT_FIELDS = 24
+GUIDE_CONTEXT_VALUE_CHARS = 500
+
+
+def guide_grounding(pictures):
+    """The line the server appends to every user turn it forwards: the app
+    knows what is attached, so the model never has to trust the user's word."""
+    if not pictures:
+        return "\n\n[No picture is attached to this message.]"
+    return "\n\n[%d picture%s attached.]" % (pictures, "" if pictures == 1 else "s")
+
+
+def _guide_context_line(room_id, ctx):
+    """Validate POST /api/guide/chat's optional "context" -> (line or None,
+    error sentence or None). The line names the room, the mode in its own
+    words, and each field by its label, in the mode's own field order."""
+    if ctx is None:
+        return None, None
+    if not isinstance(ctx, dict):
+        return None, "\"context\" must be an object with a \"mode\" and \"fields\"."
+    room = next((r for r in engines.rooms() if r.get("id") == room_id), {})
+    mode = ctx.get("mode")
+    if not isinstance(mode, str) or len(mode) > 64:
+        return None, "The context's \"mode\" must be a mode name of 64 characters or fewer."
+    cap = next((m["cap"] for m in room.get("modes") or [] if m.get("mode") == mode), None)
+    if cap is None:
+        return None, "%s is not a mode of the %s room." % (mode or "That", room.get("name") or room_id)
+    fields = ctx.get("fields", {})
+    if not isinstance(fields, dict) or len(fields) > GUIDE_CONTEXT_FIELDS:
+        return None, ("The context's \"fields\" must be an object of at most %d field values."
+                      % GUIDE_CONTEXT_FIELDS)
+    known = engines.fields(cap, mode)
+    ids = {f.get("id") for f in known}
+    for k, v in fields.items():
+        if k not in ids:
+            return None, "%s is not a field of that mode." % k
+        if isinstance(v, str):
+            if len(v) > GUIDE_CONTEXT_VALUE_CHARS:
+                return None, "The value for %s is too long (at most %d characters)." % (k, GUIDE_CONTEXT_VALUE_CHARS)
+        elif not isinstance(v, (int, float, bool)):
+            return None, "The value for %s must be text, a number, or true/false." % k
+    parts = ["Current room: %s" % (room.get("name") or room_id),
+             "mode: %s (%s)" % (engines.mode_words(cap).get(mode, mode), mode)]
+    for f in known:
+        if f.get("id") not in fields:
+            continue
+        v = fields[f["id"]]
+        if isinstance(v, bool):
+            shown = "yes" if v else "no"
+        elif isinstance(v, str):
+            shown = json.dumps(v, ensure_ascii=False)   # quoted, and a newline stays on one line
+        elif isinstance(v, float) and v.is_integer():
+            shown = str(int(v))
+        else:
+            shown = str(v)
+        parts.append("%s: %s" % (f.get("label") or f["id"], shown))
+    return "[" + " · ".join(parts) + "]", None
+
+
 def guide_chat(p):
     """The whole POST /api/guide/chat body -> (body, http code)."""
     if not isinstance(p, dict):
@@ -3240,10 +3325,25 @@ def guide_chat(p):
             return {"ok": False, "error": "Each message needs text, and that one is too long."}, 400
     if messages[-1]["role"] != "user":
         return {"ok": False, "error": "The last message must be yours."}, 400
+    context_line, err = _guide_context_line(p.get("room"), p.get("context"))
+    if err:
+        return {"ok": False, "error": err}, 400
     if not HELPER:
         return {"ok": False, "no_brain": True, "error": GUIDE_ADD_BRAIN}, 409
     proj = g["projections"][verbosity]
-    kept, dropped = _trim_guide_history([{"role": m["role"], "content": m["content"]} for m in messages])
+    # What the helper sees, never what the page stores or gets back: every
+    # user turn carries its attachment status (text-only for now: none), and
+    # the newest one leads with the room's current mode and fields. Added
+    # before trimming, so the history budget counts them.
+    forwarded = []
+    for i, m in enumerate(messages):
+        content = m["content"]
+        if m["role"] == "user":
+            if i == len(messages) - 1 and context_line:
+                content = context_line + "\n\n" + content
+            content += guide_grounding(0)
+        forwarded.append({"role": m["role"], "content": content})
+    kept, dropped = _trim_guide_history(forwarded)
     try:
         reply, finish = _helper_chat([{"role": "system", "content": proj["text"]}] + kept,
                                      max_tokens=proj["max_tokens"], timeout=HELPER.get("timeout_s", 120))

@@ -1,0 +1,24 @@
+{
+  "id": "sound",
+  "name": "The Sound Room Guide",
+  "persona": "sound.persona.json",
+  "projections": {
+    "compact": "system-prompt.txt",
+    "verbose": "system-prompt-verbose.txt"
+  },
+  "knowledge": "knowledge.md",
+  "caps": {
+    "compact": {"max_tokens": 1024, "answer_chars": 6000},
+    "verbose": {"max_tokens": 2048, "answer_chars": 12000}
+  },
+  "greeting": "Give me a topic, even one line, and I'll turn it into the words this room's engine needs, and show you exactly what will be sent.",
+  "no_brain": [
+    "No brain is set up for the Sound rooms yet — you're on your own for now, but here's what matters.",
+    "Music room runs three different engines (ACE-Step, MiniMax-Music3, YuE2) — each wants its style text written a different way. Check the field hints before you type.",
+    "Want lyrics sung? Say so in the words themselves — name a voice (\"clear female vocals, singing\"). Leave lyrics blank and it renders instrumental every time, even with a full verse written.",
+    "Write enough lyrics for the length you ask for — a short verse over a long duration comes back mostly instrumental with the words squeezed in late.",
+    "MiniMax-Music3 wants three sections in its caption (what it is, who's singing, how it unfolds) — a one-line description tends to cut off mid-song.",
+    "None of these four engines do spoken words or a voice reading a line — that's the Talking Head room, not here.",
+    "Don't be ashamed to add a brain — any OpenAI-compatible chat model set as the app's \"helper\" — it writes all of this for you, shows you the exact text before it sends, and asks one question when something's unclear."
+  ]
+}

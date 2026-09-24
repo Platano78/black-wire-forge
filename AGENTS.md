@@ -167,7 +167,10 @@ availability against) — always pass a real lane id.
   `null` for a room without one), whether a helper is configured (`"helper"`), and its reported
   context (`"helper_context"`, `null` when unknown).
 - `POST /api/guide/chat` with `{"room", "verbosity": "compact"|"verbose", "messages": [...]}` —
-  one guide turn; `409` with `"no_brain": true` when no `"helper"` is configured.
+  one guide turn; `409` with `"no_brain": true` when no `"helper"` is configured. An optional
+  `"context": {"mode": <a mode of that room>, "fields": {<field id>: <value>}}` tells the guide
+  the room's current mode and field values (`400` with a sentence if it names a mode or field
+  the room does not have).
 
 ## Make something and get the file
 
