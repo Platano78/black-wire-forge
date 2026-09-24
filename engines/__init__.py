@@ -65,6 +65,35 @@ falsy — is ignored. The dict has exactly these keys:
                        A mode with no entry falls back to a generic
                        instruction -- the core, not the pack, owns that
                        fallback text.
+  writers   optional dict  mode_name -> a writing skill for the room's guide
+                       (POST /api/guide/skill): a topic in, this mode's field
+                       values out. Each is a dict with:
+                         label       short name, e.g. "Song writer"
+                         prompt      the writer's system prompt, this
+                                     engine's own writing rules
+                         keys        {OUTPUT_KEY: field id}, e.g. {"TAGS":
+                                     "tags"}: the reply is one "KEY: value"
+                                     line per key, never JSON (small models do
+                                     not reliably escape newlines in a JSON
+                                     string)
+                         multiline   the one key (also in `keys`) whose value
+                                     runs from its line to the end, e.g.
+                                     "LYRICS"
+                         none_token  the word that means "empty", e.g. "NONE".
+                                     On the multiline key it means an empty
+                                     field; on any other key, "leave the
+                                     field as it is"
+                         options     optional {field id: [allowed values]} for
+                                     a text field the engine only accepts from
+                                     a fixed list (matched without case)
+                         check       callable(values, request) -> [plain
+                                     problem sentences]; [] means fine.
+                                     `values` are the mode's coerced field
+                                     values. It also runs at Make time: a
+                                     request with problems is refused with
+                                     needs_confirm until the user confirms.
+                       A reply may instead be one "QUESTION: ..." line: the
+                       writer asks the user one thing before writing.
   fields    optional dict  mode_name -> list of field-descriptor dicts, each
                        with "id", "label", "type" (text/textarea/number/int/
                        select/checkbox/audio/image/image_list/video_list) and
@@ -171,7 +200,7 @@ falsy — is ignored. The dict has exactly these keys:
 The public API of this module (packs, role_pool, role_rules, model_keys,
 abilities, missing_words, mode_ability, describe, graph_for, modes_for,
 licences, licence_for, caps, cap_word, cap_order, mode_words, mode_room,
-mode_note, prompt_guide, rooms, fields, presets, quality, examples, post_for,
+mode_note, prompt_guide, writer, parse_writer_reply, rooms, fields, presets, quality, examples, post_for,
 unet_loader, quant_words) is all the core needs to stay model-agnostic.
 """
 
@@ -550,6 +579,52 @@ def prompt_guide(cap, mode):
     shape as mode_note()."""
     pack = _owner(cap, mode)
     return (pack.get("prompt_guides") or {}).get(mode) if pack else None
+
+
+def writer(cap, mode):
+    """The owning pack's writing skill for a mode (see "writers" above), or
+    None -- same lookup shape as prompt_guide()."""
+    pack = _owner(cap, mode)
+    return (pack.get("writers") or {}).get(mode) if pack else None
+
+
+_THINK = ("<think>", "</think>")
+
+
+def parse_writer_reply(w, text):
+    """Parse a writer's line-delimited reply ->
+    {"question": str} when it asks, else {"values": {field id: raw text}}.
+    A non-blank QUESTION line before the multiline key wins. The multiline
+    key's value runs to the end; its none_token means "". Any other key whose
+    value is blank or the none_token is left out. Raises ValueError when the
+    reply holds neither a question nor the multiline key."""
+    text = text or ""
+    if _THINK[1] in text:
+        text = text.split(_THINK[1], 1)[1]
+    keys, multi, none = w["keys"], w["multiline"], w["none_token"].upper()
+    values, lines, rest = {}, None, None
+    for line in text.splitlines():
+        if lines is not None:
+            if line.strip().startswith("```"):
+                continue
+            lines.append(line)
+            continue
+        head, sep, value = line.strip().strip("*").partition(":")
+        head = head.strip().strip("*").strip().upper()
+        if not sep:
+            continue
+        value = value.strip().strip("*").strip()
+        if head == "QUESTION" and value and value.upper() != none:
+            return {"question": value}
+        if head == multi:
+            lines, rest = [], value
+        elif head in keys and value and value.upper() != none:
+            values[keys[head]] = value
+    if lines is None:
+        raise ValueError("no %s line" % multi)
+    body = "\n".join(([rest] if rest else []) + lines).strip()
+    values[keys[multi]] = "" if body.upper().rstrip(".") == none else body
+    return {"values": values}
 
 
 ROOMS_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "rooms.json")

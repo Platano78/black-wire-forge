@@ -1,6 +1,7 @@
 """Browser gate for the room guide panel: the Film Room Guide in the Cutting
 Room (P1), every other room's guide, and the room context a generator room
-sends with each turn (P1b/P1c).
+sends with each turn (P1b/P1c); the song writer skill ("Write it for me") and the
+Make-time confirm (P2).
 
 Drives the real page in a real browser (Playwright) against its own
 server.py subprocesses (scratch config + scratch data, random free ports),
@@ -109,7 +110,13 @@ def start_server(name, lane_port, with_helper):
     port = free_port()
     cfg = {"title": "guide UI test", "port": port, "bind": "127.0.0.1",
            "lanes": [{"id": "t", "name": "Fake lane", "host": "127.0.0.1", "port": lane_port,
-                      "caps": ["image", "video", "audio"]}],
+                      "caps": ["image", "video", "audio"],
+                      # the song and background-music roles, so both modes can run
+                      # (the Make-time check only applies to a mode the lane can run)
+                      "models": {"ace_unet": "ace.safetensors", "ace_clip1": "a.safetensors",
+                                 "ace_clip2": "b.safetensors", "ace_vae": "v.safetensors",
+                                 "music3_unet": "m.safetensors", "music3_clip": "mc.safetensors",
+                                 "music3_vae": "mv.safetensors"}}],
            "timing": {"poll_seconds": 0.5, "job_poll_seconds": 1.0}}
     if with_helper:
         cfg["helper"] = {"url": "http://127.0.0.1:%d/v1" % fake.server_address[1], "model": "test-model",
@@ -321,6 +328,98 @@ try:
                               '"warm pop, clear female vocals, singing"') and "Duration (seconds): 150" in sent, sent)
         check("music: the log shows the user's own words, not the context line",
               guide_msgs(page)[1] == "a song about the last ferry home", guide_msgs(page))
+        page.close()
+
+        GOOD = "TAGS: warm pop, clear female vocals\nBPM: NONE\nKEY: NONE\nDURATION: 150\nTIMESIG: NONE\nLANGUAGE: NONE\nLYRICS:\n[Intro]\nhello sea\n\n[Verse]\na\n\n[Chorus]\nb\n\n[Verse]\nc\n\n[Chorus]\nd\n\n[Outro]\ne"
+        BAD = "TAGS: warm pop\nDURATION: 150\nLYRICS:\n[Verse]\na\n\n[Chorus]\nb"
+        SKILL_BODIES = []
+        GEN_BODIES = []
+        # ---------------- P2: the song writer skill + the Make-time confirm ----------------
+        print("Music, song: Write it for me (the song writer skill)")
+        page = browser.new_page(viewport={"width": 1280, "height": 800})
+        page.on("request", lambda req: (SKILL_BODIES.append(json.loads(req.post_data or "{}")) if req.url.endswith("/api/guide/skill") and req.method == "POST" else None, GEN_BODIES.append(json.loads(req.post_data or "{}")) if req.url.endswith("/api/generate") and req.method == "POST" else None))
+        enter_room(page, url_brain, "music")
+        check("skill: the Write button shows for a mode with a writer", page.is_visible("#guideWriteBtn"))
+        check("skill: the old helper button is hidden for song", not page.is_visible("#helperWriteBtn"))
+        page.fill("#guideInput", "a song about the sea")
+        shot(page, "skill-write-button-1280x800")
+        HELPER["reply"] = GOOD
+        page.click("#guideWriteBtn")
+        page.wait_for_selector("#guideSkillUse", timeout=15000)
+        check("skill: the preview names the fields", "Style / genre" in text_of(page, "#guideSkill") and "warm pop, clear female vocals" in text_of(page, "#guideSkill"))
+        check("skill: lyrics in a monospaced block", page.eval_on_selector("#guideSkill pre", "e => getComputedStyle(e).fontFamily").lower().find("mono") >= 0)
+        check("skill: the request carried the room context", bool(SKILL_BODIES) and SKILL_BODIES[-1].get("mode") == "song" and SKILL_BODIES[-1].get("topic") == "a song about the sea" and (SKILL_BODIES[-1].get("context") or {}).get("mode") == "song", SKILL_BODIES[-1:])
+        check("skill: what the brain was asked is there, collapsed", page.is_visible("#guideSkillSent") and page.eval_on_selector("#guideSkillSent", "e => !e.open"))
+        page.click("#guideSkillSent summary")
+        check("skill: the sent text is shown verbatim", "Request: a song about the sea" in text_of(page, "#guideSkillSent"))
+        page.click("#guideSkillSent summary")
+        shot(page, "skill-preview-1280x800")
+        page.click("#guideSkillUse")
+        check("skill: Use these fills the style", page.input_value("#promptBox") == "warm pop, clear female vocals", page.input_value("#promptBox"))
+        check("skill: Use these fills the lyrics", page.input_value("#f_lyrics").startswith("[Intro]\nhello sea"), page.input_value("#f_lyrics"))
+        check("skill: the preview closes", not page.is_visible("#guideSkill"))
+        print("skill: the question path")
+        HELPER["reply"] = "QUESTION: Sung, or instrumental?"
+        page.fill("#guideInput", "music for my video about the sea")
+        page.click("#guideWriteBtn")
+        page.wait_for_selector("#guideSkillAnswer", timeout=15000)
+        check("skill: the question is shown", "Sung, or instrumental?" in text_of(page, "#guideSkill"))
+        shot(page, "skill-question-1280x800")
+        HELPER["reply"] = GOOD
+        page.fill("#guideSkillAnswer", "Sung")
+        page.click("#guideSkillAnswerBtn")
+        page.wait_for_selector("#guideSkillUse", timeout=15000)
+        check("skill: the answer goes back with the same topic", SKILL_BODIES[-1].get("answer") == "Sung" and SKILL_BODIES[-1].get("topic") == "music for my video about the sea", SKILL_BODIES[-1])
+        page.click("#guideSkillDismiss")
+        check("skill: Dismiss closes it", not page.is_visible("#guideSkill"))
+        print("skill: problems are shown plainly")
+        HELPER["reply"] = BAD
+        page.fill("#guideInput", "a song about the sea")
+        page.click("#guideWriteBtn")
+        page.wait_for_selector("#guideSkillProblems", timeout=15000)
+        check("skill: both problems listed", page.eval_on_selector_all("#guideSkillProblems li", "els => els.length") == 2)
+        shot(page, "skill-problems-1280x800")
+        print("skill: 390 wide")
+        HELPER["reply"] = GOOD
+        page.fill("#guideInput", "a song about the sea")
+        page.click("#guideWriteBtn")
+        page.wait_for_selector("#guideSkillUse", timeout=15000)
+        page.set_viewport_size({"width": 390, "height": 844})
+        page.wait_for_timeout(300)
+        check("skill: no horizontal scroll at 390 with the preview open", no_hscroll(page))
+        page.locator("#guideSkill").scroll_into_view_if_needed()
+        shot(page, "skill-preview-390")
+        page.set_viewport_size({"width": 1280, "height": 800})
+        page.click("#guideSkillDismiss")
+        print("Make-time confirm: lyrics with no voice")
+        page.fill("#promptBox", "warm acoustic pop, gentle drums")
+        page.fill("#f_lyrics", "[Verse]\nSunlight on the water\n[Chorus]\nHold on")
+        del GEN_BODIES[:]
+        page.click("#makeBtn")
+        page.wait_for_selector("#makeConfirm:not([hidden])", timeout=15000)
+        check("confirm: the problems are shown", page.eval_on_selector_all("#makeConfirmList li", "els => els.length") == 2 and "voice" in text_of(page, "#makeConfirmList"))
+        check("confirm: the first request had no confirm", len(GEN_BODIES) == 1 and "confirm" not in GEN_BODIES[0], GEN_BODIES)
+        page.locator("#makeConfirm").scroll_into_view_if_needed()
+        shot(page, "confirm-1280x800")
+        page.click("#makeAnywayBtn")
+        page.wait_for_timeout(800)
+        check("confirm: Make anyway resends with confirm", len(GEN_BODIES) == 2 and GEN_BODIES[1].get("confirm") is True, GEN_BODIES)
+        check("confirm: the box closes", not page.is_visible("#makeConfirm"))
+        page.click("#makeBtn")
+        page.wait_for_selector("#makeConfirm:not([hidden])", timeout=15000)
+        page.click("#makeFixBtn")
+        check("confirm: Fix it goes to the guide", page.evaluate("document.activeElement && document.activeElement.id") == "guideInput" and not page.is_visible("#makeConfirm"))
+        print("skill: a mode with no writer keeps the old helper button")
+        page.check('#enginePicker input[data-mode="music"]')
+        page.wait_for_timeout(600)
+        check("skill: no Write button for a mode without a writer", not page.is_visible("#guideWriteBtn"), page.evaluate("STATE.mode"))
+        check("skill: the old helper button is back for it", page.is_visible("#helperWriteBtn"))
+        page.close()
+        print("no brain: no Write button, one line on how to add a helper")
+        page = browser.new_page(viewport={"width": 1280, "height": 800})
+        enter_room(page, url_none, "music")
+        check("no brain: no Write button", not page.is_visible("#guideWriteBtn"))
+        check("no brain: the add-a-helper line for writing", text_of(page, "#guideWriteNoBrain") == "Add a helper to have the guide write the words for you.")
         page.close()
 
         print("every room: the right guide, screenshots at 1280x800 (brain)")

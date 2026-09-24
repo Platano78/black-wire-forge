@@ -120,6 +120,22 @@ at all.
 - **`prompt_guides`** — mode -> an instruction telling a prompt-writing helper how a
   prompt for *this* mode must be written (e.g. "positive prompt only", a tag style for
   songs). Same evidence discipline as `mode_notes`.
+- **`writers`** — mode -> a writing skill for the room's guide: a topic in, this mode's
+  field values out (`POST /api/guide/skill`, the "Write it for me" button). Each is a dict:
+  `label` (e.g. "Song writer"), `prompt` (the writer's system prompt, this engine's own
+  rules), `keys` (`{"TAGS": "tags", ...}`: output line key -> field id), `multiline` (the one
+  key, also in `keys`, whose value runs to the end of the reply, e.g. `"LYRICS"`),
+  `none_token` (e.g. `"NONE"`: on the multiline key it means an empty field, on any other
+  key "leave the field as it is"), optional `options` (`{field id: [allowed values]}` for a
+  text field the engine takes only from a fixed list) and `check(values, request)` -> a list
+  of plain problem sentences. The reply is line-delimited, one `KEY: value` per line, never
+  JSON: small models do not reliably escape newlines inside a JSON string. It may instead be
+  a single `QUESTION: ...` line, the writer asking one thing before it writes. The core
+  coerces every value against the mode's own fields (a value out of range is left out and
+  named, never clamped), runs `check`, and on problems retries once; problems still left are
+  shown to the user with the fields. `check` also runs at Make time: a request it finds
+  problems in is refused with `needs_confirm` until the user presses "Make anyway". See
+  `engines/audio.py`'s song writer (`SONG_WRITER_PROMPT`, `song_check`).
 - **`fields`** — mode -> list of field descriptors, each with `id`, `label`, `type`
   (`text`/`textarea`/`number`/`int`/`select`/`checkbox`/`audio`/`image`/`image_list`/
   `video`/`video_list`/`model`) and optionally `default`, `hint`, `options` (for `select`). This is how a

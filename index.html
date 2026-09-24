@@ -331,6 +331,23 @@
   #guideActions{display:flex; align-items:center; gap:8px; margin-top:8px; flex-wrap:wrap}
   #guideThinking{font-size:12px; color:var(--text-mid)}
   #guideError{color:var(--error); font-size:12px; margin:6px 0 0}
+  #guideWriteNoBrain{font-size:12px; color:var(--text-mid); margin:6px 0 0}
+  #guideSkill{margin-top:8px; padding:10px; background:var(--surface3); border:1px solid var(--divider)}
+  #guideSkill dl{margin:6px 0; display:grid; grid-template-columns:max-content minmax(0,1fr); gap:4px 10px; font-size:13px}
+  #guideSkill dt{color:var(--text-mid)}
+  #guideSkill dd{margin:0; overflow-wrap:anywhere; min-width:0}
+  #guideSkill pre{margin:0; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px;
+    white-space:pre-wrap; overflow-wrap:anywhere; max-height:260px; overflow-y:auto}
+  #guideSkill .skill-problems{color:var(--stale); font-size:13px; margin:6px 0; padding-left:18px}
+  #guideSkill .skill-actions{display:flex; gap:8px; flex-wrap:wrap; margin-top:8px}
+  #guideSkill details{margin-top:8px; font-size:12px}
+  #guideSkill details pre{background:var(--surface2); padding:6px; margin-top:4px}
+  #guideSkill input{width:100%; min-height:40px; margin-top:6px; background:var(--surface2); border:1px solid var(--divider);
+    color:var(--text-hi); padding:6px; box-sizing:border-box}
+  #makeConfirm{margin:8px 0; padding:10px; border:1px solid var(--stale); background:var(--surface3)}
+  #makeConfirm p{margin:0 0 4px; font-weight:600}
+  #makeConfirmList{margin:0 0 8px; padding-left:18px; font-size:13px}
+  .make-confirm-actions{display:flex; gap:8px; flex-wrap:wrap}
   #qualityLadder{display:flex; border:1px solid var(--divider)}
   #qualityLadder button{flex:1; min-height:40px; background:var(--surface2); color:var(--text-mid);
     border-right:1px solid var(--divider); font-size:12px; text-transform:uppercase; letter-spacing:.03em}
@@ -786,6 +803,14 @@
       <div id="advancedFields"></div>
     </details>
     <p id="inspectorMsg" role="status"></p>
+    <div id="makeConfirm" hidden role="alert">
+      <p id="makeConfirmLead">Before this renders:</p>
+      <ul id="makeConfirmList"></ul>
+      <div class="make-confirm-actions">
+        <button type="button" class="btn" id="makeFixBtn">Fix it</button>
+        <button type="button" class="btn" id="makeAnywayBtn">Make anyway</button>
+      </div>
+    </div>
     <button class="btn btn-primary" id="makeBtn" type="button">Make</button>
     </div>
     <!-- Room guide: shown in any room whose rooms.json entry names a guide.
@@ -796,6 +821,7 @@
       <div id="guideNoBrain" hidden>
         <ul id="guideNoBrainList"></ul>
         <p id="guideAddBrain"></p>
+        <p id="guideWriteNoBrain" hidden>Add a helper to have the guide write the words for you.</p>
       </div>
       <div id="guideTalk" hidden>
         <div id="guideVerbosity" role="group" aria-label="How much the guide knows">
@@ -805,10 +831,12 @@
         <p id="guideSizeNote"></p>
         <p id="guideCtxNote" hidden></p>
         <div id="guideLog" role="log" aria-label="Conversation with the guide"></div>
+        <div id="guideSkill" class="guide-msg from-guide" hidden aria-live="polite"></div>
         <label class="sr-only" for="guideInput">Message the guide</label>
         <textarea id="guideInput" maxlength="4000" placeholder="Ask the guide. Enter sends, Shift+Enter for a new line."></textarea>
         <div id="guideActions">
           <button type="button" class="btn btn-primary" id="guideSendBtn">Send</button>
+          <button type="button" class="btn" id="guideWriteBtn" hidden>Write it for me</button>
           <span id="guideThinking" hidden role="status">Thinking&hellip;</span>
           <button type="button" class="btn" id="guideCancelBtn" hidden>Cancel</button>
           <button type="button" class="btn" id="guideClearBtn">Clear conversation</button>
@@ -2199,6 +2227,9 @@ async function renderModeFields(){
   }
   $('#helperPanel').hidden = true;   // a new mode means a stale suggestion, if any, no longer applies
   renderHelperBar();
+  guideSkillClear();
+  makeConfirmHide();
+  renderGuideWrite();
 
   // A mode with no prompt (a cutout/upscale-style tool) has nothing else to
   // lead with, so its input picker takes the prominent slot, expanded, and
@@ -2294,6 +2325,8 @@ function renderHelperBar(){
     return;
   }
   $('#helperBar').hidden = false;
+  // A mode with a guide writer: "Write it for me" in the guide panel supersedes this.
+  $('#helperWriteBtn').hidden = !!mode.writer;
   $('#helperDescribeBtn').hidden = !currentImageSource();
 }
 let HELPER_ABORT = null;
@@ -2418,6 +2451,7 @@ function renderGuideBody(){
   }
   guideShowError(GUIDE_LOAD_ERROR || (GUIDE && !g ? 'This room has no guide.' : ''));
   if(brain){ renderGuideToggle(); renderGuideLog(); }
+  renderGuideWrite();
 }
 function renderGuideToggle(){
   const v = guideVerbosity();
@@ -2465,7 +2499,10 @@ function guideContext(){
       }
       fields[f.id] = v;
     });
-  return {mode: STATE.mode, fields: fields};
+  const ctx = {mode: STATE.mode, fields: fields};
+  const recipe = $('#recipeSelect');
+  if(recipe && !recipe.disabled && recipe.value) ctx.recipe = recipe.value;
+  return ctx;
 }
 function guideMsgEl(role, text, hints){
   const d = document.createElement('div');
@@ -2503,6 +2540,7 @@ function guideBusy(on){
   $('#guideThinking').hidden = !on;
   $('#guideCancelBtn').hidden = !on;
   $('#guideSendBtn').disabled = on;
+  $('#guideWriteBtn').disabled = on;
 }
 async function guideSend(){
   if(GUIDE_ABORT || !GUIDE || !GUIDE.guide || !GUIDE.helper) return;
@@ -2567,6 +2605,126 @@ $('#guideVerbosity').addEventListener('click', e => {
   renderGuideToggle();
 });
 
+/* ---------------------------------------------------------------------
+   Guide skills: POST /api/guide/skill. "Write it for me" sends the input
+   text as the topic, with the same room context the chat sends. The reply
+   is either one question (answer it, then the writer writes) or the fields
+   it wrote, any problems it still has, and exactly what the brain was
+   asked. Nothing reaches the form until "Use these". Text only, never HTML.
+--------------------------------------------------------------------- */
+let GUIDE_SKILL = null;    // {room, mode, topic} of the request on screen
+function renderGuideWrite(){
+  const g = GUIDE && GUIDE.guide, mode = currentMode();
+  const writer = !!(g && mode && mode.writer && !isCutting(currentRoom()));
+  $('#guideWriteBtn').hidden = !(writer && GUIDE.helper);
+  $('#guideWriteNoBrain').hidden = !(writer && !GUIDE.helper);
+}
+function guideSkillClear(){
+  GUIDE_SKILL = null;
+  $('#guideSkill').hidden = true;
+  $('#guideSkill').textContent = '';
+}
+function skillEl(tag, text, cls){
+  const e = document.createElement(tag);
+  if(text != null) e.textContent = text;
+  if(cls) e.className = cls;
+  return e;
+}
+function skillButton(label, id, primary, fn){
+  const b = skillEl('button', label, 'btn' + (primary ? ' btn-primary' : ''));
+  b.type = 'button'; b.id = id; b.onclick = fn;
+  return b;
+}
+function renderGuideSkill(r){
+  const box = $('#guideSkill');
+  box.textContent = '';
+  box.appendChild(skillEl('div', GUIDE.guide.name, 'guide-who'));
+  const actions = skillEl('div', null, 'skill-actions');
+  if(r.question){
+    box.appendChild(skillEl('div', r.question, 'guide-text'));
+    const input = skillEl('input');
+    input.id = 'guideSkillAnswer'; input.maxLength = 500; input.setAttribute('aria-label', 'Your answer');
+    input.addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); guideSkillRun(input.value); } });
+    box.appendChild(input);
+    actions.append(skillButton('Answer', 'guideSkillAnswerBtn', true, () => guideSkillRun(input.value)),
+                   skillButton('Dismiss', 'guideSkillDismiss', false, guideSkillClear));
+  } else {
+    const mode = currentMode();
+    box.appendChild(skillEl('div', (mode.writer.label || 'Writer') + ': here is what I wrote.', 'guide-text'));
+    const dl = skillEl('dl');
+    fieldsFor(mode).filter(f => f.id in r.fields).forEach(f => {
+      const v = r.fields[f.id];
+      const dd = skillEl('dd');
+      if(f.type === 'textarea') dd.appendChild(skillEl('pre', v === '' ? '(empty: instrumental)' : String(v)));
+      else dd.textContent = String(v);
+      dl.append(skillEl('dt', f.label || f.id), dd);
+    });
+    box.appendChild(dl);
+    if(r.problems && r.problems.length){
+      const ul = skillEl('ul', null, 'skill-problems');
+      ul.id = 'guideSkillProblems';
+      r.problems.forEach(t => ul.appendChild(skillEl('li', t)));
+      box.append(skillEl('p', 'Still not right after a second try:', 'guide-hint'), ul);
+    }
+    actions.append(skillButton('Use these', 'guideSkillUse', true, () => guideSkillUse(r.fields)),
+                   skillButton('Dismiss', 'guideSkillDismiss', false, guideSkillClear));
+  }
+  box.appendChild(actions);
+  if(r.sent){
+    const d = skillEl('details');
+    d.id = 'guideSkillSent';
+    d.append(skillEl('summary', 'What the brain was asked'), skillEl('pre', r.sent.system), skillEl('pre', r.sent.user));
+    box.appendChild(d);
+  }
+  box.hidden = false;
+  box.scrollIntoView({block: 'nearest'});
+}
+// Fill the form the way typing would: every field gets its value, then the
+// same input/change events a person's edit fires, so the page reacts alike.
+function guideSkillUse(fields){
+  Object.entries(fields || {}).forEach(([k, v]) => {
+    const el = $('#inspector [data-field-id="' + k + '"]');
+    if(!el) return;
+    setFieldValue(k, v);
+    el.dispatchEvent(new Event('input', {bubbles: true}));
+    el.dispatchEvent(new Event('change', {bubbles: true}));
+  });
+  refreshEnabled(fieldsFor(currentMode()));
+  makeConfirmHide();
+  guideSkillClear();
+}
+async function guideSkillRun(answer){
+  if(GUIDE_ABORT || !GUIDE || !GUIDE.helper || !currentMode() || !currentMode().writer) return;
+  const answering = typeof answer === 'string';
+  const topic = answering && GUIDE_SKILL ? GUIDE_SKILL.topic : $('#guideInput').value.trim();
+  if(!topic){ guideShowError('Say what it should be about first, in the box above.'); return; }
+  const room = GUIDE_ROOM, mode = STATE.mode;
+  const body = {room: room, mode: mode, topic: topic};
+  if(answering && answer.trim()) body.answer = answer.trim().slice(0, 500);
+  const context = guideContext();
+  if(context) body.context = context;
+  guideShowError('');
+  guideBusy(true);
+  GUIDE_ABORT = new AbortController();
+  try{
+    const r = await postJSON('/api/guide/skill', body, GUIDE_ABORT.signal);
+    if(!r || !r.ok){
+      if(r && r.no_brain) GUIDE_ROOM = null;
+      throw new Error((r && r.error) || 'The helper is busy or switched off right now.');
+    }
+    if(GUIDE_ROOM !== room || STATE.mode !== mode) return;   // the user moved on
+    GUIDE_SKILL = {room: room, mode: mode, topic: topic};
+    renderGuideSkill(r);
+  } catch(e){
+    if(e.name !== 'AbortError') guideShowError(String(e.message || e));
+  } finally {
+    GUIDE_ABORT = null;
+    guideBusy(false);
+    if(GUIDE_ROOM === null) renderGuidePanel();
+  }
+}
+$('#guideWriteBtn').onclick = () => guideSkillRun();
+
 function refreshEnabled(fields){
   const values = currentValues();
   fields.forEach(f => {
@@ -2600,14 +2758,47 @@ function msgInspector(text, kind){
   el.className = kind || '';
 }
 
-async function handleSlotMake(slot){
+/* The Make-time check (a pack's writer check, server-side): the render does
+   not start until the user has seen the problems and chosen. "Fix it" goes
+   to the guide when there is a brain, else to the form's first field. */
+let MAKE_CONFIRM_RETRY = null;
+function makeConfirmHide(){
+  MAKE_CONFIRM_RETRY = null;
+  $('#makeConfirm').hidden = true;
+}
+function makeConfirmShow(problems, retry){
+  const ul = $('#makeConfirmList');
+  ul.textContent = '';
+  (problems || []).forEach(t => { const li = document.createElement('li'); li.textContent = t; ul.appendChild(li); });
+  MAKE_CONFIRM_RETRY = retry;
+  msgInspector('', '');
+  $('#makeConfirm').hidden = false;
+  $('#makeConfirm').scrollIntoView({block: 'nearest'});
+}
+$('#makeAnywayBtn').onclick = () => { const retry = MAKE_CONFIRM_RETRY; makeConfirmHide(); if(retry) retry(); };
+$('#makeFixBtn').onclick = () => {
+  makeConfirmHide();
+  if(!$('#guidePanel').hidden && !$('#guideTalk').hidden){
+    $('#guidePanel').open = true;
+    $('#guideInput').focus();
+    $('#guidePanel').scrollIntoView({block: 'nearest'});
+  } else {
+    const el = $('#inspector [data-field-id]');
+    if(el) el.focus();
+  }
+};
+async function handleSlotMake(slot, confirm){
+  makeConfirmHide();
   $('#makeBtn').disabled = true;
   msgInspector('Saving...', '');
   const saved = await saveSlotNow();
   if(!saved){ $('#makeBtn').disabled = false; return; }
   msgInspector('Sending it over...', '');
   try{
-    const r = await postJSON('/api/sequence/generate', {id: STATE.seq.id, slot_id: slot.id});
+    const req = {id: STATE.seq.id, slot_id: slot.id};
+    if(confirm) req.confirm = true;
+    const r = await postJSON('/api/sequence/generate', req);
+    if(r && r.needs_confirm){ makeConfirmShow(r.problems, () => handleSlotMake(slot, true)); return; }
     if(!r.ok){ msgInspector(r.error || 'That did not go through.', 'err'); return; }
     msgInspector('On its way.', 'ok');
     if(r.job){
@@ -2628,13 +2819,14 @@ async function handleSlotMake(slot){
     $('#makeBtn').disabled = false;
   }
 }
-async function handleMake(){
+async function handleMake(confirm){
+  makeConfirmHide();
   const mode = currentMode();
   if(!mode){ msgInspector('Nothing to make yet.', 'err'); return; }
   const lane = STATE.activeLane;
   if(!lane){ msgInspector('Pick a machine in the toolbar first.', 'err'); return; }
   const slot = isCutting(currentRoom()) ? currentSlot() : null;
-  if(slot){ return handleSlotMake(slot); }
+  if(slot){ return handleSlotMake(slot, confirm === true); }
   const values = currentValues();
   const fields = fieldsFor(mode);
   const body = {lane, kind: STATE.cap, mode: STATE.mode};
@@ -2668,10 +2860,12 @@ async function handleMake(){
   // does, so testing the box sent a stale prompt on every cutout/upscale.
   if(!$('#promptWrap').hidden) body.prompt = $('#promptBox').value;
   if(SELECTED_QUALITY) body.quality = SELECTED_QUALITY;
+  if(confirm === true) body.confirm = true;
   $('#makeBtn').disabled = true;
   msgInspector('Sending it over...', '');
   try{
     const r = await postJSON('/api/generate', body);
+    if(r && r.needs_confirm){ makeConfirmShow(r.problems, () => handleMake(true)); return; }
     if(!r.ok){ msgInspector(r.error || 'That did not go through.', 'err'); return; }
     msgInspector('On its way.', 'ok');
     if(r.job){

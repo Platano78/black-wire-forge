@@ -13,6 +13,7 @@ changes from ``owui/...`` to ``blackwire/...`` (R7 -- the only deliberate
 byte difference, matching the other packs' convention).
 """
 import random
+import re
 
 # --- audio output format -----------------------------------------------------
 # SaveAudioAdvanced's `format` is a COMFY_DYNAMICCOMBO_V3: picking a key brings
@@ -790,6 +791,172 @@ def _describe(models):
     return ""
 
 
+# ── song writer (the Music room guide's skill; engines/__init__.py "writers") ──
+# Ported from the line-delimited song expander measured 9/9 parse-ok on a 12B
+# chat model (its JSON predecessor failed: small models do not reliably escape
+# newlines inside a JSON string). Added on top, each from a measurement:
+#   * TAGS name a voice whenever there are lyrics. Measured by ear 2026-09-24,
+#     the shipped "Try this" (5 lyric lines, 150 s, seeds 1111/2222/3333):
+#     tags with no voice rendered instrumental 3/3; the same tags plus
+#     "clear female vocals, singing" were sung 3/3.
+#   * lyrics sized to the duration (the vendored ACE-Step songwriting guide's
+#     "Duration Calculation"; too few words for the length has rendered here as
+#     a long instrumental stretch before the first line).
+#   * one question, asked before writing, when sung-or-instrumental is unclear.
+
+# The live TextEncodeAceStepAudio1.5 enums (read from ComfyUI's /object_info,
+# not guessed), so a written KEY / LANGUAGE is one the model accepts.
+SONG_KEYS = [
+    "C major", "C# major", "Db major", "D major", "D# major", "Eb major", "E major",
+    "F major", "F# major", "Gb major", "G major", "G# major", "Ab major", "A major",
+    "A# major", "Bb major", "B major", "C minor", "C# minor", "Db minor", "D minor",
+    "D# minor", "Eb minor", "E minor", "F minor", "F# minor", "Gb minor", "G minor",
+    "G# minor", "Ab minor", "A minor", "A# minor", "Bb minor", "B minor",
+]
+SONG_LANGUAGES = [
+    "ar", "az", "bg", "bn", "ca", "cs", "da", "de", "el", "en", "es", "fa", "fi", "fr",
+    "he", "hi", "hr", "ht", "hu", "id", "is", "it", "ja", "ko", "la", "lt", "ms", "ne",
+    "nl", "no", "pa", "pl", "pt", "ro", "ru", "sa", "sk", "sr", "sv", "sw", "ta", "te",
+    "th", "tl", "tr", "uk", "ur", "vi", "yue", "zh", "unknown",
+]
+
+# A style names a voice when it holds one of these whole words (any case).
+# Deliberately a plain list, not a classifier: "clear female vocals",
+# "raspy male singer", "choir", "rap" all count; "bass" or "strings" never do.
+SONG_VOICE_WORDS = (
+    "vocal", "vocals", "vocalist", "vocalists", "voice", "voices", "singer", "singers",
+    "singing", "sung", "sings", "sing", "rap", "rapper", "rapping", "raps", "choir",
+    "choral", "chorale", "duet", "falsetto", "crooner", "crooning", "soprano", "alto",
+    "tenor", "baritone", "a cappella", "acapella", "spoken word", "harmonies",
+)
+_VOICE_RE = re.compile(r"\b(" + "|".join(re.escape(w) for w in SONG_VOICE_WORDS) + r")\b", re.IGNORECASE)
+_SECTION_RE = re.compile(r"^\s*\[[^\]\n]+\]\s*$")
+
+# Minimum sections WITH WORDS for a duration: (from seconds, sections, in words).
+# The vendored guide: two verses + two choruses need 120-150 s; add a bridge and
+# it is 180-240 s. Below 120 s this pack reads it as a verse and a chorus from
+# 60 s, one section under that. The first row the duration reaches wins.
+SONG_SECTIONS_FOR = [
+    (180, 5, "two verses, two choruses and a bridge"),
+    (120, 4, "two verses and two choruses"),
+    (60, 2, "a verse and a chorus"),
+    (0, 1, "one section"),
+]
+
+
+def song_voice_named(tags):
+    """True when the style text names a voice (SONG_VOICE_WORDS)."""
+    return bool(_VOICE_RE.search(tags or ""))
+
+
+def song_sections_with_words(lyrics):
+    """How many [Section] blocks have at least one lyric line under them.
+    Lines before the first tag count as one untitled block."""
+    count, has_words = 0, False
+    for line in (lyrics or "").splitlines():
+        if _SECTION_RE.match(line):
+            count += has_words
+            has_words = False
+        elif line.strip():
+            has_words = True
+    return count + has_words
+
+
+def song_sections_needed(duration):
+    """-> (minimum sections with words, that minimum in words) for a duration."""
+    for start, n, words in SONG_SECTIONS_FOR:
+        if duration >= start:
+            return n, words
+    return SONG_SECTIONS_FOR[-1][1], SONG_SECTIONS_FOR[-1][2]
+
+
+def song_check(values, request):
+    """The song writer's check, also run as the Make-time guard for this mode.
+    `values` are the mode's field values (coerced); `request` is the raw
+    request (unused here). -> plain problem sentences, [] when fine.
+    Empty lyrics are an instrumental: a supported choice, nothing to check."""
+    lyrics = values.get("lyrics") or ""
+    if not lyrics.strip():
+        return []
+    problems = []
+    if not song_voice_named(values.get("tags")):
+        problems.append("There are lyrics, but the style names no voice, so this will likely play as an "
+                        "instrumental. Add a voice to the style, for example \"clear female vocals\".")
+    try:
+        duration = float(values.get("duration"))
+    except (TypeError, ValueError):
+        duration = None
+    if duration is not None:
+        need, words = song_sections_needed(duration)
+        have = song_sections_with_words(lyrics)
+        if have < need:
+            problems.append("%g seconds needs lyrics for at least %d sections (%s); these have %d. Too few "
+                            "words for the length plays as a long instrumental stretch."
+                            % (duration, need, words, have))
+    return problems
+
+
+SONG_WRITER_PROMPT = (
+    "You write the fields for a song generation model from a short request.\n"
+    "Reply in EXACTLY this line format. No JSON, no markdown, no commentary.\n\n"
+    "TAGS: <comma-separated style, era, mood, instrumentation and the VOICE; carry every concrete "
+    "detail from the request, do not generalise '90s techno' to 'techno'>\n"
+    "BPM: <NONE, unless the request states a tempo: then an integer 40-220>\n"
+    "KEY: <NONE, unless the request names a key: then a real key such as E minor>\n"
+    "DURATION: <seconds, 5-300>\n"
+    "TIMESIG: <NONE, unless the request states one: then 2, 3, 4 or 6>\n"
+    "LANGUAGE: <NONE, unless the request asks for a language: then its code, such as es>\n"
+    "LYRICS:\n"
+    "<lyric lines under [Section] tags, or exactly NONE for an instrumental>\n\n"
+    "RULES\n"
+    "1. DECIDE FIRST: sung, instrumental, or ask.\n"
+    "   SUNG when the request says song, sung, singing, lyrics, words or vocals (\"a song about X\" is sung, "
+    "in EVERY genre: dance, techno and EDM songs have vocals too).\n"
+    "   INSTRUMENTAL when the request says instrumental, no vocals, no words, a beat, a score, ambient or "
+    "background music. Then LYRICS is NONE.\n"
+    "   OTHERWISE ASK. A request that only names a use or a subject (\"something for my video about the "
+    "sea\", \"music for a road trip\", \"an intro for my channel\") does not say. Reply with ONLY this "
+    "one line and nothing else:\n"
+    "QUESTION: Sung, or instrumental?\n"
+    "   The mode's name never decides it. \"recipe: Instrumental\" in the room line does (instrumental). "
+    "Do not ask when the user already answered.\n"
+    "2. VOICE. When there are lyrics, TAGS MUST name the voice that sings them, e.g. \"clear female "
+    "vocals\" or \"warm male vocals\". Without a voice in TAGS the model plays an instrumental and the "
+    "words are lost. An instrumental names no voice.\n"
+    "3. The room line in [brackets] is the form as it is now; it is not the request.\n"
+    "4. LENGTH. Size the lyrics to DURATION, counting only sections that have words:\n"
+    "   under 60 s: at least 1 section\n"
+    "   60 to 119 s: at least 2 (a verse and a chorus)\n"
+    "   120 to 179 s: at least 4 (two verses and two choruses)\n"
+    "   180 s or more: at least 5 (two verses, two choruses and a bridge)\n"
+    "   Add an [Intro] and [Outro] with words when there is room. When unsure, write MORE sections, "
+    "never fewer: too few words for the length plays as a long instrumental before anyone sings.\n"
+    "5. REAL WORDS. Every [Section] tag has real lyric lines under it, about 6-10 syllables each, and "
+    "the subject appears in the words. A tag with nothing under it is WRONG.\n"
+    "6. DURATION: use the Duration in the current room line when there is one; otherwise 150.\n"
+    "7. BPM, KEY, TIMESIG and LANGUAGE: write NONE unless the REQUEST states them. Do not pick one "
+    "yourself and do not copy them from the room line. NONE keeps the user's own setting.\n\n"
+    "EXAMPLE 1\n"
+    "Request: a punk song about missing the last train home\n"
+    "TAGS: 1977 UK punk rock, fast downstroke guitars, raw shouted female vocals, snotty and urgent\n"
+    "BPM: NONE\nKEY: NONE\nDURATION: 150\nTIMESIG: NONE\nLANGUAGE: NONE\nLYRICS:\n"
+    "[Intro]\nOne two three four, go\n\n"
+    "[Verse]\nPlatform empty and the lights went dead\n"
+    "Last train gone and I am ten steps behind\n\n"
+    "[Chorus]\nMissed it again, missed it again\nThe last train home is leaving without me\n\n"
+    "[Verse]\nCounting coins beneath a broken sign\nWalking home along the railway line\n\n"
+    "[Chorus]\nMissed it again, missed it again\nThe last train home is leaving without me\n\n"
+    "[Outro]\nMissed it again, I missed it again\n\n"
+    "EXAMPLE 2\n"
+    "Request: something for my video about the sea\n"
+    "QUESTION: Sung, or instrumental?\n\n"
+    "EXAMPLE 3\n"
+    "Request: an instrumental lo-fi beat for studying\n"
+    "TAGS: lo-fi hip hop, dusty vinyl crackle, mellow electric piano, soft boom-bap drums, calm, instrumental\n"
+    "BPM: NONE\nKEY: NONE\nDURATION: 150\nTIMESIG: NONE\nLANGUAGE: NONE\nLYRICS:\nNONE\n"
+)
+
+
 ENGINE = {
     "id": "audio",
     "cap": "audio",
@@ -885,6 +1052,20 @@ ENGINE = {
         "cover": "Style/genre prompt for the NEW arrangement -- the tune comes "  # source: engines/audio.py:669 (cover_graph docstring)
                  "from the uploaded source track, not from this text. Lyrics have their own field. "
                  "Return only the style/genre text. Do not write lyrics.",
+    },
+    # P2: the guide's writing skills (engines/__init__.py's "writers"), one
+    # per mode. The prompt, the line keys and the check are this engine's own.
+    "writers": {
+        "song": {
+            "label": "Song writer",
+            "prompt": SONG_WRITER_PROMPT,
+            "keys": {"TAGS": "tags", "BPM": "bpm", "KEY": "keyscale", "DURATION": "duration",
+                     "TIMESIG": "timesignature", "LANGUAGE": "language", "LYRICS": "lyrics"},
+            "multiline": "LYRICS",
+            "none_token": "NONE",
+            "options": {"keyscale": SONG_KEYS, "language": SONG_LANGUAGES},
+            "check": song_check,
+        },
     },
     # R1: field descriptors carry curation now (tier/group/order/units/range/
     # ui_range/enabled_when), not just content -- see the pack contract
@@ -1100,9 +1281,17 @@ ENGINE = {
         "song": [
             {"id": "song-try", "label": "A warm pop song", "recipe": "full-verse",
              "quality": "standard",
-             "values": {"tags": "warm acoustic pop, gentle drums, sunny afternoon",
-                        "lyrics": "[Verse]\nSunlight on the water,\neasy days go by.\n"
-                                  "[Chorus]\nHold on to this feeling,\nunder an open sky."},
+             # A named voice and lyrics sized for 150 s (song_check): as first
+             # shipped, no voice and two sections rendered instrumental 3/3.
+             "values": {"tags": "warm acoustic pop, gentle drums, sunny afternoon, clear female vocals",
+                        "lyrics": "[Intro]\nOoh, the sun is out today\n\n"
+                                  "[Verse]\nSunlight on the water,\neasy days go by.\n"
+                                  "Bare feet on the jetty,\nnothing on my mind.\n\n"
+                                  "[Chorus]\nHold on to this feeling,\nunder an open sky.\n\n"
+                                  "[Verse]\nLemonade and laughter,\nshadows growing long.\n"
+                                  "Every little moment\nturning into song.\n\n"
+                                  "[Chorus]\nHold on to this feeling,\nunder an open sky.\n\n"
+                                  "[Outro]\nUnder an open sky."},
              "why": "a full song with a clean ending", "needs": None},
         ],
         "music": [

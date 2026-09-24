@@ -32,26 +32,28 @@ still show the voice choice made in the tags rather than leaving it silent).
 **Output shape** (line-delimited, model writes exactly this):
 ```
 TAGS: <comma-separated style, mood, instruments, voice>
-BPM: <integer 40-220>
-KEY: <a real musical key, e.g. "A minor">
-DURATION: <seconds, 5-300>
-TIMESIG: <one of 2, 3, 4, 6>
-LANGUAGE: <language code, default en>
+BPM: <NONE, unless the request states a tempo: integer 40-220>
+KEY: <NONE, unless the request names a key: a real key, e.g. "E minor">
+DURATION: <seconds, 5-300; the form's own duration when set, else 150>
+TIMESIG: <NONE, unless stated: one of 2, 3, 4, 6>
+LANGUAGE: <NONE, unless stated: a language code>
 LYRICS:
 <[Section]-tagged lyric text, or exactly NONE for instrumental>
 ```
 
-**Worked example** — topic: "a song about missing the last train home, punk":
+**Worked example** — topic: "a song about missing the last train home, punk" (150 s, so at least two
+verses and two choruses with words, and a voice in the tags; BPM/key/time signature/language were not
+stated, so they stay NONE and the form keeps its own):
 ```
-TAGS: 1977 UK punk rock, fast downstroke guitars, snotty female vocal, raw and urgent
-BPM: 178
-KEY: A minor
+TAGS: 1977 UK punk rock, fast downstroke guitars, raw shouted female vocals, snotty and urgent
+BPM: NONE
+KEY: NONE
 DURATION: 150
-TIMESIG: 4
-LANGUAGE: en
+TIMESIG: NONE
+LANGUAGE: NONE
 LYRICS:
 [Intro]
-One two three four
+One two three four, go
 
 [Verse]
 Platform empty and the lights went dead
@@ -59,10 +61,21 @@ Last train gone and I am ten steps behind
 
 [Chorus]
 Missed it again, missed it again
+The last train home is leaving without me
+
+[Verse]
+Counting coins beneath a broken sign
+Walking home along the railway line
+
+[Chorus]
+Missed it again, missed it again
+The last train home is leaving without me
 
 [Outro]
-Missed it again
+Missed it again, I missed it again
 ```
+When sung or instrumental is unclear, the whole reply is one line: `QUESTION: Sung, or instrumental?`
+(The app's own writer for this mode lives in `engines/audio.py`, `SONG_WRITER_PROMPT`.)
 
 ## 2. Background music writer — `music` mode (MiniMax-Music3), Music room
 

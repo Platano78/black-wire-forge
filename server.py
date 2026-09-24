@@ -3252,10 +3252,13 @@ def guide_grounding(pictures):
     return "\n\n[%d picture%s attached.]" % (pictures, "" if pictures == 1 else "s")
 
 
-def _guide_context_line(room_id, ctx):
+def _guide_context_line(room_id, ctx, with_mode=True):
     """Validate POST /api/guide/chat's optional "context" -> (line or None,
     error sentence or None). The line names the room, the mode in its own
-    words, and each field by its label, in the mode's own field order."""
+    words, and each field by its label, in the mode's own field order.
+    with_mode=False leaves the mode out: a writer is already that mode's own,
+    and measured on a 12B brain its label ("A song with words") overrode the
+    writer's ask-when-unclear rule (0/3 asked with it, 6/6 without)."""
     if ctx is None:
         return None, None
     if not isinstance(ctx, dict):
@@ -3281,8 +3284,15 @@ def _guide_context_line(room_id, ctx):
                 return None, "The value for %s is too long (at most %d characters)." % (k, GUIDE_CONTEXT_VALUE_CHARS)
         elif not isinstance(v, (int, float, bool)):
             return None, "The value for %s must be text, a number, or true/false." % k
-    parts = ["Current room: %s" % (room.get("name") or room_id),
-             "mode: %s (%s)" % (engines.mode_words(cap).get(mode, mode), mode)]
+    recipe = ctx.get("recipe")
+    preset = None
+    if recipe is not None:
+        preset = next((x for x in engines.presets(cap, mode) if x.get("id") == recipe), None)
+        if preset is None:
+            return None, "%s is not a recipe of that mode." % (recipe if isinstance(recipe, str) else "That")
+    parts = ["Current room: %s" % (room.get("name") or room_id)]
+    if with_mode:
+        parts.append("mode: %s (%s)" % (engines.mode_words(cap).get(mode, mode), mode))
     for f in known:
         if f.get("id") not in fields:
             continue
@@ -3296,6 +3306,8 @@ def _guide_context_line(room_id, ctx):
         else:
             shown = str(v)
         parts.append("%s: %s" % (f.get("label") or f["id"], shown))
+    if preset:
+        parts.append("recipe: %s" % (preset.get("label") or preset["id"]))
     return "[" + " · ".join(parts) + "]", None
 
 
@@ -3358,6 +3370,155 @@ def guide_chat(p):
 
 
 # ---------------------------------------------------------------------------
+# Guide skills: POST /api/guide/skill. A topic in, the mode's field values out,
+# written by the pack's own writer (engines/__init__.py "writers") -- the
+# prompt, the line keys and the check all live in the pack. The reply is
+# checked against the mode's fields and the pack's check; problems get ONE
+# automatic retry, and any left are returned with the fields, never hidden.
+# ---------------------------------------------------------------------------
+
+GUIDE_SKILL_ANSWER_LIMIT = 500
+GUIDE_SKILL_RAW_LIMIT = 2000
+GUIDE_SKILL_SHAPE_ERROR = "The writer's answer didn't come back in the expected shape."
+_LEADING_NUMBER_RE = re.compile(r"^-?\d+(?:\.\d+)?")
+
+
+def _writer_fields(cap, mode, w, raw):
+    """A parsed writer reply's raw text values -> (field values, problems),
+    coerced by each field's declared type, range, options, and the writer's
+    own `options`. A value that does not fit is LEFT OUT and named in a plain
+    problem sentence -- never clamped or guessed into range."""
+    out, problems = {}, []
+    allowed = w.get("options") or {}
+    for f in engines.fields(cap, mode):
+        fid = f["id"]
+        if fid not in raw:
+            continue
+        val, label, ftype = raw[fid], f.get("label") or fid, f["type"]
+        kept = "so the form keeps its own value"
+        if ftype in ("number", "int"):
+            m = _LEADING_NUMBER_RE.match(val.strip())
+            num = float(m.group()) if m else None
+            if num is None or (ftype == "int" and not num.is_integer()):
+                problems.append("%s came back as \"%s\", not a %s, %s." % (
+                    label, val, "whole number" if ftype == "int" else "number", kept))
+                continue
+            lo, hi = (f.get("range") or [None, None])[:2]
+            if (lo is not None and num < lo) or (hi is not None and num > hi):
+                problems.append("%s came back as %g, outside %g-%g, %s." % (label, num, lo, hi, kept))
+                continue
+            out[fid] = int(num) if ftype == "int" else num
+        elif ftype == "select":
+            choice = val.split("/", 1)[0].strip()   # "4/4" is a time signature of 4
+            options = [str(o) for o in f.get("options") or []]
+            if choice not in options:
+                problems.append("%s came back as \"%s\", not one of %s, %s." % (label, val, ", ".join(options), kept))
+                continue
+            out[fid] = _coerce_field_value(f, choice)
+        elif ftype in ("text", "textarea"):
+            if fid in allowed:
+                match = next((o for o in allowed[fid] if o.lower() == val.strip().lower()), None)
+                if match is None:
+                    problems.append("%s came back as \"%s\", which this engine does not take, %s." % (label, val, kept))
+                    continue
+                val = match
+            out[fid] = val
+    return out, problems
+
+
+def _writer_check_values(cap, mode, context, written):
+    """What the pack's check sees: the fields' defaults, then the room's
+    current values the page sent, then what the writer wrote."""
+    values = {}
+    ctx_fields = (context or {}).get("fields") or {}
+    for f in engines.fields(cap, mode):
+        for val in (f.get("default"), ctx_fields.get(f["id"])):
+            if val is None:
+                continue
+            try:
+                values[f["id"]] = _coerce_field_value(f, val)
+            except ValueError:
+                pass
+    values.update(written)
+    return values
+
+
+def guide_skill(p):
+    """The whole POST /api/guide/skill body -> (body, http code)."""
+    if not isinstance(p, dict):
+        return {"ok": False, "error": "Send a JSON object."}, 400
+    room_id, mode = p.get("room"), p.get("mode")
+    exists, g = _room_guide(room_id)
+    if not g:
+        return {"ok": False, "error": ("That room has no guide." if exists else
+                                       "There is no room called %s." % (room_id or "that"))}, 404
+    room = next((r for r in engines.rooms() if r.get("id") == room_id), {})
+    cap = next((m["cap"] for m in room.get("modes") or [] if m.get("mode") == mode), None)
+    if cap is None:
+        return {"ok": False, "error": "%s is not a mode of the %s room."
+                % (mode if isinstance(mode, str) and mode else "That", room.get("name") or room_id)}, 400
+    topic, answer, context = p.get("topic"), p.get("answer"), p.get("context")
+    if not isinstance(topic, str) or not topic.strip():
+        return {"ok": False, "error": "Say what it should be about first."}, 400
+    if len(topic) > HELPER_TEXT_LIMIT:
+        return {"ok": False, "error": "That is too long (at most %d characters)." % HELPER_TEXT_LIMIT}, 400
+    if answer is not None and (not isinstance(answer, str) or len(answer) > GUIDE_SKILL_ANSWER_LIMIT):
+        return {"ok": False, "error": "The answer must be text of at most %d characters."
+                % GUIDE_SKILL_ANSWER_LIMIT}, 400
+    if isinstance(context, dict) and context.get("mode") != mode:
+        return {"ok": False, "error": "The context's \"mode\" must be the mode being written for."}, 400
+    context_line, err = _guide_context_line(room_id, context, with_mode=False)
+    if err:
+        return {"ok": False, "error": err}, 400
+    w = engines.writer(cap, mode)
+    if not w:
+        return {"ok": False, "error": "This mode has no writer yet."}, 404
+    if not HELPER:
+        return {"ok": False, "no_brain": True, "error": GUIDE_ADD_BRAIN}, 409
+    user = (context_line + "\n\n" if context_line else "") + "Request: " + topic.strip()
+    if answer and answer.strip():
+        user += "\n\nThe user answered: " + answer.strip()
+    user += guide_grounding(0)
+    request = {"topic": topic, "answer": answer}
+
+    def ask(text):
+        """-> (sent, parsed reply or None, raw reply)."""
+        sent = {"system": w["prompt"], "user": text}
+        reply, _ = _helper_chat([{"role": "system", "content": sent["system"]},
+                                 {"role": "user", "content": text}],
+                                max_tokens=1024, timeout=HELPER.get("timeout_s", 120))
+        reply = _THINK_RE.sub("", reply or "").strip()
+        try:
+            return sent, engines.parse_writer_reply(w, reply), reply
+        except ValueError:
+            return sent, None, reply
+
+    def draft(parsed):
+        fields, problems = _writer_fields(cap, mode, w, parsed["values"])
+        return fields, problems + list(w["check"](_writer_check_values(cap, mode, context, fields), request))
+
+    try:
+        sent, parsed, raw = ask(user)
+        if parsed is None:
+            return {"ok": False, "error": GUIDE_SKILL_SHAPE_ERROR, "raw": raw[:GUIDE_SKILL_RAW_LIMIT],
+                    "sent": sent}, 502
+        if "question" in parsed:
+            return {"ok": True, "question": parsed["question"], "sent": sent, "retried": False}, 200
+        fields, problems = draft(parsed)
+        retried = False
+        if problems:
+            retried = True
+            sent2, parsed2, _ = ask(user + "\n\nYour draft had these problems: " + " ".join(problems)
+                                    + " Rewrite it.")
+            # A retry that asks or breaks shape keeps the first draft, problems and all.
+            if parsed2 is not None and "values" in parsed2:
+                sent, (fields, problems) = sent2, draft(parsed2)
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}, 503
+    return {"ok": True, "fields": fields, "problems": problems, "sent": sent, "retried": retried}, 200
+
+
+# ---------------------------------------------------------------------------
 # generate(): the whole POST /api/generate body (§7's "Generate refactor").
 # api_generate becomes send_json(*generate(read_json())); the sequence
 # endpoint builds its own `p` from a slot and calls this SAME function, so
@@ -3388,6 +3549,34 @@ def _field_label(cap, mode, fid, fallback=None):
     return fallback or fid
 
 
+def _make_time_problems(p, lane, able, kind, mode):
+    """The owning pack's writer check on this request's values -> problem
+    sentences, or []. Only for a mode this lane can actually run right now;
+    any other refusal (not installed, wrong lane) is left to the dispatch
+    path's own sentence, and so is a value that does not coerce: a request
+    that cannot render anyway is never asked to be confirmed first."""
+    w = engines.writer(kind, mode) if mode in engines.modes_for(kind) else None
+    if not w or not w.get("check") or kind not in lane["caps"] \
+            or not able.get(engines.mode_ability(kind, mode)):
+        return []
+    q, qerr = apply_quality(p, kind, mode, able)
+    if qerr:
+        return []
+    req_values = q.get("values") if isinstance(q.get("values"), dict) else {}
+    values = {}
+    for f in engines.fields(kind, mode):
+        val = _field_request_value(q, req_values, f["id"])
+        if val is None or (val == "" and f["type"] not in ("text", "textarea")):
+            val = f.get("default")
+        if val is None:
+            continue
+        try:
+            values[f["id"]] = _coerce_field_value(f, val)
+        except ValueError:
+            return []
+    return list(w["check"](values, p))
+
+
 def generate(p):
     """Returns (body, http code). Extracted verbatim from the old
     api_generate method; every `self.send_json(X[, code])` became
@@ -3403,6 +3592,14 @@ def generate(p):
     mode = p.get("mode")
     m = models_for(lane)
     able = abilities(lane)
+    # P2: a mode whose pack declares a writer check never starts a render
+    # the check says will not be what was asked for (lyrics with no voice
+    # render as an instrumental) until the caller confirms it.
+    if p.get("confirm") is not True:
+        problems = _make_time_problems(p, lane, able, kind, mode)
+        if problems:
+            return {"ok": False, "needs_confirm": True, "problems": problems,
+                    "error": "Check this before it renders: " + " ".join(problems)}, 409
 
     # D1: only the pack that OWNS a (cap, mode) gets to say whether the
     # core's hand-tuned image/video logic below (cfg defaults, frame-grid
@@ -4008,6 +4205,10 @@ def seq_generate(payload):
         p["quality"] = slot["quality"]
     p["sequence_id"] = sid
     p["slot_id"] = slot_id
+    # P2: the Make-time writer check applies to a slot too; the page confirms
+    # the same way and sends "confirm" back through here.
+    if payload.get("confirm") is True:
+        p["confirm"] = True
     try:
         field_values, ref_uses = resolve_slot_refs(seq, slot, lane)
         cable_values, cable_uses = resolve_slot_cables(seq, slot, lane)
@@ -5056,6 +5257,9 @@ class Handler(BaseHTTPRequestHandler):
                     # L5: whether this mode has its own prompt_guide (else the
                     # helper falls back to a generic instruction).
                     "prompt_guide": bool(engines.prompt_guide(cap, mode)),
+                    # P2: the guide's writing skill for this mode, or None.
+                    "writer": ({"label": engines.writer(cap, mode)["label"]}
+                               if engines.writer(cap, mode) else None),
                 })
             out[cap] = {"modes": modes, "cap_word": engines.cap_word(cap), "cap_order": engines.cap_order(cap)}
         # Rooms by task (rooms.json + each pack's mode_rooms). NOT a cap: every
@@ -5197,6 +5401,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(*helper_request(self.read_json()))
             if u.path == "/api/guide/chat":
                 return self.send_json(*guide_chat(self.read_json()))
+            if u.path == "/api/guide/skill":
+                return self.send_json(*guide_skill(self.read_json()))
             self.send_json({"error": "not found"}, 404)
         except BrokenPipeError:
             pass

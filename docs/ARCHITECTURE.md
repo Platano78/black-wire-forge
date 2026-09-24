@@ -71,6 +71,19 @@ Cutting Room does not). The context is validated against the room's own modes an
 mode's own field ids. The helper's context size comes from config's `helper.context`, else
 llama.cpp's `/props`, else `/models` (whose `n_ctx_train` is the training context, used last).
 
+A guide also has **skills**: a mode whose pack declares a `writers` entry (see
+`WRITING-A-PACK.md`) gets "Write it for me" in the guide panel. `POST /api/guide/skill`
+takes the room, the mode, the topic, an optional `answer` to the writer's question, and the
+same `context` as the chat (without the mode's own label, which a small model read as the
+answer to "sung or instrumental?"). It returns either `question`, or `fields` plus any
+`problems` still left after one automatic retry, `retried`, and `sent`: exactly the system
+and user text the helper was given, which the page shows under "What the brain was asked".
+A reply in the wrong shape is a 502 carrying the raw text. Nothing reaches the form until
+the user presses "Use these". The pack's `check` also guards `generate()` itself, brain or
+not: a request it finds problems in (a song with lyrics but no voice in its style, which
+renders as an instrumental) gets 409 `needs_confirm` with the problems, until the body
+carries `"confirm": true`. `POST /api/sequence/generate` passes `confirm` through the same way.
+
 ## Jobs and the poller
 
 `generate()` builds a graph from a pack, submits it to a lane, and records a `Job` in
