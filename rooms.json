@@ -29,7 +29,7 @@
   {"id": "3d", "name": "3D", "group": "OBJECT", "order": 10,
    "blurb": "a picture turned into an object you can walk around",
    "empty": "Add a picture on the right and press Make."},
-  {"id": "cutting", "name": "Cutting Room", "kind": "cutting", "order": 99,
+  {"id": "cutting", "name": "Cutting Room", "kind": "cutting", "guide": "film", "order": 99,
    "blurb": "put what you made in order: pictures, shots and sound",
    "empty": "Open a sequence, or start a new one on the right. When its shots are ready, build the cut from here."}
 ]

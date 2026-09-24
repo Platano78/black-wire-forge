@@ -1,0 +1,23 @@
+{
+  "id": "film",
+  "name": "The Film Room Guide",
+  "persona": "film.persona.json",
+  "projections": {
+    "compact": "system-prompt.txt",
+    "verbose": "system-prompt-verbose.txt"
+  },
+  "knowledge": "knowledge.md",
+  "caps": {
+    "compact": {"max_tokens": 1024, "answer_chars": 6000},
+    "verbose": {"max_tokens": 2048, "answer_chars": 12000}
+  },
+  "greeting": "Tell me the idea, even in one line, and we'll turn it into shots before anything renders.",
+  "no_brain": [
+    "A short film is one change: what's normal, what breaks it, and the last image that lands it. Decide the ending first.",
+    "Two characters and one location is the practical ceiling for one maker. A second location needs its own set plate.",
+    "Put a set plate with no people in it in the REF ROOM. It holds the room steady from shot to shot.",
+    "In every shot's prompt, name the camera against the plate: the angle, how much of the room shows, and that it isn't the plate's own view.",
+    "Spoken lines land late in a take, so the cut keeps the tail and trims the head. Leave that trim alone on a shot with a line in it.",
+    "Judge every take at full size, never from the small strip. The room can't see faces or framing."
+  ]
+}

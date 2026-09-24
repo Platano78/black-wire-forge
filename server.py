@@ -74,6 +74,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 import engines               # engine packs: every model name lives in one
 import runner                # process lanes: fills the plan's placeholders and runs it
+import guides                # room guides: the persona a room's helper conversation speaks as
 
 # GENCENTER_DATA moves the whole data tree (jobs, sequences, caches) elsewhere,
 # the same way GENCENTER_CONFIG moves the config. Tests point it at a scratch
@@ -295,6 +296,14 @@ FLEET_LLM = CONFIG.get("status_only") or None
 # 404s, and /api/engines reports helper: false -- the page then draws no
 # "Help me write this" / "Describe this picture" buttons at all.
 HELPER = CONFIG.get("helper") or None
+
+# Room guides (guides.py): every guide rooms.json names, loaded once. A named
+# guide that is missing or broken refuses startup, like a broken config --
+# a room silently without its guide is the thing this must never do.
+try:
+    GUIDES = guides.load_all()
+except guides.GuideError as e:
+    die("%s\n\nrooms.json names this guide, so the app will not start without it." % e)
 
 # Optional global model overrides. Anything set here wins over what a lane
 # reports it has; anything absent is discovered. See "Model discovery" below.
@@ -3003,21 +3012,22 @@ def _helper_connect_check():
             "Check \"helper\" in config.json, or remove it to hide the button." % (host, port))
 
 
-def _helper_chat(messages):
-    """POST messages to the configured helper's /chat/completions. Raises
-    ValueError(HELPER_BUSY_SENTENCE) on timeout, connection failure or a
-    reply this app cannot parse -- api_helper() has exactly one thing to
-    catch and turn into the 503."""
+def _helper_chat(messages, max_tokens=512, timeout=None):
+    """POST messages to the configured helper's /chat/completions ->
+    (content, finish_reason). Raises ValueError(HELPER_BUSY_SENTENCE) on
+    timeout, connection failure or a reply this app cannot parse -- a
+    caller has exactly one thing to catch and turn into the 503."""
     _helper_connect_check()
     url = HELPER["url"].rstrip("/") + "/chat/completions"
-    payload = {"model": HELPER.get("model") or "", "messages": messages, "max_tokens": 512}
+    payload = {"model": HELPER.get("model") or "", "messages": messages, "max_tokens": max_tokens}
     body = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(url, data=body, method="POST",
                                  headers={"Content-Type": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=HELPER.get("timeout_s", 60)) as r:
+        with urllib.request.urlopen(req, timeout=timeout or HELPER.get("timeout_s", 60)) as r:
             raw = json.loads(r.read().decode("utf-8"))
-        return raw["choices"][0]["message"]["content"] or ""
+        choice = raw["choices"][0]
+        return choice["message"]["content"] or "", choice.get("finish_reason")
     except Exception as e:
         raise ValueError(HELPER_BUSY_SENTENCE) from e
 
@@ -3103,10 +3113,148 @@ def helper_request(p):
     except ValueError as e:
         return {"ok": False, "error": str(e)}, 400
     try:
-        reply = _helper_chat(messages)
+        reply, _ = _helper_chat(messages)
     except ValueError as e:
         return {"ok": False, "error": str(e)}, 503
     return {"ok": True, "text": _clean_helper_text(reply)}, 200
+
+
+# ---------------------------------------------------------------------------
+# Room guides: GET /api/guide and POST /api/guide/chat. The guide (guides.py)
+# supplies the voice as a system prompt; the conversation lives in the page
+# and is sent whole with each turn, so the server keeps no chat state. A reply
+# the helper cut short, or one over the guide's own cap, is flagged
+# `truncated` -- never sliced silently.
+# ---------------------------------------------------------------------------
+
+GUIDE_HISTORY_CHARS = 24000
+GUIDE_HISTORY_TURNS = 40
+GUIDE_CONTEXT_TTL = 300.0
+GUIDE_ADD_BRAIN = ("To let the guide talk with you, add a \"helper\" to config.json "
+                   "(any OpenAI-compatible chat model); see README.")
+_GUIDE_CONTEXT = {"at": None, "value": None}
+_GUIDE_CONTEXT_LOCK = threading.Lock()
+
+
+def _room_guide(room_id):
+    """-> (room exists, its guide or None)."""
+    room = next((r for r in engines.rooms() if r.get("id") == room_id), None)
+    if room is None:
+        return False, None
+    return True, GUIDES.get(room.get("guide")) if room.get("guide") else None
+
+
+def _helper_context():
+    """The helper's context size in tokens, as its GET /models reports it,
+    or None when it does not say (or cannot be reached). Probed at most once
+    per GUIDE_CONTEXT_TTL, failures included; never raises."""
+    if not HELPER:
+        return None
+    with _GUIDE_CONTEXT_LOCK:
+        now = time.time()
+        if _GUIDE_CONTEXT["at"] is not None and now - _GUIDE_CONTEXT["at"] < GUIDE_CONTEXT_TTL:
+            return _GUIDE_CONTEXT["value"]
+        value = None
+        try:
+            url = HELPER["url"].rstrip("/") + "/models"
+            with urllib.request.urlopen(url, timeout=3.0) as r:
+                raw = json.loads(r.read().decode("utf-8"))
+            entries = [e for e in (raw.get("data") or raw.get("models") or []) if isinstance(e, dict)]
+            entry = next((e for e in entries if e.get("id") == HELPER.get("model")),
+                         entries[0] if entries else {})
+            meta = entry.get("meta") if isinstance(entry.get("meta"), dict) else {}
+            for v in (meta.get("n_ctx"), entry.get("context_length"),
+                      entry.get("max_context_length"), meta.get("n_ctx_train")):
+                if isinstance(v, int) and not isinstance(v, bool) and v > 0:
+                    value = v
+                    break
+        except Exception:
+            value = None
+        _GUIDE_CONTEXT.update(at=now, value=value)
+        return value
+
+
+def guide_payload(room_id):
+    """The whole GET /api/guide?room=<id> body -> (body, http code)."""
+    exists, g = _room_guide(room_id)
+    if not exists:
+        return {"ok": False, "error": "There is no room called %s." % (room_id or "that")}, 404
+    guide = None
+    if g:
+        guide = {"id": g["id"], "name": g["name"], "definition": g["definition"],
+                 "greeting": g["greeting"], "no_brain": g["no_brain"], "verbosity_default": "compact",
+                 "projections": {v: {"tokens": p["tokens"]} for v, p in g["projections"].items()}}
+    return {"room": room_id, "guide": guide, "helper": bool(HELPER),
+            "helper_context": _helper_context() if g else None, "add_brain": GUIDE_ADD_BRAIN}, 200
+
+
+def _trim_guide_history(messages):
+    """Newest messages within both GUIDE_HISTORY_* limits, the last (user)
+    message always kept, and no leading assistant message -> (kept, dropped)."""
+    kept, chars = [], 0
+    for m in reversed(messages):
+        if kept and (len(kept) >= GUIDE_HISTORY_TURNS or chars + len(m["content"]) > GUIDE_HISTORY_CHARS):
+            break
+        kept.append(m)
+        chars += len(m["content"])
+    kept.reverse()
+    while kept and kept[0]["role"] != "user":
+        kept.pop(0)
+    return kept, len(messages) - len(kept)
+
+
+def _cap_guide_answer(text, cap):
+    """Cut an over-cap answer at the last sentence end in the cap's final
+    30%, else hard at the cap."""
+    window = text[:cap]
+    ends = [window.rfind(s) + 1 for s in (". ", "! ", "? ")] + [window.rfind("\n")]
+    end = max(ends)
+    if end >= int(cap * 0.7):
+        return window[:end].rstrip()
+    return window
+
+
+def guide_chat(p):
+    """The whole POST /api/guide/chat body -> (body, http code)."""
+    if not isinstance(p, dict):
+        return {"ok": False, "error": "Send a JSON object."}, 400
+    verbosity = p.get("verbosity")
+    if verbosity not in guides.VERBOSITIES:
+        return {"ok": False, "error": "verbosity must be \"compact\" or \"verbose\"."}, 400
+    messages = p.get("messages")
+    if not isinstance(messages, list) or not messages:
+        return {"ok": False, "error": "Send the conversation as a non-empty \"messages\" list."}, 400
+    exists, g = _room_guide(p.get("room"))
+    if not g:
+        return {"ok": False, "error": ("That room has no guide." if exists else
+                                       "There is no room called %s." % (p.get("room") or "that"))}, 404
+    # An assistant turn is one of this guide's own earlier answers, so it may
+    # run to the guide's largest answer cap; a user turn keeps the helper's
+    # usual text limit.
+    answer_limit = max(pr["answer_chars"] for pr in g["projections"].values())
+    for m in messages:
+        if not isinstance(m, dict) or m.get("role") not in ("user", "assistant"):
+            return {"ok": False, "error": "Each message needs a role of \"user\" or \"assistant\"."}, 400
+        limit = HELPER_TEXT_LIMIT if m["role"] == "user" else answer_limit
+        if not isinstance(m.get("content"), str) or len(m["content"]) > limit:
+            return {"ok": False, "error": "Each message needs text, and that one is too long."}, 400
+    if messages[-1]["role"] != "user":
+        return {"ok": False, "error": "The last message must be yours."}, 400
+    if not HELPER:
+        return {"ok": False, "no_brain": True, "error": GUIDE_ADD_BRAIN}, 409
+    proj = g["projections"][verbosity]
+    kept, dropped = _trim_guide_history([{"role": m["role"], "content": m["content"]} for m in messages])
+    try:
+        reply, finish = _helper_chat([{"role": "system", "content": proj["text"]}] + kept,
+                                     max_tokens=proj["max_tokens"], timeout=HELPER.get("timeout_s", 120))
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}, 503
+    text = _THINK_RE.sub("", reply or "").strip()
+    truncated = finish == "length" or len(text) > proj["answer_chars"]
+    if len(text) > proj["answer_chars"]:
+        text = _cap_guide_answer(text, proj["answer_chars"])
+    return {"ok": True, "text": text, "truncated": truncated, "dropped": dropped,
+            "verbosity": verbosity}, 200
 
 
 # ---------------------------------------------------------------------------
@@ -4675,6 +4823,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(*seq_get((q.get("id") or [""])[0]))
             if u.path == "/api/sequence/file":
                 return self.sequence_file(q)
+            if u.path == "/api/guide":
+                return self.send_json(*guide_payload((q.get("room") or [""])[0]))
             self.send_json({"error": "not found"}, 404)
         except BrokenPipeError:
             pass
@@ -4945,6 +5095,8 @@ class Handler(BaseHTTPRequestHandler):
                 if not HELPER:
                     return self.send_json({"error": "not found"}, 404)
                 return self.send_json(*helper_request(self.read_json()))
+            if u.path == "/api/guide/chat":
+                return self.send_json(*guide_chat(self.read_json()))
             self.send_json({"error": "not found"}, 404)
         except BrokenPipeError:
             pass

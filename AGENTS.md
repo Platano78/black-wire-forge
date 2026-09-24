@@ -163,6 +163,12 @@ Each mode object has:
 Without `?lane=`, every mode reports `"available": false` (there is nothing to check
 availability against) — always pass a real lane id.
 
+- `curl -s "http://127.0.0.1:3998/api/guide?room=cutting"` — the room's guide (`"guide"`,
+  `null` for a room without one), whether a helper is configured (`"helper"`), and its reported
+  context (`"helper_context"`, `null` when unknown).
+- `POST /api/guide/chat` with `{"room", "verbosity": "compact"|"verbose", "messages": [...]}` —
+  one guide turn; `409` with `"no_brain": true` when no `"helper"` is configured.
+
 ## Make something and get the file
 
 The exact request/response shapes below come from reading `generate()`, `jobs_payload()`,

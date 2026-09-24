@@ -43,6 +43,23 @@ whatever modes the installed packs actually declare, so a pack with no room entr
 gets a room built from its own label — the page always has somewhere to show a working
 engine, and a room with nothing installed for it still shows up, dimmed.
 
+## Guides
+
+A room in `rooms.json` may name a **guide** (`"guide": "film"`): the persona the optional
+`helper` speaks as in that room. Each lives in `guides/<id>/`, and `guides.py` loads every
+named guide once at startup; a named guide that is missing or broken refuses startup with
+one sentence naming the file. `guide.json` carries `id`, `name`, `persona` (the persona
+JSON, whose `definition` the panel shows), `projections` (`compact` and `verbose` system
+prompts), `knowledge`, `caps` (per projection: `max_tokens` sent to the helper, and
+`answer_chars`, past which a reply is cut at a sentence end and flagged), `greeting`, and
+`no_brain` (the plain lines shown when no helper is configured). `GET /api/guide?room=<id>`
+returns the guide, each projection's size (chars/4) and the helper's reported context;
+`POST /api/guide/chat` takes the room, the verbosity and the whole conversation, keeps the
+newest turns within a size budget (reporting how many it dropped), and returns the reply
+with `truncated` set when the helper stopped for length or the answer passed its cap. The
+server keeps no conversation: the page stores it per room (per sequence in the Cutting
+Room). The existing `/api/helper` is unchanged.
+
 ## Jobs and the poller
 
 `generate()` builds a graph from a pack, submits it to a lane, and records a `Job` in

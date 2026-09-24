@@ -298,6 +298,39 @@
   #helperSuggestion{font-size:14px; color:var(--text-hi); white-space:pre-wrap}
   #helperActions{display:flex; gap:8px; margin-top:8px}
   #helperError{color:var(--error)}
+  /* ---- Room guide (guides/<id>/): the room's helper conversation. Sits
+     last in the inspector, so the Cutting Room's own layout above it never
+     moves; its log scrolls inside itself, never the page. ---- */
+  #guidePanel{border-top:1px solid var(--divider); padding-top:10px; min-width:0}
+  #guidePanel > summary{cursor:pointer; font-size:12px; text-transform:uppercase; letter-spacing:.04em;
+    color:var(--text-mid); min-height:40px; display:flex; align-items:center; user-select:none}
+  #guidePanel > summary span{color:var(--text-hi); text-transform:none; margin-left:4px}
+  #guidePanel > summary::-webkit-details-marker{display:none}
+  #guidePanel > summary::before{content:'▸ '; color:var(--accent)}
+  #guidePanel[open] > summary::before{content:'▾ '}
+  #guideDefinition{font-size:12px; color:var(--text-mid); margin:0 0 8px}
+  #guideNoBrainList{margin:0 0 8px; padding-left:18px; font-size:13px}
+  #guideNoBrainList li{margin-bottom:4px}
+  #guideAddBrain{font-size:12px; color:var(--text-mid); margin:0}
+  #guideVerbosity{display:flex; border:1px solid var(--divider)}
+  #guideVerbosity button{flex:1; min-height:40px; background:var(--surface2); color:var(--text-mid); border:none;
+    border-right:1px solid var(--divider); font-size:12px; text-transform:uppercase; letter-spacing:.03em}
+  #guideVerbosity button:last-child{border-right:none}
+  #guideVerbosity button[aria-pressed="true"]{background:var(--accent); color:var(--on-accent)}
+  #guideCtxNote{font-size:11px; color:var(--text-mid); margin:4px 0 0}
+  #guideCtxNote.warn{color:var(--stale)}
+  #guideLog{margin-top:8px; max-height:240px; overflow-y:auto; overflow-x:hidden; background:var(--surface3);
+    border:1px solid var(--divider); padding:8px; display:flex; flex-direction:column; gap:8px}
+  .guide-msg{min-width:0}
+  .guide-who{font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--text-mid)}
+  .guide-msg.from-guide .guide-who{color:var(--accent)}
+  .guide-text{font-size:14px; white-space:pre-wrap; overflow-wrap:anywhere}
+  .guide-hint{font-size:11px; color:var(--stale); margin:3px 0 0}
+  #guideInput{width:100%; min-height:64px; margin-top:8px; background:var(--surface3); border:1px solid var(--divider);
+    color:var(--text-hi); padding:8px; resize:vertical}
+  #guideActions{display:flex; align-items:center; gap:8px; margin-top:8px; flex-wrap:wrap}
+  #guideThinking{font-size:12px; color:var(--text-mid)}
+  #guideError{color:var(--error); font-size:12px; margin:6px 0 0}
   #qualityLadder{display:flex; border:1px solid var(--divider)}
   #qualityLadder button{flex:1; min-height:40px; background:var(--surface2); color:var(--text-mid);
     border-right:1px solid var(--divider); font-size:12px; text-transform:uppercase; letter-spacing:.03em}
@@ -755,6 +788,33 @@
     <p id="inspectorMsg" role="status"></p>
     <button class="btn btn-primary" id="makeBtn" type="button">Make</button>
     </div>
+    <!-- Room guide: shown in any room whose rooms.json entry names a guide.
+         Built by renderGuidePanel(); model text only ever lands as textContent. -->
+    <details id="guidePanel" open hidden>
+      <summary>Guide:<span id="guideName"></span></summary>
+      <p id="guideDefinition"></p>
+      <div id="guideNoBrain" hidden>
+        <ul id="guideNoBrainList"></ul>
+        <p id="guideAddBrain"></p>
+      </div>
+      <div id="guideTalk" hidden>
+        <div id="guideVerbosity" role="group" aria-label="How much the guide knows">
+          <button type="button" data-verbosity="compact" aria-pressed="true">Compact</button>
+          <button type="button" data-verbosity="verbose" aria-pressed="false">Verbose</button>
+        </div>
+        <p id="guideCtxNote" hidden></p>
+        <div id="guideLog" role="log" aria-label="Conversation with the guide"></div>
+        <label class="sr-only" for="guideInput">Message the guide</label>
+        <textarea id="guideInput" maxlength="4000" placeholder="Ask the guide. Enter sends, Shift+Enter for a new line."></textarea>
+        <div id="guideActions">
+          <button type="button" class="btn btn-primary" id="guideSendBtn">Send</button>
+          <span id="guideThinking" hidden role="status">Thinking&hellip;</span>
+          <button type="button" class="btn" id="guideCancelBtn" hidden>Cancel</button>
+          <button type="button" class="btn" id="guideClearBtn">Clear conversation</button>
+        </div>
+      </div>
+      <p id="guideError" hidden role="alert"></p>
+    </details>
   </section>
 </main>
 
@@ -1794,6 +1854,7 @@ async function selectRoom(id, opts){
     await renderModeFields();
     if(tryMatch) applyExample(tryMatch.example);
   }
+  await renderGuidePanel();
 }
 
 function fieldsFor(mode){ return (mode && mode.fields) || []; }
@@ -2279,6 +2340,200 @@ $('#helperCancelBtn').onclick = () => { if(HELPER_ABORT) HELPER_ABORT.abort(); }
 $('#helperUseBtn').onclick = () => { $('#promptBox').value = HELPER_SUGGESTION; $('#helperPanel').hidden = true; };
 $('#helperDismissBtn').onclick = () => { $('#helperPanel').hidden = true; };
 
+/* ---------------------------------------------------------------------
+   Room guide (guides/<id>/): GET /api/guide + POST /api/guide/chat. The
+   conversation lives here, per room (the Cutting Room: per open sequence),
+   and goes whole with every turn; the server keeps none of it. No helper
+   configured = the guide's plain guidance plus how to add one, never a
+   hidden panel. Model text reaches the page ONLY as textContent.
+--------------------------------------------------------------------- */
+const GUIDE_HIST_MAX = 60;
+const GUIDE_CTX_HEADROOM = 4096;
+const GUIDE_MEM = {};      // what this tab stored, so blocked storage still works until reload
+let GUIDE = null;          // GET /api/guide's body for the room on screen, or null
+let GUIDE_ROOM = null;     // the room GUIDE was loaded for
+let GUIDE_LOAD_ERROR = '';
+let GUIDE_ABORT = null;
+function guideStoreGet(k){
+  if(k in GUIDE_MEM) return GUIDE_MEM[k];
+  try{ return localStorage.getItem(k); } catch(e){ return null; }
+}
+function guideStoreSet(k, v){
+  GUIDE_MEM[k] = v;
+  try{ if(v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); return true; }
+  catch(e){ return false; }
+}
+function guideVerbosity(){ return guideStoreGet('bwf.guide.verbosity') === 'verbose' ? 'verbose' : 'compact'; }
+function guideHistKey(){
+  const room = currentRoom();
+  return 'bwf.guide.hist.' + (room ? room.id : '') + (isCutting(room) && STATE.seq ? '.' + STATE.seq.id : '');
+}
+function guideHistLoad(key){
+  try{
+    const h = JSON.parse(guideStoreGet(key) || '[]');
+    return Array.isArray(h) ? h.filter(m => m && (m.role === 'user' || m.role === 'assistant')
+                                        && typeof m.content === 'string') : [];
+  } catch(e){ return []; }
+}
+function guideHistSave(key, hist){
+  const ok = guideStoreSet(key, hist.length ? JSON.stringify(hist.slice(-GUIDE_HIST_MAX)) : null);
+  if(!ok) guideShowError('This browser would not save the conversation, so it will be gone after a reload.');
+}
+function guideShowError(text){
+  $('#guideError').textContent = text || '';
+  $('#guideError').hidden = !text;
+}
+async function renderGuidePanel(){
+  const room = currentRoom();
+  if(!room || !room.guide){ $('#guidePanel').hidden = true; return; }
+  $('#guidePanel').hidden = false;
+  if(GUIDE_ROOM !== room.id){
+    GUIDE_ROOM = room.id;
+    GUIDE = null;
+    GUIDE_LOAD_ERROR = '';
+    $('#guideName').textContent = 'loading…';
+    try{ GUIDE = await getJSON('/api/guide?room=' + encodeURIComponent(room.id)); }
+    catch(e){ GUIDE_LOAD_ERROR = 'The guide could not be loaded (' + (e.message || e) + '). Reload the page to try again.'; }
+    if(GUIDE_ROOM !== room.id) return;   // the user moved on while it loaded
+  }
+  renderGuideBody();
+}
+function renderGuideBody(){
+  const g = GUIDE && GUIDE.guide;
+  const brain = !!(g && GUIDE.helper);
+  $('#guideName').textContent = g ? g.name : '';
+  $('#guideDefinition').textContent = g ? g.definition : '';
+  $('#guideNoBrain').hidden = !g || brain;
+  $('#guideTalk').hidden = !brain;
+  if(g && !brain){
+    const ul = $('#guideNoBrainList');
+    ul.textContent = '';
+    (g.no_brain || []).forEach(line => {
+      const li = document.createElement('li');
+      li.textContent = line;
+      ul.appendChild(li);
+    });
+    $('#guideAddBrain').textContent = GUIDE.add_brain || '';
+  }
+  guideShowError(GUIDE_LOAD_ERROR || (GUIDE && !g ? 'This room has no guide.' : ''));
+  if(brain){ renderGuideToggle(); renderGuideLog(); }
+}
+function renderGuideToggle(){
+  const v = guideVerbosity();
+  $$('#guideVerbosity button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.verbosity === v)));
+  const need = GUIDE.guide.projections[v].tokens;
+  const ctx = GUIDE.helper_context;
+  const n = x => Number(x).toLocaleString('en-US');
+  let text = '', warn = false;
+  if(typeof ctx === 'number' && ctx < need + GUIDE_CTX_HEADROOM){
+    text = 'This model reports ' + n(ctx) + ' tokens of context; the ' + v + ' guide needs about '
+      + n(need) + ' plus the conversation.';
+    warn = true;
+  } else if(v === 'verbose' && typeof ctx !== 'number'){
+    text = 'The verbose guide needs about ' + n(need) + ' tokens of context plus the conversation. '
+      + 'This model does not say how much it has.';
+  }
+  $('#guideCtxNote').textContent = text;
+  $('#guideCtxNote').hidden = !text;
+  $('#guideCtxNote').classList.toggle('warn', warn);
+}
+function guideMsgEl(role, text, hints){
+  const d = document.createElement('div');
+  d.className = 'guide-msg ' + (role === 'user' ? 'from-user' : 'from-guide');
+  const who = document.createElement('div');
+  who.className = 'guide-who';
+  who.textContent = role === 'user' ? 'You' : GUIDE.guide.name;
+  const body = document.createElement('div');
+  body.className = 'guide-text';
+  body.textContent = text;
+  d.append(who, body);
+  (hints || []).forEach(h => {
+    const p = document.createElement('p');
+    p.className = 'guide-hint';
+    p.textContent = h;
+    d.appendChild(p);
+  });
+  return d;
+}
+function renderGuideLog(){
+  const log = $('#guideLog');
+  log.textContent = '';
+  log.appendChild(guideMsgEl('assistant', GUIDE.guide.greeting));
+  guideHistLoad(guideHistKey()).forEach(m => {
+    const hints = [];
+    if(m.truncated) hints.push('This answer hit its length limit and was cut off. Ask it to continue'
+      + (m.verbosity === 'verbose' ? ', or switch to Compact.' : '.'));
+    if(m.dropped > 0) hints.push('The ' + m.dropped + ' oldest message' + (m.dropped === 1 ? ' was' : 's were')
+      + ' left out so the conversation fits; the guide did not see ' + (m.dropped === 1 ? 'it.' : 'them.'));
+    log.appendChild(guideMsgEl(m.role, m.content, hints));
+  });
+  log.scrollTop = log.scrollHeight;
+}
+function guideBusy(on){
+  $('#guideThinking').hidden = !on;
+  $('#guideCancelBtn').hidden = !on;
+  $('#guideSendBtn').disabled = on;
+}
+async function guideSend(){
+  if(GUIDE_ABORT || !GUIDE || !GUIDE.guide || !GUIDE.helper) return;
+  const input = $('#guideInput');
+  const text = input.value.trim();
+  if(!text) return;
+  const key = guideHistKey(), room = GUIDE_ROOM, verbosity = guideVerbosity();
+  const hist = guideHistLoad(key);
+  hist.push({role: 'user', content: text});
+  guideShowError('');
+  guideHistSave(key, hist);
+  input.value = '';
+  renderGuideLog();
+  guideBusy(true);
+  GUIDE_ABORT = new AbortController();
+  try{
+    const r = await postJSON('/api/guide/chat', {room: room, verbosity: verbosity,
+      messages: hist.slice(-GUIDE_HIST_MAX).map(m => ({role: m.role, content: m.content}))}, GUIDE_ABORT.signal);
+    if(!r || !r.ok){
+      if(r && r.no_brain) GUIDE_ROOM = null;   // the helper went away: reload the panel's state
+      throw new Error((r && r.error) || 'The helper is busy or switched off right now.');
+    }
+    if(!r.text) throw new Error('The guide sent back an empty answer. Try asking again.');
+    hist.push({role: 'assistant', content: r.text, truncated: !!r.truncated,
+               dropped: r.dropped || 0, verbosity: r.verbosity});
+    guideHistSave(key, hist);
+  } catch(e){
+    // Nothing came back: take the question out of the log and hand it back
+    // to the box, so asking again never sends it twice.
+    const h = guideHistLoad(key);
+    if(h.length && h[h.length - 1].role === 'user' && h[h.length - 1].content === text){
+      h.pop();
+      guideHistSave(key, h);
+    }
+    if(guideHistKey() === key && !input.value) input.value = text;
+    if(e.name !== 'AbortError') guideShowError(String(e.message || e));
+  } finally {
+    GUIDE_ABORT = null;
+    guideBusy(false);
+    if(GUIDE_ROOM === null) renderGuidePanel();
+    else if(GUIDE_ROOM === room && guideHistKey() === key) renderGuideLog();
+  }
+}
+$('#guideSendBtn').onclick = guideSend;
+$('#guideCancelBtn').onclick = () => { if(GUIDE_ABORT) GUIDE_ABORT.abort(); };
+$('#guideClearBtn').onclick = () => {
+  if(GUIDE_ABORT) GUIDE_ABORT.abort();
+  guideHistSave(guideHistKey(), []);
+  guideShowError('');
+  if(GUIDE && GUIDE.guide) renderGuideLog();
+};
+$('#guideInput').addEventListener('keydown', e => {
+  if(e.key === 'Enter' && !e.shiftKey && !e.isComposing){ e.preventDefault(); guideSend(); }
+});
+$('#guideVerbosity').addEventListener('click', e => {
+  const b = e.target.closest('button[data-verbosity]');
+  if(!b) return;
+  guideStoreSet('bwf.guide.verbosity', b.dataset.verbosity);
+  renderGuideToggle();
+});
+
 function refreshEnabled(fields){
   const values = currentValues();
   fields.forEach(f => {
@@ -2595,6 +2850,7 @@ function seqClose(){
   renderRefRoom();
   $('#roomForm').hidden = true;
   renderMonitor();
+  renderGuidePanel();   // each sequence has its own conversation
 }
 async function seqCreateNew(){
   const input = $('#seqNewTitle');
@@ -2625,6 +2881,7 @@ async function seqOpenById(id){
   renderRefRoom();
   $('#roomForm').hidden = true;
   renderMonitor();
+  renderGuidePanel();   // each sequence has its own conversation
 }
 async function seqEnterRoom(sid){
   await seqLoadList();
