@@ -95,7 +95,8 @@ takes the room, the mode, the topic, an optional `answer` to the writer's questi
 same `context` as the chat (without the mode's own label, which a small model read as the
 answer to "sung or instrumental?"). It returns either `question`, or `fields` plus any
 `problems` still left after one automatic retry, `retried`, and `sent`: exactly the system
-and user text the helper was given, which the page shows under "What the brain was asked".
+and user text the helper was given, for API callers -- the page itself shows only the
+guide's own words and the field preview, never the raw prompt sent to the helper.
 A reply in the wrong shape is a 502 carrying the raw text. Nothing reaches the form until
 the user presses "Use these". The pack's `check` also guards `generate()` itself, brain or
 not: a request it finds problems in (a song with lyrics but no voice in its style, which

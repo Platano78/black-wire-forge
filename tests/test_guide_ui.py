@@ -395,10 +395,8 @@ try:
         check("skill: the preview names the fields", "Style / genre" in text_of(page, "#guideSkill") and "warm pop, clear female vocals" in text_of(page, "#guideSkill"))
         check("skill: lyrics in a monospaced block", page.eval_on_selector("#guideSkill pre", "e => getComputedStyle(e).fontFamily").lower().find("mono") >= 0)
         check("skill: the request carried the room context", bool(SKILL_BODIES) and SKILL_BODIES[-1].get("mode") == "song" and SKILL_BODIES[-1].get("topic") == "a song about the sea" and (SKILL_BODIES[-1].get("context") or {}).get("mode") == "song", SKILL_BODIES[-1:])
-        check("skill: what the brain was asked is there, collapsed", page.is_visible("#guideSkillSent") and page.eval_on_selector("#guideSkillSent", "e => !e.open"))
-        page.click("#guideSkillSent summary")
-        check("skill: the sent text is shown verbatim", "Request: a song about the sea" in text_of(page, "#guideSkillSent"))
-        page.click("#guideSkillSent summary")
+        check("skill: no 'what the brain was asked' disclosure -- the user sees only the guide's voice",
+              page.query_selector("#guideSkillSent") is None)
         shot(page, "skill-preview-1280x800")
         page.click("#guideSkillUse")
         check("skill: Use these fills the style", page.input_value("#promptBox") == "warm pop, clear female vocals", page.input_value("#promptBox"))
@@ -529,13 +527,8 @@ try:
             "#guideRevisePrompt", "e => getComputedStyle(e).fontFamily").lower().find("mono") >= 0)
         check("revise: the note and the tweak are shown", "Pinned the count" in text_of(page, "#guideSkill")
               and "night sky" in text_of(page, "#guideSkill"))
-        check("revise: what the brain was asked is there, collapsed", page.is_visible("#guideSkillSent")
-              and page.eval_on_selector("#guideSkillSent", "e => !e.open"))
-        page.click("#guideSkillSent summary")
-        check("revise: it shows the prompt that made it and says a picture was sent",
-              ("The prompt that made it: " + FIX_PROMPT) in text_of(page, "#guideSkillSent")
-              and "1 picture sent with it." in text_of(page, "#guideSkillSent"))
-        page.click("#guideSkillSent summary")
+        check("revise: no 'what the brain was asked' disclosure -- the user sees only the guide's voice",
+              page.query_selector("#guideSkillSent") is None)
         page.locator("#guideSkill").scroll_into_view_if_needed()
         shot(page, "revise-reroll-1280x800")
         page.set_viewport_size({"width": 390, "height": 844})

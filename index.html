@@ -140,12 +140,10 @@
   .room-cutting[aria-pressed="true"]{border-color:var(--accent); color:var(--accent)}
 
   /* ---- layout ---- */
-  #layout{flex:1; display:grid; grid-template-columns:340px 1fr 380px; gap:1px;
+  #layout{flex:1; display:grid;
+    grid-template-columns:minmax(260px,22fr) minmax(0,44fr) minmax(380px,34fr); gap:1px;
     background:var(--divider); min-height:0}
   #layout > section{background:var(--canvas); overflow:auto; min-height:0; min-width:0}
-  @media (max-width:1440px){
-    #layout{grid-template-columns:300px 1fr 340px}
-  }
   @media (max-width:1024px){
     /* Stacked columns scroll with the PAGE, so the body must grow with its
        content -- with html/body pinned at 100% the footer sat at the
@@ -225,12 +223,12 @@
 
   /* ---- inspector ---- */
   #inspector{padding:14px; display:flex; flex-direction:column; gap:14px}
-  #laneNote{font-size:12px; color:var(--text-mid)}
+  #laneNote{font-size:12px; color:var(--text-mid); max-width:72ch}
   #laneNote:empty{display:none}
   #roomForm{display:flex; flex-direction:column; gap:12px}
   #roomHeading{font-size:18px}
-  #roomBlurb{font-size:12px; color:var(--text-mid); margin:2px 0 0}
-  #roomPlainNote{font-size:13px; color:var(--text-mid); margin:0}
+  #roomBlurb{font-size:12px; color:var(--text-mid); margin:2px 0 0; max-width:72ch}
+  #roomPlainNote{font-size:13px; color:var(--text-mid); margin:0; max-width:72ch}
   /* The engine picker is one summary line (the picked engine) that opens
      to the full rows, so the guide and the prompt box stay in view on entry.
      It opens on its own when the picked engine cannot run here. */
@@ -242,7 +240,7 @@
   #enginePickerDetails[open] > summary::before{content:'▾'}
   #enginePickerCurrent{color:var(--text-hi); text-transform:none; font-size:13px}
   #enginePickerDetails .engine-picker{margin-top:6px}
-  #promptHint{font-size:11px; color:var(--text-mid); margin:4px 0 0}
+  #promptHint{font-size:11px; color:var(--text-mid); margin:4px 0 0; max-width:72ch}
   #promptHint:empty,#primaryFields:empty{display:none}
   /* Engine picker -- ONE arrangement at every width (from the approved
      mockup): label full-width on its own line, reason below, then a meta
@@ -256,7 +254,7 @@
   .engine-row input[type=radio]{width:18px; height:18px; accent-color:var(--accent); margin:2px 0 0; flex:none}
   .erow-body{flex:1; min-width:0; display:flex; flex-direction:column; gap:2px}
   .erow-label{font-size:14px; color:var(--text-hi)}
-  .erow-reason{font-size:12px; color:var(--text-mid)}
+  .erow-reason{font-size:12px; color:var(--text-mid); max-width:72ch}
   .erow-missing{font-size:12px; color:var(--error)}
   /* "runs on <machine>" is a routing note, not an error -- the muted tier.
      Red stays reserved for the real `missing` words. */
@@ -272,7 +270,7 @@
   }
   .field-row input[type=number]{font-family:var(--mono); font-variant-numeric:tabular-nums}
   .field-row textarea{min-height:60px; resize:vertical}
-  .field-row .hint{font-size:11px; color:var(--text-mid); margin-top:3px}
+  .field-row .hint{font-size:11px; color:var(--text-mid); margin-top:3px; max-width:72ch}
   .field-row.checkbox-row{display:flex; align-items:center; gap:8px}
   .field-row input[type=checkbox]{width:20px; height:20px; accent-color:var(--accent)}
   .field-row[data-disabled="true"] label{color:var(--text-disabled)}
@@ -339,8 +337,8 @@
   .guide-msg{min-width:0}
   .guide-who{font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--text-mid)}
   .guide-msg.from-guide .guide-who{color:var(--accent)}
-  .guide-text{font-size:14px; white-space:pre-wrap; overflow-wrap:anywhere}
-  .guide-hint{font-size:11px; color:var(--stale); margin:3px 0 0}
+  .guide-text{font-size:14px; white-space:pre-wrap; overflow-wrap:anywhere; max-width:72ch}
+  .guide-hint{font-size:11px; color:var(--stale); margin:3px 0 0; max-width:72ch}
   #guidePanel[data-expanded="false"] #guideLog{max-height:3.1em; padding:3px 6px}
   #guidePanel[data-expanded="false"] #guideCtxNote{white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
   #guidePanel[data-expanded="false"] #guideInput{min-height:40px; height:40px}
@@ -359,15 +357,15 @@
     border:1px solid var(--divider); font-size:16px}
   #guideChip .chip-note{flex-basis:100%; margin:0; color:var(--stale)}
   #guideSkill .skill-label{font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--text-mid); margin:8px 0 4px}
-  #guideSkill .skill-note{font-size:13px; margin:6px 0 0}
-  #guideSkill .skill-tweak{font-size:12px; color:var(--text-mid); margin:4px 0 0}
+  #guideSkill .skill-note{font-size:13px; margin:6px 0 0; max-width:72ch}
+  #guideSkill .skill-tweak{font-size:12px; color:var(--text-mid); margin:4px 0 0; max-width:72ch}
   #guideSkill{margin-top:8px; padding:10px; background:var(--surface3); border:1px solid var(--divider)}
   #guideSkill dl{margin:6px 0; display:grid; grid-template-columns:max-content minmax(0,1fr); gap:4px 10px; font-size:13px}
   #guideSkill dt{color:var(--text-mid)}
-  #guideSkill dd{margin:0; overflow-wrap:anywhere; min-width:0}
+  #guideSkill dd{margin:0; overflow-wrap:anywhere; min-width:0; max-width:72ch}
   #guideSkill pre{margin:0; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px;
-    white-space:pre-wrap; overflow-wrap:anywhere; max-height:260px; overflow-y:auto}
-  #guideSkill .skill-problems{color:var(--stale); font-size:13px; margin:6px 0; padding-left:18px}
+    white-space:pre-wrap; overflow-wrap:anywhere; max-height:260px; overflow-y:auto; max-width:72ch}
+  #guideSkill .skill-problems{color:var(--stale); font-size:13px; margin:6px 0; padding-left:18px; max-width:72ch}
   #guideSkill .skill-actions{display:flex; gap:8px; flex-wrap:wrap; margin-top:8px}
   #guideSkill .skill-chips{display:flex; gap:6px; flex-wrap:wrap; margin-top:8px}
   #guideSkill .skill-chip{min-height:36px; padding:0 12px; border-radius:18px; font-size:13px}
@@ -2744,15 +2742,6 @@ function skillButton(label, id, primary, fn){
   b.type = 'button'; if(id) b.id = id; b.onclick = fn;
   return b;
 }
-function skillSent(box, sent){
-  if(!sent) return;
-  const d = skillEl('details');
-  d.id = 'guideSkillSent';
-  d.append(skillEl('summary', 'What the brain was asked'), skillEl('pre', sent.system), skillEl('pre', sent.user));
-  if('pictures' in sent)
-    d.appendChild(skillEl('p', sent.pictures ? sent.pictures + ' picture sent with it.' : 'No picture was sent with it.', 'skill-tweak'));
-  box.appendChild(d);
-}
 // The guide's question: its choices as buttons and Start over. Any other
 // answer goes in the panel's own input, the one box of the conversation.
 function renderGuideQuestion(st, r){
@@ -2778,7 +2767,6 @@ function renderGuideQuestion(st, r){
   const actions = skillEl('div', null, 'skill-actions');
   actions.append(skillButton('Start over', 'guideSkillRestart', false, () => guideWriteStartOver(st.w)));
   box.appendChild(actions);
-  if(r) skillSent(box, r.sent);
   box.hidden = false;
   guideInputPlaceholder();
   box.scrollIntoView({block: 'nearest'});
@@ -2827,7 +2815,6 @@ function renderGuideSkill(r, w){
                  skillButton('Dismiss', 'guideSkillDismiss', false, guideSkillClear),
                  skillButton('Start over', 'guideSkillRestart', false, () => guideWriteStartOver(w)));
   box.appendChild(actions);
-  skillSent(box, r.sent);
   box.hidden = false;
   box.scrollIntoView({block: 'nearest'});
 }
@@ -3020,13 +3007,6 @@ function renderReviseReply(r, req){
   }
   if(r.vision === false) box.appendChild(skillEl('p', "This helper can't see pictures, so it only has your words to go on.", 'guide-hint'));
   box.appendChild(actions);
-  if(r.sent){
-    const d = skillEl('details');
-    d.id = 'guideSkillSent';
-    d.append(skillEl('summary', 'What the brain was asked'), skillEl('pre', r.sent.system), skillEl('pre', r.sent.user_text),
-             skillEl('p', r.sent.pictures ? r.sent.pictures + ' picture sent with it.' : 'No picture was sent with it.', 'skill-tweak'));
-    box.appendChild(d);
-  }
   box.hidden = false;
   box.scrollIntoView({block: 'nearest'});
 }
