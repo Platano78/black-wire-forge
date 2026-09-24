@@ -31,5 +31,5 @@
    "empty": "Add a picture on the right and press Make."},
   {"id": "cutting", "name": "Cutting Room", "kind": "cutting", "order": 99,
    "blurb": "put what you made in order: pictures, shots and sound",
-   "empty": "Sequences live here now. Open one, or start a new one on the right — the cut itself arrives later."}
+   "empty": "Open a sequence, or start a new one on the right. When its shots are ready, build the cut from here."}
 ]

@@ -11,6 +11,7 @@ All notable changes to Black Wire Forge are recorded here.
   picture first" and pointed at another room. Primary file inputs now take the slot above the
   prompt; other file inputs stay in the drawer.
 - "Needs a picture first" now says you can add your own, before offering to make one.
+- The Cutting Room no longer says "the cut itself arrives later". The cut has shipped since v1.0.0.
 - The UI smoke test checks that every primary file input is visible, not just present. It
   counted the hidden input as rendered and passed.
 
