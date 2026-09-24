@@ -85,5 +85,53 @@ else:
           pack_bytes == orig_bytes, "pack=%d bytes orig=%d bytes" % (len(pack_bytes), len(orig_bytes)))
 
 print()
+print("quantise_and_dither survives a Pillow < 9.1 host (no Image.Dither/Image.Quantize)")
+_OLD_PILLOW_SCRIPT = """
+import sys
+sys.path.insert(0, %r)
+from PIL import Image
+# Only delete what engines/_quantise.py itself touches (Dither, Quantize).
+# Deleting Resampling/Transpose/Palette too would also break Pillow's OWN
+# internal modules (e.g. ImageOps' default args reference Image.Resampling
+# at import time) on a Pillow build that ships them -- that's not what a
+# real pre-9.1 Pillow install looks like, it's a self-inflicted crash.
+for name in ("Dither", "Quantize"):
+    if hasattr(Image, name):
+        delattr(Image, name)
+import numpy as np
+np.random.seed(0)
+arr = (np.random.rand(16, 16, 3) * 255).astype(np.uint8)
+Image.fromarray(arr, "RGB").save(%r)
+import engines._quantise as q
+q.quantise_and_dither(%r, %r, target_size=8, n_colors=4, dither_strength=0.0)
+"""
+with tempfile.TemporaryDirectory() as td:
+    src_a = os.path.join(td, "src_a.png")
+    out_a = os.path.join(td, "out_a.png")
+    script_old = _OLD_PILLOW_SCRIPT % (ROOT, src_a, src_a, out_a)
+    r_old = subprocess.run([sys.executable, "-c", script_old], capture_output=True, text=True)
+
+    src_b = os.path.join(td, "src_b.png")
+    out_b = os.path.join(td, "out_b.png")
+    script_new = _OLD_PILLOW_SCRIPT.replace(
+        'for name in ("Dither", "Quantize"):\n'
+        "    if hasattr(Image, name):\n"
+        "        delattr(Image, name)\n", ""
+    ) % (ROOT, src_b, src_b, out_b)
+    r_new = subprocess.run([sys.executable, "-c", script_new], capture_output=True, text=True)
+
+    check("simulated pre-9.1 Pillow (no Image.Dither/Image.Quantize) does not crash",
+          r_old.returncode == 0, r_old.stderr[-800:] if r_old.returncode else "")
+    check("normal (current Pillow) run does not crash",
+          r_new.returncode == 0, r_new.stderr[-800:] if r_new.returncode else "")
+    if r_old.returncode == 0 and r_new.returncode == 0:
+        with open(out_a, "rb") as f:
+            bytes_old = f.read()
+        with open(out_b, "rb") as f:
+            bytes_new = f.read()
+        check("same palette/output bytes with and without the 9.1+ enums",
+              bytes_old == bytes_new, "old=%d bytes new=%d bytes" % (len(bytes_old), len(bytes_new)))
+
+print()
 print(("FAILED: %d" % len(FAILED)) if FAILED else "ALL PASS")
 sys.exit(1 if FAILED else 0)
