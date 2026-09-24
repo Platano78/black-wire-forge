@@ -139,8 +139,10 @@ own.
   dispatched to. Omit it and the tile does not appear.
 - **helper**: `{"url": "http://host:port/v1", "model": "...", "timeout_s": 60}` -- an
   optional OpenAI-compatible chat endpoint for "Help me write this" / "Describe this
-  picture". Omit it entirely to hide those buttons. If configured, your text (and, for
-  "Describe this picture", the image) is sent to that endpoint -- see `SECURITY.md`.
+  picture", which hand the prompt box's words (or the picture) to the room's guide; its
+  answer appears in the guide panel. Omit it entirely to hide those buttons. If configured,
+  your text (and, for "Describe this picture", the image, when the helper can see) is sent
+  to that endpoint -- see `SECURITY.md`.
 
   The same helper also powers each room's **guide**: a persona (the Sound, Picture, Motion and
   Object guides in their rooms, the Film Room Guide in the Cutting Room) that talks the idea

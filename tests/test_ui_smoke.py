@@ -123,7 +123,8 @@ class FakeHelperHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         n = int(self.headers.get("Content-Length") or 0)
         HELPER_REQUESTS.append(json.loads(self.rfile.read(n) or b"{}"))
-        resp = json.dumps({"choices": [{"message": {"content": "a red kite over the sea"}}]}).encode()
+        # The guide's writer reply shape (P2c: "Help me write this" goes to the room's guide)
+        resp = json.dumps({"choices": [{"message": {"content": "PROMPT: a red kite over the sea"}}]}).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(resp)))
@@ -197,10 +198,15 @@ def guard(page):
 def tab(page, rid):
     return '#roomStrip [data-room-id="%s"]' % rid
 
+# The engine picker is a one-line summary until opened (P2c); open it before
+# touching its radios.
+OPEN_PICKER = "() => { const d = document.querySelector('#enginePickerDetails'); if(d) d.open = true; }"
+
 def pick_mode(page, mode):
     """Check the room's engine radio for `mode`; False when the lane cannot
     offer it (radio disabled) -- the calling block then FAILS, because on
     this test's fake lane every mode is supposed to be offerable."""
+    page.evaluate(OPEN_PICKER)
     r = page.query_selector('#enginePicker input[data-mode="%s"]' % mode)
     if not r or r.is_disabled():
         return False
@@ -259,6 +265,7 @@ try:
                       "Nothing installed makes this yet" in page.inner_text("#inspector"))
                 check("room %r (no modes): no form, no Make" % rid, not page.is_visible("#makeBtn"))
                 continue
+            page.evaluate(OPEN_PICKER)
             check("room %r: engine picker present iff 2+ modes" % rid,
                   page.is_visible("#enginePicker") == (len(modes) >= 2))
             for mm in modes:
@@ -797,7 +804,7 @@ try:
         asleep_page.close()
 
         print()
-        print("L5: the prompt helper -- buttons, suggestion, Use this, nothing sent to /api/generate")
+        print("L5 (P2c): Help me write this goes to the room's guide -- its answer, Use these, nothing sent to /api/generate")
         helper_page = browser.new_page(viewport={"width": 1440, "height": 900})
         guard(helper_page)
         helper_page.goto(URL, wait_until="networkidle", timeout=30000)
@@ -809,18 +816,18 @@ try:
         before = len(HELPER_REQUESTS)
         helper_page.fill("#promptBox", "a kite")
         helper_page.click("#helperWriteBtn")
-        helper_page.wait_for_timeout(500)
+        helper_page.wait_for_selector("#guideSkillUse", timeout=15000)
         check("L5: the fake helper received exactly one request", len(HELPER_REQUESTS) == before + 1)
-        check("L5: the suggestion panel shows the helper's answer",
-              helper_page.inner_text("#helperSuggestion").strip() == "a red kite over the sea",
-              helper_page.inner_text("#helperSuggestion"))
+        check("L5: the guide panel shows the guide's answer",
+              "a red kite over the sea" in helper_page.inner_text("#guidePanel #guideSkill"),
+              helper_page.inner_text("#guideSkill"))
         helper_screenshot = os.path.join(tempfile.gettempdir(), "bwf_l5_screenshot-picture-helper.png")
         helper_page.screenshot(path=helper_screenshot)
         print("  (screenshot saved to %s)" % helper_screenshot)
         genbefore = len(GENERATED)
-        helper_page.click("#helperUseBtn")
+        helper_page.click("#guideSkillUse")
         helper_page.wait_for_timeout(200)
-        check("L5: Use this replaces the prompt",
+        check("L5: Use these replaces the prompt",
               helper_page.input_value("#promptBox") == "a red kite over the sea",
               helper_page.input_value("#promptBox"))
         check("L5: nothing was ever sent to /api/generate", len(GENERATED) == genbefore)

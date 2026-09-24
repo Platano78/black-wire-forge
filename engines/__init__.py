@@ -93,7 +93,12 @@ falsy — is ignored. The dict has exactly these keys:
                                      request with problems is refused with
                                      needs_confirm until the user confirms.
                        A reply may instead be one "QUESTION: ..." line: the
-                       writer asks the user one thing before writing.
+                       writer asks the user one thing before writing,
+                       optionally followed by "OPTIONS: a | b | c" (2-5 short
+                       choices the page offers as buttons). A written reply
+                       may carry one "NOTE: ..." line (e.g. the defaults the
+                       writer chose); a NOTE line inside the multiline part
+                       ends it.
   revisers  optional dict  mode_name -> a fixing skill for the room's guide
                        (POST /api/guide/revise, "Not right? Tell the
                        guide"): a finished result, the prompt that made it
@@ -608,32 +613,62 @@ def writer(cap, mode):
 _THINK = ("<think>", "</think>")
 
 
+WRITER_OPTIONS_MAX = 5
+WRITER_OPTION_CHARS = 60
+
+
+def _writer_line(line):
+    """One reply line -> (KEY, value) or (None, None); **bold** keys allowed."""
+    head, sep, value = line.strip().strip("*").partition(":")
+    if not sep:
+        return None, None
+    return head.strip().strip("*").strip().upper(), value.strip().strip("*").strip()
+
+
+def _writer_options(value, none):
+    """An OPTIONS value -> 2-5 distinct short choices, or [] when it is not that."""
+    out = []
+    for o in (value or "").split("|"):
+        o = o.strip().strip("\"'").strip()
+        if o and o.upper() != none and len(o) <= WRITER_OPTION_CHARS and o not in out:
+            out.append(o)
+    return out[:WRITER_OPTIONS_MAX] if len(out) >= 2 else []
+
+
 def parse_writer_reply(w, text):
     """Parse a writer's line-delimited reply ->
-    {"question": str} when it asks, else {"values": {field id: raw text}}.
-    A non-blank QUESTION line before the multiline key wins. The multiline
-    key's value runs to the end; its none_token means "". Any other key whose
-    value is blank or the none_token is left out. Raises ValueError when the
-    reply holds neither a question nor the multiline key."""
+    {"question": str, "options": [..]} when it asks (options may be []),
+    else {"values": {field id: raw text}, "note": str}. A non-blank QUESTION
+    line before the multiline key wins; an OPTIONS line anywhere after it
+    gives the choices. The multiline key's value runs to the end (a NOTE line
+    ends it); its none_token means "". Any other key whose value is blank or
+    the none_token is left out. Raises ValueError when the reply holds
+    neither a question nor the multiline key."""
     text = text or ""
     if _THINK[1] in text:
         text = text.split(_THINK[1], 1)[1]
     keys, multi, none = w["keys"], w["multiline"], w["none_token"].upper()
-    values, lines, rest = {}, None, None
-    for line in text.splitlines():
+    values, lines, rest, note = {}, None, None, ""
+    all_lines = text.splitlines()
+    for i, line in enumerate(all_lines):
+        head, value = _writer_line(line)
         if lines is not None:
+            if head == "NOTE" and "NOTE" not in keys:
+                note = value
+                break
             if line.strip().startswith("```"):
                 continue
             lines.append(line)
             continue
-        head, sep, value = line.strip().strip("*").partition(":")
-        head = head.strip().strip("*").strip().upper()
-        if not sep:
+        if head is None:
             continue
-        value = value.strip().strip("*").strip()
         if head == "QUESTION" and value and value.upper() != none:
-            return {"question": value}
-        if head == multi:
+            options = next((_writer_options(v, none) for h, v in map(_writer_line, all_lines[i + 1:])
+                            if h == "OPTIONS"), [])
+            return {"question": value, "options": options}
+        if head == "NOTE" and "NOTE" not in keys:
+            note = value if value.upper() != none else ""
+        elif head == multi:
             lines, rest = [], value
         elif head in keys and value and value.upper() != none:
             values[keys[head]] = value
@@ -641,7 +676,7 @@ def parse_writer_reply(w, text):
         raise ValueError("no %s line" % multi)
     body = "\n".join(([rest] if rest else []) + lines).strip()
     values[keys[multi]] = "" if body.upper().rstrip(".") == none else body
-    return {"values": values}
+    return {"values": values, "note": note}
 
 
 def reviser(cap, mode):

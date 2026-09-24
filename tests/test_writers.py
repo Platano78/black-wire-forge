@@ -162,7 +162,7 @@ r = engines.parse_writer_reply(W, "TAGS: x\nLYRICS:\nNONE")
 check("parser: LYRICS NONE means empty", r["values"]["lyrics"] == "")
 
 r = engines.parse_writer_reply(W, "TAGS: x\nQUESTION: Sung, or instrumental?\nLYRICS:\n[Verse]\nhi")
-check("parser: a QUESTION line wins", r == {"question": "Sung, or instrumental?"})
+check("parser: a QUESTION line wins", r == {"question": "Sung, or instrumental?", "options": []})
 
 r = engines.parse_writer_reply(W, "QUESTION: NONE\nTAGS: x\nLYRICS: NONE")
 check("parser: QUESTION NONE is not a question", "values" in r)
@@ -287,7 +287,7 @@ refusals = [
     ("bad context field", {"room": "music", "mode": "song", "topic": "t", "context": {"mode": "song", "fields": {"nope": 1}}}, 400),
     ("bad recipe", {"room": "music", "mode": "song", "topic": "t", "context": {"mode": "song", "fields": {}, "recipe": "nope"}}, 400),
     ("unknown room", {"room": "nowhere", "mode": "song", "topic": "t"}, 404),
-    ("no writer for this mode", {"room": "music", "mode": "yue2", "topic": "t"}, 404),
+    ("no writer for this mode", {"room": "cleanup", "mode": "cutout", "topic": "t"}, 404),
     ("not an object", ["x"], 400)
 ]
 for label, body, expected_code in refusals:

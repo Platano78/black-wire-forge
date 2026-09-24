@@ -227,12 +227,22 @@
   #inspector{padding:14px; display:flex; flex-direction:column; gap:14px}
   #laneNote{font-size:12px; color:var(--text-mid)}
   #laneNote:empty{display:none}
-  #roomForm{display:flex; flex-direction:column; gap:14px}
+  #roomForm{display:flex; flex-direction:column; gap:12px}
   #roomHeading{font-size:18px}
   #roomBlurb{font-size:12px; color:var(--text-mid); margin:2px 0 0}
   #roomPlainNote{font-size:13px; color:var(--text-mid); margin:0}
-  #enginePickerWrap .field-group-title{margin-top:0; border-top:1px solid var(--divider); padding-top:10px}
-  #promptHint{font-size:11px; color:var(--text-mid); margin:3px 0 0}
+  /* The engine picker is one summary line (the picked engine) that opens
+     to the full rows, so the guide and the prompt box stay in view on entry.
+     It opens on its own when the picked engine cannot run here. */
+  #enginePickerDetails > summary{cursor:pointer; font-size:12px; text-transform:uppercase; letter-spacing:.04em;
+    color:var(--text-mid); min-height:36px; display:flex; align-items:center; flex-wrap:wrap; gap:0 4px; user-select:none;
+    border-top:1px solid var(--divider)}
+  #enginePickerDetails > summary::-webkit-details-marker{display:none}
+  #enginePickerDetails > summary::before{content:'▸'; color:var(--accent)}
+  #enginePickerDetails[open] > summary::before{content:'▾'}
+  #enginePickerCurrent{color:var(--text-hi); text-transform:none; font-size:13px}
+  #enginePickerDetails .engine-picker{margin-top:6px}
+  #promptHint{font-size:11px; color:var(--text-mid); margin:4px 0 0}
   #promptHint:empty,#primaryFields:empty{display:none}
   /* Engine picker -- ONE arrangement at every width (from the approved
      mockup): label full-width on its own line, reason below, then a meta
@@ -292,43 +302,52 @@
   .ledger-thumbs .t img,.ledger-thumbs .t video{width:100%; height:100%; object-fit:cover}
   #promptBox{width:100%; min-height:90px; background:var(--surface3); border:1px solid var(--divider);
     color:var(--text-hi); font-family:var(--serif); font-size:16px; padding:10px; resize:vertical}
-  #helperBar{display:flex; align-items:center; gap:8px; margin-top:8px}
+  /* The prompt box's writing actions hand the words to the room's guide:
+     the answer lands in the guide panel right below, never in a panel of its own. */
+  #helperBar{display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-top:6px}
   #helperSpinner{font-size:12px; color:var(--text-mid)}
-  #helperPanel{margin-top:8px; padding:10px; background:var(--surface3); border:1px solid var(--divider)}
-  #helperSuggestion{font-size:14px; color:var(--text-hi); white-space:pre-wrap}
-  #helperActions{display:flex; gap:8px; margin-top:8px}
-  #helperError{color:var(--error)}
-  /* ---- Room guide (guides/<id>/): the room's helper conversation. Sits
-     last in the inspector, so the Cutting Room's own layout above it never
-     moves; its log scrolls inside itself, never the page. ---- */
-  #guidePanel{border-top:1px solid var(--divider); padding-top:10px; min-width:0}
-  #guidePanel > summary{cursor:pointer; font-size:12px; text-transform:uppercase; letter-spacing:.04em;
-    color:var(--text-mid); min-height:40px; display:flex; align-items:center; user-select:none}
-  #guidePanel > summary span{color:var(--text-hi); text-transform:none; margin-left:4px}
-  #guidePanel > summary::-webkit-details-marker{display:none}
-  #guidePanel > summary::before{content:'▸ '; color:var(--accent)}
-  #guidePanel[open] > summary::before{content:'▾ '}
+  #helperCue{font-size:12px; color:var(--accent)}
+  /* ---- Room guide (guides/<id>/): the room's one voice. Sits right under
+     the prompt box and its "Help me write this" (the Cutting Room: under its
+     sequence picker). Compact by default: the header, the latest message and
+     the input; expanded, the whole conversation, scrolling inside itself. ---- */
+  #guidePanel{border:1px solid var(--divider); background:var(--surface2); padding:4px 10px 8px; min-width:0}
+  #guideHeader{display:flex; align-items:center; flex-wrap:wrap; gap:6px; min-height:36px}
+  #guideExpandBtn{flex:1 1 0; min-width:0; min-height:32px; padding:0; background:none; border:none; cursor:pointer;
+    color:var(--text-hi); font-size:12px; text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  #guideExpandBtn::before{content:'▸ '; color:var(--accent)}
+  #guidePanel[data-expanded="true"] #guideExpandBtn::before{content:'▾ '}
+  #guidePanel[data-expanded="false"] #guideDefinition,
+  #guidePanel[data-expanded="false"] #guideSizeNote,
+  #guidePanel[data-expanded="false"] #guideClearBtn,
+  #guidePanel[data-expanded="false"] #guideNoBrainList li:nth-child(n+2),
+  #guidePanel[data-expanded="false"] #guideLog .guide-msg:not(:last-child),
+  #guidePanel[data-expanded="false"] #guideLog .guide-who{display:none}
   #guideDefinition{font-size:12px; color:var(--text-mid); margin:0 0 8px}
   #guideNoBrainList{margin:0 0 8px; padding-left:18px; font-size:13px}
   #guideNoBrainList li{margin-bottom:4px}
   #guideAddBrain{font-size:12px; color:var(--text-mid); margin:0}
-  #guideVerbosity{display:flex; border:1px solid var(--divider)}
-  #guideVerbosity button{flex:1; min-height:40px; background:var(--surface2); color:var(--text-mid); border:none;
-    border-right:1px solid var(--divider); font-size:12px; text-transform:uppercase; letter-spacing:.03em}
+  #guideVerbosity{display:flex; border:1px solid var(--divider); flex:none}
+  #guideVerbosity button{min-height:32px; padding:0 5px; background:var(--surface2); color:var(--text-mid); border:none;
+    border-right:1px solid var(--divider); font-size:10px; text-transform:uppercase}
   #guideVerbosity button:last-child{border-right:none}
   #guideVerbosity button[aria-pressed="true"]{background:var(--accent); color:var(--on-accent)}
   #guideSizeNote, #guideCtxNote{font-size:11px; color:var(--text-mid); margin:4px 0 0}
   #guideCtxNote.warn{color:var(--stale)}
-  #guideLog{margin-top:8px; max-height:240px; overflow-y:auto; overflow-x:hidden; background:var(--surface3);
+  #guideLog{margin-top:6px; max-height:40vh; overflow-y:auto; overflow-x:hidden; background:var(--surface3);
     border:1px solid var(--divider); padding:8px; display:flex; flex-direction:column; gap:8px}
   .guide-msg{min-width:0}
   .guide-who{font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--text-mid)}
   .guide-msg.from-guide .guide-who{color:var(--accent)}
   .guide-text{font-size:14px; white-space:pre-wrap; overflow-wrap:anywhere}
   .guide-hint{font-size:11px; color:var(--stale); margin:3px 0 0}
-  #guideInput{width:100%; min-height:64px; margin-top:8px; background:var(--surface3); border:1px solid var(--divider);
+  #guidePanel[data-expanded="false"] #guideLog{max-height:3.1em; padding:3px 6px}
+  #guidePanel[data-expanded="false"] #guideCtxNote{white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  #guidePanel[data-expanded="false"] #guideInput{min-height:40px; height:40px}
+  #guideInputRow{display:flex; flex-wrap:wrap; align-items:flex-end; gap:6px; margin-top:6px}
+  #guideInput{flex:1 1 170px; min-width:0; min-height:64px; margin:0; background:var(--surface3); border:1px solid var(--divider);
     color:var(--text-hi); padding:8px; resize:vertical}
-  #guideActions{display:flex; align-items:center; gap:8px; margin-top:8px; flex-wrap:wrap}
+  #guideActions{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
   #guideThinking{font-size:12px; color:var(--text-mid)}
   #guideError{color:var(--error); font-size:12px; margin:6px 0 0}
   #guideWriteNoBrain, #guideReviseNoBrain{font-size:12px; color:var(--text-mid); margin:6px 0 0}
@@ -350,6 +369,8 @@
     white-space:pre-wrap; overflow-wrap:anywhere; max-height:260px; overflow-y:auto}
   #guideSkill .skill-problems{color:var(--stale); font-size:13px; margin:6px 0; padding-left:18px}
   #guideSkill .skill-actions{display:flex; gap:8px; flex-wrap:wrap; margin-top:8px}
+  #guideSkill .skill-chips{display:flex; gap:6px; flex-wrap:wrap; margin-top:8px}
+  #guideSkill .skill-chip{min-height:36px; padding:0 12px; border-radius:18px; font-size:13px}
   #guideSkill details{margin-top:8px; font-size:12px}
   #guideSkill details pre{background:var(--surface2); padding:6px; margin-top:4px}
   #guideSkill input{width:100%; min-height:40px; margin-top:6px; background:var(--surface2); border:1px solid var(--divider);
@@ -752,9 +773,67 @@
     <!-- Engine picker: the room's modes as a radio list. Absent when the
          room has one mode (the room name is then the only heading). -->
     <div id="enginePickerWrap" hidden>
-      <div class="field-group-title" id="enginePickerTitle">Engine</div>
-      <div class="engine-picker" id="enginePicker" role="radiogroup" aria-labelledby="enginePickerTitle"></div>
+      <details id="enginePickerDetails">
+        <summary><span id="enginePickerCount"></span> <span id="enginePickerTitle">engines</span>:
+          <span id="enginePickerCurrent"></span></summary>
+        <div class="engine-picker" id="enginePicker" role="radiogroup" aria-labelledby="enginePickerTitle"></div>
+      </details>
     </div>
+    <!-- The prompt box is the anchor: right under the engine picker, its
+         writing actions under it, and the room's guide right under those. -->
+    <div id="promptWrap">
+      <label class="field-label" for="promptBox">Prompt</label>
+      <textarea id="promptBox"></textarea>
+      <p class="hint" id="promptHint"></p>
+      <div id="helperBar" hidden>
+        <button type="button" class="btn" id="helperWriteBtn">Help me write this</button>
+        <button type="button" class="btn" id="helperDescribeBtn" hidden>Describe this picture</button>
+        <span id="helperCue"></span>
+        <span id="helperSpinner" hidden role="status"></span>
+        <button type="button" class="btn" id="helperCancelBtn" hidden>Cancel</button>
+      </div>
+    </div>
+    <!-- Room guide: shown in any room whose rooms.json entry names a guide --
+         the room's one voice. Sits here, right under the prompt box and its
+         "Help me write this" (or where they would be, in a mode with no
+         prompt), above the rest of the form; placeGuidePanel() moves it above
+         #roomForm in the Cutting Room (and any room with no form). Built by renderGuidePanel(); model text
+         only ever lands as textContent. -->
+    <section id="guidePanel" aria-label="Room guide" data-expanded="false" hidden>
+      <div id="guideHeader">
+        <button type="button" id="guideExpandBtn" aria-expanded="false" aria-controls="guidePanel"
+                title="Show the whole conversation"><span id="guideName"></span></button>
+        <div id="guideVerbosity" role="group" aria-label="How much the guide knows" hidden>
+          <button type="button" data-verbosity="compact" aria-pressed="true">Compact</button>
+          <button type="button" data-verbosity="verbose" aria-pressed="false">Verbose</button>
+        </div>
+      </div>
+      <p id="guideDefinition"></p>
+      <div id="guideNoBrain" hidden>
+        <ul id="guideNoBrainList"></ul>
+        <p id="guideAddBrain"></p>
+        <p id="guideWriteNoBrain" hidden>Add a helper to have the guide write the words for you.</p>
+        <p id="guideReviseNoBrain" hidden>Add a helper to have the guide look at this result and fix its prompt.</p>
+      </div>
+      <div id="guideTalk" hidden>
+        <p id="guideSizeNote"></p>
+        <p id="guideCtxNote" hidden></p>
+        <div id="guideLog" role="log" aria-label="Conversation with the guide"></div>
+        <div id="guideSkill" class="guide-msg from-guide" hidden aria-live="polite"></div>
+        <div id="guideChip" hidden></div>
+        <label class="sr-only" for="guideInput">Message the guide</label>
+        <div id="guideInputRow">
+          <textarea id="guideInput" maxlength="4000" placeholder="Ask the guide. Enter sends, Shift+Enter for a new line."></textarea>
+          <div id="guideActions">
+            <button type="button" class="btn btn-primary" id="guideSendBtn">Send</button>
+            <span id="guideThinking" hidden role="status"></span>
+            <button type="button" class="btn" id="guideCancelBtn" hidden>Cancel</button>
+            <button type="button" class="btn" id="guideClearBtn">Clear conversation</button>
+          </div>
+        </div>
+      </div>
+      <p id="guideError" hidden role="alert"></p>
+    </section>
 
     <!-- A mode with no text field (e.g. a cutout/upscale tool) has nothing
          for a prompt box to say -- its input picker takes this slot instead,
@@ -783,25 +862,6 @@
       </div>
     </details>
 
-    <div id="promptWrap">
-      <label class="field-label" for="promptBox">Prompt</label>
-      <textarea id="promptBox"></textarea>
-      <p class="hint" id="promptHint"></p>
-      <div id="helperBar" hidden>
-        <button type="button" class="btn" id="helperWriteBtn">Help me write this</button>
-        <button type="button" class="btn" id="helperDescribeBtn" hidden>Describe this picture</button>
-        <span id="helperSpinner" hidden role="status">Thinking&hellip;</span>
-        <button type="button" class="btn" id="helperCancelBtn" hidden>Cancel</button>
-      </div>
-      <div id="helperPanel" hidden>
-        <p id="helperSuggestion"></p>
-        <div id="helperActions">
-          <button type="button" class="btn btn-primary" id="helperUseBtn">Use this</button>
-          <button type="button" class="btn" id="helperDismissBtn">Dismiss</button>
-        </div>
-        <p class="hint" id="helperError" hidden role="alert"></p>
-      </div>
-    </div>
     <div id="qualityWrap" hidden>
       <div class="field-group-title">Quality</div>
       <div id="qualityLadder" role="group" aria-label="Quality"></div>
@@ -823,39 +883,6 @@
     </div>
     <button class="btn btn-primary" id="makeBtn" type="button">Make</button>
     </div>
-    <!-- Room guide: shown in any room whose rooms.json entry names a guide.
-         Built by renderGuidePanel(); model text only ever lands as textContent. -->
-    <details id="guidePanel" open hidden>
-      <summary>Guide:<span id="guideName"></span></summary>
-      <p id="guideDefinition"></p>
-      <div id="guideNoBrain" hidden>
-        <ul id="guideNoBrainList"></ul>
-        <p id="guideAddBrain"></p>
-        <p id="guideWriteNoBrain" hidden>Add a helper to have the guide write the words for you.</p>
-        <p id="guideReviseNoBrain" hidden>Add a helper to have the guide look at this result and fix its prompt.</p>
-      </div>
-      <div id="guideTalk" hidden>
-        <div id="guideVerbosity" role="group" aria-label="How much the guide knows">
-          <button type="button" data-verbosity="compact" aria-pressed="true">Compact</button>
-          <button type="button" data-verbosity="verbose" aria-pressed="false">Verbose</button>
-        </div>
-        <p id="guideSizeNote"></p>
-        <p id="guideCtxNote" hidden></p>
-        <div id="guideLog" role="log" aria-label="Conversation with the guide"></div>
-        <div id="guideSkill" class="guide-msg from-guide" hidden aria-live="polite"></div>
-        <div id="guideChip" hidden></div>
-        <label class="sr-only" for="guideInput">Message the guide</label>
-        <textarea id="guideInput" maxlength="4000" placeholder="Ask the guide. Enter sends, Shift+Enter for a new line."></textarea>
-        <div id="guideActions">
-          <button type="button" class="btn btn-primary" id="guideSendBtn">Send</button>
-          <button type="button" class="btn" id="guideWriteBtn" hidden>Write it for me</button>
-          <span id="guideThinking" hidden role="status">Thinking&hellip;</span>
-          <button type="button" class="btn" id="guideCancelBtn" hidden>Cancel</button>
-          <button type="button" class="btn" id="guideClearBtn">Clear conversation</button>
-        </div>
-      </div>
-      <p id="guideError" hidden role="alert"></p>
-    </details>
   </section>
 </main>
 
@@ -999,7 +1026,6 @@ const STATE = {
   forgetArmed: null,   // {jobId, until} -- Forget's click-again-to-confirm window; see renderMonitor
   uploads: {},         // field id -> array of {name, original}
   pendingJobId: null,  // job just submitted from THIS inspector -- clears "On its way." when it settles
-  helper: false,       // /api/engines "helper": whether a prompt helper is configured at all
   seq: null,           // the open sequence (GET /api/sequence's derived object), or null
   seqList: [],         // GET /api/sequences -- the picker's own list
   seqSlotId: null,     // the slot selected in the Cutting Room's timeline, or null
@@ -1760,6 +1786,15 @@ function pickerKey(ms){
   return JSON.stringify([STATE.room, STATE.cap, STATE.mode, activeLaneName(),
     ms.map(x => [x.info.available, x.info.missing, x.info.note, defaultEstimate(x.info), x.info.licence])]);
 }
+// The closed picker's one line: the picked engine and how many there are.
+// A picked engine this machine cannot run opens the picker, so its "needs"
+// line and the other engines are never hidden behind the summary.
+function renderEnginePickerSummary(ms){
+  const cur = ms.find(x => x.cap === STATE.cap && x.mode === STATE.mode);
+  $('#enginePickerCurrent').textContent = cur ? cur.info.label : '';
+  $('#enginePickerCount').textContent = String(ms.length);
+  if(cur && cur.info.available === false) $('#enginePickerDetails').open = true;
+}
 function renderEnginePicker(force){
   const room = currentRoom();
   const ms = roomModes(room);
@@ -1771,6 +1806,7 @@ function renderEnginePicker(force){
     return;
   }
   wrap.hidden = false;
+  renderEnginePickerSummary(ms);
   const key = pickerKey(ms);
   if(!force && key === PICKER_KEY) return;  // polls must not steal a focused radio
   PICKER_KEY = key;
@@ -1805,6 +1841,7 @@ function renderEnginePicker(force){
     // navigation through the group keeps its focus.
     STATE.cap = r.dataset.cap;
     STATE.mode = r.dataset.mode;
+    renderEnginePickerSummary(roomModes(currentRoom()));
     const mk = (modeInfo(r.dataset.cap, r.dataset.mode) || {}).lane_kind || 'comfy';
     const home = laneForKind(mk);
     const cur = STATE.lanes.find(l => l.id === STATE.activeLane);
@@ -2239,7 +2276,6 @@ async function renderModeFields(){
     delete promptBox.dataset.fieldTier;
     $('#promptHint').textContent = '';
   }
-  $('#helperPanel').hidden = true;   // a new mode means a stale suggestion, if any, no longer applies
   renderHelperBar();
   guideSkillClear();
   makeConfirmHide();
@@ -2317,76 +2353,34 @@ async function renderModeFields(){
 }
 
 /* ---------------------------------------------------------------------
-   L5: the prompt helper -- "Help me write this" / "Describe this picture".
-   Never sends a job; a user action (typing, or Use this) always wins over
-   a suggestion. Hidden entirely when STATE.helper is false.
+   "Help me write this" / "Describe this picture": the prompt box's writing
+   actions, spoken by the room's guide. They hand the box's words (and, for
+   Describe, the picture) to POST /api/guide/skill; the answer lands in the
+   guide panel with Use these. Never sends a job. Shown only when the room has
+   a guide and a helper is configured.
 --------------------------------------------------------------------- */
-let HELPER_SUGGESTION = '';
 function currentImageSource(){
   const mode = currentMode();
   if(!mode) return null;
   const imgField = fieldsFor(mode).find(f => f.type === 'image' || f.type === 'image_list');
   const uploaded = imgField && STATE.uploads[imgField.id];
-  if(uploaded && uploaded.length) return {upload: uploaded[0].name, lane: STATE.activeLane};
+  if(uploaded && uploaded.length) return {lane: STATE.activeLane, upload: uploaded[0].name};
   const job = STATE.jobs.find(j => j.id === STATE.selectedJobId);
   const idx = job && job.outputs ? job.outputs.findIndex(o => o.media === 'image') : -1;
   return idx >= 0 ? {job_id: job.id, output: idx} : null;
 }
 function renderHelperBar(){
-  const mode = currentMode();
-  if(!STATE.helper || !mode || $('#promptWrap').hidden){
-    $('#helperBar').hidden = true;
-    return;
-  }
-  $('#helperBar').hidden = false;
-  // A mode with a guide writer: "Write it for me" in the guide panel supersedes this.
-  $('#helperWriteBtn').hidden = !!mode.writer;
+  const room = currentRoom(), mode = currentMode();
+  const g = GUIDE && GUIDE.guide && room && GUIDE_ROOM === room.id ? GUIDE.guide : null;
+  const show = !!(g && GUIDE.helper && mode && !$('#promptWrap').hidden && !isCutting(room));
+  $('#helperBar').hidden = !show;
+  if(!show) return;
+  $('#helperCue').textContent = '→ ' + g.name;
   $('#helperDescribeBtn').hidden = !currentImageSource();
 }
-let HELPER_ABORT = null;
-async function runHelper(action){
-  if(!currentMode()) return;
-  $('#helperSpinner').hidden = false;
-  $('#helperCancelBtn').hidden = false;
-  $('#helperWriteBtn').disabled = true;
-  $('#helperDescribeBtn').disabled = true;
-  HELPER_ABORT = new AbortController();
-  try{
-    const body = {cap: STATE.cap, mode: STATE.mode, action};
-    if(action === 'write') body.text = $('#promptBox').value;
-    else {
-      const src = currentImageSource();
-      if(!src) throw new Error('No picture to describe yet.');
-      body.image = src;
-    }
-    const r = await postJSON('/api/helper', body, HELPER_ABORT.signal);
-    if(!r.ok) throw new Error(r.error || 'The helper is busy or switched off right now.');
-    HELPER_SUGGESTION = r.text || '';
-    $('#helperSuggestion').textContent = HELPER_SUGGESTION;
-    $('#helperSuggestion').hidden = false;
-    $('#helperActions').hidden = false;
-    $('#helperError').hidden = true;
-  } catch(e){
-    $('#helperSuggestion').hidden = true;
-    $('#helperActions').hidden = true;
-    if(e.name !== 'AbortError'){
-      $('#helperError').textContent = String(e.message || e);
-      $('#helperError').hidden = false;
-    }
-  } finally {
-    $('#helperSpinner').hidden = true;
-    $('#helperCancelBtn').hidden = true;
-    $('#helperWriteBtn').disabled = false;
-    $('#helperDescribeBtn').disabled = false;
-    $('#helperPanel').hidden = false;
-    HELPER_ABORT = null;
-  }
-}
-$('#helperWriteBtn').onclick = () => runHelper('write');
-$('#helperDescribeBtn').onclick = () => runHelper('describe');
-$('#helperCancelBtn').onclick = () => { if(HELPER_ABORT) HELPER_ABORT.abort(); };
-$('#helperUseBtn').onclick = () => { $('#promptBox').value = HELPER_SUGGESTION; $('#helperPanel').hidden = true; };
-$('#helperDismissBtn').onclick = () => { $('#helperPanel').hidden = true; };
+$('#helperWriteBtn').onclick = () => guideSkillRun(undefined, false);
+$('#helperDescribeBtn').onclick = () => guideSkillRun(undefined, true);
+$('#helperCancelBtn').onclick = () => { if(GUIDE_ABORT) GUIDE_ABORT.abort(); };
 
 /* ---------------------------------------------------------------------
    Room guide (guides/<id>/): GET /api/guide + POST /api/guide/chat. The
@@ -2396,6 +2390,7 @@ $('#helperDismissBtn').onclick = () => { $('#helperPanel').hidden = true; };
    hidden panel. Model text reaches the page ONLY as textContent.
 --------------------------------------------------------------------- */
 const GUIDE_HIST_MAX = 60;
+const GUIDE_INPUT_PLACEHOLDER = 'Ask the guide. Enter sends, Shift+Enter for a new line.';
 const GUIDE_CTX_HEADROOM = 4096;
 const GUIDE_MEM = {};      // what this tab stored, so blocked storage still works until reload
 let GUIDE = null;          // GET /api/guide's body for the room on screen, or null
@@ -2433,9 +2428,36 @@ function guideShowError(text){
   $('#guideError').textContent = text || '';
   $('#guideError').hidden = !text;
 }
+// A generator room: right under the prompt box and "Help me write this",
+// above the rest of the form. The Cutting Room (whose form is a picked
+// shot's, or hidden) and a room with no form: just above #roomForm, under
+// the sequence picker.
+function placeGuidePanel(room){
+  const panel = $('#guidePanel');
+  if(!isCutting(room) && !$('#roomForm').hidden){
+    if(panel.previousElementSibling !== $('#promptWrap')) $('#promptWrap').after(panel);
+  } else if(panel.nextElementSibling !== $('#roomForm')) $('#roomForm').before(panel);
+}
+// Compact (the default) or expanded, remembered per viewer. `force` opens it
+// for this once without changing what is remembered ("Not right?" with no
+// helper, so its guidance shows in full).
+function guideExpanded(){ return guideStoreGet('bwf.guide.expanded') === 'true'; }
+function renderGuideExpand(force){
+  const on = !!force || guideExpanded();
+  $('#guidePanel').dataset.expanded = String(on);
+  $('#guideExpandBtn').setAttribute('aria-expanded', String(on));
+  $('#guideExpandBtn').title = on ? 'Show only the latest message' : 'Show the whole conversation';
+  guideLogScroll();
+}
+$('#guideExpandBtn').onclick = () => {
+  guideStoreSet('bwf.guide.expanded', $('#guidePanel').dataset.expanded === 'true' ? 'false' : 'true');
+  renderGuideExpand();
+};
 async function renderGuidePanel(){
   const room = currentRoom();
-  if(!room || !room.guide){ $('#guidePanel').hidden = true; return; }
+  if(!room || !room.guide){ $('#guidePanel').hidden = true; renderHelperBar(); return; }
+  placeGuidePanel(room);
+  renderGuideExpand();
   $('#guidePanel').hidden = false;
   if(GUIDE_ROOM !== room.id){
     GUIDE_ROOM = room.id;
@@ -2458,6 +2480,7 @@ function renderGuideBody(){
   $('#guideDefinition').textContent = g ? g.definition : '';
   $('#guideNoBrain').hidden = !g || brain;
   $('#guideTalk').hidden = !brain;
+  $('#guideVerbosity').hidden = !brain;
   if(g && !brain){
     const ul = $('#guideNoBrainList');
     ul.textContent = '';
@@ -2472,6 +2495,7 @@ function renderGuideBody(){
   if(brain){ renderGuideToggle(); renderGuideLog(); }
   renderGuideWrite();
   renderReviseChip();
+  renderHelperBar();
 }
 function renderGuideToggle(){
   const v = guideVerbosity();
@@ -2489,6 +2513,7 @@ function renderGuideToggle(){
       + 'This model does not say how much it has.';
   }
   $('#guideCtxNote').textContent = text;
+  $('#guideCtxNote').title = text;   // compact shows one line of it; expanded, all of it
   $('#guideCtxNote').hidden = !text;
   $('#guideCtxNote').classList.toggle('warn', warn);
   const p = GUIDE.guide.projections;
@@ -2542,11 +2567,21 @@ function guideMsgEl(role, text, hints){
   });
   return d;
 }
+// Expanded: the newest at the bottom, in view. Compact shows only the latest
+// message, from its first line.
+function guideLogScroll(){
+  const log = $('#guideLog');
+  log.scrollTop = $('#guidePanel').dataset.expanded === 'true' ? log.scrollHeight : 0;
+}
 function renderGuideLog(){
   const log = $('#guideLog');
   log.textContent = '';
   log.appendChild(guideMsgEl('assistant', GUIDE.guide.greeting));
-  guideHistLoad(guideHistKey()).forEach(m => {
+  const hist = guideHistLoad(guideHistKey());
+  const open = guideWriteOpen(hist);
+  hist.forEach((m, i) => {
+    // A write's waiting question is shown once, with its choices, below.
+    if(open && open.mode === STATE.mode && i === hist.length - 1) return;
     const hints = [];
     if(m.truncated) hints.push('This answer hit its length limit and was cut off. Ask it to continue'
       + (m.verbosity === 'verbose' ? ', or switch to Compact.' : '.'));
@@ -2554,17 +2589,32 @@ function renderGuideLog(){
       + ' left out so the conversation fits; the guide did not see ' + (m.dropped === 1 ? 'it.' : 'them.'));
     log.appendChild(guideMsgEl(m.role, m.content, hints));
   });
-  log.scrollTop = log.scrollHeight;
+  guideLogScroll();
 }
+// One voice: while the guide works, both the panel and the prompt box's
+// writing actions say so in the guide's own name.
 function guideBusy(on){
+  const words = on && GUIDE && GUIDE.guide ? GUIDE.guide.name + ' is writing…' : '';
+  $('#guideThinking').textContent = words;
   $('#guideThinking').hidden = !on;
   $('#guideCancelBtn').hidden = !on;
   $('#guideSendBtn').disabled = on;
-  $('#guideWriteBtn').disabled = on;
+  $('#helperSpinner').textContent = words;
+  $('#helperSpinner').hidden = !on;
+  $('#helperCancelBtn').hidden = !on;
+  $('#helperWriteBtn').disabled = on;
+  $('#helperDescribeBtn').disabled = on;
 }
 async function guideSend(){
   if(GUIDE_REVISE) return guideReviseRun();   // a result is attached: this is a complaint about it
   if(GUIDE_ABORT || !GUIDE || !GUIDE.guide || !GUIDE.helper) return;
+  // The guide asked something for a write: what is typed here answers it.
+  const open = !$('#guideSkill').hidden && guideWriteOpen(guideHistLoad(guideHistKey()));
+  if(open && open.mode === STATE.mode && $('#guideInput').value.trim()){
+    const a = $('#guideInput').value.trim();
+    $('#guideInput').value = '';
+    return guideSkillRun(a);
+  }
   const input = $('#guideInput');
   const text = input.value.trim();
   if(!text) return;
@@ -2613,6 +2663,7 @@ $('#guideCancelBtn').onclick = () => { if(GUIDE_ABORT) GUIDE_ABORT.abort(); };
 $('#guideClearBtn').onclick = () => {
   if(GUIDE_ABORT) GUIDE_ABORT.abort();
   guideHistSave(guideHistKey(), []);
+  guideSkillClear();
   guideShowError('');
   if(GUIDE && GUIDE.guide) renderGuideLog();
 };
@@ -2627,23 +2678,60 @@ $('#guideVerbosity').addEventListener('click', e => {
 });
 
 /* ---------------------------------------------------------------------
-   Guide skills: POST /api/guide/skill. "Write it for me" sends the input
-   text as the topic, with the same room context the chat sends. The reply
-   is either one question (answer it, then the writer writes) or the fields
-   it wrote, any problems it still has, and exactly what the brain was
-   asked. Nothing reaches the form until "Use these". Text only, never HTML.
+   Guide skills: POST /api/guide/skill, from the prompt box's "Help me write
+   this" (the box's words are the topic) or "Describe this picture" (the
+   picture goes too), with the same room context the chat sends. The mode's
+   pack writer writes when it has one, the server's generic writer otherwise.
+   The reply, in the guide panel, is either one question (answer it, then the
+   guide writes) or the fields it wrote, any problems it still has, and
+   exactly what the brain was asked. Nothing reaches the form until "Use
+   these". Text only, never HTML.
 --------------------------------------------------------------------- */
-let GUIDE_SKILL = null;    // {room, mode, topic} of the request on screen
+// A write is a short conversation, kept in the room's guide history like any
+// other turn (one voice), each entry marked with its write id `w` and kind
+// `wk`: topic (the user's request), q (the guide's question, with its
+// options), a (the user's answer), done (it wrote). The answers the server
+// needs are rebuilt from those marks, so a reload can pick the write up.
+let GUIDE_SKILL = null;    // {w} of the preview on screen
 function renderGuideWrite(){
   const g = GUIDE && GUIDE.guide, mode = currentMode();
-  const writer = !!(g && mode && mode.writer && !isCutting(currentRoom()));
-  $('#guideWriteBtn').hidden = !(writer && GUIDE.helper);
-  $('#guideWriteNoBrain').hidden = !(writer && !GUIDE.helper);
+  const writes = !!(g && mode && !$('#promptWrap').hidden && !isCutting(currentRoom()));
+  $('#guideWriteNoBrain').hidden = !(writes && !GUIDE.helper);
+  if(writes && GUIDE.helper && GUIDE_ROOM === currentRoom().id && $('#guideSkill').hidden) guideWriteRestore();
+}
+function guidePictureRef(src){
+  return src && src.job_id ? {job_id: src.job_id, output: src.output} : src ? {lane: src.lane, upload: src.upload} : null;
+}
+// The write whose question is waiting for an answer: the history's last entry
+// is its question. -> {w, mode, topic, pictures, answers, pending} or null.
+function guideWriteOpen(hist){
+  const last = hist[hist.length - 1];
+  if(!last || last.wk !== 'q') return null;
+  const turns = hist.filter(m => m.w === last.w);
+  const top = turns.find(m => m.wk === 'topic');
+  if(!top || top.closed) return null;
+  const answers = [];
+  turns.forEach((m, i) => { if(m.wk === 'a' && i && turns[i - 1].wk === 'q') answers.push({q: turns[i - 1].content, a: m.content}); });
+  return {w: last.w, mode: top.mode, topic: top.topic || '', pictures: top.pictures || null, answers: answers,
+          pending: {q: last.content, options: last.options || []}};
+}
+function guideWriteRestore(){
+  const st = guideWriteOpen(guideHistLoad(guideHistKey()));
+  if(st && st.mode === STATE.mode) renderGuideQuestion(st);
 }
 function guideSkillClear(){
   GUIDE_SKILL = null;
   $('#guideSkill').hidden = true;
   $('#guideSkill').textContent = '';
+  guideInputPlaceholder();
+}
+// Start over: the write's turns leave the history, and its box closes.
+function guideWriteStartOver(w){
+  const key = guideHistKey();
+  guideHistSave(key, guideHistLoad(key).filter(m => m.w !== w));
+  guideSkillClear();
+  guideShowError('');
+  if(GUIDE && GUIDE.guide) renderGuideLog();
 }
 function skillEl(tag, text, cls){
   const e = document.createElement(tag);
@@ -2653,50 +2741,93 @@ function skillEl(tag, text, cls){
 }
 function skillButton(label, id, primary, fn){
   const b = skillEl('button', label, 'btn' + (primary ? ' btn-primary' : ''));
-  b.type = 'button'; b.id = id; b.onclick = fn;
+  b.type = 'button'; if(id) b.id = id; b.onclick = fn;
   return b;
 }
-function renderGuideSkill(r){
+function skillSent(box, sent){
+  if(!sent) return;
+  const d = skillEl('details');
+  d.id = 'guideSkillSent';
+  d.append(skillEl('summary', 'What the brain was asked'), skillEl('pre', sent.system), skillEl('pre', sent.user));
+  if('pictures' in sent)
+    d.appendChild(skillEl('p', sent.pictures ? sent.pictures + ' picture sent with it.' : 'No picture was sent with it.', 'skill-tweak'));
+  box.appendChild(d);
+}
+// The guide's question: its choices as buttons and Start over. Any other
+// answer goes in the panel's own input, the one box of the conversation.
+function renderGuideQuestion(st, r){
   const box = $('#guideSkill');
   box.textContent = '';
+  GUIDE_SKILL = {w: st.w};
   box.appendChild(skillEl('div', GUIDE.guide.name, 'guide-who'));
-  const actions = skillEl('div', null, 'skill-actions');
-  if(r.question){
-    box.appendChild(skillEl('div', r.question, 'guide-text'));
-    const input = skillEl('input');
-    input.id = 'guideSkillAnswer'; input.maxLength = 500; input.setAttribute('aria-label', 'Your answer');
-    input.addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); guideSkillRun(input.value); } });
-    box.appendChild(input);
-    actions.append(skillButton('Answer', 'guideSkillAnswerBtn', true, () => guideSkillRun(input.value)),
-                   skillButton('Dismiss', 'guideSkillDismiss', false, guideSkillClear));
-  } else {
-    const mode = currentMode();
-    box.appendChild(skillEl('div', (mode.writer.label || 'Writer') + ': here is what I wrote.', 'guide-text'));
-    const dl = skillEl('dl');
-    fieldsFor(mode).filter(f => f.id in r.fields).forEach(f => {
-      const v = r.fields[f.id];
-      const dd = skillEl('dd');
-      if(f.type === 'textarea') dd.appendChild(skillEl('pre', v === '' ? '(empty: instrumental)' : String(v)));
-      else dd.textContent = String(v);
-      dl.append(skillEl('dt', f.label || f.id), dd);
+  box.appendChild(skillEl('div', st.pending.q, 'guide-text'));
+  if(st.pending.options.length){
+    const chips = skillEl('div', null, 'skill-chips');
+    chips.id = 'guideSkillOptions';
+    chips.setAttribute('role', 'group');
+    chips.setAttribute('aria-label', 'Choose an answer');
+    st.pending.options.forEach(o => {
+      const c = skillButton(o, null, false, () => guideSkillRun(o));
+      c.className = 'btn skill-chip';
+      c.dataset.option = o;
+      chips.appendChild(c);
     });
-    box.appendChild(dl);
-    if(r.problems && r.problems.length){
-      const ul = skillEl('ul', null, 'skill-problems');
-      ul.id = 'guideSkillProblems';
-      r.problems.forEach(t => ul.appendChild(skillEl('li', t)));
-      box.append(skillEl('p', 'Still not right after a second try:', 'guide-hint'), ul);
-    }
-    actions.append(skillButton('Use these', 'guideSkillUse', true, () => guideSkillUse(r.fields)),
-                   skillButton('Dismiss', 'guideSkillDismiss', false, guideSkillClear));
+    box.appendChild(chips);
   }
+  if(r && r.vision === false) box.appendChild(skillEl('p', "This helper can't see pictures, so it only has your words to go on.", 'guide-hint'));
+  const actions = skillEl('div', null, 'skill-actions');
+  actions.append(skillButton('Start over', 'guideSkillRestart', false, () => guideWriteStartOver(st.w)));
   box.appendChild(actions);
-  if(r.sent){
-    const d = skillEl('details');
-    d.id = 'guideSkillSent';
-    d.append(skillEl('summary', 'What the brain was asked'), skillEl('pre', r.sent.system), skillEl('pre', r.sent.user));
-    box.appendChild(d);
+  if(r) skillSent(box, r.sent);
+  box.hidden = false;
+  guideInputPlaceholder();
+  box.scrollIntoView({block: 'nearest'});
+  $('#guideInput').focus({preventScroll: true});
+}
+// The panel's one input: an answer while the guide's question waits, a
+// complaint while a result is attached, otherwise a question to the guide.
+function guideInputPlaceholder(){
+  const asking = GUIDE_SKILL && !$('#guideSkill').hidden && !!$('#guideSkillRestart')
+    && guideWriteOpen(guideHistLoad(guideHistKey()));
+  const revise = GUIDE_REVISE && GUIDE_REVISE.room === GUIDE_ROOM;
+  $('#guideInput').placeholder = revise ? "What's wrong with it?"
+    : asking ? (asking.pending.options.length ? 'Your answer… (or pick one above)' : 'Your answer…')
+    : GUIDE_INPUT_PLACEHOLDER;
+}
+function renderGuideSkill(r, w){
+  const box = $('#guideSkill');
+  box.textContent = '';
+  GUIDE_SKILL = {w: w};
+  box.appendChild(skillEl('div', GUIDE.guide.name, 'guide-who'));
+  const mode = currentMode();
+  box.appendChild(skillEl('div', 'Here is what I wrote.', 'guide-text'));
+  const dl = skillEl('dl');
+  fieldsFor(mode).filter(f => f.id in r.fields).forEach(f => {
+    const v = r.fields[f.id];
+    const dd = skillEl('dd');
+    if(f.type === 'textarea') dd.appendChild(skillEl('pre', v === '' ? '(empty: instrumental)' : String(v)));
+    else dd.textContent = String(v);
+    dl.append(skillEl('dt', f.label || f.id), dd);
+  });
+  box.appendChild(dl);
+  if(r.note){
+    const n = skillEl('p', r.note, 'skill-note');
+    n.id = 'guideSkillNote';
+    box.appendChild(n);
   }
+  if(r.problems && r.problems.length){
+    const ul = skillEl('ul', null, 'skill-problems');
+    ul.id = 'guideSkillProblems';
+    r.problems.forEach(t => ul.appendChild(skillEl('li', t)));
+    box.append(skillEl('p', 'Still not right after a second try:', 'guide-hint'), ul);
+  }
+  if(r.vision === false) box.appendChild(skillEl('p', "This helper can't see pictures, so it only has your words to go on.", 'guide-hint'));
+  const actions = skillEl('div', null, 'skill-actions');
+  actions.append(skillButton('Use these', 'guideSkillUse', true, () => guideSkillUse(r.fields)),
+                 skillButton('Dismiss', 'guideSkillDismiss', false, guideSkillClear),
+                 skillButton('Start over', 'guideSkillRestart', false, () => guideWriteStartOver(w)));
+  box.appendChild(actions);
+  skillSent(box, r.sent);
   box.hidden = false;
   box.scrollIntoView({block: 'nearest'});
 }
@@ -2713,19 +2844,45 @@ function guideSkillUse(fields){
   refreshEnabled(fieldsFor(currentMode()));
   makeConfirmHide();
   guideSkillClear();
+  // The words land in the prompt box above: bring it back into view.
+  const r = $('#promptBox').getBoundingClientRect(), c = $('#inspector').getBoundingClientRect();
+  if(!$('#promptWrap').hidden && (r.top < Math.max(0, c.top) || r.bottom > Math.min(innerHeight, c.bottom)))
+    $('#promptBox').scrollIntoView({block: 'nearest'});
 }
-async function guideSkillRun(answer){
-  if(GUIDE_ABORT || !GUIDE || !GUIDE.helper || !currentMode() || !currentMode().writer) return;
+// "Help me write this" / "Describe this picture" start a write (any open one
+// is closed first); an answer (a chip, or the box) continues the open one.
+async function guideSkillRun(answer, describe){
+  if(GUIDE_ABORT || !GUIDE || !GUIDE.helper || !currentMode() || $('#promptWrap').hidden) return;
   const answering = typeof answer === 'string';
-  const topic = answering && GUIDE_SKILL ? GUIDE_SKILL.topic : $('#guideInput').value.trim();
-  if(!topic){ guideShowError('Say what it should be about first, in the box above.'); return; }
-  const room = GUIDE_ROOM, mode = STATE.mode;
-  const body = {room: room, mode: mode, topic: topic};
-  if(answering && answer.trim()) body.answer = answer.trim().slice(0, 500);
+  const key = guideHistKey(), room = GUIDE_ROOM, mode = STATE.mode;
+  const hist = guideHistLoad(key);
+  let st, turn;
+  if(answering){
+    st = guideWriteOpen(hist);
+    const a = answer.trim().slice(0, 500);
+    if(!st || !a) return;
+    st.answers.push({q: st.pending.q, a: a});
+    turn = {role: 'user', content: a, w: st.w, wk: 'a'};
+  } else {
+    const pictures = describe ? [guidePictureRef(currentImageSource())].filter(Boolean) : null;
+    if(describe && !pictures.length){ guideShowError('No picture to describe yet.'); return; }
+    hist.filter(m => m.wk === 'topic').forEach(m => { m.closed = true; });
+    const topic = $('#promptBox').value.trim();
+    st = {w: Date.now().toString(36), mode: mode, topic: topic, pictures: pictures, answers: []};
+    const said = topic || (describe ? 'Describe this picture.' : '');
+    turn = said ? {role: 'user', content: said, w: st.w, wk: 'topic', mode: mode, topic: topic, pictures: pictures} : null;
+  }
+  if(turn){ hist.push(turn); guideHistSave(key, hist); }
+  guideSkillClear();
+  renderGuideLog();
+  const body = {room: room, mode: mode, topic: st.topic};
+  if(st.pictures) body.pictures = st.pictures;
+  if(st.answers.length) body.answers = st.answers;
   const context = guideContext();
   if(context) body.context = context;
   guideShowError('');
   guideBusy(true);
+  $('#guidePanel').scrollIntoView({block: 'nearest'});
   GUIDE_ABORT = new AbortController();
   try{
     const r = await postJSON('/api/guide/skill', body, GUIDE_ABORT.signal);
@@ -2733,18 +2890,45 @@ async function guideSkillRun(answer){
       if(r && r.no_brain) GUIDE_ROOM = null;
       throw new Error((r && r.error) || 'The helper is busy or switched off right now.');
     }
-    if(GUIDE_ROOM !== room || STATE.mode !== mode) return;   // the user moved on
-    GUIDE_SKILL = {room: room, mode: mode, topic: topic};
-    renderGuideSkill(r);
+    if(GUIDE_ROOM !== room || STATE.mode !== mode || guideHistKey() !== key) return;   // the user moved on
+    const h = guideHistLoad(key);
+    if(r.question){
+      h.push({role: 'assistant', content: r.question, w: st.w, wk: 'q', options: r.options || []});
+      guideHistSave(key, h);
+      renderGuideLog();
+      renderGuideQuestion(guideWriteOpen(h) || {w: st.w, pending: {q: r.question, options: r.options || []}}, r);
+    } else {
+      const labels = fieldsFor(currentMode()).filter(f => f.id in r.fields).map(f => f.label || f.id);
+      h.forEach(m => { if(m.w === st.w && m.wk === 'topic') m.closed = true; });
+      h.push({role: 'assistant', content: 'I wrote ' + (labels.join(', ') || 'nothing') + ' for the form.'
+               + (r.note ? ' ' + r.note : ''), w: st.w, wk: 'done'});
+      guideHistSave(key, h);
+      renderGuideLog();
+      renderGuideSkill(r, st.w);
+    }
   } catch(e){
-    if(e.name !== 'AbortError') guideShowError(String(e.message || e));
+    // Nothing came back: take this turn out again, so asking again never
+    // sends it twice, and put an answer back where it was typed.
+    if(turn){
+      const h = guideHistLoad(key);
+      if(h.length && h[h.length - 1].w === turn.w && h[h.length - 1].wk === turn.wk) h.pop();
+      guideHistSave(key, h);
+    }
+    if(guideHistKey() === key && GUIDE_ROOM === room){
+      renderGuideLog();
+      guideWriteRestore();
+      if(answering && !$('#guideSkill').hidden && !(st.pending.options || []).includes(answer)) $('#guideInput').value = answer;
+    }
+    if(e.name !== 'AbortError'){
+      guideShowError(String(e.message || e));
+      $('#guidePanel').scrollIntoView({block: 'nearest'});
+    }
   } finally {
     GUIDE_ABORT = null;
     guideBusy(false);
     if(GUIDE_ROOM === null) renderGuidePanel();
   }
 }
-$('#guideWriteBtn').onclick = () => guideSkillRun();
 
 /* ---------------------------------------------------------------------
    "Not right? Tell the guide": POST /api/guide/revise. The button on a
@@ -2754,7 +2938,6 @@ $('#guideWriteBtn').onclick = () => guideSkillRun();
    instruction); nothing reaches the form until the user presses a button.
    Text only, never HTML.
 --------------------------------------------------------------------- */
-const GUIDE_INPUT_PLACEHOLDER = 'Ask the guide. Enter sends, Shift+Enter for a new line.';
 function reviseOutputIndex(job){
   return (job.outputs || []).findIndex(o => o.media === 'image' || o.media === 'video');
 }
@@ -2771,7 +2954,7 @@ async function openRevise(job){
   guideSkillClear();
   guideShowError('');
   renderReviseChip();
-  $('#guidePanel').open = true;
+  if($('#guideTalk').hidden) renderGuideExpand(true);   // no helper: its guidance in full
   $('#guidePanel').scrollIntoView({block: 'nearest'});
   if(!$('#guideTalk').hidden) $('#guideInput').focus();
 }
@@ -2784,7 +2967,7 @@ function renderReviseChip(){
   const brain = !!(GUIDE && GUIDE.guide && GUIDE.helper);
   const r = GUIDE_REVISE && GUIDE_REVISE.room === GUIDE_ROOM ? GUIDE_REVISE : null;
   $('#guideReviseNoBrain').hidden = !(r && GUIDE && GUIDE.guide && !brain);
-  $('#guideInput').placeholder = r ? "What's wrong with it?" : GUIDE_INPUT_PLACEHOLDER;
+  guideInputPlaceholder();
   chip.textContent = '';
   chip.hidden = !(r && brain);
   if(chip.hidden) return;
@@ -2961,7 +3144,6 @@ $('#makeAnywayBtn').onclick = () => { const retry = MAKE_CONFIRM_RETRY; makeConf
 $('#makeFixBtn').onclick = () => {
   makeConfirmHide();
   if(!$('#guidePanel').hidden && !$('#guideTalk').hidden){
-    $('#guidePanel').open = true;
     $('#guideInput').focus();
     $('#guidePanel').scrollIntoView({block: 'nearest'});
   } else {
@@ -4330,8 +4512,7 @@ async function loadEnginesFor(){
   const d = await getJSON('/api/engines' + (STATE.activeLane ? ('?lane=' + encodeURIComponent(STATE.activeLane)) : ''));
   const rooms = Array.isArray(d.rooms) ? d.rooms : [];
   delete d.rooms;
-  STATE.helper = !!d.helper;
-  delete d.helper;
+  delete d.helper;   // not a capability; the guide (GET /api/guide) says whether a helper is set up
   STATE.engines = d;
   STATE.rooms = rooms.slice().sort((a, b) => (a.order == null ? 1000 : a.order) - (b.order == null ? 1000 : b.order));
   const key = JSON.stringify(STATE.rooms);

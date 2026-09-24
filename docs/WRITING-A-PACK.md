@@ -119,9 +119,11 @@ at all.
   `quality` tier's `why`) — never an invented claim.
 - **`prompt_guides`** — mode -> an instruction telling a prompt-writing helper how a
   prompt for *this* mode must be written (e.g. "positive prompt only", a tag style for
-  songs). Same evidence discipline as `mode_notes`.
+  songs). Same evidence discipline as `mode_notes`. A mode with no `writers` entry gets the
+  room guide's generic writer, and this line (with the mode's own field labels, ranges and
+  choices) is the only engine-specific text it sees.
 - **`writers`** — mode -> a writing skill for the room's guide: a topic in, this mode's
-  field values out (`POST /api/guide/skill`, the "Write it for me" button). Each is a dict:
+  field values out (`POST /api/guide/skill`, "Help me write this" under the prompt box). Each is a dict:
   `label` (e.g. "Song writer"), `prompt` (the writer's system prompt, this engine's own
   rules), `keys` (`{"TAGS": "tags", ...}`: output line key -> field id), `multiline` (the one
   key, also in `keys`, whose value runs to the end of the reply, e.g. `"LYRICS"`),
@@ -130,7 +132,11 @@ at all.
   text field the engine takes only from a fixed list) and `check(values, request)` -> a list
   of plain problem sentences. The reply is line-delimited, one `KEY: value` per line, never
   JSON: small models do not reliably escape newlines inside a JSON string. It may instead be
-  a single `QUESTION: ...` line, the writer asking one thing before it writes. The core
+  a single `QUESTION: ...` line, the writer asking one thing before it writes, optionally
+  followed by `OPTIONS: a | b | c` (2-5 short choices the page offers as buttons). The page
+  sends every answer back in order, and after 4 the writer is told to write with sensible
+  defaults and name them on a `NOTE:` line (a NOTE line inside the multiline part ends it).
+  Ask only what changes the result for the mode. The core
   coerces every value against the mode's own fields (a value out of range is left out and
   named, never clamped), runs `check`, and on problems retries once; problems still left are
   shown to the user with the fields. `check` also runs at Make time: a request it finds

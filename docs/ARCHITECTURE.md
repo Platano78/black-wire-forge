@@ -58,7 +58,8 @@ returns the guide, each projection's size (chars/4) and the helper's reported co
 newest turns within a size budget (reporting how many it dropped), and returns the reply
 with `truncated` set when the helper stopped for length or the answer passed its cap. The
 server keeps no conversation: the page stores it per room (per sequence in the Cutting
-Room). The existing `/api/helper` is unchanged.
+Room). `/api/helper` stays for API users, but the page no longer calls it: the prompt box's
+writing actions go to the room's guide (below).
 
 Every room names a guide: Sound (Music, Cover, Sound FX), Picture (Picture, Pixel Art,
 Clean-up, Textures), Motion (Video, Talking Head), Object (3D) and Film (the Cutting Room).
@@ -71,8 +72,25 @@ Cutting Room does not). The context is validated against the room's own modes an
 mode's own field ids. The helper's context size comes from config's `helper.context`, else
 llama.cpp's `/props`, else `/models` (whose `n_ctx_train` is the training context, used last).
 
-A guide also has **skills**: a mode whose pack declares a `writers` entry (see
-`WRITING-A-PACK.md`) gets "Write it for me" in the guide panel. `POST /api/guide/skill`
+A guide also has **skills**, one voice with the prompt box: "Help me write this" under the
+box hands the box's words to the room's guide, and the answer lands in the guide panel, which
+sits right under that button, above the rest of the form (compact by default: its header, the latest message and the
+input; expanded, the whole conversation). A mode whose pack declares a `writers` entry (see
+`WRITING-A-PACK.md`) uses that writer; any other mode with a text field uses the server's
+generic writer: the room guide's compact prompt, the mode's own `prompt_guides` line, the
+mode's other declared settings (text, number and select fields, with their ranges and
+choices) and a fixed reply contract: `QUESTION:` (+ an optional `OPTIONS: a | b`), or any
+`<FIELD_ID>: value` lines, an optional `NOTE:` and `PROMPT:` last, which fills the mode's first
+text field. Every setting value is checked against the mode's fields as a pack writer's is.
+A write is a short conversation: one question per turn, answered by a choice or in words, and
+the page sends every answer back as `answers: [{"q", "a"}]`, in order. After 4 answers the
+server tells the writer to write now with sensible defaults and a NOTE naming them; a writer
+that still asks is asked once more, then refused with a plain sentence. The page keeps the
+write's turns in the guide history, marked, so a reload picks the write up, and "Start over"
+removes them.
+"Describe this picture" is the same call with `pictures` (a result or an upload, as in the
+chat): always the generic writer, the picture sent only to a helper that can see, and the
+truthful attachment line either way; the topic may then be empty. `POST /api/guide/skill`
 takes the room, the mode, the topic, an optional `answer` to the writer's question, and the
 same `context` as the chat (without the mode's own label, which a small model read as the
 answer to "sung or instrumental?"). It returns either `question`, or `fields` plus any

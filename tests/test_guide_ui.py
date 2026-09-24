@@ -1,7 +1,9 @@
 """Browser gate for the room guide panel: the Film Room Guide in the Cutting
 Room (P1), every other room's guide, and the room context a generator room
-sends with each turn (P1b/P1c); the song writer skill ("Write it for me") and the
-Make-time confirm (P2); "Not right? Tell the guide" on a finished picture (P2b).
+sends with each turn (P1b/P1c); the song writer skill and the Make-time confirm (P2);
+"Not right? Tell the guide" on a finished picture (P2b); one voice (P2c): "Help
+me write this" / "Describe this picture" by the prompt box go to the room's
+guide and answer in its panel, which sits at the top of the form.
 
 Drives the real page in a real browser (Playwright) against its own
 server.py subprocesses (scratch config + scratch data, random free ports),
@@ -73,7 +75,7 @@ except Exception as _pw_err:
     sys.exit(0)
 
 # ---- fake helper: records every chat body, answers /models --------------
-HELPER = {"reply": "ok", "finish": "stop", "requests": []}
+HELPER = {"reply": "ok", "finish": "stop", "requests": [], "delay": 0, "replies": []}
 
 class FakeHelper(BaseHTTPRequestHandler):
     def _send(self, obj):
@@ -85,7 +87,9 @@ class FakeHelper(BaseHTTPRequestHandler):
     def do_POST(self):
         n = int(self.headers.get("Content-Length") or 0)
         HELPER["requests"].append(json.loads(self.rfile.read(n) or b"{}"))
-        self._send({"choices": [{"message": {"content": HELPER["reply"]}, "finish_reason": HELPER["finish"]}]})
+        time.sleep(HELPER["delay"])
+        reply = HELPER["replies"].pop(0) if HELPER["replies"] else HELPER["reply"]
+        self._send({"choices": [{"message": {"content": reply}, "finish_reason": HELPER["finish"]}]})
     def log_message(self, *a):
         pass
 
@@ -215,6 +219,11 @@ def show_fix_job(page, url):
     page.click('#binBody tr[data-job="fixjob1"]')
     page.wait_for_selector("#monitorActions", timeout=15000)
 
+def pick(page, mode):
+    """Pick an engine: the picker is one summary line until opened (P2c)."""
+    page.evaluate("() => { document.querySelector('#enginePickerDetails').open = true; }")
+    page.check('#enginePicker input[data-mode="%s"]' % mode)
+
 def shot(page, name):
     if SHOTS:
         os.makedirs(SHOTS, exist_ok=True)
@@ -253,7 +262,7 @@ try:
         page = browser.new_page(viewport={"width": 1280, "height": 800})
         page.on("request", record_chat)
         enter_cutting(page, url_brain)
-        box = page.eval_on_selector("#guidePanel > summary", "e => { const r = e.getBoundingClientRect(); "
+        box = page.eval_on_selector("#guideHeader", "e => { const r = e.getBoundingClientRect(); "
                                     "return [r.top, r.bottom, window.innerHeight]; }")
         check("brain: guide heading within the viewport at 1280x800", box[1] <= box[2] and box[0] >= 0, box)
         check("brain: greeting shown first", guide_msgs(page)[:1] == [META["greeting"]], guide_msgs(page))
@@ -321,6 +330,8 @@ try:
               guide_msgs(page))
 
         print("brain: clear empties the conversation, and it stays empty")
+        check("compact: Clear conversation waits in the expanded panel", not page.is_visible("#guideClearBtn"))
+        page.click("#guideExpandBtn")   # compact shows only the latest message; Clear is with the whole conversation
         page.click("#guideClearBtn")
         check("clear: only the greeting left", guide_msgs(page) == [META["greeting"]])
         page.reload(wait_until="networkidle")
@@ -365,17 +376,22 @@ try:
         SKILL_BODIES = []
         GEN_BODIES = []
         # ---------------- P2: the song writer skill + the Make-time confirm ----------------
-        print("Music, song: Write it for me (the song writer skill)")
+        print("Music, song: Help me write this -> the guide's song writer skill")
         page = browser.new_page(viewport={"width": 1280, "height": 800})
         page.on("request", lambda req: (SKILL_BODIES.append(json.loads(req.post_data or "{}")) if req.url.endswith("/api/guide/skill") and req.method == "POST" else None, GEN_BODIES.append(json.loads(req.post_data or "{}")) if req.url.endswith("/api/generate") and req.method == "POST" else None))
         enter_room(page, url_brain, "music")
-        check("skill: the Write button shows for a mode with a writer", page.is_visible("#guideWriteBtn"))
-        check("skill: the old helper button is hidden for song", not page.is_visible("#helperWriteBtn"))
-        page.fill("#guideInput", "a song about the sea")
+        check("skill: Help me write this shows for a mode with a writer", page.is_visible("#helperWriteBtn"))
+        check("skill: the guide panel has no Write button of its own", page.query_selector("#guideWriteBtn") is None)
+        check("skill: the button says it goes to the guide", text_of(page, "#helperCue") == "→ " + GUIDE_META["sound"]["name"],
+              text_of(page, "#helperCue"))
+        page.fill("#promptBox", "a song about the sea")
         shot(page, "skill-write-button-1280x800")
         HELPER["reply"] = GOOD
-        page.click("#guideWriteBtn")
+        page.click("#helperWriteBtn")
         page.wait_for_selector("#guideSkillUse", timeout=15000)
+        check("skill: the reply is in the guide panel, in the guide's voice", page.eval_on_selector(
+            "#guideSkill", "e => !!e.closest('#guidePanel')") and text_of(page, "#guideSkill .guide-who").lower() == GUIDE_META["sound"]["name"].lower()
+              and "Here is what I wrote." in text_of(page, "#guideSkill"))
         check("skill: the preview names the fields", "Style / genre" in text_of(page, "#guideSkill") and "warm pop, clear female vocals" in text_of(page, "#guideSkill"))
         check("skill: lyrics in a monospaced block", page.eval_on_selector("#guideSkill pre", "e => getComputedStyle(e).fontFamily").lower().find("mono") >= 0)
         check("skill: the request carried the room context", bool(SKILL_BODIES) and SKILL_BODIES[-1].get("mode") == "song" and SKILL_BODIES[-1].get("topic") == "a song about the sea" and (SKILL_BODIES[-1].get("context") or {}).get("mode") == "song", SKILL_BODIES[-1:])
@@ -390,29 +406,31 @@ try:
         check("skill: the preview closes", not page.is_visible("#guideSkill"))
         print("skill: the question path")
         HELPER["reply"] = "QUESTION: Sung, or instrumental?"
-        page.fill("#guideInput", "music for my video about the sea")
-        page.click("#guideWriteBtn")
-        page.wait_for_selector("#guideSkillAnswer", timeout=15000)
+        page.fill("#promptBox", "music for my video about the sea")
+        page.click("#helperWriteBtn")
+        page.wait_for_selector("#guideSkillRestart", timeout=15000)
         check("skill: the question is shown", "Sung, or instrumental?" in text_of(page, "#guideSkill"))
         shot(page, "skill-question-1280x800")
         HELPER["reply"] = GOOD
-        page.fill("#guideSkillAnswer", "Sung")
-        page.click("#guideSkillAnswerBtn")
+        check("skill: the panel's input is the answer box, the bubble has none", page.query_selector("#guideSkillAnswer") is None
+              and page.get_attribute("#guideInput", "placeholder").startswith("Your answer"), page.get_attribute("#guideInput", "placeholder"))
+        page.fill("#guideInput", "Sung")
+        page.press("#guideInput", "Enter")
         page.wait_for_selector("#guideSkillUse", timeout=15000)
-        check("skill: the answer goes back with the same topic", SKILL_BODIES[-1].get("answer") == "Sung" and SKILL_BODIES[-1].get("topic") == "music for my video about the sea", SKILL_BODIES[-1])
+        check("skill: the answer goes back, with its question, and the same topic", SKILL_BODIES[-1].get("answers") == [{"q": "Sung, or instrumental?", "a": "Sung"}] and SKILL_BODIES[-1].get("topic") == "music for my video about the sea", SKILL_BODIES[-1])
         page.click("#guideSkillDismiss")
         check("skill: Dismiss closes it", not page.is_visible("#guideSkill"))
         print("skill: problems are shown plainly")
         HELPER["reply"] = BAD
-        page.fill("#guideInput", "a song about the sea")
-        page.click("#guideWriteBtn")
+        page.fill("#promptBox", "a song about the sea")
+        page.click("#helperWriteBtn")
         page.wait_for_selector("#guideSkillProblems", timeout=15000)
         check("skill: both problems listed", page.eval_on_selector_all("#guideSkillProblems li", "els => els.length") == 2)
         shot(page, "skill-problems-1280x800")
         print("skill: 390 wide")
         HELPER["reply"] = GOOD
-        page.fill("#guideInput", "a song about the sea")
-        page.click("#guideWriteBtn")
+        page.fill("#promptBox", "a song about the sea")
+        page.click("#helperWriteBtn")
         page.wait_for_selector("#guideSkillUse", timeout=15000)
         page.set_viewport_size({"width": 390, "height": 844})
         page.wait_for_timeout(300)
@@ -439,16 +457,25 @@ try:
         page.wait_for_selector("#makeConfirm:not([hidden])", timeout=15000)
         page.click("#makeFixBtn")
         check("confirm: Fix it goes to the guide", page.evaluate("document.activeElement && document.activeElement.id") == "guideInput" and not page.is_visible("#makeConfirm"))
-        print("skill: a mode with no writer keeps the old helper button")
-        page.check('#enginePicker input[data-mode="music"]')
+        print("skill: a mode with no pack writer still writes through the guide (the generic writer)")
+        pick(page, "music")
         page.wait_for_timeout(600)
-        check("skill: no Write button for a mode without a writer", not page.is_visible("#guideWriteBtn"), page.evaluate("STATE.mode"))
-        check("skill: the old helper button is back for it", page.is_visible("#helperWriteBtn"))
+        check("skill: Help me write this is there for it too", page.is_visible("#helperWriteBtn"), page.evaluate("STATE.mode"))
+        HELPER["reply"] = "PROMPT: calm ambient pads, soft piano, no drums"
+        del SKILL_BODIES[:]
+        page.fill("#promptBox", "background music for a rainy cafe")
+        page.click("#helperWriteBtn")
+        page.wait_for_selector("#guideSkillUse", timeout=15000)
+        check("skill: it went to /api/guide/skill for that mode", SKILL_BODIES and SKILL_BODIES[-1].get("mode") == "music"
+              and SKILL_BODIES[-1].get("topic") == "background music for a rainy cafe", SKILL_BODIES[-1:])
+        page.click("#guideSkillUse")
+        check("skill: Use these fills its prompt box", page.input_value("#promptBox") == "calm ambient pads, soft piano, no drums",
+              page.input_value("#promptBox"))
         page.close()
         print("no brain: no Write button, one line on how to add a helper")
         page = browser.new_page(viewport={"width": 1280, "height": 800})
         enter_room(page, url_none, "music")
-        check("no brain: no Write button", not page.is_visible("#guideWriteBtn"))
+        check("no brain: no Help me write this", not page.is_visible("#helperWriteBtn") and page.query_selector("#guideWriteBtn") is None)
         check("no brain: the add-a-helper line for writing", text_of(page, "#guideWriteNoBrain") == "Add a helper to have the guide write the words for you.")
         page.close()
 
@@ -557,7 +584,7 @@ try:
               "pick this picture as the source" in text_of(page, "#inspectorMsg")
               and "Pictures to work from" in text_of(page, "#inspectorMsg"), text_of(page, "#inspectorMsg"))
         print("revise: the remove button detaches it, and Send talks to the guide again")
-        page.check('#enginePicker input[data-mode="t2i"]')
+        pick(page, "t2i")
         page.wait_for_timeout(600)
         page.click("#notRightBtn")
         page.wait_for_selector("#guideChip:not([hidden])", timeout=15000)
@@ -605,30 +632,289 @@ try:
         check("revise: no brain: the button is there", page.is_visible("#notRightBtn"))
         page.click("#notRightBtn")
         page.wait_for_selector("#guideReviseNoBrain:not([hidden])", timeout=15000)
-        check("revise: no brain: the panel is open with the guidance", page.eval_on_selector("#guidePanel", "e => e.open")
+        check("revise: no brain: the panel is open with the guidance", page.eval_on_selector("#guidePanel", "e => e.dataset.expanded === 'true'")
               and page.is_visible("#guideNoBrainList") and "config.json" in text_of(page, "#guideAddBrain"))
         check("revise: no brain: the add-a-helper line for fixing",
               text_of(page, "#guideReviseNoBrain") == "Add a helper to have the guide look at this result and fix its prompt.")
         check("revise: no brain: no chip, no input box", not page.is_visible("#guideChip") and not page.is_visible("#guideInput"))
         page.close()
 
-        print("every room: the right guide, screenshots at 1280x800 (brain)")
-        page = browser.new_page(viewport={"width": 1280, "height": 800})
+        # ---------------- P2c: one voice ----------------
+        IN_VIEW = ("sel => { const e = document.querySelector(sel); if(!e || !e.offsetParent) return false;"
+                   " const r = e.getBoundingClientRect(), c = document.querySelector('#inspector').getBoundingClientRect();"
+                   " return r.top >= Math.max(0, c.top) && r.bottom <= Math.min(innerHeight, c.bottom); }")
+        # The owner's order: the prompt box, Help me write this, the guide right under it, then the rest.
+        ORDER = ("() => { const top = s => { const e = document.querySelector(s); return e && e.offsetParent ? e.getBoundingClientRect().top : null; };"
+                 " const g = document.querySelector('#guidePanel'), f = document.querySelector('#makeBtn');"
+                 " const below = !!(g.compareDocumentPosition(f) & Node.DOCUMENT_POSITION_FOLLOWING)"
+                 "   && !!(g.compareDocumentPosition(document.querySelector('#recipeDetails')) & Node.DOCUMENT_POSITION_FOLLOWING);"
+                 " const right = g.previousElementSibling && g.previousElementSibling.id === 'promptWrap';"
+                 " if(top('#promptBox') === null) return below && right;"
+                 # the button is hidden with no helper: the guide takes its place
+                 " const btn = top('#helperWriteBtn');"
+                 " return below && right && (btn === null ? top('#promptBox') < top('#guideHeader')"
+                 "   : top('#promptBox') < btn && btn < top('#guideHeader')); }")
+        sys.path.insert(0, REPO)
+        import engines
+        PICTURE_COMPACT = read("guides/picture/" + GUIDE_META["picture"]["projections"]["compact"])
+        ALL_URLS = []
+        # Every fetch the page makes, from its own side too (not only the network).
+        SPY = ("(() => { const f = window.fetch; window.__fetched = [];"
+               " window.fetch = function(u){ window.__fetched.push(String(u && u.url || u)); return f.apply(this, arguments); }; })()")
+        PAGE_FETCHES = []
+        def voice_page(width=1280, height=800):
+            p = browser.new_page(viewport={"width": width, "height": height})
+            p.add_init_script(SPY)
+            p.on("request", lambda req: ALL_URLS.append(req.url))
+            p.on("request", lambda req: SKILL_BODIES.append(json.loads(req.post_data or "{}"))
+                 if req.url.endswith("/api/guide/skill") and req.method == "POST" else None)
+            return p
+        def keep_fetches(p):
+            PAGE_FETCHES.extend(p.evaluate("() => window.__fetched || []"))
+        def last_user(): return HELPER["requests"][-1]["messages"][-1]["content"] if HELPER["requests"] else None
+
+        print("P2c Picture, t2i (no pack writer): Help me write this -> the Picture Guide")
+        page = voice_page()
+        enter_room(page, url_brain, "picture")
+        check("one voice: t2i has no pack writer", page.evaluate("() => !currentMode().writer"))
+        check("one voice: Help me write this is by the prompt box, cued to the guide", page.is_visible("#helperWriteBtn")
+              and text_of(page, "#helperCue") == "→ " + GUIDE_META["picture"]["name"])
+        page.fill("#promptBox", "a lighthouse")
+        del SKILL_BODIES[:]
+        HELPER["requests"].clear()
+        HELPER.update(reply="PROMPT: A lighthouse at dusk on a rocky point, warm light in the lamp room.", finish="stop", delay=1.5)
+        page.click("#helperWriteBtn")
+        page.wait_for_selector("#helperSpinner:not([hidden])", timeout=5000)
+        writing = GUIDE_META["picture"]["name"] + " is writing…"
+        check("one voice: while it writes, the guide says so by name", text_of(page, "#helperSpinner") == writing
+              and text_of(page, "#guideThinking") == writing, (text_of(page, "#helperSpinner"), text_of(page, "#guideThinking")))
+        page.wait_for_selector("#guideSkillUse", timeout=15000)
+        HELPER["delay"] = 0
+        body = SKILL_BODIES[-1] if SKILL_BODIES else {}
+        check("t2i: it went to /api/guide/skill with the prompt box's words", body.get("room") == "picture"
+              and body.get("mode") == "t2i" and body.get("topic") == "a lighthouse"
+              and (body.get("context") or {}).get("mode") == "t2i" and "pictures" not in body, body)
+        system = HELPER["requests"][-1]["messages"][0]["content"] if HELPER["requests"] else ""
+        check("t2i: the brain got the Picture Guide's voice and t2i's own prompt rules",
+              PICTURE_COMPACT.strip() in system and engines.prompt_guide("image", "t2i") in system)
+        check("t2i: the reply is a guide message in the guide panel", page.eval_on_selector(
+            "#guideSkill", "e => !!e.closest('#guidePanel')") and text_of(page, "#guideSkill .guide-who").lower() == GUIDE_META["picture"]["name"].lower())
+        check("t2i: and it is in view", page.evaluate(
+            "() => { const r = document.querySelector('#guideSkillUse').getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }"))
+        shot(page, "p2c-picture-help-1280x800")
+        page.click("#guideSkillUse")
+        check("t2i: Use these fills the prompt box",
+              page.input_value("#promptBox") == "A lighthouse at dusk on a rocky point, warm light in the lamp room.",
+              page.input_value("#promptBox"))
+        print("P2c: a reply with no prompt comes back as the server's sentence, verbatim")
+        HELPER["reply"] = "Sure! Here you go."
+        page.click("#helperWriteBtn")
+        page.wait_for_selector("#guideError:not([hidden])", timeout=15000)
+        check("one voice: the server's error sentence, unchanged",
+              text_of(page, "#guideError") == "The writer's answer didn't come back in the expected shape.", text_of(page, "#guideError"))
+        keep_fetches(page)
+        page.close()
+
+        print("P2c Picture: Describe this picture -> the guide, with the picture")
+        page = voice_page()
+        show_fix_job(page, url_brain)
+        page.wait_for_selector("#helperDescribeBtn:not([hidden])", timeout=15000)
+        HELPER.update(reply="PROMPT: A soft colour gradient from green to violet.")
+        HELPER["requests"].clear()
+        page.click("#helperDescribeBtn")
+        page.wait_for_selector("#guideSkillUse", timeout=15000)
+        body = SKILL_BODIES[-1] if SKILL_BODIES else {}
+        check("describe: it went to /api/guide/skill with the result as the picture",
+              body.get("pictures") == [{"job_id": "fixjob1", "output": 0}] and body.get("mode") == "t2i", body)
+        content = last_user()
+        check("describe: the helper that can see got the picture", isinstance(content, list)
+              and [x["type"] for x in content] == ["text", "image_url"], type(content))
+        page.click("#guideSkillUse")
+        check("describe: Use these fills the prompt box", page.input_value("#promptBox") == "A soft colour gradient from green to violet.",
+              page.input_value("#promptBox"))
+        print("P2c Picture: Not right? opens and focuses this same panel")
+        page.click("#notRightBtn")
+        page.wait_for_selector("#guideChip:not([hidden])", timeout=15000)
+        check("not right: the same panel, input focused and in view",
+              page.evaluate("document.activeElement && document.activeElement.id") == "guideInput"
+              and page.evaluate("() => { const r = document.querySelector('#guideInput').getBoundingClientRect(); "
+                                "return r.top >= 0 && r.bottom <= innerHeight; }"))
+        shot(page, "p2c-picture-not-right-1280x800")
+        keep_fetches(page)
+        page.close()
+
+        print("P2c Picture: Describe this picture with a helper that cannot see")
+        page = voice_page()
+        show_fix_job(page, url_blind)
+        page.wait_for_selector("#helperDescribeBtn:not([hidden])", timeout=15000)
+        HELPER.update(reply="QUESTION: I can't see the picture, so tell me what it shows.")
+        HELPER["requests"].clear()
+        page.click("#helperDescribeBtn")
+        page.wait_for_selector("#guideSkillRestart", timeout=15000)
+        content = last_user()
+        check("blind describe: text only, with the truth", isinstance(content, str)
+              and content.endswith("[The user attached a picture, but this helper cannot see pictures.]"), content)
+        check("blind describe: the reply says it only has the words", "only has your words" in text_of(page, "#guideSkill"))
+        keep_fetches(page)
+        page.close()
+
+        print("P2c: the expand state is remembered")
+        page = voice_page()
+        enter_room(page, url_brain, "music")
+        expanded = lambda: page.eval_on_selector("#guidePanel", "e => e.dataset.expanded")
+        check("expand: compact by default, only the latest message shown", expanded() == "false"
+              and page.eval_on_selector_all("#guideLog .guide-msg", "els => els.filter(e => e.offsetParent).length") == 1)
+        page.click("#guideExpandBtn")
+        check("expand: expanded", expanded() == "true" and page.get_attribute("#guideExpandBtn", "aria-expanded") == "true")
+        check("expand: the conversation is capped at 40% of the viewport, scrolling inside",
+              page.eval_on_selector("#guideLog", "e => getComputedStyle(e).maxHeight === (innerHeight * 0.4) + 'px' "
+                                    "&& getComputedStyle(e).overflowY === 'auto'"))
+        page.reload(wait_until="networkidle")
+        page.wait_for_function("() => document.querySelector('#guideName').textContent.length > 8", timeout=15000)
+        check("expand: still expanded after a reload", expanded() == "true")
+        page.click("#guideExpandBtn")
+        page.reload(wait_until="networkidle")
+        page.wait_for_function("() => document.querySelector('#guideName').textContent.length > 8", timeout=15000)
+        check("expand: and compact again after collapsing and reloading", expanded() == "false")
+        keep_fetches(page)
+        page.close()
+
+        # ---------------- P2c amendment: the write conversation ----------------
+        def wait_question(page, text):
+            page.wait_for_function("t => { const b = document.querySelector('#guideSkill'); return b && !b.hidden "
+                                   "&& b.textContent.includes(t) && document.querySelector('#guideSkillRestart'); }",
+                                   arg=text, timeout=15000)
+        def user_msg(i): return HELPER["requests"][i]["messages"][-1]["content"]
+        print("P2c write conversation (Picture t2i): a question with options, then another, then the fields")
+        page = voice_page()
+        enter_room(page, url_brain, "picture")
+        del SKILL_BODIES[:]
+        HELPER["requests"].clear()
+        HELPER["replies"] = ["QUESTION: How many kites?\nOPTIONS: One | Two | A whole sky of them",
+                             "QUESTION: Where are they flying?",
+                             "WIDTH: 1024\nSTEPS: 999\nPROMPT: two red kites over a grey sea",
+                             "WIDTH: 1024\nSTEPS: 999\nPROMPT: two red kites over a grey sea"]
+        page.fill("#promptBox", "kites")
+        page.click("#helperWriteBtn")
+        wait_question(page, "How many kites?")
+        chips = page.eval_on_selector_all("#guideSkillOptions .skill-chip", "els => els.map(e => e.textContent)")
+        check("write: the options are chips, and there is still a box for any answer",
+              chips == ["One", "Two", "A whole sky of them"] and page.query_selector("#guideSkillAnswer") is None
+              and page.get_attribute("#guideInput", "placeholder") == "Your answer… (or pick one above)", chips)
+        check("write: the question and its chips are in view as it arrives", page.evaluate(IN_VIEW, "#guideSkill .guide-text")
+              and page.evaluate(IN_VIEW, "#guideSkillOptions"))
+        check("write: the guide sits right under Help me write this, the prompt above", page.evaluate(ORDER))
+        check("write: Start over is offered", page.is_visible("#guideSkillRestart"))
+        shot(page, "p2c-write-question-1280x800")
+        page.click('#guideSkillOptions [data-option="Two"]')
+        wait_question(page, "Where are they flying?")
+        shot(page, "p2c-write-after-chip-1280x800")
+        check("write: clicking a chip sends that answer, with its question",
+              SKILL_BODIES[-1].get("answers") == [{"q": "How many kites?", "a": "Two"}]
+              and SKILL_BODIES[-1].get("topic") == "kites", SKILL_BODIES[-1:])
+        check("write: the conversation shows in the guide's log", "How many kites?" in guide_msgs(page) and "Two" in guide_msgs(page)
+              and "kites" in guide_msgs(page), guide_msgs(page))
+        print("write: a reload picks the write up where it was")
+        page.reload(wait_until="networkidle")
+        wait_question(page, "Where are they flying?")
+        check("write: after a reload the waiting question is back, once", guide_msgs(page).count("Where are they flying?") == 0
+              and "Where are they flying?" in text_of(page, "#guideSkill"), guide_msgs(page))
+        page.fill("#guideInput", "over a grey sea")
+        page.press("#guideInput", "Enter")
+        page.wait_for_selector("#guideSkillUse", timeout=15000)
+        check("write: the answers go back in order, rebuilt after the reload",
+              SKILL_BODIES[-1].get("answers") == [{"q": "How many kites?", "a": "Two"},
+                                                  {"q": "Where are they flying?", "a": "over a grey sea"}], SKILL_BODIES[-1:])
+        check("write: the brain saw both Q/A pairs in order",
+              "Q1: How many kites?\nA1: Two\nQ2: Where are they flying?\nA2: over a grey sea" in user_msg(2), user_msg(2))
+        check("write: a bad setting is named, not used", "Steps" in text_of(page, "#guideSkillProblems")
+              and "999" in text_of(page, "#guideSkillProblems"), text_of(page, "#guideSkill"))
+        shot(page, "p2c-write-preview-1280x800")
+        page.evaluate("() => { document.querySelector('#inspector').scrollTop = 1e6; window.scrollTo(0, 1e6); }")
+        page.click("#guideSkillUse")
+        page.wait_for_timeout(300)
+        check("write: Use these brings the prompt box back into view", page.evaluate(IN_VIEW, "#promptBox"))
+        check("write: Use these fills the prompt and the setting it wrote", page.input_value("#promptBox")
+              == "two red kites over a grey sea" and page.input_value('#inspector [data-field-id="width"]') == "1024",
+              (page.input_value("#promptBox"), page.input_value('#inspector [data-field-id="width"]')))
+        print("write: after 4 answers the guide writes, and names its defaults")
+        del SKILL_BODIES[:]
+        HELPER["requests"].clear()
+        HELPER["replies"] = ["QUESTION: Q one?\nOPTIONS: yes | no", "QUESTION: Q two?", "QUESTION: Q three?", "QUESTION: Q four?",
+                             "NOTE: I chose daylight and a square frame.\nPROMPT: a kite on a beach"]
+        page.fill("#promptBox", "a kite")
+        page.click("#helperWriteBtn")
+        for q, a in (("Q one?", None), ("Q two?", "b"), ("Q three?", "c"), ("Q four?", "d")):
+            wait_question(page, q)
+            if a is None:
+                page.click('#guideSkillOptions [data-option="yes"]')
+            elif q == "Q three?":
+                page.fill("#guideInput", a)   # the panel's own input answers a waiting question too
+                page.press("#guideInput", "Enter")
+            else:
+                page.fill("#guideInput", a)
+                page.click("#guideSendBtn")
+        page.wait_for_selector("#guideSkillUse", timeout=15000)
+        check("write: the 5th call carried 4 answers and the write-now line", len(SKILL_BODIES) == 5
+              and len(SKILL_BODIES[-1].get("answers") or []) == 4 and "No more questions: write it now" in user_msg(4),
+              [len(b.get("answers") or []) for b in SKILL_BODIES])
+        check("write: the typed answer in the panel went to the write, not the chat",
+              SKILL_BODIES[3].get("answers", [{}])[-1].get("a") == "c", SKILL_BODIES[3:4])
+        check("write: the preview shows the NOTE", text_of(page, "#guideSkillNote") == "I chose daylight and a square frame.")
+        shot(page, "p2c-write-capped-note-1280x800")
+        print("write: Start over clears the write conversation")
+        HELPER["replies"] = ["QUESTION: Which beach?"]
+        page.fill("#promptBox", "a kite at the beach")
+        page.click("#helperWriteBtn")
+        wait_question(page, "Which beach?")
+        page.click("#guideSkillRestart")
+        check("write: Start over closes it and takes its turns out of the log", not page.is_visible("#guideSkill")
+              and "a kite at the beach" not in guide_msgs(page))
+        page.reload(wait_until="networkidle")
+        page.wait_for_timeout(800)
+        check("write: and it stays gone after a reload", not page.is_visible("#guideSkill")
+              and "Which beach?" not in text_of(page, "#guidePanel"))
+        keep_fetches(page)
+        page.close()
+
+        print("every room: the right guide, the placement floors, screenshots on entry at 1280x800 (brain)")
+        page = voice_page()
         for room_id, gid in ROOM_GUIDES.items():
             enter_room(page, url_brain, room_id)
+            page.wait_for_timeout(1500)   # the lane poll settles any room note first
             check("%s: shows %s" % (room_id, GUIDE_META[gid]["name"]), page.is_visible("#guidePanel")
                   and page.inner_text("#guideName") == GUIDE_META[gid]["name"], page.inner_text("#guideName"))
-            page.locator("#guidePanel").scroll_into_view_if_needed()
+            check("%s: the guide header is in view on entry" % room_id, page.evaluate(IN_VIEW, "#guideHeader"))
+            if page.is_visible("#promptWrap"):
+                check("%s: the prompt box and Help me write this are in view on entry" % room_id,
+                      page.evaluate(IN_VIEW, "#promptBox") and page.evaluate(IN_VIEW, "#helperWriteBtn"))
+            if room_id != "cutting" and page.is_visible("#makeBtn"):   # a room with nothing installed has no form
+                check("%s: prompt box, Help me write this, the guide right under it, then the rest of the form" % room_id,
+                      page.evaluate(ORDER))
             shot(page, "brain-%s-1280x800" % room_id)
+        keep_fetches(page)
         page.close()
         for label, url in (("brain", url_brain), ("nobrain", url_none)):
-            page = browser.new_page(viewport={"width": 390, "height": 844})
+            page = voice_page(390, 844)
             for room_id in ("music", "3d"):
                 enter_room(page, url, room_id)
+                page.wait_for_timeout(600)
                 check("%s %s: no horizontal scroll at 390" % (label, room_id), no_hscroll(page))
+                check("%s %s: the same order at 390" % (label, room_id), page.evaluate(ORDER))
+                if label == "nobrain":
+                    check("nobrain %s: the top slot has the guidance and the add-a-helper line, no Help me write this" % room_id,
+                          page.is_visible("#guideNoBrain") and page.is_visible("#guideAddBrain")
+                          and not page.is_visible("#helperWriteBtn"))
                 page.locator("#guidePanel").scroll_into_view_if_needed()
                 shot(page, "%s-%s-390" % (label, room_id))
+            keep_fetches(page)
             page.close()
+        print("P2c: the page never calls /api/helper")
+        check("no /api/helper request on the network from any P2c page", ALL_URLS
+              and not any(u.split("?")[0].endswith("/api/helper") for u in ALL_URLS), [u for u in ALL_URLS if "helper" in u])
+        check("no fetch of /api/helper from the page itself", PAGE_FETCHES
+              and not any(u.split("?")[0].endswith("/api/helper") for u in PAGE_FETCHES))
+        check("index.html names no /api/helper call at all", "/api/helper" not in read("index.html"))
         browser.close()
 finally:
     for p in PROCS:

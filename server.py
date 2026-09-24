@@ -3594,8 +3594,106 @@ def _writer_check_values(cap, mode, context, written):
     return values
 
 
+# A mode whose pack declares no writer still gets one: the room guide's own
+# compact voice, the pack's prompt_guides line for the mode (the engine's words
+# live there, never here), the mode's own settings listed from its declared
+# fields, and this fixed reply contract. PROMPT fills the mode's first text
+# field, the one the page shows as the prompt box.
+GENERIC_WRITER_LABEL = "Prompt writer"
+GENERIC_WRITER_FIELD_TYPES = ("text", "textarea", "number", "int", "select")
+GENERIC_WRITER_RESERVED = ("PROMPT", "QUESTION", "OPTIONS", "NOTE")
+GENERIC_WRITER_TASK = """
+
+---
+Right now you have one job: write the words for this room's form. The user reviews them before anything is made.
+
+How the words for this mode must be written:
+%(guide)s
+
+The form's other settings. Set one only when the request or an answer asks for it; otherwise leave it out and the form keeps its own value:
+%(settings)s
+
+Reply in plain text, no Markdown and no JSON, in exactly ONE of these two shapes.
+
+To ask, only when you cannot write it well without knowing one thing:
+QUESTION: <one short question>
+OPTIONS: <2 to 5 short choices separated by |, or leave this line out>
+Ask only what changes the result for this mode: the rules above and the settings list say what matters. If the request or an earlier answer already answers it, don't ask. Never ask filler.
+
+To write:
+<SETTING>: <value>, one line for each setting you set, from the list above
+NOTE: <only when you chose something the user did not say: name each choice>
+PROMPT: <the finished words, ready to paste>
+PROMPT comes last. Everything after "PROMPT:" goes into the form as it is, so write nothing after it: no notes, no quotation marks.
+
+Keep what the user asked for: every subject, name and detail they gave stays in.
+If the request is about an attached picture and the note at the end of the message says you cannot see pictures, do not guess what it shows: ask the user to describe it in words, with QUESTION."""
+
+
+def _setting_line(f):
+    """One of the mode's settings, as the generic writer is shown it."""
+    lo, hi = (f.get("range") or [None, None])[:2]
+    if f["type"] in ("number", "int"):
+        kind = "a whole number" if f["type"] == "int" else "a number"
+        kind += " %g-%g" % (lo, hi) if lo is not None and hi is not None else ""
+    elif f["type"] == "select":
+        kind = "one of: " + ", ".join(str(o) for o in f.get("options") or [])
+    else:
+        kind = "text on one line"
+    return "%s: %s (%s)" % (f["id"].upper(), f.get("label") or f["id"], kind)
+
+
+def _generic_writer(cap, mode, g):
+    """The writer for a mode with no pack writer, or None when the mode has
+    no text field to write into. Same shape as a pack writer, so the same
+    parser and the same response serve both."""
+    fields = sorted(engines.fields(cap, mode), key=lambda f: f.get("order") or 0)
+    text = [f for f in fields if f["type"] in ("text", "textarea")]
+    if not text:
+        return None
+    fills = text[0]["id"]
+    others = [f for f in engines.fields(cap, mode) if f["id"] != fills and f["type"] in GENERIC_WRITER_FIELD_TYPES
+              and f["id"].upper() not in GENERIC_WRITER_RESERVED]
+    keys = {"PROMPT": fills}
+    keys.update({f["id"].upper(): f["id"] for f in others})
+    task = GENERIC_WRITER_TASK % {"guide": engines.prompt_guide(cap, mode) or GENERIC_PROMPT_GUIDE,
+                                  "settings": "\n".join(_setting_line(f) for f in others) or "(none)"}
+    return {"label": GENERIC_WRITER_LABEL, "prompt": g["projections"]["compact"]["text"].rstrip() + task,
+            "keys": keys, "multiline": "PROMPT", "none_token": "NONE",
+            "check": lambda values, request: [], "generic": True}
+
+
+# "Help me write this" is a short conversation: the writer may ask one
+# question per turn, the page sends every answer back in order, and after
+# GUIDE_SKILL_MAX_ANSWERS the writer must write, naming its defaults.
+GUIDE_SKILL_MAX_ANSWERS = 4
+GUIDE_SKILL_WRITE_NOW = ("No more questions: write it now with sensible defaults, "
+                         "and add a NOTE line naming each default you chose.")
+GUIDE_SKILL_KEPT_ASKING = ("The guide kept asking after %d answers. Start over, or write it yourself."
+                           % GUIDE_SKILL_MAX_ANSWERS)
+
+
+def _skill_answers(answers):
+    """Validate "answers": [{"q", "a"}] -> (list, error sentence or None)."""
+    if answers is None:
+        return [], None
+    if not isinstance(answers, list) or len(answers) > GUIDE_SKILL_MAX_ANSWERS:
+        return None, ("\"answers\" must be a list of at most %d question and answer pairs."
+                      % GUIDE_SKILL_MAX_ANSWERS)
+    for x in answers:
+        if not (isinstance(x, dict) and isinstance(x.get("q"), str) and isinstance(x.get("a"), str)
+                and x["a"].strip() and len(x["q"]) <= GUIDE_SKILL_ANSWER_LIMIT
+                and len(x["a"]) <= GUIDE_SKILL_ANSWER_LIMIT):
+            return None, ("Each answer must be {\"q\", \"a\"}: the question and a non-empty answer, "
+                          "each at most %d characters." % GUIDE_SKILL_ANSWER_LIMIT)
+    return answers, None
+
+
 def guide_skill(p):
-    """The whole POST /api/guide/skill body -> (body, http code)."""
+    """The whole POST /api/guide/skill body -> (body, http code). A mode
+    with a pack writer uses it; any other mode with a text field uses the
+    generic writer, and so does a request with "pictures" ("Describe this
+    picture"), where the topic may be empty."""
     if not isinstance(p, dict):
         return {"ok": False, "error": "Send a JSON object."}, 400
     room_id, mode = p.get("room"), p.get("mode")
@@ -3609,7 +3707,15 @@ def guide_skill(p):
         return {"ok": False, "error": "%s is not a mode of the %s room."
                 % (mode if isinstance(mode, str) and mode else "That", room.get("name") or room_id)}, 400
     topic, answer, context = p.get("topic"), p.get("answer"), p.get("context")
-    if not isinstance(topic, str) or not topic.strip():
+    refs, err = _guide_picture_refs(p.get("pictures"))
+    if err:
+        return {"ok": False, "error": err}, 400
+    answers, err = _skill_answers(p.get("answers"))
+    if err:
+        return {"ok": False, "error": err}, 400
+    if refs and topic is None:
+        topic = ""
+    if not isinstance(topic, str) or not (topic.strip() or refs):
         return {"ok": False, "error": "Say what it should be about first."}, 400
     if len(topic) > HELPER_TEXT_LIMIT:
         return {"ok": False, "error": "That is too long (at most %d characters)." % HELPER_TEXT_LIMIT}, 400
@@ -3621,28 +3727,52 @@ def guide_skill(p):
     context_line, err = _guide_context_line(room_id, context, with_mode=False)
     if err:
         return {"ok": False, "error": err}, 400
-    w = engines.writer(cap, mode)
+    w = (None if refs else engines.writer(cap, mode)) or _generic_writer(cap, mode, g)
     if not w:
         return {"ok": False, "error": "This mode has no writer yet."}, 404
     if not HELPER:
         return {"ok": False, "no_brain": True, "error": GUIDE_ADD_BRAIN}, 409
-    user = (context_line + "\n\n" if context_line else "") + "Request: " + topic.strip()
+    vision = _helper_vision() if refs else None
+    try:
+        urls = [_guide_picture_url(x) for x in refs] if vision else []
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}, 400
+    user = (context_line + "\n\n" if context_line else "")
+    if refs:
+        user += "Request: Describe the attached picture, as the words for this mode."
+        if topic.strip():
+            user += "\nThe user's own words so far: " + topic.strip()
+    else:
+        user += "Request: " + topic.strip()
     if answer and answer.strip():
         user += "\n\nThe user answered: " + answer.strip()
-    user += guide_grounding(0)
-    request = {"topic": topic, "answer": answer}
+    if answers:
+        user += "\n\nWhat you asked and what the user answered, in order:" + "".join(
+            "\nQ%d: %s\nA%d: %s" % (i + 1, x["q"].strip(), i + 1, x["a"].strip()) for i, x in enumerate(answers))
+    capped = len(answers) >= GUIDE_SKILL_MAX_ANSWERS
+    if capped:
+        user += "\n\n" + GUIDE_SKILL_WRITE_NOW
+    user += guide_grounding(len(refs), vision)
+    request = {"topic": topic, "answer": answer, "answers": answers}
 
     def ask(text):
         """-> (sent, parsed reply or None, raw reply)."""
         sent = {"system": w["prompt"], "user": text}
+        if refs:
+            sent["pictures"] = len(urls)
         reply, _ = _helper_chat([{"role": "system", "content": sent["system"]},
-                                 {"role": "user", "content": text}],
+                                 {"role": "user", "content": _with_pictures(text, urls)}],
                                 max_tokens=1024, timeout=HELPER.get("timeout_s", 120))
         reply = _THINK_RE.sub("", reply or "").strip()
         try:
-            return sent, engines.parse_writer_reply(w, reply), reply
+            parsed = engines.parse_writer_reply(w, reply)
         except ValueError:
             return sent, None, reply
+        # An empty prompt is no answer at all; only a pack writer's multiline
+        # key (lyrics) may legitimately come back empty.
+        if w.get("generic") and "values" in parsed and not parsed["values"].get(w["keys"]["PROMPT"]):
+            return sent, None, reply
+        return sent, parsed, reply
 
     def draft(parsed):
         fields, problems = _writer_fields(cap, mode, w, parsed["values"])
@@ -3653,8 +3783,18 @@ def guide_skill(p):
         if parsed is None:
             return {"ok": False, "error": GUIDE_SKILL_SHAPE_ERROR, "raw": raw[:GUIDE_SKILL_RAW_LIMIT],
                     "sent": sent}, 502
+        if "question" in parsed and capped:
+            # The cap is the server's, not the writer's: ask once more to write.
+            sent, parsed, raw = ask(user + "\n\nYou already had your answers. " + GUIDE_SKILL_WRITE_NOW)
+            if parsed is None or "question" in parsed:
+                return {"ok": False, "error": GUIDE_SKILL_SHAPE_ERROR if parsed is None else GUIDE_SKILL_KEPT_ASKING,
+                        "raw": raw[:GUIDE_SKILL_RAW_LIMIT], "sent": sent}, 502
         if "question" in parsed:
-            return {"ok": True, "question": parsed["question"], "sent": sent, "retried": False}, 200
+            body = {"ok": True, "question": parsed["question"], "options": parsed.get("options") or [],
+                    "sent": sent, "retried": False}
+            if refs:
+                body["vision"] = vision
+            return body, 200
         fields, problems = draft(parsed)
         retried = False
         if problems:
@@ -3663,10 +3803,14 @@ def guide_skill(p):
                                     + " Rewrite it.")
             # A retry that asks or breaks shape keeps the first draft, problems and all.
             if parsed2 is not None and "values" in parsed2:
-                sent, (fields, problems) = sent2, draft(parsed2)
+                sent, parsed, (fields, problems) = sent2, parsed2, draft(parsed2)
     except ValueError as e:
         return {"ok": False, "error": str(e)}, 503
-    return {"ok": True, "fields": fields, "problems": problems, "sent": sent, "retried": retried}, 200
+    body = {"ok": True, "fields": fields, "problems": problems, "sent": sent, "retried": retried,
+            "note": parsed.get("note") or ""}
+    if refs:
+        body["vision"] = vision
+    return body, 200
 
 
 # ---------------------------------------------------------------------------
