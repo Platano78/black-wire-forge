@@ -2,6 +2,13 @@
 
 All notable changes to Black Wire Forge are recorded here.
 
+## v1.0.2 — 2026-09-24
+
+### Fixed
+
+- The UI smoke test's Cutting Room banner check expected v1.0.0's wording, so on v1.0.1 the full
+  suite reported 1 failure. The app was unaffected; the test now checks the current banner.
+
 ## v1.0.1 — 2026-09-24
 
 ### Fixed

@@ -516,7 +516,7 @@ try:
         check("one '+ generate here' control per lane with no sequence open", tl.count("+ generate here") == 3, repr(tl))
         check("the fixed REF ROOM law line", "can't see faces or framing" in tl, repr(tl))
         check("the honest banner (no sequence open)",
-              "Open one, or start a new one" in page.inner_text("#monitor"), page.inner_text("#monitor"))
+              "Open a sequence, or start a new one" in page.inner_text("#monitor"), page.inner_text("#monitor"))
         check("sequence picker visible", page.is_visible("#seqPicker"))
         check("no Make in the Cutting Room with no slot selected", not page.is_visible("#makeBtn"))
         page.click(tab(page, "music"))
