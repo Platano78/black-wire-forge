@@ -58,10 +58,18 @@ card, then general web craft — see "Research log" for what came from where.
 - **`edit` mode**: describe the change as a **positive instruction** anchored on what the uploaded
   picture(s) actually show — "Remove the background" works directly as a prompt, no separate
   before/after framing needed. — observed, `engines/qwen_image.py` `prompt_guides.edit`.
-- **`pixelart` mode**: prompt the subject only, never the pixel style — "8-bit", "pixel art style",
-  "16-color palette" in the prompt text does nothing; colour count and size are separate fields
-  (`pixel_colors`/`pixel_size`) applied after the render, not part of the model's own job. —
-  observed, `engines/pixelart.py` `prompt_guides.pixelart`.
+- **`pixelart` mode**: the source picture must survive being shrunk to a 64px, 8-colour sprite.
+  Write one subject with its whole body in frame and space around it, a side or three-quarter
+  view, a bold silhouette, flat colours in a few large shapes, a thick dark outline and a plain flat
+  background (the cutout removes it). "Pixel art sprite, retro video game style" wording helps:
+  the model draws a pixel-art-styled picture and the quantise step then locks the grid and palette.
+  Colour count and size stay separate fields (`pixel_colors`/`pixel_size`). — observed,
+  `engines/pixelart.py` `prompt_guides.pixelart` and its sprite writer.
+- **Pixel Art's photo-detail failure**: owner case 2026-09-24, "godzilla pixel art" looked like
+  Godzilla but not like pixel art. The old advice ("the subject, not the pixel style") let the
+  prompt ask for cinematic lighting and fine scales on a close crop; at 64px that became noise. The
+  sprite writer's check flags cinematic, photo, depth-of-field and close-up words at Make time. —
+  observed, `engines/pixelart.py` `sprite_check`.
 - **Multiple reference pictures are wired by upload order**, not by name: the first picture added
   becomes reference 1, the second reference 2, and so on up to 10. When a user talks about several
   uploaded pictures by number ("the man in picture two", "picture 1 / picture 2"), write the edit

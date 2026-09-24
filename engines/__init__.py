@@ -194,6 +194,12 @@ falsy — is ignored. The dict has exactly these keys:
                        untouched; this is how a pack that needs a step AFTER
                        ComfyUI (e.g. Pixel Art's deterministic quantise) says
                        so without the core knowing what that step does.
+                       That output carries "post": true and is the job's
+                       RESULT: the page shows it first and offers the
+                       lane's render as the view from before the step.
+  post_words optional dict  mode_name -> what the page calls that step,
+                       e.g. {"pixelart": "the pixel step"}. Absent means
+                       "the finishing step".
   examples  optional dict  mode_name -> list of {"id", "label", "recipe",
                        "quality", "values", "why", "needs"} dicts -- the
                        "Try this" row (H2). `recipe` is a preset id from this
@@ -847,6 +853,17 @@ def post_for(cap, mode):
     for pack in _discover():
         if pack["cap"] == cap and mode in pack["graphs"]:
             return (pack.get("post") or {}).get(mode)
+    return None
+
+
+def post_words(cap, mode):
+    """What the page calls a mode's `post` step (see "post_words" above), or
+    None when the mode has no post step. Same precedence as post_for()."""
+    for pack in _discover():
+        if pack["cap"] == cap and mode in pack["graphs"]:
+            if not (pack.get("post") or {}).get(mode):
+                return None
+            return (pack.get("post_words") or {}).get(mode) or "the finishing step"
     return None
 
 

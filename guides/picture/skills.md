@@ -23,7 +23,7 @@ Covers both of research-note B2's request shapes: (a) a description → one prec
 ### Shape A — t2i: subjects + style + setting + action → one prompt
 
 **Trigger**: the user describes something to make, with no picture uploaded yet, in the Picture
-room's t2i mode (or Pixel Art, which reuses the same fields for its subject).
+room's t2i mode. Pixel Art has its own writer: see Skill 3.
 
 **Fields filled** (real ids from `engines/qwen_image.py` `fields.t2i`): `prompt` (required),
 `negative` (only if the user names something to avoid), everything else left at the room's own
@@ -182,4 +182,39 @@ FIX: reroll
 PROMPT: A cinematic realistic scene of a battle between exactly two giant monsters on a ruined city street at night: one is a large grey reptilian kaiju with spiked dorsal plates, the other is a golden three-headed mechanical dragon with bat-like metal wings and armour plating, lightning arcing between its three heads. The kaiju is mid-roar on the left, the mechanical dragon looms on the right, rubble and fire in the foreground. The lighting is harsh orange fire-glow against a dark smoke-filled sky. The overall composition is high-contrast and chaotic, centered on the clash between the two creatures.
 NOTE: described the second monster's appearance directly instead of relying on the name, and pinned the count to exactly two.
 TWEAK:
+```
+
+## Skill 3: Pixel Art sprite writer
+
+The Pixel Art room's writer (`engines/pixelart.py` `writers.pixelart`, the Sprite writer). The
+picture is drawn once, its background cut away, then shrunk to a small sprite (64px, 8 colours by
+default). The prompt's job is a SOURCE picture that survives that shrink.
+
+**Trigger**: a topic in the Pixel Art room ("godzilla", "a sprite for my platformer hero").
+
+**Fields filled**: `prompt`, plus `pixel_size` / `pixel_colors` only when the user states them.
+
+**Rules the skill must follow**:
+1. Open with "Pixel art sprite, retro video game style," then the subject.
+2. One subject, the whole body in frame with space around it; never a close-up or crop.
+3. Name the view: side view (platformer character, vehicle) or three-quarter view.
+4. A bold silhouette: limbs, tail, wings or weapon held apart from the body.
+5. Flat colours in a few large shapes, a thick dark outline, at most four main colours named.
+6. A plain flat white background, nothing else in the picture (the cutout removes it).
+7. Never cinematic or dramatic lighting, glow, photo or 3D-render words, depth of field, close-ups,
+   fine texture. The check flags these at Make time: that detail turns to noise at 64px.
+8. A named subject: keep the name and describe how it looks (Skill 1's rule 2). Godzilla → a huge
+   upright bipedal reptile kaiju, charcoal grey body, jagged pale dorsal plates, a long thick tail.
+
+**Questions that change the result** (one per reply, the first that applies, never when already
+answered): what the subject is, when the request does not say; the pose or action; the view, when a
+game is named but not side-on or top-down; 8 or 16 colours, for a subject that needs many colours.
+After one answer it writes and names its own choices in NOTE.
+
+**Output shape (line-delimited)**:
+```
+PIXEL_SIZE: <NONE or a whole number 16-256>
+PIXEL_COLORS: <NONE or a whole number 2-32>
+NOTE: <the choices the user did not make>
+PROMPT: <the prompt, last>
 ```

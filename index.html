@@ -203,6 +203,11 @@
     display:flex; align-items:center; justify-content:center; position:relative;
   }
   #monitorStage img,#monitorStage video{max-width:100%; max-height:100%}
+  /* A post step's output (a small sprite) scales up with square pixels, at a
+     whole-number scale fitPixels() sets once it has loaded. */
+  img.px{image-rendering:pixelated}
+  .bin-thumb img.px{object-fit:contain}
+  #beforeBtn[aria-pressed="true"]{border-color:var(--accent); color:var(--accent)}
   #monitorStage audio{width:90%}
   #monitorProvenance{display:flex; flex-wrap:wrap; gap:8px; align-items:center}
   #monitorActions{display:flex; gap:8px; flex-wrap:wrap}
@@ -1021,6 +1026,7 @@ const STATE = {
   mode: null,
   histScope: 'room',   // History toggle: 'room' | 'all'
   selectedJobId: null,
+  beforeJob: null,   // the job whose stage shows the render from before its post step
   forgetArmed: null,   // {jobId, until} -- Forget's click-again-to-confirm window; see renderMonitor
   uploads: {},         // field id -> array of {name, original}
   pendingJobId: null,  // job just submitted from THIS inspector -- clears "On its way." when it settles
@@ -1167,7 +1173,7 @@ function refreshMachineModules(){
    Bin
 --------------------------------------------------------------------- */
 function binMediaOf(job){
-  if(job.outputs && job.outputs.length) return job.outputs[0].media;
+  if(job.outputs && job.outputs.length) return resultOutput(job).media;
   return job.kind; // best guess while running, before outputs exist
 }
 function renderHistoryToggle(){
@@ -1201,8 +1207,8 @@ function renderBin(){
   $('#binEmpty').hidden = rows.length > 0;
   const html = rows.map(j => {
     const running = j.status === 'queued' || j.status === 'running';
-    const thumb = (!running && j.outputs && j.outputs[0])
-      ? thumbHTML(j, j.outputs[0])
+    const thumb = (!running && resultOutput(j))
+      ? thumbHTML(j, resultOutput(j))
       : '<span class="num muted">' + (running ? '–' : '?') + '</span>';
     let stepLabel = '';
     if(running){
@@ -1235,11 +1241,34 @@ function renderBin(){
     });
   }
 }
+/* A mode's post step (engines' post_for) appends its own output after the
+   lane's render, marked post: true. That output is the job's RESULT: every
+   view shows it first; the lane's render is the view from before the step. */
+function resultIndex(job){
+  const outs = job.outputs || [];
+  const i = outs.findIndex(o => o.post);
+  return i >= 0 ? i : (outs.length ? 0 : -1);
+}
+function resultOutput(job){
+  const i = resultIndex(job);
+  return i >= 0 ? job.outputs[i] : null;
+}
+function pxClass(o){ return o && o.post ? ' class="px"' : ''; }
+// Scale a post step's small picture up by the largest whole number that fits
+// the stage, so every source pixel stays the same square size.
+function fitPixels(img){
+  const stage = img.parentElement;
+  if(!stage || !img.naturalWidth) return;
+  const k = Math.max(1, Math.floor(Math.min(stage.clientWidth / img.naturalWidth,
+                                            stage.clientHeight / img.naturalHeight)));
+  img.style.width = img.naturalWidth * k + 'px';
+  img.style.height = img.naturalHeight * k + 'px';
+}
 function thumbHTML(job, o){
   const u = viewURL(job.lane, o, false);
   if(o.media === 'video') return '<video src="' + u + '" muted></video>';
   if(o.media === 'audio') return '<span class="num muted">♪</span>';
-  if(o.media === 'image') return '<img src="' + u + '" alt="">';
+  if(o.media === 'image') return '<img src="' + u + '" alt=""' + pxClass(o) + '>';
   // Any other output type (a 3D mesh, a raw file from a tool mode) -- never
   // assume image/video/audio are the only three kinds of result.
   return '<span class="num muted">' + esc(fileExt(o.filename)) + '</span>';
@@ -1315,7 +1344,11 @@ function renderMonitor(){
     $('#monitor').innerHTML = monitorEmptyHTML(room);
     return;
   }
-  const o = job.outputs && job.outputs[0];
+  // `o` is the result every action works on; `shown` is what the stage shows
+  // (the render from before the post step, while that toggle is on).
+  const o = resultOutput(job);
+  const before = o && o.post && job.outputs[0] !== o ? job.outputs[0] : null;
+  const shown = before && STATE.beforeJob === job.id ? before : o;
   const running = job.status === 'queued' || job.status === 'running';
   // The page already knows which machines answer (/api/lanes -- the same
   // data the header chip and machine modules use). A queued/running job on
@@ -1327,17 +1360,17 @@ function renderMonitor(){
     ? '<p class="muted">CANNOT TELL — ' + esc((job.lane_name || job.lane) || laneWord(job.lane))
       + ' stopped answering. This render may be lost; it updates when the machine answers.</p>'
     : '<p class="muted">Still working. It will appear here when done.</p>';
-  if(o){
-    const u = viewURL(job.lane, o, false);
-    if(o.media === 'video') media = '<video src="' + u + '" controls></video>';
-    else if(o.media === 'audio') media = '<audio src="' + u + '" controls></audio>';
-    else if(o.media === 'image') media = '<img src="' + u + '" alt="' + esc(job.prompt || '') + '">';
+  if(shown){
+    const u = viewURL(job.lane, shown, false);
+    if(shown.media === 'video') media = '<video src="' + u + '" controls></video>';
+    else if(shown.media === 'audio') media = '<audio src="' + u + '" controls></audio>';
+    else if(shown.media === 'image') media = '<img src="' + u + '" alt="' + esc(job.prompt || '') + '"' + pxClass(shown) + '>';
     else {
       // A result type this page has no renderer for (a 3D mesh, a raw
       // upscaled/cutout file) -- a generic tile naming the file type, never
       // a silent assumption that it must be a picture.
-      media = '<p class="muted">' + esc(fileExt(o.filename)) + ' file. No preview here.</p>'
-        + '<p><a class="btn" href="' + viewURL(job.lane, o, true) + '" download>Download</a></p>';
+      media = '<p class="muted">' + esc(fileExt(shown.filename)) + ' file. No preview here.</p>'
+        + '<p><a class="btn" href="' + viewURL(job.lane, shown, true) + '" download>Download</a></p>';
     }
   } else if(job.status === 'error' || job.status === 'interrupted'){
     media = '<p style="color:var(--error)">' + esc(job.error
@@ -1369,7 +1402,11 @@ function renderMonitor(){
   // "Add to the reference room" -- never for a video/audio/other result,
   // and never before the render finished.
   const canAddRef = cutting && STATE.seq && o && o.media === 'image' && job.status === 'done';
+  const info = modeInfo(job.kind, job.mode);
+  const beforeWords = 'Before ' + ((info && info.post && info.post.words) || 'the finishing step');
   const actions = (o ? '<button class="btn" id="shareBtn" type="button">Share</button>' : '')
+    + (before ? '<button class="btn" id="beforeBtn" type="button" aria-pressed="' + (shown === before)
+      + '">' + esc(beforeWords) + '</button>' : '')
     + '<button class="btn" id="useAgainBtn" type="button">Use again</button>'
     + (running && !laneDown ? '<button class="btn" id="stopBtn" type="button">Stop</button>' : '')
     + (finished ? '<button class="btn" id="forgetBtn" type="button">' + forgetLabel + '</button>' : '')
@@ -1413,6 +1450,10 @@ function renderMonitor(){
   setHTML($('#monitorActions'), actions);
   if($('#shareBtn')) $('#shareBtn').onclick = () => openShare(job, o);
   if($('#useAgainBtn')) $('#useAgainBtn').onclick = () => useAgain(job);
+  if($('#beforeBtn')) $('#beforeBtn').onclick = () => {
+    STATE.beforeJob = STATE.beforeJob === job.id ? null : job.id;
+    renderMonitor();
+  };
   if($('#stopBtn')) $('#stopBtn').onclick = () => stopJob(job);
   if($('#forgetBtn')) $('#forgetBtn').onclick = () => forgetJob(job);
   if($('#notRightBtn')) $('#notRightBtn').onclick = () => openRevise(job);
@@ -2364,7 +2405,9 @@ function currentImageSource(){
   const uploaded = imgField && STATE.uploads[imgField.id];
   if(uploaded && uploaded.length) return {lane: STATE.activeLane, upload: uploaded[0].name};
   const job = STATE.jobs.find(j => j.id === STATE.selectedJobId);
-  const idx = job && job.outputs ? job.outputs.findIndex(o => o.media === 'image') : -1;
+  const r = job && resultOutput(job);
+  const idx = r && r.media === 'image' ? resultIndex(job)
+    : (job && job.outputs ? job.outputs.findIndex(o => o.media === 'image') : -1);
   return idx >= 0 ? {job_id: job.id, output: idx} : null;
 }
 function renderHelperBar(){
@@ -2926,6 +2969,8 @@ async function guideSkillRun(answer, describe){
    Text only, never HTML.
 --------------------------------------------------------------------- */
 function reviseOutputIndex(job){
+  const r = resultOutput(job);
+  if(r && (r.media === 'image' || r.media === 'video')) return resultIndex(job);
   return (job.outputs || []).findIndex(o => o.media === 'image' || o.media === 'video');
 }
 function canRevise(job){
@@ -3631,7 +3676,7 @@ function slotTileHTML(slot){
   } else if(slot.state === 'ready'){
     cls.push('tl-slot-ready');
     const job = findJob(slot.pick);
-    const o = job && job.outputs && job.outputs[0];
+    const o = job && resultOutput(job);
     // The harvest keeps its own local copy of a picked take (data/seq/<id>/takes/) --
     // the whole point of it is a tile that still shows something with the lane off.
     // Prefer that copy when it exists; the lane's own /api/view stays the fallback
@@ -3644,7 +3689,7 @@ function slotTileHTML(slot){
       const src = localURL || viewURL(job.lane, o, false);
       if(o.media === 'video') thumb = '<video src="' + src + '" muted></video>';
       else if(o.media === 'audio') thumb = '<span class="num muted">♪</span>';
-      else if(o.media === 'image') thumb = '<img src="' + src + '" alt="">';
+      else if(o.media === 'image') thumb = '<img src="' + src + '" alt=""' + pxClass(o) + '>';
       else thumb = '<span class="num muted">' + esc(fileExt(o.filename)) + '</span>';
     }
   }
@@ -4317,7 +4362,7 @@ function takesStripHTML(slot){
   if(!takes.length) return '<div class="field-group-title">Takes</div><p class="muted">No takes yet.</p>';
   const rows = takes.map(t => {
     const job = findJob(t.job_id);
-    const o = job && job.outputs && job.outputs[0];
+    const o = job && resultOutput(job);
     const thumb = (job && o) ? thumbHTML(job, o) : '<span class="num muted">' + (job && (job.status === 'queued' || job.status === 'running') ? '–' : '?') + '</span>';
     const picked = slot.pick === t.job_id;
     const canPick = job && job.status === 'done' && !picked;
@@ -4566,6 +4611,11 @@ function bindStaticUI(){
       el.outerHTML = '<p class="muted">' + glyph + ' Not reachable right now.</p>';
     }
   }, true);
+  // `load` does not bubble either: same capture-phase listener.
+  document.addEventListener('load', e => {
+    if(e.target instanceof HTMLImageElement && e.target.matches('#monitorStage img.px')) fitPixels(e.target);
+  }, true);
+  window.addEventListener('resize', () => $$('#monitorStage img.px').forEach(fitPixels));
 }
 
 async function init(){

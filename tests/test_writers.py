@@ -146,8 +146,12 @@ code, body = http("/api/engines?lane=t")
 check("contract: /api/engines answers 200", code == 200)
 song = next(m for m in body["audio"]["modes"] if m["id"] == "song")
 check("contract: /api/engines reports the song writer's label", song["writer"] == {"label": "Song writer"})
-others = [(cap, m["id"]) for cap, v in body.items() if cap not in ("rooms", "helper") for m in v["modes"] if not (cap == "audio" and m["id"] == "song") and m.get("writer") is not None]
+WRITERS = {("audio", "song"): "Song writer", ("image", "pixelart"): "Sprite writer"}   # P2, P3a
+others = [(cap, m["id"]) for cap, v in body.items() if cap not in ("rooms", "helper") for m in v["modes"] if (cap, m["id"]) not in WRITERS and m.get("writer") is not None]
 check("contract: every other mode reports writer null", others == [], others)
+check("contract: each pack writer reports its label", all(
+    next(m for m in body[cap]["modes"] if m["id"] == mode)["writer"] == {"label": label}
+    for (cap, mode), label in WRITERS.items()))
 check("contract: every mode carries a writer key", all("writer" in m for cap, v in body.items() if cap not in ("rooms", "helper") for m in v["modes"]))
 
 print("parser: line keys, LYRICS to the end, NONE")

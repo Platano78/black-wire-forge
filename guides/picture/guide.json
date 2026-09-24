@@ -18,7 +18,7 @@
     "Picture: write a positive prompt only. Put anything to avoid in the \"Things to avoid\" field, not the main prompt — and know it does nothing at low Guidance strength.",
     "Naming a specific character or real person by name alone is risky — describe what it actually looks like instead, and say exactly how many of everything you want.",
     "Editing more than one picture at once: this app matches \"picture 1\"/\"picture 2\" to the order you uploaded them.",
-    "Pixel Art: describe the subject only. Palette and final size are separate fields, not prompt words.",
+    "Pixel Art: one subject, whole body in frame, flat colours, a thick dark outline, a plain background. Say \"pixel art sprite\"; skip lighting and photo words, they turn to noise in a small sprite.",
     "Clean-up's cutout and upscale need no prompt at all — just add a picture. Textures has nothing installed yet — for a seamless tile today, use Picture's own Seamless tile preset instead.",
     "Add a brain by setting \"helper\" in config.json to an OpenAI-compatible chat model to have prompts written for you."
   ]

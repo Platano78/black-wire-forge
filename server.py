@@ -1179,6 +1179,26 @@ def save_jobs():
         traceback.print_exc()
 
 
+def _mark_post_output(j):
+    """A job saved before post outputs carried "post": true: its mode's post
+    step appended the one "local" output after the lane's render, so mark
+    that one (run_post_step()'s shape)."""
+    outs = j.get("outputs") or []
+    if (len(outs) < 2 or any(o.get("post") for o in outs) or outs[0].get("type") == "local"
+            or not engines.post_for(j.get("kind"), j.get("mode"))):
+        return
+    local = [o for o in outs[1:] if o.get("type") == "local"]
+    if local:
+        local[-1]["post"] = True
+
+
+def result_output(job):
+    """The job's result: its post step's output when it has one, else its
+    first output (None when it has none)."""
+    outs = job.get("outputs") or []
+    return next((o for o in outs if o.get("post")), outs[0] if outs else None)
+
+
 def load_jobs():
     if not os.path.exists(JOBS_FILE):
         return
@@ -1200,6 +1220,7 @@ def load_jobs():
                         j["status"] = "interrupted"
                     elif time.time() - j.get("started", 0) > 6 * 3600:
                         j["status"] = "interrupted"
+                _mark_post_output(j)
                 JOBS[j["id"]] = j
                 JOB_ORDER.append(j["id"])
                 if j.get("prompt_id"):
@@ -2405,7 +2426,7 @@ def run_post_step(lane, job):
             jj = JOBS.get(job["id"])
             if jj and jj["status"] == "done":
                 jj["outputs"].append({"filename": out_name, "subfolder": job["id"],
-                                       "type": "local", "media": media})
+                                       "type": "local", "media": media, "post": True})
     except ValueError as e:
         # An authored sentence -- local_output_path()'s own containment
         # message, or a pack's own `post` step raising deliberately (rule 3)
@@ -2433,7 +2454,7 @@ def run_post_step(lane, job):
 
 def seq_harvest(lane, job):
     """Finding 6 / §6 Harvest: when job_poller marks a job carrying
-    `sequence_id` done, copy its FIRST output into
+    `sequence_id` done, copy its result (result_output(): the post step's output, else the first) into
     data/seq/<id>/takes/<job id>.<ext> (via carry()'s source-bytes half --
     the lane's /view, or the local store for a type "local" output, exactly
     as run_post_step's own fetch does). A failed harvest logs and leaves the
@@ -2447,7 +2468,7 @@ def seq_harvest(lane, job):
     sid, slot_id = job.get("sequence_id"), job.get("slot_id")
     if not sid or not slot_id or not job.get("outputs"):
         return
-    out = job["outputs"][0]
+    out = result_output(job)
     ext = os.path.splitext(out.get("filename") or "")[1].lower() or ".bin"
     dest = os.path.join(SEQ_MEDIA_DIR, sid, "takes", job["id"] + ext)
     try:
@@ -4736,7 +4757,7 @@ def _cut_ensure_take_file(sid, slot_id, job_id):
     outs = (job or {}).get("outputs") or []
     if not job or not outs:
         raise ValueError("Shot %s's take is not copied yet — is its lane off?" % slot_id)
-    out = outs[0]
+    out = result_output(job)
     ext = os.path.splitext(out.get("filename") or "")[1].lower() or ".bin"
     dest = os.path.join(SEQ_MEDIA_DIR, sid, "takes", job_id + ext)
     try:
@@ -5669,6 +5690,10 @@ class Handler(BaseHTTPRequestHandler):
                     # P2b: the guide's "Not right?" skill for this mode's results, or None.
                     "reviser": ({"label": engines.reviser(cap, mode)["label"]}
                                 if engines.reviser(cap, mode) else None),
+                    # P3a: the mode's post step, by what the page calls it, or None.
+                    # Its output is the job's result; the lane's render is "before" it.
+                    "post": ({"words": engines.post_words(cap, mode)}
+                             if engines.post_words(cap, mode) else None),
                 })
             out[cap] = {"modes": modes, "cap_word": engines.cap_word(cap), "cap_order": engines.cap_order(cap)}
         # Rooms by task (rooms.json + each pack's mode_rooms). NOT a cap: every
