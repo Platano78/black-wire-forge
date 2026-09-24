@@ -214,6 +214,15 @@ def load_config():
     if ctx is not None and (not isinstance(ctx, int) or isinstance(ctx, bool) or ctx <= 0):
         die("\"helper\".\"context\" in %s must be a whole number of tokens (the context "
             "the helper model actually serves), e.g. 16384." % CONFIG_FILE)
+    vision = helper.get("vision") if helper is not None else None
+    if vision is not None and not isinstance(vision, bool):
+        die("\"helper\".\"vision\" in %s must be true or false (whether the helper model "
+            "can see pictures)." % CONFIG_FILE)
+    max_images = helper.get("max_images") if helper is not None else None
+    if max_images is not None and (not isinstance(max_images, int) or isinstance(max_images, bool)
+                                   or max_images < 1):
+        die("\"helper\".\"max_images\" in %s must be a whole number, 1 or more (how many "
+            "pictures one guide message may carry)." % CONFIG_FILE)
     return cfg
 
 
@@ -3200,6 +3209,130 @@ def _helper_context():
         return value
 
 
+_GUIDE_VISION = {"at": None, "value": False}
+VISION_CAPABILITIES = ("multimodal", "vision")
+
+
+def _helper_vision():
+    """Whether the helper can see pictures. First answer wins: config's
+    "helper": {"vision": true|false}; then GET /models, where an entry whose
+    "capabilities" list names multimodal or vision means yes (the entry for
+    the configured model when one matches, else the first that lists any).
+    Anything else, or an unreachable probe, means no. Cached like
+    _helper_context(); never raises."""
+    if not HELPER:
+        return False
+    if isinstance(HELPER.get("vision"), bool):
+        return HELPER["vision"]
+    with _GUIDE_CONTEXT_LOCK:
+        now = time.time()
+        if _GUIDE_VISION["at"] is not None and now - _GUIDE_VISION["at"] < GUIDE_CONTEXT_TTL:
+            return _GUIDE_VISION["value"]
+        value = False
+        try:
+            raw = _get_json(HELPER["url"].rstrip("/") + "/models")
+            entries = [e for key in ("data", "models") for e in (raw.get(key) or []) if isinstance(e, dict)]
+            named = [e for e in entries if HELPER.get("model") in
+                     [e.get("id"), e.get("name"), e.get("model")] + list(e.get("aliases") or [])]
+            listed = [e for e in (named or entries) if isinstance(e.get("capabilities"), list)]
+            if listed:
+                value = any(str(c).lower() in VISION_CAPABILITIES for c in listed[0]["capabilities"])
+        except Exception:
+            value = False
+        _GUIDE_VISION.update(at=now, value=value)
+        return value
+
+
+def _helper_max_images():
+    return (HELPER.get("max_images") or 1) if HELPER else 1
+
+
+VIDEO_STILL_TIMEOUT = 60
+
+
+def _video_still(data, filename):
+    """A clip's middle frame as PNG bytes, via ffmpeg. Raises ValueError with
+    a plain sentence when ffmpeg is missing or cannot read the clip."""
+    if not FFMPEG_BIN:
+        raise ValueError("To show the guide a clip, ffmpeg must be installed and on PATH "
+                         "(it takes one still frame from the middle).")
+    with tempfile.TemporaryDirectory(prefix="bwf_still_") as d:
+        src = os.path.join(d, "clip" + (os.path.splitext(filename)[1] or ".mp4"))
+        with open(src, "wb") as f:
+            f.write(data)
+        probe = subprocess.run([FFMPEG_BIN, "-hide_banner", "-i", src], capture_output=True, text=True,
+                               timeout=VIDEO_STILL_TIMEOUT)
+        m = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", probe.stderr or "")
+        middle = (int(m.group(1)) * 3600 + int(m.group(2)) * 60 + float(m.group(3))) / 2 if m else 0.0
+        out = subprocess.run([FFMPEG_BIN, "-hide_banner", "-loglevel", "error", "-ss", "%.3f" % middle,
+                              "-i", src, "-frames:v", "1", "-f", "image2pipe", "-vcodec", "png", "-"],
+                             capture_output=True, timeout=VIDEO_STILL_TIMEOUT)
+        if out.returncode != 0 or not out.stdout:
+            raise ValueError("I could not take a still from that clip.")
+        return out.stdout
+
+
+def _guide_picture_refs(pictures):
+    """Validate a guide call's "pictures" list -> (list, error sentence or None).
+    Each entry is {"job_id", "output"} or {"lane", "upload"}; at most
+    helper.max_images (default 1)."""
+    if pictures is None:
+        return [], None
+    limit = _helper_max_images()
+    if not isinstance(pictures, list) or len(pictures) > limit:
+        return None, ("\"pictures\" must be a list of at most %d picture%s."
+                      % (limit, "" if limit == 1 else "s"))
+    for pic in pictures:
+        if not isinstance(pic, dict) or not (
+                (isinstance(pic.get("job_id"), str) and isinstance(pic.get("output"), int)
+                 and not isinstance(pic.get("output"), bool))
+                or (isinstance(pic.get("lane"), str) and isinstance(pic.get("upload"), str))):
+            return None, ("Each picture must be {\"job_id\", \"output\"} (a result) "
+                          "or {\"lane\", \"upload\"} (an upload).")
+    return pictures, None
+
+
+def _guide_picture_url(pic):
+    """One validated picture reference -> an image data URL. A result's video
+    becomes its middle still. Raises ValueError with a plain sentence."""
+    if pic.get("job_id") is not None:
+        with JOBS_LOCK:
+            job = dict(JOBS.get(pic["job_id"]) or {})
+        outs = job.get("outputs") or []
+        if not job:
+            raise ValueError("I cannot find that result any more.")
+        if not (0 <= pic["output"] < len(outs)):
+            raise ValueError("That result has no picture to show the guide.")
+        out = outs[pic["output"]]
+        media = out.get("media") or (mimetypes.guess_type(out.get("filename") or "")[0] or "").split("/")[0]
+        if media not in ("image", "video"):
+            raise ValueError("Only a picture or a clip can be shown to the guide.")
+        try:
+            data = _carry_source_bytes(job, out)
+        except Exception as e:
+            raise ValueError("I cannot fetch that result from %s right now."
+                             % (job.get("lane_name") or "its machine")) from e
+        filename = out.get("filename") or "image.png"
+        if media == "video":
+            data, filename = _video_still(data, filename), "still.png"
+    else:
+        data, filename = _resolve_upload_bytes(pic["lane"], pic["upload"])
+    mime = mimetypes.guess_type(filename)[0] or ""
+    if not mime.startswith("image/"):
+        raise ValueError("Only a picture can be shown to the guide.")
+    if len(data) > HELPER_IMAGE_LIMIT:
+        raise ValueError("That picture is too large.")
+    return "data:%s;base64,%s" % (mime, base64.b64encode(data).decode("ascii"))
+
+
+def _with_pictures(text, urls):
+    """A user message's content: plain text, or OpenAI content parts with the
+    pictures after the text when there are any."""
+    if not urls:
+        return text
+    return [{"type": "text", "text": text}] + [{"type": "image_url", "image_url": {"url": u}} for u in urls]
+
+
 def guide_payload(room_id):
     """The whole GET /api/guide?room=<id> body -> (body, http code)."""
     exists, g = _room_guide(room_id)
@@ -3211,7 +3344,8 @@ def guide_payload(room_id):
                  "greeting": g["greeting"], "no_brain": g["no_brain"], "verbosity_default": "compact",
                  "projections": {v: {"tokens": p["tokens"]} for v, p in g["projections"].items()}}
     return {"room": room_id, "guide": guide, "helper": bool(HELPER),
-            "helper_context": _helper_context() if g else None, "add_brain": GUIDE_ADD_BRAIN}, 200
+            "helper_context": _helper_context() if g else None,
+            "helper_vision": _helper_vision() if g else None, "add_brain": GUIDE_ADD_BRAIN}, 200
 
 
 def _trim_guide_history(messages):
@@ -3244,11 +3378,16 @@ GUIDE_CONTEXT_FIELDS = 24
 GUIDE_CONTEXT_VALUE_CHARS = 500
 
 
-def guide_grounding(pictures):
+def guide_grounding(pictures, seen=True):
     """The line the server appends to every user turn it forwards: the app
-    knows what is attached, so the model never has to trust the user's word."""
+    knows what is attached, so the model never has to trust the user's word.
+    seen=False: the user attached them but this helper cannot see pictures,
+    so none were sent -- and the helper is told so."""
     if not pictures:
         return "\n\n[No picture is attached to this message.]"
+    if not seen:
+        return ("\n\n[The user attached %s, but this helper cannot see pictures.]"
+                % ("a picture" if pictures == 1 else "%d pictures" % pictures))
     return "\n\n[%d picture%s attached.]" % (pictures, "" if pictures == 1 else "s")
 
 
@@ -3340,22 +3479,32 @@ def guide_chat(p):
     context_line, err = _guide_context_line(p.get("room"), p.get("context"))
     if err:
         return {"ok": False, "error": err}, 400
+    refs, err = _guide_picture_refs(p.get("pictures"))
+    if err:
+        return {"ok": False, "error": err}, 400
     if not HELPER:
         return {"ok": False, "no_brain": True, "error": GUIDE_ADD_BRAIN}, 409
+    vision = _helper_vision() if refs else None
+    try:
+        urls = [_guide_picture_url(x) for x in refs] if vision else []
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}, 400
     proj = g["projections"][verbosity]
     # What the helper sees, never what the page stores or gets back: every
-    # user turn carries its attachment status (text-only for now: none), and
-    # the newest one leads with the room's current mode and fields. Added
-    # before trimming, so the history budget counts them.
+    # user turn carries its attachment status (pictures only ever ride on the
+    # newest one), and the newest one leads with the room's current mode and
+    # fields. Added before trimming, so the history budget counts them.
     forwarded = []
     for i, m in enumerate(messages):
         content = m["content"]
         if m["role"] == "user":
-            if i == len(messages) - 1 and context_line:
+            last = i == len(messages) - 1
+            if last and context_line:
                 content = context_line + "\n\n" + content
-            content += guide_grounding(0)
+            content += guide_grounding(len(refs), vision) if last else guide_grounding(0)
         forwarded.append({"role": m["role"], "content": content})
     kept, dropped = _trim_guide_history(forwarded)
+    kept[-1] = dict(kept[-1], content=_with_pictures(kept[-1]["content"], urls))
     try:
         reply, finish = _helper_chat([{"role": "system", "content": proj["text"]}] + kept,
                                      max_tokens=proj["max_tokens"], timeout=HELPER.get("timeout_s", 120))
@@ -3365,8 +3514,10 @@ def guide_chat(p):
     truncated = finish == "length" or len(text) > proj["answer_chars"]
     if len(text) > proj["answer_chars"]:
         text = _cap_guide_answer(text, proj["answer_chars"])
-    return {"ok": True, "text": text, "truncated": truncated, "dropped": dropped,
-            "verbosity": verbosity}, 200
+    body = {"ok": True, "text": text, "truncated": truncated, "dropped": dropped, "verbosity": verbosity}
+    if refs:
+        body["vision"] = vision
+    return body, 200
 
 
 # ---------------------------------------------------------------------------
@@ -3516,6 +3667,117 @@ def guide_skill(p):
     except ValueError as e:
         return {"ok": False, "error": str(e)}, 503
     return {"ok": True, "fields": fields, "problems": problems, "sent": sent, "retried": retried}, 200
+
+
+# ---------------------------------------------------------------------------
+# Guide revise: POST /api/guide/revise ("Not right? Tell the guide"). A
+# finished result, the prompt that made it and the user's complaint in; the
+# pack's reviser (engines/__init__.py "revisers") says what went wrong and
+# returns a revised prompt or an edit instruction. The picture is sent only
+# when the helper can see pictures; otherwise the helper is told it cannot.
+# `sent` shows what the brain was asked, never the picture's bytes.
+# ---------------------------------------------------------------------------
+
+GUIDE_REVISE_NO_REVISER = "This kind of result has no fixer yet."
+REVISE_SETTING_TYPES = ("text", "textarea", "select", "number", "int", "checkbox")
+
+
+def _revise_settings(cap, mode, job, fills):
+    """The job's own recorded values for its mode's fields (the prompt left
+    out), each by its label: what the render was actually made with."""
+    parts = []
+    for f in engines.fields(cap, mode):
+        if f["id"] == fills or f["id"] not in job or f["type"] not in REVISE_SETTING_TYPES:
+            continue
+        v = job[f["id"]]
+        if isinstance(v, bool):
+            shown = "yes" if v else "no"
+        elif isinstance(v, str):
+            shown = json.dumps(v, ensure_ascii=False)
+        elif isinstance(v, float) and v.is_integer():
+            shown = str(int(v))
+        elif isinstance(v, (int, float)):
+            shown = str(v)
+        else:
+            continue
+        parts.append("%s: %s" % (f.get("label") or f["id"], shown))
+    return " · ".join(parts)
+
+
+def guide_revise(p):
+    """The whole POST /api/guide/revise body -> (body, http code)."""
+    if not isinstance(p, dict):
+        return {"ok": False, "error": "Send a JSON object."}, 400
+    room_id = p.get("room")
+    exists, g = _room_guide(room_id)
+    if not g:
+        return {"ok": False, "error": ("That room has no guide." if exists else
+                                       "There is no room called %s." % (room_id or "that"))}, 404
+    job_id = p.get("job_id")
+    with JOBS_LOCK:
+        job = dict(JOBS.get(job_id) or {}) if isinstance(job_id, str) else {}
+    if not job:
+        return {"ok": False, "error": "I cannot find that result any more."}, 404
+    cap, mode = job.get("kind"), job.get("mode")
+    room = next((r for r in engines.rooms() if r.get("id") == room_id), {})
+    if not any(m.get("cap") == cap and m.get("mode") == mode for m in room.get("modes") or []):
+        return {"ok": False, "error": "That result was made in another room."}, 400
+    r = engines.reviser(cap, mode)
+    if not r:
+        return {"ok": False, "error": GUIDE_REVISE_NO_REVISER}, 404
+    outs = job.get("outputs") or []
+    output = p.get("output")
+    if output is None:
+        output = next((i for i, o in enumerate(outs) if o.get("media") in ("image", "video")), None)
+    elif not isinstance(output, int) or isinstance(output, bool) or not (0 <= output < len(outs)):
+        return {"ok": False, "error": "That result has no output number %s." % output}, 400
+    if job.get("status") != "done" or output is None:
+        return {"ok": False, "error": "That result has no finished picture to look at."}, 400
+    complaint, answer = p.get("complaint"), p.get("answer")
+    if not isinstance(complaint, str) or not complaint.strip():
+        return {"ok": False, "error": "Say what is wrong with it first."}, 400
+    if len(complaint) > HELPER_TEXT_LIMIT:
+        return {"ok": False, "error": "That is too long (at most %d characters)." % HELPER_TEXT_LIMIT}, 400
+    if answer is not None and (not isinstance(answer, str) or len(answer) > GUIDE_SKILL_ANSWER_LIMIT):
+        return {"ok": False, "error": "The answer must be text of at most %d characters."
+                % GUIDE_SKILL_ANSWER_LIMIT}, 400
+    context_line, err = _guide_context_line(room_id, p.get("context"), with_mode=False)
+    if err:
+        return {"ok": False, "error": err}, 400
+    if not HELPER:
+        return {"ok": False, "no_brain": True, "error": GUIDE_ADD_BRAIN}, 409
+    vision = _helper_vision()
+    try:
+        urls = [_guide_picture_url({"job_id": job["id"], "output": output})] if vision else []
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}, 400
+    user = (context_line + "\n\n" if context_line else "") + "The prompt that made it: " + (job.get("prompt") or "")
+    settings = _revise_settings(cap, mode, job, r["fills"])
+    if settings:
+        user += "\nThe settings it was made with: " + settings
+    user += "\nThe user says: " + complaint.strip()
+    if answer and answer.strip():
+        user += "\nThe user answered: " + answer.strip()
+    user += guide_grounding(1, vision)
+    sent = {"system": r["prompt"], "user_text": user, "pictures": len(urls)}
+    try:
+        reply, _ = _helper_chat([{"role": "system", "content": r["prompt"]},
+                                 {"role": "user", "content": _with_pictures(user, urls)}],
+                                max_tokens=1024, timeout=HELPER.get("timeout_s", 120))
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}, 503
+    reply = _THINK_RE.sub("", reply or "").strip()
+    try:
+        parsed = engines.parse_reviser_reply(r, reply)
+    except ValueError:
+        return {"ok": False, "error": GUIDE_SKILL_SHAPE_ERROR, "raw": reply[:GUIDE_SKILL_RAW_LIMIT],
+                "sent": sent, "vision": vision}, 502
+    body = {"ok": True, "vision": vision, "sent": sent}
+    if "question" in parsed:
+        body["question"] = parsed["question"]
+    else:
+        body.update(parsed, fills=r["fills"], edit_mode=r["edit_mode"])
+    return body, 200
 
 
 # ---------------------------------------------------------------------------
@@ -5260,6 +5522,9 @@ class Handler(BaseHTTPRequestHandler):
                     # P2: the guide's writing skill for this mode, or None.
                     "writer": ({"label": engines.writer(cap, mode)["label"]}
                                if engines.writer(cap, mode) else None),
+                    # P2b: the guide's "Not right?" skill for this mode's results, or None.
+                    "reviser": ({"label": engines.reviser(cap, mode)["label"]}
+                                if engines.reviser(cap, mode) else None),
                 })
             out[cap] = {"modes": modes, "cap_word": engines.cap_word(cap), "cap_order": engines.cap_order(cap)}
         # Rooms by task (rooms.json + each pack's mode_rooms). NOT a cap: every
@@ -5403,6 +5668,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(*guide_chat(self.read_json()))
             if u.path == "/api/guide/skill":
                 return self.send_json(*guide_skill(self.read_json()))
+            if u.path == "/api/guide/revise":
+                return self.send_json(*guide_revise(self.read_json()))
             self.send_json({"error": "not found"}, 404)
         except BrokenPipeError:
             pass

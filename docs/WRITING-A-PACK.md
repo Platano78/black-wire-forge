@@ -136,6 +136,18 @@ at all.
   shown to the user with the fields. `check` also runs at Make time: a request it finds
   problems in is refused with `needs_confirm` until the user presses "Make anyway". See
   `engines/audio.py`'s song writer (`SONG_WRITER_PROMPT`, `song_check`).
+- **`revisers`** — mode -> a fixing skill for the room's guide: a finished result of this
+  mode, the prompt that made it and the user's complaint in; what went wrong and a revised
+  prompt out (`POST /api/guide/revise`, the "Not right? Tell the guide" button on the
+  result). Each is a dict: `label` (e.g. "Picture fixer"), `prompt` (the reviser's system
+  prompt: this engine's own known failure modes), `keys` (the reply's line keys, in order:
+  `QUESTION`, `DIAGNOSIS`, `FIX`, `PROMPT`, `NOTE`, `TWEAK`, each one `KEY: value` line),
+  `fills` (the field id `PROMPT` fills on a re-roll, e.g. `"prompt"`) and `edit_mode` (the
+  mode of the same cap to point at when `FIX` is `edit`, e.g. `"edit"`). A non-blank
+  `QUESTION` ends the reply; otherwise `FIX` must be `edit` or `reroll` and `PROMPT` non-blank,
+  or the reply is refused as the wrong shape. The core sends the result's picture (a clip's
+  middle still) only when the helper can see pictures, and tells the helper the truth either
+  way. See `engines/qwen_image.py`'s picture fixer (`PICTURE_REVISER_PROMPT`).
 - **`fields`** — mode -> list of field descriptors, each with `id`, `label`, `type`
   (`text`/`textarea`/`number`/`int`/`select`/`checkbox`/`audio`/`image`/`image_list`/
   `video`/`video_list`/`model`) and optionally `default`, `hint`, `options` (for `select`). This is how a

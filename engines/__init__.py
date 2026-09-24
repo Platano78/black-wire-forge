@@ -94,6 +94,23 @@ falsy — is ignored. The dict has exactly these keys:
                                      needs_confirm until the user confirms.
                        A reply may instead be one "QUESTION: ..." line: the
                        writer asks the user one thing before writing.
+  revisers  optional dict  mode_name -> a fixing skill for the room's guide
+                       (POST /api/guide/revise, "Not right? Tell the
+                       guide"): a finished result, the prompt that made it
+                       and the user's complaint in; what went wrong and a
+                       revised prompt out. Each is a dict with:
+                         label       short name, e.g. "Picture fixer"
+                         prompt      the reviser's system prompt: this
+                                     engine's own known failure modes
+                         keys        the reply's line keys, in order:
+                                     QUESTION, DIAGNOSIS, FIX, PROMPT, NOTE,
+                                     TWEAK, each "KEY: value" on ONE line
+                         fills       the field id PROMPT fills on a reroll,
+                                     e.g. "prompt"
+                         edit_mode   the mode (same cap) to point at when
+                                     FIX is "edit", e.g. "edit"
+                       A non-blank QUESTION ends the reply; otherwise FIX
+                       must be "edit" or "reroll" and PROMPT non-blank.
   fields    optional dict  mode_name -> list of field-descriptor dicts, each
                        with "id", "label", "type" (text/textarea/number/int/
                        select/checkbox/audio/image/image_list/video_list) and
@@ -200,7 +217,7 @@ falsy — is ignored. The dict has exactly these keys:
 The public API of this module (packs, role_pool, role_rules, model_keys,
 abilities, missing_words, mode_ability, describe, graph_for, modes_for,
 licences, licence_for, caps, cap_word, cap_order, mode_words, mode_room,
-mode_note, prompt_guide, writer, parse_writer_reply, rooms, fields, presets, quality, examples, post_for,
+mode_note, prompt_guide, writer, parse_writer_reply, reviser, parse_reviser_reply, rooms, fields, presets, quality, examples, post_for,
 unet_loader, quant_words) is all the core needs to stay model-agnostic.
 """
 
@@ -625,6 +642,48 @@ def parse_writer_reply(w, text):
     body = "\n".join(([rest] if rest else []) + lines).strip()
     values[keys[multi]] = "" if body.upper().rstrip(".") == none else body
     return {"values": values}
+
+
+def reviser(cap, mode):
+    """The owning pack's fixing skill for a mode (see "revisers" above), or
+    None -- same lookup shape as writer()."""
+    pack = _owner(cap, mode)
+    return (pack.get("revisers") or {}).get(mode) if pack else None
+
+
+REVISER_FIXES = ("edit", "reroll")
+
+
+def parse_reviser_reply(r, text):
+    """Parse a reviser's line-delimited reply ->
+    {"question": str} when it asks, else {"diagnosis", "fix", "prompt",
+    "note", "tweak"} (blank ones ""). Every key is one line; any other line
+    is ignored. Raises ValueError when FIX is not edit/reroll or PROMPT is
+    blank."""
+    text = text or ""
+    if _THINK[1] in text:
+        text = text.split(_THINK[1], 1)[1]
+    keys = {k.upper() for k in r["keys"]}
+    values = {}
+    for line in text.splitlines():
+        head, sep, value = line.strip().strip("*").partition(":")
+        head = head.strip().strip("*").strip().upper()
+        if not sep or head not in keys or head in values:
+            continue
+        value = value.strip().strip("*").strip()
+        if value.upper() in ("NONE", "N/A", "-"):
+            value = ""
+        values[head] = value
+    if values.get("QUESTION"):
+        return {"question": values["QUESTION"]}
+    fix = (values.get("FIX") or "").split()
+    fix = fix[0].strip(".,;").lower() if fix else ""
+    if fix not in REVISER_FIXES:
+        raise ValueError("FIX is not edit or reroll")
+    if not values.get("PROMPT"):
+        raise ValueError("no PROMPT")
+    return {"diagnosis": values.get("DIAGNOSIS", ""), "fix": fix, "prompt": values["PROMPT"],
+            "note": values.get("NOTE", ""), "tweak": values.get("TWEAK", "")}
 
 
 ROOMS_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "rooms.json")

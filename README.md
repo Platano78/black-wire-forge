@@ -158,6 +158,14 @@ own.
   `/models`, which on llama.cpp reports the model's TRAINING context rather than what the
   server was started with; set `"context": 16384` (a whole number of tokens) in `helper` to
   state it yourself, and that wins.
+
+  **"Not right? Tell the guide"** on a finished picture sends the picture, the prompt that
+  made it and what you say is wrong to the helper, which answers with what went wrong and a
+  revised prompt (or an edit to try). The picture is only sent when the helper can see
+  pictures: the app reads that from `/models` (a `capabilities` list naming `multimodal` or
+  `vision`), or set `"vision": true` or `false` in `helper` yourself, and that wins. A helper
+  that cannot see is told so, and asks you to describe the problem. `"max_images"` (default 1)
+  caps how many pictures one guide message may carry.
 - **cut.fontfile**: `{"cut": {"fontfile": "/path/to/a/TrueType/font.ttf"}}` -- the font the
   cut's title cards use. Without it the app looks for a handful of common DejaVu/Liberation
   paths. A cut with no title cards still works either way; a cut that DOES include one is

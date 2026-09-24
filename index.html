@@ -331,7 +331,17 @@
   #guideActions{display:flex; align-items:center; gap:8px; margin-top:8px; flex-wrap:wrap}
   #guideThinking{font-size:12px; color:var(--text-mid)}
   #guideError{color:var(--error); font-size:12px; margin:6px 0 0}
-  #guideWriteNoBrain{font-size:12px; color:var(--text-mid); margin:6px 0 0}
+  #guideWriteNoBrain, #guideReviseNoBrain{font-size:12px; color:var(--text-mid); margin:6px 0 0}
+  #guideChip{margin-top:8px; display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding:6px 8px;
+    background:var(--surface3); border:1px solid var(--divider); font-size:12px; min-width:0}
+  #guideChip img, #guideChip video{width:40px; height:40px; object-fit:cover; flex:none}
+  #guideChip .chip-label{color:var(--text-hi); flex:1; min-width:0}
+  #guideChip button{min-width:40px; min-height:40px; background:var(--surface2); color:var(--text-hi);
+    border:1px solid var(--divider); font-size:16px}
+  #guideChip .chip-note{flex-basis:100%; margin:0; color:var(--stale)}
+  #guideSkill .skill-label{font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--text-mid); margin:8px 0 4px}
+  #guideSkill .skill-note{font-size:13px; margin:6px 0 0}
+  #guideSkill .skill-tweak{font-size:12px; color:var(--text-mid); margin:4px 0 0}
   #guideSkill{margin-top:8px; padding:10px; background:var(--surface3); border:1px solid var(--divider)}
   #guideSkill dl{margin:6px 0; display:grid; grid-template-columns:max-content minmax(0,1fr); gap:4px 10px; font-size:13px}
   #guideSkill dt{color:var(--text-mid)}
@@ -822,6 +832,7 @@
         <ul id="guideNoBrainList"></ul>
         <p id="guideAddBrain"></p>
         <p id="guideWriteNoBrain" hidden>Add a helper to have the guide write the words for you.</p>
+        <p id="guideReviseNoBrain" hidden>Add a helper to have the guide look at this result and fix its prompt.</p>
       </div>
       <div id="guideTalk" hidden>
         <div id="guideVerbosity" role="group" aria-label="How much the guide knows">
@@ -832,6 +843,7 @@
         <p id="guideCtxNote" hidden></p>
         <div id="guideLog" role="log" aria-label="Conversation with the guide"></div>
         <div id="guideSkill" class="guide-msg from-guide" hidden aria-live="polite"></div>
+        <div id="guideChip" hidden></div>
         <label class="sr-only" for="guideInput">Message the guide</label>
         <textarea id="guideInput" maxlength="4000" placeholder="Ask the guide. Enter sends, Shift+Enter for a new line."></textarea>
         <div id="guideActions">
@@ -1337,6 +1349,7 @@ function renderMonitor(){
     + '<button class="btn" id="useAgainBtn" type="button">Use again</button>'
     + (running && !laneDown ? '<button class="btn" id="stopBtn" type="button">Stop</button>' : '')
     + (finished ? '<button class="btn" id="forgetBtn" type="button">' + forgetLabel + '</button>' : '')
+    + (!cutting && canRevise(job) ? '<button class="btn" id="notRightBtn" type="button">Not right? Tell the guide</button>' : '')
     + (canAddRef ? '<span id="addRefWrap"><select id="addRefRole"><option value="set">set</option>'
       + '<option value="character">character</option><option value="other" selected>other</option></select>'
       + '<button class="btn" id="addRefBtn" type="button">Add to the reference room</button></span>' : '');
@@ -1378,6 +1391,7 @@ function renderMonitor(){
   if($('#useAgainBtn')) $('#useAgainBtn').onclick = () => useAgain(job);
   if($('#stopBtn')) $('#stopBtn').onclick = () => stopJob(job);
   if($('#forgetBtn')) $('#forgetBtn').onclick = () => forgetJob(job);
+  if($('#notRightBtn')) $('#notRightBtn').onclick = () => openRevise(job);
   if($('#addRefBtn')) $('#addRefBtn').onclick = () => addRefFromMonitor(job, o);
   if(slot){
     setHTML($('#takesStrip'), takesStripHTML(slot));
@@ -2388,6 +2402,8 @@ let GUIDE = null;          // GET /api/guide's body for the room on screen, or n
 let GUIDE_ROOM = null;     // the room GUIDE was loaded for
 let GUIDE_LOAD_ERROR = '';
 let GUIDE_ABORT = null;
+let GUIDE_LOADING = null;  // the GET /api/guide in flight (or settled) for GUIDE_ROOM
+let GUIDE_REVISE = null;   // "Not right?": {room, job_id, output, complaint} while a result is attached
 function guideStoreGet(k){
   if(k in GUIDE_MEM) return GUIDE_MEM[k];
   try{ return localStorage.getItem(k); } catch(e){ return null; }
@@ -2425,11 +2441,14 @@ async function renderGuidePanel(){
     GUIDE_ROOM = room.id;
     GUIDE = null;
     GUIDE_LOAD_ERROR = '';
+    GUIDE_REVISE = null;   // an attached result belongs to the room it was attached in
     $('#guideName').textContent = 'loading…';
-    try{ GUIDE = await getJSON('/api/guide?room=' + encodeURIComponent(room.id)); }
-    catch(e){ GUIDE_LOAD_ERROR = 'The guide could not be loaded (' + (e.message || e) + '). Reload the page to try again.'; }
-    if(GUIDE_ROOM !== room.id) return;   // the user moved on while it loaded
+    GUIDE_LOADING = getJSON('/api/guide?room=' + encodeURIComponent(room.id)).then(
+      b => { if(GUIDE_ROOM === room.id) GUIDE = b; },
+      e => { if(GUIDE_ROOM === room.id) GUIDE_LOAD_ERROR = 'The guide could not be loaded (' + (e.message || e) + '). Reload the page to try again.'; });
   }
+  await GUIDE_LOADING;
+  if(GUIDE_ROOM !== room.id) return;   // the user moved on while it loaded
   renderGuideBody();
 }
 function renderGuideBody(){
@@ -2452,6 +2471,7 @@ function renderGuideBody(){
   guideShowError(GUIDE_LOAD_ERROR || (GUIDE && !g ? 'This room has no guide.' : ''));
   if(brain){ renderGuideToggle(); renderGuideLog(); }
   renderGuideWrite();
+  renderReviseChip();
 }
 function renderGuideToggle(){
   const v = guideVerbosity();
@@ -2543,6 +2563,7 @@ function guideBusy(on){
   $('#guideWriteBtn').disabled = on;
 }
 async function guideSend(){
+  if(GUIDE_REVISE) return guideReviseRun();   // a result is attached: this is a complaint about it
   if(GUIDE_ABORT || !GUIDE || !GUIDE.guide || !GUIDE.helper) return;
   const input = $('#guideInput');
   const text = input.value.trim();
@@ -2724,6 +2745,167 @@ async function guideSkillRun(answer){
   }
 }
 $('#guideWriteBtn').onclick = () => guideSkillRun();
+
+/* ---------------------------------------------------------------------
+   "Not right? Tell the guide": POST /api/guide/revise. The button on a
+   finished result whose mode has a reviser opens that room's guide with the
+   result attached as a chip; Send then goes to the reviser, not the chat.
+   The reply is what went wrong and a revised prompt (or an edit
+   instruction); nothing reaches the form until the user presses a button.
+   Text only, never HTML.
+--------------------------------------------------------------------- */
+const GUIDE_INPUT_PLACEHOLDER = 'Ask the guide. Enter sends, Shift+Enter for a new line.';
+function reviseOutputIndex(job){
+  return (job.outputs || []).findIndex(o => o.media === 'image' || o.media === 'video');
+}
+function canRevise(job){
+  const info = modeInfo(job.kind, job.mode);
+  return !!(info && info.reviser && job.status === 'done' && reviseOutputIndex(job) >= 0);
+}
+async function openRevise(job){
+  const rid = jobRoom(job);
+  if(rid && rid !== STATE.room) await selectRoom(rid, {keepJob: true});
+  await renderGuidePanel();
+  if($('#guidePanel').hidden) return;
+  GUIDE_REVISE = {room: GUIDE_ROOM, job_id: job.id, output: reviseOutputIndex(job), complaint: ''};
+  guideSkillClear();
+  guideShowError('');
+  renderReviseChip();
+  $('#guidePanel').open = true;
+  $('#guidePanel').scrollIntoView({block: 'nearest'});
+  if(!$('#guideTalk').hidden) $('#guideInput').focus();
+}
+function reviseDetach(){
+  GUIDE_REVISE = null;
+  renderReviseChip();
+}
+function renderReviseChip(){
+  const chip = $('#guideChip');
+  const brain = !!(GUIDE && GUIDE.guide && GUIDE.helper);
+  const r = GUIDE_REVISE && GUIDE_REVISE.room === GUIDE_ROOM ? GUIDE_REVISE : null;
+  $('#guideReviseNoBrain').hidden = !(r && GUIDE && GUIDE.guide && !brain);
+  $('#guideInput').placeholder = r ? "What's wrong with it?" : GUIDE_INPUT_PLACEHOLDER;
+  chip.textContent = '';
+  chip.hidden = !(r && brain);
+  if(chip.hidden) return;
+  const job = STATE.jobs.find(j => j.id === r.job_id);
+  const o = job && (job.outputs || [])[r.output];
+  if(o){
+    const m = document.createElement(o.media === 'video' ? 'video' : 'img');
+    m.src = viewURL(job.lane, o, false);
+    if(o.media === 'video') m.muted = true; else m.alt = '';
+    chip.appendChild(m);
+  }
+  chip.appendChild(skillEl('span', o && o.media === 'video' ? 'attached (a still from the middle)' : 'attached', 'chip-label'));
+  const x = skillEl('button', '×');
+  x.type = 'button'; x.id = 'guideChipRemove'; x.setAttribute('aria-label', 'Remove the attached result');
+  x.onclick = reviseDetach;
+  chip.appendChild(x);
+  if(GUIDE.helper_vision === false){
+    const note = skillEl('p', "this helper can't see pictures: describe what's wrong in words", 'chip-note');
+    note.id = 'guideChipNote';
+    chip.appendChild(note);
+  }
+}
+function renderReviseReply(r, req){
+  const box = $('#guideSkill');
+  box.textContent = '';
+  box.appendChild(skillEl('div', GUIDE.guide.name, 'guide-who'));
+  const actions = skillEl('div', null, 'skill-actions');
+  if(r.question){
+    box.appendChild(skillEl('div', r.question, 'guide-text'));
+    const input = skillEl('input');
+    input.id = 'guideReviseAnswer'; input.maxLength = 500; input.setAttribute('aria-label', 'Your answer');
+    input.addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); guideReviseRun(input.value); } });
+    box.appendChild(input);
+    actions.append(skillButton('Answer', 'guideReviseAnswerBtn', true, () => guideReviseRun(input.value)),
+                   skillButton('Dismiss', 'guideReviseDismiss', false, guideSkillClear));
+  } else {
+    const diag = skillEl('div', r.diagnosis, 'guide-text');
+    diag.id = 'guideReviseDiagnosis';
+    box.appendChild(diag);
+    box.appendChild(skillEl('p', r.fix === 'edit' ? 'Edit instruction' : 'Revised prompt', 'skill-label'));
+    const pre = skillEl('pre', r.prompt);
+    pre.id = 'guideRevisePrompt';
+    box.appendChild(pre);
+    if(r.note) box.appendChild(skillEl('p', r.note, 'skill-note'));
+    if(r.tweak) box.appendChild(skillEl('p', r.tweak, 'skill-tweak'));
+    actions.append(r.fix === 'edit'
+      ? skillButton('Try it in Edit', 'guideReviseEdit', true, () => reviseTryEdit(r, req))
+      : skillButton('Use this prompt', 'guideReviseUse', true, () => reviseUsePrompt(r, req)),
+      skillButton('Dismiss', 'guideReviseDismiss', false, guideSkillClear));
+  }
+  if(r.vision === false) box.appendChild(skillEl('p', "This helper can't see pictures, so it only has your words to go on.", 'guide-hint'));
+  box.appendChild(actions);
+  if(r.sent){
+    const d = skillEl('details');
+    d.id = 'guideSkillSent';
+    d.append(skillEl('summary', 'What the brain was asked'), skillEl('pre', r.sent.system), skillEl('pre', r.sent.user_text),
+             skillEl('p', r.sent.pictures ? r.sent.pictures + ' picture sent with it.' : 'No picture was sent with it.', 'skill-tweak'));
+    box.appendChild(d);
+  }
+  box.hidden = false;
+  box.scrollIntoView({block: 'nearest'});
+}
+async function reviseSwitchMode(cap, mode){
+  if(STATE.cap === cap && STATE.mode === mode) return true;
+  if(!modeInfo(cap, mode)) return false;
+  STATE.cap = cap;
+  STATE.mode = mode;
+  renderEnginePicker(true);
+  await renderModeFields();
+  return true;
+}
+async function reviseUsePrompt(r, req){
+  const job = STATE.jobs.find(j => j.id === req.job_id);
+  if(job) await reviseSwitchMode(job.kind, job.mode);
+  guideSkillUse({[r.fills]: r.prompt});
+  reviseDetach();
+}
+async function reviseTryEdit(r, req){
+  const job = STATE.jobs.find(j => j.id === req.job_id);
+  const cap = job ? job.kind : STATE.cap;
+  if(!(await reviseSwitchMode(cap, r.edit_mode))){
+    guideShowError('This room has no edit mode to send it to.');
+    return;
+  }
+  guideSkillUse({[$('#promptBox').dataset.fieldId || r.fills]: r.prompt});
+  reviseDetach();
+  // The page has no way yet to hand a result to an edit as its source.
+  const src = fieldsFor(currentMode()).find(f => f.type === 'image' || f.type === 'image_list');
+  msgInspector('Now pick this picture as the source: download it with Share, then add it under '
+    + (src ? src.label : 'the pictures to work from') + '.', '');
+}
+async function guideReviseRun(answer){
+  const req = GUIDE_REVISE;
+  if(GUIDE_ABORT || !req || !GUIDE || !GUIDE.helper) return;
+  const answering = typeof answer === 'string';
+  const complaint = answering ? req.complaint : $('#guideInput').value.trim();
+  if(!complaint){ guideShowError("Say what's wrong with it first, in the box above."); return; }
+  const room = GUIDE_ROOM;
+  const body = {room: room, job_id: req.job_id, output: req.output, complaint: complaint};
+  if(answering && answer.trim()) body.answer = answer.trim().slice(0, 500);
+  guideShowError('');
+  guideBusy(true);
+  GUIDE_ABORT = new AbortController();
+  try{
+    const r = await postJSON('/api/guide/revise', body, GUIDE_ABORT.signal);
+    if(!r || !r.ok){
+      if(r && r.no_brain) GUIDE_ROOM = null;
+      throw new Error((r && r.error) || 'The helper is busy or switched off right now.');
+    }
+    if(GUIDE_ROOM !== room || GUIDE_REVISE !== req) return;   // the user moved on
+    req.complaint = complaint;
+    if(!answering) $('#guideInput').value = '';
+    renderReviseReply(r, req);
+  } catch(e){
+    if(e.name !== 'AbortError') guideShowError(String(e.message || e));
+  } finally {
+    GUIDE_ABORT = null;
+    guideBusy(false);
+    if(GUIDE_ROOM === null) renderGuidePanel();
+  }
+}
 
 function refreshEnabled(fields){
   const values = currentValues();

@@ -48,8 +48,9 @@ must not be relied on to make an internet-exposed deployment safe**:
   rendering capacity just by sending large or many requests. If you share this app with
   others, put a reverse proxy with body-size and rate limits in front of it.
 - **The optional prompt helper is a third party.** If `"helper"` is configured in
-  `config.json`, "Help me write this" and "Describe this picture" send your text (and,
-  for the picture case, the image itself) to that endpoint. Rendering itself never
+  `config.json`, "Help me write this", "Describe this picture", the room guides and
+  "Not right? Tell the guide" send your text (and, for "Describe this picture" and "Not
+  right?" with a helper that can see pictures, the image itself) to that endpoint. Rendering itself never
   leaves your configured lanes, but the helper's operator and privacy policy apply to
   whatever you send it.
 

@@ -1,7 +1,7 @@
 """Browser gate for the room guide panel: the Film Room Guide in the Cutting
 Room (P1), every other room's guide, and the room context a generator room
 sends with each turn (P1b/P1c); the song writer skill ("Write it for me") and the
-Make-time confirm (P2).
+Make-time confirm (P2); "Not right? Tell the guide" on a finished picture (P2b).
 
 Drives the real page in a real browser (Playwright) against its own
 server.py subprocesses (scratch config + scratch data, random free ports),
@@ -106,7 +106,7 @@ def start_lane():
         raise SystemExit("fake lane did not come up")
     return port
 
-def start_server(name, lane_port, with_helper):
+def start_server(name, lane_port, with_helper, vision=None, jobs=None):
     port = free_port()
     cfg = {"title": "guide UI test", "port": port, "bind": "127.0.0.1",
            "lanes": [{"id": "t", "name": "Fake lane", "host": "127.0.0.1", "port": lane_port,
@@ -121,6 +121,12 @@ def start_server(name, lane_port, with_helper):
     if with_helper:
         cfg["helper"] = {"url": "http://127.0.0.1:%d/v1" % fake.server_address[1], "model": "test-model",
                          "timeout_s": 10}
+        if vision is not None:
+            cfg["helper"]["vision"] = vision
+    if jobs:
+        os.makedirs(os.path.join(SCRATCH, "data_" + name), exist_ok=True)
+        with open(os.path.join(SCRATCH, "data_" + name, "jobs.json"), "w") as f:
+            json.dump(jobs, f)
     cfg_path = os.path.join(SCRATCH, "config_%s.json" % name)
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
@@ -188,6 +194,27 @@ def send(page, text, expect_count):
 def no_hscroll(page):
     return page.evaluate("() => document.documentElement.scrollWidth <= window.innerWidth")
 
+def gradient_png(w, h):
+    """A small RGB PNG (a colour gradient), so a result has a real picture to show."""
+    import struct, zlib
+    rows = b"".join(b"\x00" + bytes(v for x in range(w) for v in (x * 255 // w, y * 255 // h, 160)) for y in range(h))
+    def chunk(t, d):
+        return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xffffffff)
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
+
+FIX_PROMPT = "a battle between Godzilla and MechaKing Ghidorah"
+FIX_JOB = {"id": "fixjob1", "lane": "t", "lane_name": "Fake lane", "kind": "image", "mode": "t2i", "status": "done",
+           "prompt": FIX_PROMPT, "negative": "", "cfg": 3.0, "width": 1328, "height": 1328, "steps": 20, "seed": 7,
+           "created": time.time(), "started": time.time(), "updated": time.time(), "notes": [],
+           "outputs": [{"filename": "fix.png", "subfolder": "", "type": "output", "media": "image"}]}
+
+def show_fix_job(page, url):
+    enter_room(page, url, "picture")
+    page.wait_for_selector('#binBody tr[data-job="fixjob1"]', timeout=15000)
+    page.click('#binBody tr[data-job="fixjob1"]')
+    page.wait_for_selector("#monitorActions", timeout=15000)
+
 def shot(page, name):
     if SHOTS:
         os.makedirs(SHOTS, exist_ok=True)
@@ -195,8 +222,11 @@ def shot(page, name):
 
 try:
     lane = start_lane()
-    url_brain = start_server("brain", lane, True)
-    url_none = start_server("nobrain", lane, False)
+    with open(os.path.join(SCRATCH, "fake_lane", "outputs", "fix.png"), "wb") as f:
+        f.write(gradient_png(96, 96))
+    url_brain = start_server("brain", lane, True, vision=True, jobs=[FIX_JOB])
+    url_none = start_server("nobrain", lane, False, jobs=[FIX_JOB])
+    url_blind = start_server("blind", lane, True, vision=False, jobs=[FIX_JOB])
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
 
@@ -420,6 +450,166 @@ try:
         enter_room(page, url_none, "music")
         check("no brain: no Write button", not page.is_visible("#guideWriteBtn"))
         check("no brain: the add-a-helper line for writing", text_of(page, "#guideWriteNoBrain") == "Add a helper to have the guide write the words for you.")
+        page.close()
+
+        # ---------------- P2b: "Not right? Tell the guide" ----------------
+        REVISE_BODIES = []
+        FIXED = "A battle between exactly two giant monsters: a grey kaiju and a golden three-headed mechanical dragon."
+        REROLL = ("QUESTION:\nDIAGNOSIS: The model does not know \"MechaKing Ghidorah\" by name, so it drew an extra monster.\n"
+                  "FIX: reroll\nPROMPT: " + FIXED + "\nNOTE: Pinned the count to exactly two.\nTWEAK: A night sky would add contrast.")
+        EDIT = ("QUESTION:\nDIAGNOSIS: Only the dragon's colour is off.\nFIX: edit\nPROMPT: Make the dragon gold and keep "
+                "everything else.\nNOTE: Only one thing changes, so an edit keeps the rest.\nTWEAK:")
+        def record_revise(req):
+            if req.url.endswith("/api/guide/revise") and req.method == "POST":
+                REVISE_BODIES.append(json.loads(req.post_data or "{}"))
+        print("Picture: Not right? Tell the guide (a helper that can see)")
+        page = browser.new_page(viewport={"width": 1280, "height": 800})
+        page.on("request", record_revise)
+        page.on("request", record_chat)
+        show_fix_job(page, url_brain)
+        check("revise: the button is on the finished t2i result", page.is_visible("#notRightBtn")
+              and text_of(page, "#notRightBtn") == "Not right? Tell the guide")
+        page.locator("#monitorActions").scroll_into_view_if_needed()
+        shot(page, "revise-button-1280x800")
+        page.click("#notRightBtn")
+        page.wait_for_selector("#guideChip:not([hidden])", timeout=15000)
+        check("revise: the chip shows the result's thumbnail", page.eval_on_selector(
+            "#guideChip img", "e => e.getAttribute('src')").find("filename=fix.png") >= 0)
+        check("revise: the chip says attached, with a remove button", "attached" in text_of(page, "#guideChip")
+              and page.is_visible("#guideChipRemove"))
+        check("revise: no can't-see note for a helper that can see", page.query_selector("#guideChipNote") is None)
+        check("revise: the input is focused and asks what's wrong",
+              page.evaluate("document.activeElement && document.activeElement.id") == "guideInput"
+              and page.get_attribute("#guideInput", "placeholder") == "What's wrong with it?")
+        shot(page, "revise-chip-1280x800")
+        print("revise: the reroll path")
+        HELPER.update(reply=REROLL, finish="stop")
+        HELPER["requests"].clear()
+        del CHAT_BODIES[:]
+        page.fill("#guideInput", "I asked for Godzilla fighting MechaKing Ghidorah and got two Godzillas and some other monster")
+        page.press("#guideInput", "Enter")
+        page.wait_for_selector("#guideReviseUse", timeout=15000)
+        body = REVISE_BODIES[-1] if REVISE_BODIES else {}
+        check("revise: Send went to /api/guide/revise with the job and the complaint", body.get("job_id") == "fixjob1"
+              and body.get("output") == 0 and body.get("room") == "picture"
+              and body.get("complaint", "").startswith("I asked for Godzilla"), body)
+        check("revise: nothing went to the chat", CHAT_BODIES == [], CHAT_BODIES[-1:])
+        last = HELPER["requests"][-1]["messages"][-1]["content"] if HELPER["requests"] else ""
+        check("revise: the helper got the picture on the user message", isinstance(last, list)
+              and [p["type"] for p in last] == ["text", "image_url"], type(last))
+        check("revise: the diagnosis is shown", "does not know" in text_of(page, "#guideReviseDiagnosis"))
+        check("revise: the revised prompt is monospaced", text_of(page, "#guideRevisePrompt") == FIXED and page.eval_on_selector(
+            "#guideRevisePrompt", "e => getComputedStyle(e).fontFamily").lower().find("mono") >= 0)
+        check("revise: the note and the tweak are shown", "Pinned the count" in text_of(page, "#guideSkill")
+              and "night sky" in text_of(page, "#guideSkill"))
+        check("revise: what the brain was asked is there, collapsed", page.is_visible("#guideSkillSent")
+              and page.eval_on_selector("#guideSkillSent", "e => !e.open"))
+        page.click("#guideSkillSent summary")
+        check("revise: it shows the prompt that made it and says a picture was sent",
+              ("The prompt that made it: " + FIX_PROMPT) in text_of(page, "#guideSkillSent")
+              and "1 picture sent with it." in text_of(page, "#guideSkillSent"))
+        page.click("#guideSkillSent summary")
+        page.locator("#guideSkill").scroll_into_view_if_needed()
+        shot(page, "revise-reroll-1280x800")
+        page.set_viewport_size({"width": 390, "height": 844})
+        page.wait_for_timeout(300)
+        check("revise: no horizontal scroll at 390 with the reply open", no_hscroll(page))
+        page.locator("#guideSkill").scroll_into_view_if_needed()
+        shot(page, "revise-reply-390")
+        page.set_viewport_size({"width": 1280, "height": 800})
+        page.fill("#promptBox", "something else")
+        page.click("#guideReviseUse")
+        check("revise: Use this prompt fills the prompt", page.input_value("#promptBox") == FIXED, page.input_value("#promptBox"))
+        check("revise: and stays in t2i", page.evaluate("STATE.mode") == "t2i")
+        check("revise: the reply and the chip close", not page.is_visible("#guideSkill") and not page.is_visible("#guideChip"))
+        check("revise: the input goes back to asking the guide",
+              page.get_attribute("#guideInput", "placeholder") == "Ask the guide. Enter sends, Shift+Enter for a new line.")
+        print("revise: the question path")
+        page.click("#notRightBtn")
+        page.wait_for_selector("#guideChip:not([hidden])", timeout=15000)
+        HELPER["reply"] = "QUESTION: What looks wrong to you: the monsters, the city, or the light?"
+        page.fill("#guideInput", "it's just not right")
+        page.press("#guideInput", "Enter")
+        page.wait_for_selector("#guideReviseAnswer", timeout=15000)
+        check("revise: the question is shown", "the monsters, the city" in text_of(page, "#guideSkill"))
+        HELPER["reply"] = REROLL
+        page.fill("#guideReviseAnswer", "the second monster")
+        page.click("#guideReviseAnswerBtn")
+        page.wait_for_selector("#guideReviseUse", timeout=15000)
+        check("revise: the answer goes back with the same complaint", REVISE_BODIES[-1].get("answer") == "the second monster"
+              and REVISE_BODIES[-1].get("complaint") == "it's just not right", REVISE_BODIES[-1])
+        page.click("#guideReviseDismiss")
+        print("revise: the edit path")
+        HELPER["reply"] = EDIT
+        page.fill("#guideInput", "the dragon should be gold")
+        page.press("#guideInput", "Enter")
+        page.wait_for_selector("#guideReviseEdit", timeout=15000)
+        check("revise: the edit instruction is shown", "edit instruction" in text_of(page, "#guideSkill").lower()
+              and text_of(page, "#guideRevisePrompt") == "Make the dragon gold and keep everything else.")
+        page.locator("#guideSkill").scroll_into_view_if_needed()
+        shot(page, "revise-edit-1280x800")
+        page.click("#guideReviseEdit")
+        page.wait_for_function("() => STATE.mode === 'edit'", timeout=15000)
+        page.wait_for_timeout(300)
+        check("revise: Try it in Edit switches to edit and fills its prompt",
+              page.input_value("#promptBox") == "Make the dragon gold and keep everything else.", page.input_value("#promptBox"))
+        check("revise: and says how to pick this picture as the source",
+              "pick this picture as the source" in text_of(page, "#inspectorMsg")
+              and "Pictures to work from" in text_of(page, "#inspectorMsg"), text_of(page, "#inspectorMsg"))
+        print("revise: the remove button detaches it, and Send talks to the guide again")
+        page.check('#enginePicker input[data-mode="t2i"]')
+        page.wait_for_timeout(600)
+        page.click("#notRightBtn")
+        page.wait_for_selector("#guideChip:not([hidden])", timeout=15000)
+        page.click("#guideChipRemove")
+        check("revise: the chip is gone", not page.is_visible("#guideChip"))
+        n_revise = len(REVISE_BODIES)
+        HELPER.update(reply="Ask me anything.")
+        send(page, "hello", 2)
+        check("revise: Send went to the chat, not the fixer", len(REVISE_BODIES) == n_revise and CHAT_BODIES
+              and "pictures" not in CHAT_BODIES[-1], CHAT_BODIES[-1:])
+        print("revise: a reply renders as text, never as HTML")
+        page.click("#notRightBtn")
+        page.wait_for_selector("#guideChip:not([hidden])", timeout=15000)
+        HELPER["reply"] = REROLL.replace("DIAGNOSIS: ", 'DIAGNOSIS: <img src=x onerror="window.__xss2=1">')
+        page.fill("#guideInput", "wrong monster")
+        page.press("#guideInput", "Enter")
+        page.wait_for_selector("#guideReviseUse", timeout=15000)
+        check("revise: no img element created in the reply", page.eval_on_selector_all("#guideSkill img", "els => els.length") == 0
+              and page.evaluate("() => window.__xss2 === undefined"))
+        page.close()
+
+        print("revise: a helper that cannot see pictures")
+        page = browser.new_page(viewport={"width": 1280, "height": 800})
+        show_fix_job(page, url_blind)
+        page.click("#notRightBtn")
+        page.wait_for_selector("#guideChip:not([hidden])", timeout=15000)
+        check("revise: the chip says the helper can't see pictures",
+              text_of(page, "#guideChipNote") == "this helper can't see pictures: describe what's wrong in words")
+        HELPER["requests"].clear()
+        HELPER["reply"] = "QUESTION: I can't see the picture, so tell me: what looks wrong?"
+        page.fill("#guideInput", "is anything wrong?")
+        page.press("#guideInput", "Enter")
+        page.wait_for_selector("#guideReviseAnswer", timeout=15000)
+        last = HELPER["requests"][-1]["messages"][-1]["content"] if HELPER["requests"] else None
+        check("revise: the call still went, with no picture and the truth",
+              isinstance(last, str) and last.endswith("[The user attached a picture, but this helper cannot see pictures.]"), last)
+        check("revise: the reply says it only has the words", "only has your words" in text_of(page, "#guideSkill"))
+        page.locator("#guideChip").scroll_into_view_if_needed()
+        shot(page, "revise-vision-false-1280x800")
+        page.close()
+
+        print("revise: no brain: the button still opens the guide, with how to add one")
+        page = browser.new_page(viewport={"width": 1280, "height": 800})
+        show_fix_job(page, url_none)
+        check("revise: no brain: the button is there", page.is_visible("#notRightBtn"))
+        page.click("#notRightBtn")
+        page.wait_for_selector("#guideReviseNoBrain:not([hidden])", timeout=15000)
+        check("revise: no brain: the panel is open with the guidance", page.eval_on_selector("#guidePanel", "e => e.open")
+              and page.is_visible("#guideNoBrainList") and "config.json" in text_of(page, "#guideAddBrain"))
+        check("revise: no brain: the add-a-helper line for fixing",
+              text_of(page, "#guideReviseNoBrain") == "Add a helper to have the guide look at this result and fix its prompt.")
+        check("revise: no brain: no chip, no input box", not page.is_visible("#guideChip") and not page.is_visible("#guideInput"))
         page.close()
 
         print("every room: the right guide, screenshots at 1280x800 (brain)")

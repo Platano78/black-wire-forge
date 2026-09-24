@@ -84,6 +84,24 @@ not: a request it finds problems in (a song with lyrics but no voice in its styl
 renders as an instrumental) gets 409 `needs_confirm` with the problems, until the body
 carries `"confirm": true`. `POST /api/sequence/generate` passes `confirm` through the same way.
 
+A mode whose pack declares a `revisers` entry gets **"Not right? Tell the guide"** on each
+finished result in the monitor. It opens the room's guide with the result attached as a
+chip, and Send goes to `POST /api/guide/revise`: the room, the `job_id`, an optional
+`output` (default: the first picture or clip), the `complaint`, an optional `answer` to the
+reviser's question, and an optional `context`. The mode comes from the job, not the page.
+The helper is given the job's prompt verbatim, its recorded settings by label, the
+complaint and a grounding line. The reply is `question`, or `diagnosis`, `fix` (`reroll` or
+`edit`), `prompt`, `note`, `tweak` plus the pack's `fills` and `edit_mode`; `sent` shows the
+system and user text and how many pictures went, never their bytes. Pictures reach the
+helper only as OpenAI `image_url` parts on the last user message, at most `helper.max_images`
+(default 1), and only when it can see: `helper.vision` in config, else an entry in `/models`
+whose `capabilities` list names `multimodal` or `vision`. Otherwise nothing is attached and
+the grounding line says `[The user attached a picture, but this helper cannot see
+pictures.]`, so the guide asks for words instead of inventing a picture. A clip becomes its
+middle frame through ffmpeg, or a plain 400 naming ffmpeg. `POST /api/guide/chat` takes the
+same `pictures` list (`{"job_id", "output"}` or `{"lane", "upload"}`); the page only attaches
+through "Not right?" so far.
+
 ## Jobs and the poller
 
 `generate()` builds a graph from a pack, submits it to a lane, and records a `Job` in
