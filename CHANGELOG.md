@@ -95,6 +95,9 @@ All notable changes to Black Wire Forge are recorded here.
   "Describe this picture", "Not right?", "Edit this result", and what shows with no helper.
 - A process lane's list of what is missing names the programs it needs (Blender, ffmpeg),
   never GPU model files.
+- In the Cutting Room, two quick edits in a row (removing a shot, then pressing "+ generate here" at
+  once) no longer lose the second one with "This sequence changed elsewhere": every sequence edit
+  now waits its turn and goes out with the current revision.
 - A turntable (process-lane) job naming a file that was never uploaded is refused when you
   press Make, not as a failed job later.
 - Downloading from a lane that is not answering, or that no longer has the file, gives a
