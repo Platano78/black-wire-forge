@@ -51,6 +51,33 @@ Ask, in this order, and stop at the first one that applies:
    A process lane needs no `host`/`port` of its own (it runs a local program, not a ComfyUI
    instance) but **must** declare a non-empty `caps` — nothing about it is discoverable until
    its binaries are.
+
+   Once the app is running ("Install + start" below), this is the whole render, for a `.glb`
+   the user has (here `model.glb`):
+
+   ```
+   # 1. hand the file to the lane; keep the "name" it answers with
+   curl -s -F lane=cpu -F file=@model.glb http://127.0.0.1:3998/api/upload
+   #    -> {"ok": true, "files": [{"name": "c0fb74b6_model.glb", "original": "model.glb", "bytes": ...}]}
+
+   # 2. start the turntable, passing that name as the "model" field
+   curl -s -X POST http://127.0.0.1:3998/api/generate -H 'Content-Type: application/json' \
+     -d '{"lane": "cpu", "kind": "3d", "mode": "turntable", "prompt": "", "model": "c0fb74b6_model.glb"}'
+   #    -> {"ok": true, "job": {"id": "<job-id>", "status": "queued", ...}, ...}
+
+   # 3. poll until that job's "status" is "done" (Blender renders on the CPU: minutes)
+   curl -s "http://127.0.0.1:3998/api/jobs?limit=5"
+   #    -> its "outputs": [{"filename": "turntable.mp4", "subfolder": "<job-id>", "type": "local", ...},
+   #                       {"filename": "poster.png", "subfolder": "<job-id>", "type": "local", ...}]
+
+   # 4. download the video (a process lane's outputs are type=local, on this machine)
+   curl -s -o turntable.mp4 \
+     "http://127.0.0.1:3998/api/view?lane=cpu&filename=turntable.mp4&subfolder=<job-id>&type=local&dl=1"
+   ```
+
+   The other fields (`frames`, `fps`, `size`, `samples`, `background`, `elevation`) are
+   optional; `/api/engines?lane=cpu` lists them. The video lasts `frames` ÷ `fps` seconds
+   (72 ÷ 24 = 3 s by default).
 3. **No ComfyUI yet, but they have a GPU** → ComfyUI itself must be installed first. Do not
    invent install steps for it here — point the user at ComfyUI's own installation docs
    (https://github.com/comfyanonymous/ComfyUI) and come back to this file once `python
