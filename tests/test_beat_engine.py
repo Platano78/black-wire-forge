@@ -133,7 +133,8 @@ check("LTX shot: the brain got LTX's own writer prompt", system == ltx.ENGINE["w
 check("LTX shot: the previous beat is in the request, one line", "Before: INT. LUNAR APARTMENT - NIGHT." in user, user)
 check("LTX shot: the next beat is in the request, without the other engine's prefix",
       "After: The target video holds a close-up on <Subject 2>." in user and PREFIX not in user, user)
-check("LTX shot: the beat itself is the request, without the other engine's prefix", "Request: " + BODY in user, user)
+check("LTX shot: the beat itself is the request, marked as this shot's, without the other engine's prefix",
+      "Request (THIS shot's beat, the only one to write): " + BODY in user, user)
 check("LTX shot: it is told to write only its own shot", "Write THIS shot" in user, user)
 
 H3_PROMPT = PREFIX + " Live-action, cinematic, the woman from the reference picture sets two cups down."
@@ -145,12 +146,30 @@ check("H3 shot: 200, its own prefix kept and no problem raised",
       code == 200 and body.get("fields", {}).get("prompt") == H3_PROMPT and body.get("problems") == [], body)
 system, user = (ASKED[-1][0]["content"], ASKED[-1][1]["content"]) if ASKED else ("", "")
 check("H3 shot: the brain got H3's own reference writer prompt", system == minimax_h3.ENGINE["writers"]["ref2v"]["prompt"])
-check("H3 shot: the beat goes whole, prefix and all", "Request: " + H3_BEAT in user, user)
+check("H3 shot: the beat goes whole, prefix and all", "Request (THIS shot's beat, the only one to write): " + H3_BEAT in user, user)
 check("H3 shot: the next beat keeps the prefix too", "After: " + NEIGH["after"] in user, user)
+
+print("continuity: the previous shot's actual prompt and a keep line go too")
+PREV = "The hand lets go of the white paper airplane out of the open window, in soft gold dawn light."
+KEEP = 'the subjects and props of the first beat ("Someone throws the paper plane from a high window."); the light so far ("in soft gold dawn light")'
+REPLIES[:] = ["LENGTH: NONE\nPROMPT: " + LTX_PROMPT]
+ASKED[:] = []
+body, code = srv.guide_skill({"room": "video", "mode": "ltx", "topic": "The plane glides between skyscrapers.",
+                              "context": {"mode": "ltx", "fields": {}, "neighbours": dict(NEIGH, previous=PREV, keep=KEEP)}})
+user = ASKED[0][1]["content"] if ASKED else ""   # the first ask (a draft with problems is asked again)
+check("continuity: 200", code == 200, body)
+check("continuity: the previous shot's actual prompt is in the request", "The previous shot's actual prompt: " + PREV in user, user)
+check("continuity: the keep line is in the request", "Keep: " + KEEP in user, user)
+check("continuity: the rule says write this beat only and keep what is listed",
+      "keep the listed subjects, props and light unless this beat changes them" in user, user)
+REQ = "Request (THIS shot's beat, the only one to write): The plane glides between skyscrapers."
+check("continuity: the request is this shot's beat, after the continuity block",
+      REQ in user and user.index(REQ) > user.index("Keep: "), user[-400:])
 
 print("refusals: neighbours must be small, known and text")
 for bad, why in (({"before": 3}, "a number"), ({"later": "x"}, "an unknown key"),
-                 ({"before": "x" * 501}, "too long"), ("before", "not an object")):
+                 ({"before": "x" * 501}, "too long"), ("before", "not an object"),
+                 ({"previous": "x" * 501}, "a previous prompt too long"), ({"keep": 7}, "a keep that is not text")):
     REPLIES[:] = ["LENGTH: NONE\nPROMPT: x"]
     body, code = srv.guide_skill({"room": "video", "mode": "ltx", "topic": "a shot",
                                   "context": {"mode": "ltx", "fields": {}, "neighbours": bad}})

@@ -99,8 +99,13 @@ try:
         REPLIES[:] = ["LENGTH: NONE\nPROMPT: " + H3_OUT]
         page.click("#slotWriteBtn")
         page.wait_for_selector("#guideSkillUse", timeout=15000)
+        n = (BODIES[-1].get("context") or {}).get("neighbours") or {}
         check("the request is the H3 reference mode, neighbours both sides", BODIES[-1].get("mode") == "ref2v"
-              and BODIES[-1]["context"]["neighbours"] == {"before": B1, "after": "She finally answers."}, BODIES[-1])
+              and (n.get("before"), n.get("after")) == (B1, "She finally answers."), BODIES[-1])
+        check("the topic is THIS shot's beat", BODIES[-1].get("topic") == B2, BODIES[-1].get("topic"))
+        check("the previous shot's actual prompt goes too", n.get("previous") == LTX_OUT, n)
+        check("a keep line names the first beat's subjects and props", B1 in (n.get("keep") or "")
+              and "subjects and props" in (n.get("keep") or ""), n)
         check("the brain got H3's own writer", ASKED[-1][0]["content"] == minimax_h3.ENGINE["writers"]["ref2v"]["prompt"])
         check("the preview keeps H3's prefix and raises no problem",
               H3_OUT in page.inner_text("#guideSkill") and page.query_selector("#guideSkillProblems") is None)

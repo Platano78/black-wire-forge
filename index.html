@@ -2627,12 +2627,37 @@ function slotWriteBeat(){
   if(!slot || !slot.beat_id || !mode || !mode.writer || mode.writer.target || !STATE.seq) return null;
   return (STATE.seq.beats || []).find(b => b.id === slot.beat_id) || null;
 }
-// The beats either side of it in the script, one line each, for continuity.
+// The beats either side of it in the script, one line each, for continuity;
+// plus the previous shot's actual prompt (what it was made from, else what it
+// says now) and a "keep" line: the first shot-making beat's subjects and props,
+// and the light the earlier shots were written in.
+const LIGHT_WORDS = /\b(dawn|sunrise|sunset|dusk|twilight|morning|midday|noon|afternoon|evening|night|golden hour|overcast|moonlight|moonlit|daylight)\b/i;
+function shotPromptText(slot){
+  const job = slot.pick ? findJob(slot.pick) : null;
+  if(job && job.prompt) return String(job.prompt);
+  const info = modeInfo(slot.cap, slot.mode);
+  const f = fieldsFor(info).find(x => x.type === 'text' || x.type === 'textarea');
+  return f ? String((slot.values || {})[f.id] || '') : '';
+}
 function slotWriteNeighbours(beat){
   const beats = (STATE.seq && STATE.seq.beats) || [], i = beats.findIndex(b => b.id === beat.id), out = {};
-  const line = b => String(b.text || '').split(/\s+/).filter(Boolean).join(' ').slice(0, 500);
-  if(i > 0 && line(beats[i - 1])) out.before = line(beats[i - 1]);
-  if(i >= 0 && i + 1 < beats.length && line(beats[i + 1])) out.after = line(beats[i + 1]);
+  const line = t => String(t || '').split(/\s+/).filter(Boolean).join(' ').slice(0, 500);
+  if(i > 0 && line(beats[i - 1].text)) out.before = line(beats[i - 1].text);
+  if(i >= 0 && i + 1 < beats.length && line(beats[i + 1].text)) out.after = line(beats[i + 1].text);
+  const slot = currentSlot();
+  const lane = slot ? (STATE.seq.slots || []).filter(s => s.lane === slot.lane) : [];
+  const earlier = lane.slice(0, Math.max(0, lane.findIndex(s => s.id === slot.id)));
+  const prev = earlier.length ? line(shotPromptText(earlier[earlier.length - 1])) : '';
+  if(prev) out.previous = prev;
+  const keep = [];
+  const first = beats.find(b => b.slot_id && line(b.text));
+  if(first && first.id !== beat.id)
+    keep.push('the subjects and props of the first beat ("' + line(first.text).slice(0, 250) + '")');
+  for(const s of earlier){
+    const clause = shotPromptText(s).split(/[.;,]/).find(c => LIGHT_WORDS.test(c));
+    if(clause){ keep.push('the light so far ("' + line(clause).slice(0, 150) + '")'); break; }
+  }
+  if(keep.length) out.keep = keep.join('; ').slice(0, 500);
   return out;
 }
 function renderHelperBar(){

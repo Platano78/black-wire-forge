@@ -3978,9 +3978,13 @@ _GROUNDING_ECHO_RE = re.compile(r"\n\s*\[?(?:No picture is attached to this mess
 
 
 # A storyboard shot's write ("Write this shot") carries the beats either side
-# of its own in context.neighbours, one line each, so the shot keeps the
-# story's continuity; the writer is told to write only its own shot.
-GUIDE_NEIGHBOUR_KEYS = (("before", "Before"), ("after", "After"))
+# of its own in context.neighbours, one line each, plus the previous shot's
+# actual prompt and a "keep" line (the first beat's subjects and props, the
+# light so far), so the shot keeps the story's continuity; the writer is told
+# to write only its own beat (walkthrough 2: shot 1 got beat 2's words, the
+# light changed shot to shot and the paper plane became a toy one).
+GUIDE_NEIGHBOUR_KEYS = (("before", "Before"), ("after", "After"),
+                        ("previous", "The previous shot's actual prompt"), ("keep", "Keep"))
 
 
 def _skill_neighbours(context, cap, mode):
@@ -3990,22 +3994,24 @@ def _skill_neighbours(context, cap, mode):
     if n is None:
         return "", None
     if not isinstance(n, dict) or set(n) - {k for k, _ in GUIDE_NEIGHBOUR_KEYS}:
-        return "", "The context's \"neighbours\" must be an object with \"before\" and/or \"after\"."
+        return "", ("The context's \"neighbours\" must be an object with \"before\", \"after\", "
+                    "\"previous\" and/or \"keep\".")
     lines = []
     for k, word in GUIDE_NEIGHBOUR_KEYS:
         v = n.get(k)
         if v is None:
             continue
         if not isinstance(v, str) or len(v) > GUIDE_CONTEXT_VALUE_CHARS:
-            return "", ("The neighbouring beat \"%s\" must be text of at most %d characters."
+            return "", ("The neighbour \"%s\" must be text of at most %d characters."
                         % (k, GUIDE_CONTEXT_VALUE_CHARS))
         v = engines.foreign_prefix_stripped(cap, mode, " ".join(v.split()))
         if v:
             lines.append("%s: %s" % (word, v))
     if not lines:
         return "", None
-    return ("The storyboard's shots either side of this one, for continuity only. Write THIS shot, "
-            "not them:\n" + "\n".join(lines)), None
+    return ("The storyboard around this shot, for continuity only. Write THIS shot, and only its own "
+            "beat (the Request below), not the others:\n" + "\n".join(lines) + "\nWrite THIS beat only; "
+            "keep the listed subjects, props and light unless this beat changes them."), None
 
 
 def guide_skill(p):
@@ -4088,7 +4094,8 @@ def guide_skill(p):
         if topic.strip():
             user += "\nThe user's own words so far: " + engines.foreign_prefix_stripped(cap, mode, topic.strip())
     else:
-        user += "Request: " + engines.foreign_prefix_stripped(cap, mode, topic.strip())
+        user += ("Request (THIS shot's beat, the only one to write): " if neighbours else "Request: ") \
+            + engines.foreign_prefix_stripped(cap, mode, topic.strip())
     if answer and answer.strip():
         user += "\n\nThe user answered: " + answer.strip()
     if answers:
