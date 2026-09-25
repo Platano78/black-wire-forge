@@ -33,6 +33,20 @@ All notable changes to Black Wire Forge are recorded here.
   pictures of an object and say when they don't match.
 - Modes without a dedicated writer get a generic one built from the room guide and the
   mode's prompt guide, with all values checked against the mode's fields.
+- The Film Room Guide's suggestions are buttons under its reply: add the beats it wrote
+  to the script (each with its own shot), open or make a shot, put a picture shot in the
+  REF ROOM, cut the sequence. Nothing runs until you click, and a button that can't run
+  yet says why.
+- Cutting Room sequences can be renamed (click the name) and deleted (click twice; the
+  file is moved aside, never erased, and every take stays in History). Each row in the
+  list shows a small picture of the first picked take, the first beat, the shot count
+  and the exact date and time.
+- A shot's picture field has "Choose a picture you made": this film's pictures, its REF
+  ROOM and History, as thumbnails. A finished picture offers "Use as starting picture",
+  which puts it into the next video shot that needs one. A line by the timeline says what
+  the small circles on a video shot are for.
+- An empty shot has a × to remove it, and any shot has "Delete this shot" (it asks again
+  when the shot has takes).
 
 ### Changed
 
@@ -44,6 +58,21 @@ All notable changes to Black Wire Forge are recorded here.
   render is one click away as "Before the pixel step".
 - A song with words but no voice now asks before rendering instead of producing a silent
   instrumental.
+- A sequence started with no title is named from the date, then from its first beat,
+  until you name it yourself.
+- In a sequence, a picture shot starts at the film's own shape (16:9 by default) instead
+  of square, and a sound shot starts at the length of the cut so far instead of the
+  song recipe's 150 s. Both say so in the form.
+- Before a video shot renders, a starting picture of a different shape is pointed out
+  (with the engine's own warning), and a cabled picture that will be cropped says so.
+- The notes under a video shot about the set plate now say what they mean for that shot
+  and offer the fix: use a picture as the set plate, or start the shot from the set
+  plate or from its own picture.
+- "Write this shot" now marks its own beat as the one to write and sends the previous
+  shot's prompt plus the subjects, props and light to keep, so a film's shots stay on
+  the same subject in the same light.
+- A shot you open with "+ generate here" and never touch is not kept, and coming back to
+  the Cutting Room reopens the sequence you left.
 
 ### Fixed
 
@@ -58,6 +87,10 @@ All notable changes to Black Wire Forge are recorded here.
   reply at least that many tokens.
 - The "Not right? Tell the guide" fixers no longer open with "I can't see the picture" when
   the helper can see it: the text-only rules are sent only to a helper that cannot see.
+- Reopening a Cutting Room shot no longer shows its picture as "none yet" and then
+  overwrites it on the next save.
+- The Film Room Guide no longer shows its beats twice, and the REF ROOM role picker and
+  the music bed line ("No vocals..") read properly.
 - Help has a section on the room's guide: writing with it, the preview, Compact/Verbose,
   "Describe this picture", "Not right?", "Edit this result", and what shows with no helper.
 - A process lane's list of what is missing names the programs it needs (Blender, ffmpeg),
