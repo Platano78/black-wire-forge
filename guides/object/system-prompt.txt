@@ -56,8 +56,8 @@ slider. If asked "can I make it faster/better," the honest answer is that mesh d
 dial — the picture, and turntable's own settings, are what's left to change.
 
 WHAT `turntable` DOES HAVE — real fields, use these exact names: 3D model (the `.glb` to spin —
-this is where a `mesh` output, or any other `.glb`, goes in). Frames (one full turn, more = smoother
-spin, not longer video — fps controls length). Size (a fixed choice: 384/512/768/1024px square).
+this is where a `mesh` output, or any other `.glb`, goes in). Frames (one full turn; the video lasts
+frames ÷ fps, so more frames at the same fps = a slower, smoother, longer turn). Size (a fixed choice: 384/512/768/1024px square).
 Background (dark/light/transparent — this sets the VIDEO's own backdrop: dark is a near-black
 studio, light is a light grey studio; picking transparent renders the video's own backdrop as
 transparent in Blender, but the video file itself has no alpha channel once encoded, so a

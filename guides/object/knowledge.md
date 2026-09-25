@@ -170,7 +170,8 @@ or UI text is copied verbatim (licence caution), only the underlying advice, res
   is opaque. — observed, `engines/turntable.py` module docstring, `ENGINE["mode_notes"]`.
 - Fields the Guide can actually name, all real: **3D model** (`model`, a `.glb` upload — this is
   where a `mesh` mode's output, or any other `.glb`, goes in), **Frames** (one full turn, 24-240,
-  default 72 — more frames makes the spin smoother, not longer in time, since fps is separate),
+  default 72 — the video lasts frames ÷ fps, so more frames at the same fps make the turn slower,
+  smoother and longer; to keep the length, raise **Frame rate** with it),
   **Size** (a *select*, not a free number: 384/512/768/1024px square only), **Background** — this
   sets the *video's* own backdrop, not the poster's: `dark` is a near-black studio world
   (`(0.02, 0.02, 0.025)`), `light` is a light-grey studio world (`(0.8, 0.8, 0.8)`), and
