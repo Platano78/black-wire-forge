@@ -195,12 +195,44 @@
   <div id="creditsLive"><p class="muted">Loading&hellip;</p></div>
 
   <h2 id="the-cutting-room">The Cutting Room</h2>
-  <p>This is where pictures, shots and sound are put in order and cut together into one film. Sequences and
-  storyboards are stored on disk: add picture, video and sound slots; choose which take is picked when a slot
-  has several; import a script and its lines become pre-filled slots; connect one slot's result into another's
-  input field ("cable" it) to carry a shot's motion or sound into the next one. When you're ready, build the
-  cut: one rendered file from your picked takes, available when <code>ffmpeg</code>/<code>ffprobe</code> are
-  installed.</p>
+  <p>This is where pictures, shots and sound are put in order and cut together into one film. A
+  <strong>sequence</strong> is one film. Its timeline has a lane each for pictures, video shots and sound, plus the
+  <strong>REF ROOM</strong> for the pictures that keep the place and the people the same from shot to shot. Your
+  first film, step by step:</p>
+  <ol>
+    <li><strong>Start a sequence.</strong> Press <strong>New sequence</strong>. Leave the title empty and it is named
+      from the date, then from its first beat. Click its name any time to rename it. Each row in the list shows the
+      first beat, how many shots it has, a small picture and when it was last changed, with Rename and Delete.</li>
+    <li><strong>Tell the Film Room Guide the idea.</strong> One line is enough. It asks what it needs and suggests
+      the beats. What it suggests comes as buttons under its reply: <strong>Add these beats to the script</strong>,
+      <strong>Open</strong> or <strong>Make</strong> a shot, put a picture in the REF ROOM, <strong>Cut the
+      sequence</strong>. Nothing happens until you click one. Adding the beats gives each one its own video shot,
+      with the beat's words already in its prompt.</li>
+    <li><strong>Write each shot.</strong> Click a shot in the timeline to open it. <strong>Write this shot</strong>
+      has the guide turn its beat into a prompt written for that shot's engine. Nothing reaches the form until you
+      press <strong>Use these</strong>.</li>
+    <li><strong>Start a shot from a picture (optional).</strong> Make a picture on the PICTURE lane with
+      <strong>+ generate here</strong>. It already comes out in the film's shape (16:9 unless you changed it). Then
+      either press <strong>Use as starting picture</strong> on it, or open a video shot and use <strong>Choose a
+      picture you made</strong> under its Starting picture: that lists this film's pictures, the REF ROOM and
+      History. You can also patch a <strong>cable</strong>: click the small circle on a video shot's left edge, then
+      the picture. A picture of the wrong shape is pointed out before anything renders.</li>
+    <li><strong>Keep the place the same.</strong> Put a picture of the empty location in the REF ROOM as the
+      <strong>set plate</strong>. The note under a video shot says whether that shot can use the REF ROOM, and offers
+      the fix as a button.</li>
+    <li><strong>Make, then pick.</strong> Press <strong>Make</strong> on each shot. When a take is ready, check it at
+      full size in the monitor and press <strong>Pick this take</strong>. Make again for another take; every take is
+      kept. A shot you opened and never touched is not kept, and an empty shot has a × to remove it.</li>
+    <li><strong>Add sound.</strong> <strong>+ generate here</strong> on the SOUND lane starts at the length of the cut
+      so far. Pick its take and it becomes the music bed under the whole film.</li>
+    <li><strong>Cut it.</strong> <strong>Cut the sequence</strong> joins every picked video shot in timeline order,
+      with the music bed under them and one loudness pass over the whole film. Each video shot's Cut settings
+      trim its length and add a title card. <strong>Watch the cut</strong> plays it in the monitor, and
+      <strong>Download</strong> saves the file. Cutting needs <code>ffmpeg</code>/<code>ffprobe</code>
+      installed.</li>
+  </ol>
+  <p>Prefer to paste a whole script? Switch the sequence to <strong>storyboard</strong>: each paragraph becomes a beat
+  with its own shot.</p>
 
   <h2 id="links">Links</h2>
   <p>A room has its own address: add <code>#room=music</code> (or any room's id) to the page address to open it

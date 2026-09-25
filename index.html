@@ -633,6 +633,7 @@
   #seqMsg.ok{color:var(--ready)}
   #seqList{display:flex; flex-direction:column; gap:4px; margin-bottom:8px}
   .seq-row-wrap{display:flex; gap:4px; align-items:stretch}
+  #addRefRole{background:var(--surface3); color:var(--text-hi); border:1px solid var(--divider); min-height:32px; font:inherit}
   .seq-row{flex:1 1 auto; min-width:0; flex-direction:row; align-items:center; gap:8px}
   .seq-thumb{flex:none; width:48px; height:27px; background:var(--surface3); overflow:hidden}
   .seq-thumb img, .seq-thumb video{width:100%; height:100%; object-fit:cover; display:block}
@@ -4039,6 +4040,13 @@ function renderSeqPickerList(){
     const n = isOp ? (STATE.seq.slots || []).filter(x => x.lane === 'video').length : (s.shots || 0);
     const when = seqWhen(s.updated || 0);
     let thumb = '';
+    // The open sequence's thumb comes from its live copy: the list is only
+    // re-read on open/rename/delete, so a pick made since would not show.
+    if(isOp){
+      const firstPicked = ['video', 'picture'].map(l => (STATE.seq.slots || []).filter(x => x.lane === l && x.pick)
+        .map(x => ({x, t: (x.takes || []).find(t => t.job_id === x.pick && t.file)})).find(y => y.t)).find(Boolean);
+      s = Object.assign({}, s, {thumb: firstPicked ? {path: firstPicked.t.file, media: firstPicked.x.lane === 'video' ? 'video' : 'image'} : s.thumb});
+    }
     if(s.thumb && s.thumb.path){
       const url = '/api/sequence/file?id=' + encodeURIComponent(s.id) + '&path=' + encodeURIComponent(s.thumb.path);
       thumb = s.thumb.media === 'video'
@@ -4339,7 +4347,13 @@ async function addSlot(lane){
       if(lane === 'picture'){
         msgInspector('This picture starts at ' + values.width + '×' + values.height + ', the film’s shape, so it can become a video shot’s starting picture.', '');
       } else if(lane === 'sound'){
-        msgInspector('This sound starts at ' + Object.values(values)[0] + ' s, the length of the cut so far.', '');
+        // The recipe the form opened on may carry its own length (a song's
+        // 150 s); the shot's value wins, and the sentence says so.
+        const fid = Object.keys(values)[0], rsel = $('#recipeSelect');
+        const preset = ((mode && mode.presets) || []).find(x => rsel && x.id === rsel.value);
+        const theirs = preset && preset.values && preset.values[fid];
+        msgInspector('This sound starts at ' + values[fid] + ' s, the length of the cut so far'
+          + (theirs != null && theirs !== values[fid] ? ', not the recipe’s ' + theirs + ' s.' : '.'), '');
       }
     }
   }
