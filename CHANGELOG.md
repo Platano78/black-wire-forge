@@ -84,7 +84,7 @@ All notable changes to Black Wire Forge are recorded here.
   with "didn't come back in the expected shape" or leaves an empty guide bubble when it
   spends its whole budget thinking: the app asks once more with four times the room, then
   says plainly what to change. The new `helper.max_tokens` config key gives every guide
-  reply at least that many tokens.
+  reply at least that much room; it never lowers a guide's own budget.
 - The "Not right? Tell the guide" fixers no longer open with "I can't see the picture" when
   the helper can see it: the text-only rules are sent only to a helper that cannot see.
 - Reopening a Cutting Room shot no longer shows its picture as "none yet" and then
