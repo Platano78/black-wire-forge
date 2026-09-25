@@ -2996,6 +2996,51 @@ def carry(job, output_index, target_lane, fit=None, cache_path=None):
     return name, note
 
 
+def carry_result(p):
+    """The whole POST /api/carry body -> (body, http code): "Edit this
+    result". One finished picture output of a job goes onto a lane as an
+    input, unchanged, through carry(); the page then puts the returned name
+    in a mode's picture field, like an upload. Results only, and the bytes
+    go lane to lane: nothing new is served to the page."""
+    if not isinstance(p, dict):
+        return {"ok": False, "error": "Send a JSON object."}, 400
+    job_id = p.get("job_id")
+    with JOBS_LOCK:
+        job = dict(JOBS.get(job_id) or {}) if isinstance(job_id, str) else {}
+    if not job:
+        return {"ok": False, "error": "I cannot find that result any more."}, 404
+    if job.get("status") != "done":
+        return {"ok": False, "error": "That result is not finished yet."}, 400
+    outs = job.get("outputs") or []
+    idx = p.get("output")
+    if not isinstance(idx, int) or isinstance(idx, bool) or not (0 <= idx < len(outs)):
+        return {"ok": False, "error": "That result has no output number %s." % idx}, 400
+    out = outs[idx]
+    media = out.get("media") or (mimetypes.guess_type(out.get("filename") or "")[0] or "").split("/")[0]
+    if media != "image":
+        return {"ok": False, "error": "Only a finished picture can be used as a picture to work from."}, 400
+    lane = LANE_BY_ID.get(p.get("lane"))
+    if not lane:
+        return {"ok": False, "error": "unknown lane"}, 400
+    if lane_kind(lane) == "process":
+        return {"ok": False, "error": "%s takes files you upload, not results." % lane["name"]}, 400
+    with STATE_LOCK:
+        if not LANE_STATE.get(lane["id"], {}).get("up"):
+            return {"ok": False, "error": "%s is offline right now. Pick a lane glowing green." % lane["name"]}, 409
+    try:
+        name, _note = carry(job, idx, lane, fit=None)
+    except CarryError as e:
+        body = {"ok": False, "error": str(e)}
+        if e.detail is not None:
+            body["detail"] = e.detail
+        return body, e.code
+    except Exception as e:
+        return {"ok": False, "error": "I cannot fetch that result from %s right now."
+                % (job.get("lane_name") or "its machine"), "detail": str(e)[:800]}, 502
+    log("Sent a result over to %s to work from" % lane["name"])
+    return {"ok": True, "file": {"name": name, "original": out.get("filename") or "", "job_id": job["id"]}}, 200
+
+
 # ---------------------------------------------------------------------------
 # Prompt helper (L5): "Help me write this" / "Describe this picture". An
 # optional OpenAI-compatible chat endpoint named in config.json's "helper" --
@@ -3303,14 +3348,21 @@ def _guide_picture_refs(pictures):
     if not isinstance(pictures, list) or len(pictures) > limit:
         return None, ("\"pictures\" must be a list of at most %d picture%s."
                       % (limit, "" if limit == 1 else "s"))
-    for pic in pictures:
-        if not isinstance(pic, dict) or not (
-                (isinstance(pic.get("job_id"), str) and isinstance(pic.get("output"), int)
-                 and not isinstance(pic.get("output"), bool))
-                or (isinstance(pic.get("lane"), str) and isinstance(pic.get("upload"), str))):
-            return None, ("Each picture must be {\"job_id\", \"output\"} (a result) "
-                          "or {\"lane\", \"upload\"} (an upload).")
+    if not all(_picture_ref_ok(pic) for pic in pictures):
+        return None, GUIDE_PICTURE_SHAPE
     return pictures, None
+
+
+GUIDE_PICTURE_SHAPE = ("Each picture must be {\"job_id\", \"output\"} (a result) "
+                       "or {\"lane\", \"upload\"} (an upload).")
+
+
+def _picture_ref_ok(pic):
+    """One picture reference: a result {"job_id", "output"} or an upload {"lane", "upload"}."""
+    return isinstance(pic, dict) and (
+        (isinstance(pic.get("job_id"), str) and isinstance(pic.get("output"), int)
+         and not isinstance(pic.get("output"), bool))
+        or (isinstance(pic.get("lane"), str) and isinstance(pic.get("upload"), str)))
 
 
 def _guide_picture_url(pic):
@@ -3710,6 +3762,62 @@ def _skill_answers(answers):
     return answers, None
 
 
+def _writer_payload(cap, mode):
+    """/api/engines' view of a mode's writer, or None: its label, and where
+    its words land when that is another mode, the placeholder for a mode
+    with no prompt box, and the picture field it writes about."""
+    w = engines.writer(cap, mode)
+    if not w:
+        return None
+    out = {"label": w["label"]}
+    if w.get("target"):
+        tcap, tmode = _writer_target(w, cap, mode)
+        out["target"] = _mode_target(tcap, tmode)
+    for k in ("topic_label", "pictures"):
+        if w.get(k):
+            out[k] = w[k]
+    return out
+
+
+def _writer_target(w, cap, mode):
+    """-> (cap, mode) a writer's words are for: its `target`, else its own."""
+    t = w.get("target") or {}
+    return (t["cap"], t["mode"]) if t.get("cap") and t.get("mode") else (cap, mode)
+
+
+def _mode_target(cap, mode):
+    """Where a fix or a written draft lands, for the page: the room that
+    holds the mode, and both in their own words."""
+    room = next((r for r in engines.rooms() if any(m.get("cap") == cap and m.get("mode") == mode
+                                                   for m in r.get("modes") or [])), {})
+    return {"cap": cap, "mode": mode, "room": room.get("id"), "room_name": room.get("name"),
+            "mode_label": engines.mode_words(cap).get(mode, mode)}
+
+
+def _guide_attached(w, cap, mode, attached):
+    """Validate "attached": the pictures of a writer's own picture field
+    (the writer's `pictures`), in the form's order -> (list, error or None).
+    Same entry shape as "pictures", up to that field's own "max"."""
+    if attached is None:
+        return [], None
+    if not (w and w.get("pictures")):
+        return None, "This writer does not take attached pictures."
+    field = next((f for f in engines.fields(cap, mode) if f["id"] == w["pictures"]), {})
+    limit = field.get("max") or GUIDE_ATTACHED_MAX
+    if not isinstance(attached, list) or len(attached) > limit:
+        return None, "\"attached\" must be a list of at most %d pictures." % limit
+    if not all(_picture_ref_ok(pic) for pic in attached):
+        return None, GUIDE_PICTURE_SHAPE
+    return attached, None
+
+
+GUIDE_ATTACHED_MAX = 16
+# A small brain sometimes copies the server's grounding line (guide_grounding)
+# after its last key, where it would land in the field as words to render.
+_GROUNDING_ECHO_RE = re.compile(r"\n\s*\[?(?:No picture is attached to this message|\d+ pictures? attached"
+                                r"|The user attached [^\n]*)\.?[^\n]*\]?\s*$", re.IGNORECASE)
+
+
 def guide_skill(p):
     """The whole POST /api/guide/skill body -> (body, http code). A mode
     with a pack writer uses it; any other mode with a text field uses the
@@ -3748,14 +3856,29 @@ def guide_skill(p):
     context_line, err = _guide_context_line(room_id, context, with_mode=False)
     if err:
         return {"ok": False, "error": err}, 400
-    w = (None if refs else engines.writer(cap, mode)) or _generic_writer(cap, mode, g)
+    w = engines.writer(cap, mode)
+    attached, err = _guide_attached(w, cap, mode, p.get("attached"))
+    if err:
+        return {"ok": False, "error": err}, 400
+    if refs:
+        w = None   # "Describe this picture": the generic writer, whatever the mode's own
+    w = w or _generic_writer(cap, mode, g)
     if not w:
         return {"ok": False, "error": "This mode has no writer yet."}, 404
+    # A writer's words may be for another mode (a 3D mode's source picture):
+    # its keys, fields and check are that mode's.
+    wcap, wmode = _writer_target(w, cap, mode)
+    if w.get("missing"):
+        said = " ".join([topic] + [answer or ""] + [x["a"] for x in answers])
+        missing = w["missing"](said, len(attached))
+        if missing:
+            return {"ok": True, "missing": missing, "retried": False}, 200
     if not HELPER:
         return {"ok": False, "no_brain": True, "error": GUIDE_ADD_BRAIN}, 409
-    vision = _helper_vision() if refs else None
+    shown = refs or attached[:_helper_max_images()]
+    vision = _helper_vision() if (refs or attached) else None
     try:
-        urls = [_guide_picture_url(x) for x in refs] if vision else []
+        urls = [_guide_picture_url(x) for x in shown] if vision else []
     except ValueError as e:
         return {"ok": False, "error": str(e)}, 400
     user = (context_line + "\n\n" if context_line else "")
@@ -3773,13 +3896,20 @@ def guide_skill(p):
     capped = len(answers) >= GUIDE_SKILL_MAX_ANSWERS
     if capped:
         user += "\n\n" + GUIDE_SKILL_WRITE_NOW
-    user += guide_grounding(len(refs), vision)
+    if attached:
+        user += guide_grounding(len(attached), vision)
+        if vision and len(urls) < len(attached):
+            user = user[:-1] + " You are shown the first %d.]" % len(urls)
+    else:
+        user += guide_grounding(len(refs), vision)
     request = {"topic": topic, "answer": answer, "answers": answers}
+    if w.get("pictures"):
+        request["pictures"] = len(attached)
 
     def ask(text):
         """-> (sent, parsed reply or None, raw reply)."""
         sent = {"system": w["prompt"], "user": text}
-        if refs:
+        if refs or attached:
             sent["pictures"] = len(urls)
         reply, _ = _helper_chat([{"role": "system", "content": sent["system"]},
                                  {"role": "user", "content": _with_pictures(text, urls)}],
@@ -3789,6 +3919,8 @@ def guide_skill(p):
             parsed = engines.parse_writer_reply(w, reply)
         except ValueError:
             return sent, None, reply
+        if "missing" in parsed:
+            return sent, parsed, reply
         # An empty prompt is no answer at all; only a pack writer's multiline
         # key (lyrics) may legitimately come back empty.
         if w.get("generic") and "values" in parsed and not parsed["values"].get(w["keys"]["PROMPT"]):
@@ -3796,8 +3928,14 @@ def guide_skill(p):
         return sent, parsed, reply
 
     def draft(parsed):
-        fields, problems = _writer_fields(cap, mode, w, parsed["values"])
-        return fields, problems + list(w["check"](_writer_check_values(cap, mode, context, fields), request))
+        values = dict(parsed["values"])
+        mkey = w["keys"][w["multiline"]]
+        if mkey in values:
+            values[mkey] = _GROUNDING_ECHO_RE.sub("", values[mkey]).rstrip()
+        fields, problems = _writer_fields(wcap, wmode, w, values)
+        # The room's context is this mode's form; a target mode's check sees only its defaults.
+        ctx = context if (wcap, wmode) == (cap, mode) else None
+        return fields, problems + list(w["check"](_writer_check_values(wcap, wmode, ctx, fields), request))
 
     try:
         sent, parsed, raw = ask(user)
@@ -3810,10 +3948,15 @@ def guide_skill(p):
             if parsed is None or "question" in parsed:
                 return {"ok": False, "error": GUIDE_SKILL_SHAPE_ERROR if parsed is None else GUIDE_SKILL_KEPT_ASKING,
                         "raw": raw[:GUIDE_SKILL_RAW_LIMIT], "sent": sent}, 502
+        if "missing" in parsed:
+            body = {"ok": True, "missing": parsed["missing"], "sent": sent, "retried": False}
+            if refs or attached:
+                body["vision"] = vision
+            return body, 200
         if "question" in parsed:
             body = {"ok": True, "question": parsed["question"], "options": parsed.get("options") or [],
                     "sent": sent, "retried": False}
-            if refs:
+            if refs or attached:
                 body["vision"] = vision
             return body, 200
         fields, problems = draft(parsed)
@@ -3829,7 +3972,9 @@ def guide_skill(p):
         return {"ok": False, "error": str(e)}, 503
     body = {"ok": True, "fields": fields, "problems": problems, "sent": sent, "retried": retried,
             "note": parsed.get("note") or ""}
-    if refs:
+    if (wcap, wmode) != (cap, mode):
+        body["target"] = _mode_target(wcap, wmode)
+    if refs or attached:
         body["vision"] = vision
     return body, 200
 
@@ -3849,12 +3994,14 @@ REVISE_SETTING_TYPES = ("text", "textarea", "select", "number", "int", "checkbox
 
 def _revise_settings(cap, mode, job, fills):
     """The job's own recorded values for its mode's fields (the prompt left
-    out), each by its label: what the render was actually made with."""
+    out), each by its label: what the render was actually made with. A
+    generic-path job keeps them under "args"."""
     parts = []
+    recorded = dict(job.get("args") or {}, **job)
     for f in engines.fields(cap, mode):
-        if f["id"] == fills or f["id"] not in job or f["type"] not in REVISE_SETTING_TYPES:
+        if f["id"] == fills or f["id"] not in recorded or f["type"] not in REVISE_SETTING_TYPES:
             continue
-        v = job[f["id"]]
+        v = recorded[f["id"]]
         if isinstance(v, bool):
             shown = "yes" if v else "no"
         elif isinstance(v, str):
@@ -3916,11 +4063,14 @@ def guide_revise(p):
         urls = [_guide_picture_url({"job_id": job["id"], "output": output})] if vision else []
     except ValueError as e:
         return {"ok": False, "error": str(e)}, 400
-    user = (context_line + "\n\n" if context_line else "") + "The prompt that made it: " + (job.get("prompt") or "")
-    settings = _revise_settings(cap, mode, job, r["fills"])
+    lines = []
+    if r.get("fills") or job.get("prompt"):
+        lines.append("The prompt that made it: " + (job.get("prompt") or ""))
+    settings = _revise_settings(cap, mode, job, r.get("fills"))
     if settings:
-        user += "\nThe settings it was made with: " + settings
-    user += "\nThe user says: " + complaint.strip()
+        lines.append("The settings it was made with: " + settings)
+    lines.append("The user says: " + complaint.strip())
+    user = (context_line + "\n\n" if context_line else "") + "\n".join(lines)
     if answer and answer.strip():
         user += "\nThe user answered: " + answer.strip()
     user += guide_grounding(1, vision)
@@ -3940,9 +4090,38 @@ def guide_revise(p):
     body = {"ok": True, "vision": vision, "sent": sent}
     if "question" in parsed:
         body["question"] = parsed["question"]
+    elif r.get("fixes"):
+        # A pack's own fix words: where each lands, and what it fills there.
+        spec = r["fixes"][parsed["fix"]]
+        body.update(parsed)
+        if spec.get("fills") or spec.get("settings"):
+            t = spec.get("target") or {"cap": cap, "mode": mode}
+            body["target"] = _mode_target(t["cap"], t["mode"])
+        if spec.get("fills"):
+            body["fills"] = spec["fills"]
+        if spec.get("settings"):
+            fields, problems = _revise_setting_fields(body["target"]["cap"], body["target"]["mode"],
+                                                      parsed.pop("settings"))
+            body.pop("settings", None)
+            if not fields:
+                return {"ok": False, "error": GUIDE_SKILL_SHAPE_ERROR, "raw": reply[:GUIDE_SKILL_RAW_LIMIT],
+                        "sent": sent, "vision": vision}, 502
+            body.update(fields=fields, problems=problems)
     else:
         body.update(parsed, fills=r["fills"], edit_mode=r["edit_mode"])
     return body, 200
+
+
+def _revise_setting_fields(cap, mode, raw):
+    """A reviser's SETTINGS {id or label: raw text} -> (field values,
+    problems), matched to the mode's fields by id or label (any case) and
+    coerced like a writer's values: a value that does not fit is left out."""
+    by_name = {}
+    for f in engines.fields(cap, mode):
+        by_name[f["id"].lower()] = f["id"]
+        by_name[(f.get("label") or f["id"]).lower()] = f["id"]
+    matched = {by_name[k]: v for k, v in raw.items() if k in by_name}
+    return _writer_fields(cap, mode, {}, matched)
 
 
 # ---------------------------------------------------------------------------
@@ -3983,7 +4162,7 @@ def _make_time_problems(p, lane, able, kind, mode):
     path's own sentence, and so is a value that does not coerce: a request
     that cannot render anyway is never asked to be confirmed first."""
     w = engines.writer(kind, mode) if mode in engines.modes_for(kind) else None
-    if not w or not w.get("check") or kind not in lane["caps"] \
+    if not w or not w.get("check") or w.get("make_time") is False or kind not in lane["caps"] \
             or not able.get(engines.mode_ability(kind, mode)):
         return []
     q, qerr = apply_quality(p, kind, mode, able)
@@ -5685,8 +5864,9 @@ class Handler(BaseHTTPRequestHandler):
                     # helper falls back to a generic instruction).
                     "prompt_guide": bool(engines.prompt_guide(cap, mode)),
                     # P2: the guide's writing skill for this mode, or None.
-                    "writer": ({"label": engines.writer(cap, mode)["label"]}
-                               if engines.writer(cap, mode) else None),
+                    "writer": _writer_payload(cap, mode),
+                    # P3d: the mode that edits this mode's finished result, or None.
+                    "edit_in": engines.edit_in(cap, mode),
                     # P2b: the guide's "Not right?" skill for this mode's results, or None.
                     "reviser": ({"label": engines.reviser(cap, mode)["label"]}
                                 if engines.reviser(cap, mode) else None),
@@ -5817,6 +5997,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.api_generate()
             if u.path == "/api/chain":
                 return self.api_chain()
+            if u.path == "/api/carry":
+                return self.send_json(*carry_result(self.read_json()))
             if u.path == "/api/cancel":
                 return self.api_cancel()
             if u.path == "/api/forget":

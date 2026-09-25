@@ -10,16 +10,20 @@ where that field actually lives, the one question it asks when ambiguous, and a 
 **Trigger**: the user wants a picture made for the 3D room's `mesh` mode — "make a model of X",
 "I need a picture of my [object] for this", or a direct "write me a prompt for the source picture."
 
-**What it fills**: the **Picture room's** `t2i` mode `prompt` field (type `textarea`, id `prompt`) —
-a DIFFERENT room (`picture`, capability `image`) than the one this guide lives in. The skill's job
-ends at handing over the words; it never fills the field itself. State this every time, plainly:
-"this goes in the Picture room's Prompt field — go there, paste it in, and press Make."
+**What it fills**: the **Picture room's** `t2i` mode `prompt` and `negative` fields — a DIFFERENT
+room (`picture`, capability `image`) than the one this guide lives in. As built
+(`engines/mesh3d.py` `writers.mesh`, the Source picture writer, with `"target": {"cap": "image",
+"mode": "t2i"}`): the 3D room's picture mode has no prompt, so "Help me write this" sits under a topic
+box ("What should the 3D model be of?"); the preview says "This goes to the Picture room", and
+**Use these** switches to Picture / text-to-picture with the fields filled. The user presses Make
+there, then brings the picture back to the 3D room.
 
-**The one question it asks when ambiguous**: if the user's description doesn't already make clear
-what the object's most fragile feature is (a thin part, a reflective surface, something that could
-be occluded), ask about that ONE feature — nothing else. If the description is already complete
-enough to write a good prompt (an object with no obvious fragile feature, described plainly), ask
-nothing and write the prompt.
+**The one question it asks**: only when the request does not say what the object is ("my
+character"), offering 3-4 objects. A fragile part (thin, glass/chrome, tangled) is not asked about:
+the writer names it in NOTE as the thing to watch and shapes the prompt for it. (An earlier draft
+asked about the fragile feature; a question there rarely changes the picture, and the NOTE still
+warns the user.) Its check sends one retry when the prompt names no three-quarter view, no whole
+object, no background, or holds a negation.
 
 **Rules the skill must follow, from `knowledge.md`**:
 1. One object only, named explicitly, with "nothing else in frame."
@@ -33,12 +37,15 @@ nothing and write the prompt.
    reflectiveness, multiple/tangled pieces, heavy occlusion), name the specific risk and adjust the
    prompt for it (e.g. a chain "laid out, not tangled" rather than draped).
 
-**Output shape** (line-delimited, no JSON):
+**Output shape** (line-delimited, no JSON), a question OR a draft:
 ```
-FIELD: prompt
-ROOM: picture (t2i mode)
-VALUE: <the full prompt text, one paragraph, no line breaks>
-NOTE: <one sentence — what to watch for when the photo comes back, if the object has a fragile part>
+QUESTION: <one short question>
+OPTIONS: <2 to 5 choices separated by |>
+```
+```
+NEGATIVE: <things to leave out: hard shadows, reflections, text, other objects>
+NOTE: <the part most likely to come out wrong in 3D, or the choices made>
+PROMPT: <the prompt, last>
 ```
 
 **Worked example**:
@@ -46,10 +53,9 @@ NOTE: <one sentence — what to watch for when the photo comes back, if the obje
 Topic in: "a leather work boot"
 
 ```
-FIELD: prompt
-ROOM: picture (t2i mode)
-VALUE: A single worn leather work boot, laces intact, nothing else in frame, the whole boot visible from toe to top of the shaft, photographed at a three-quarter angle showing the toe and the outer side, even soft studio lighting with no hard shadow or bright highlight, plain light-grey background.
-NOTE: laces are thin and can be lost in the mesh — if they come out fused or missing, try a version with the laces tucked in rather than loose.
+NEGATIVE: hard shadows, reflections, text, other objects
+NOTE: The laces are thin: if they come out fused or missing, try the boot with its laces tucked in.
+PROMPT: A clean product photograph of one worn brown leather work boot, the whole boot in frame from the toe to the top of the shaft with space all round it, seen from a three-quarter view that shows the toe and the outer side. Dark brown oiled leather, a thick black rubber sole with a deep tread, tan laces tied in a neat bow. Soft, even studio light from all round. A plain light grey background.
 ```
 
 ## Skill 2 — "Not right? / Revise"
@@ -72,26 +78,35 @@ describe what they see as plainly as they can — missing/thin part, doubled obj
 wrong, a shadow that doesn't move, or the turn itself being choppy/slow — and diagnose from the
 description using the same table. Say once that you're working from the description alone.
 
+**As built** (`engines/turntable.py` `revisers.turntable`, the Turntable fixer, on "Not right? Tell
+the guide" under a finished turntable): the still is one frame of the turn (a clip's middle still);
+the fixer never describes or judges a side the still does not show, and says so when the complaint
+is about one. Its fix words replace edit/reroll: `picture` (a new source-picture PROMPT; "Use it in
+the Picture room" fills Picture / text-to-picture), `settings` (a SETTINGS line, `id = value; ...`,
+matched to the turntable's own fields and range-checked; "Use these settings" fills them), or
+`none` (likeness, the unseen side: advice only). The mesh mode's `.glb` result has no still the
+server can show a brain, so the fixer sits on the turntable.
+
 **Output shape**:
 ```
-DIAGNOSIS: <one sentence — what the complaint most likely is, from the knowledge.md table>
-FIX_LOCATION: source_picture | turntable_settings | cannot_tell
-FIX:
-<if source_picture: a revised prompt in Skill 1's VALUE/NOTE shape>
-<if turntable_settings: FIELD: <real field name> ACTION: <raise/lower/change to> WHY: <one clause>>
-<if cannot_tell: one sentence saying so, and what to look at directly instead>
+QUESTION: <only when the user has not said what is wrong>
+DIAGNOSIS: <one sentence, from the knowledge.md table>
+FIX: picture | settings | none
+PROMPT: <picture: the whole new source-picture prompt; otherwise blank>
+SETTINGS: <settings: frames = 120; samples = 64; otherwise blank>
+NOTE: <one sentence, or blank>
+TWEAK: <at most one statement, or blank>
 ```
 
 **Worked example**:
 
-Complaint in: "the turntable spin looks jerky and grainy, here's a still" (still shows visible
-grain/noise on the surface)
+Complaint in: "the turntable spin looks jerky and grainy" (the still shows grain on the surface)
 
 ```
-DIAGNOSIS: too few render samples and/or frames for a smooth, clean turn.
-FIX_LOCATION: turntable_settings
-FIX:
-FIELD: Render samples
-ACTION: raise (try the High preset: 120 frames, 768px, 64 samples)
-WHY: more samples cleans up grain; more frames smooths the spin itself — no new source picture needed
+DIAGNOSIS: The model itself looks whole; the grain comes from too few render samples and the jerk from too few frames for one full turn.
+FIX: settings
+PROMPT:
+SETTINGS: frames = 120; samples = 64
+NOTE: More frames smooth the turn and more samples clean the grain; no new picture is needed.
+TWEAK:
 ```

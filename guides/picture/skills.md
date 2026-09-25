@@ -59,23 +59,37 @@ delivered (this turn or a prior one, nothing left materially ambiguous), never f
 question — at most one optional, non-question tweak line (a statement: "I could also try a warmer
 palette if you want" — never "would you like a warmer palette?").
 
-**Output shape (line-delimited)**:
+**As built** (`engines/qwen_image.py` `writers.t2i`, the Picture prompt writer): fills `prompt`,
+`negative`, and `width`/`height` together from a fixed list of shapes (square 1328x1328, wide 16:9
+1664x928, tall 9:16 928x1664, 4:3, 3:4, 3:2, 2:3, 21:9; multiples of 16 near the default's pixel
+count), set only when the request states a shape or a use with one. Its questions, one per turn, the
+first that applies: the user's own subject ("my dog": what does it look like?), a count for the
+user's own group, the style when subjects from different worlds meet (cartoon + real athlete), the
+shape when a use names none (a poster, a banner). Its check sends one retry for a negation in the
+prompt, a prompt under 40 words, or a width and height from different shapes; it never asks for a
+Make-time confirm (a person's own short prompt is theirs).
+
+**Output shape (line-delimited)**, a question OR a draft:
 ```
-QUESTION: <the one question, ONLY when something material is genuinely ambiguous — if this line is non-blank, stop here, no PROMPT this turn>
-PROMPT: <the full positive prompt text — only when QUESTION above is blank>
-NEGATIVE: <text, or blank if none>
-NOTE: <one sentence — what was inferred or decided, if anything material>
-TWEAK: <at most one optional suggestion, phrased as a statement, never a question, or blank>
+QUESTION: <one short question>
+OPTIONS: <2 to 5 choices separated by |>
+```
+```
+WIDTH: <NONE or a width from the shapes list>
+HEIGHT: <NONE or the height from the same line>
+NEGATIVE: <NONE or the things to leave out>
+NOTE: <the choices the user did not make>
+PROMPT: <the prompt, last>
 ```
 
 **Worked example** — topic in → fields out (no ambiguity, so no QUESTION line at all):
 User: "a lighthouse at sunset, kind of lonely feeling"
 ```
-QUESTION:
-PROMPT: A realistic photograph of a single white lighthouse standing on a rocky, wave-battered point at sunset, with the ocean spreading out on both sides toward the horizon. The lighthouse occupies the left third of the frame, its lamp room catching the last warm light. The sky fills the upper two-thirds, streaked with deep orange and violet cloud bands fading to dusky blue at the top. The sea below is dark teal-grey with scattered whitecaps, and a thin strip of wet dark rock is visible at the base of the lighthouse. There are no other structures, boats, or people in the frame. The lighting is a low, warm sunset glow from the right, casting a long soft shadow from the lighthouse across the rocks. The overall composition is quiet and spare, with a muted, melancholy palette of orange, violet and teal.
-NEGATIVE:
-NOTE: no people/boats specified, so I made the frame empty on purpose to match the lonely feeling you described.
-TWEAK: I could add a distant boat or gull if you'd like a touch of life in the frame.
+WIDTH: NONE
+HEIGHT: NONE
+NEGATIVE: boats, people, other buildings
+NOTE: no people or boats specified, so I kept the frame empty (and listed them under Things to avoid) to match the lonely feeling you described.
+PROMPT: A realistic photograph of a single white lighthouse standing on a rocky, wave-battered point at sunset, with the ocean spreading out on both sides toward the horizon. The lighthouse occupies the left third of the frame, its lamp room catching the last warm light. The sky fills the upper two-thirds, streaked with deep orange and violet cloud bands fading to dusky blue at the top. The sea below is dark teal-grey with scattered whitecaps, and a thin strip of wet dark rock is visible at the base of the lighthouse. The lighthouse stands alone on the point, the only structure in sight. The lighting is a low, warm sunset glow from the right, casting a long soft shadow from the lighthouse across the rocks. The overall composition is quiet and spare, with a muted, melancholy palette of orange, violet and teal.
 ```
 
 ### Shape B — edit: multi-image reference naming → the edit engine's own form
@@ -83,15 +97,28 @@ TWEAK: I could add a distant boat or gull if you'd like a touch of life in the f
 **Trigger**: the user has uploaded 2+ pictures in Picture's edit mode and talks about them by number
 or description ("the man in picture two", "make picture 1 look like picture 2's lighting").
 
-**Fields filled**: `prompt` (required, the edit instruction), `ref_images` is already populated by
-the app from what the user uploaded — the skill only writes `prompt` text, using the SAME ordinal
-language ("the first picture", "the second picture") matching upload order, since that's how
-`qwen_edit_graph()` actually wires them (see `knowledge.md`). **This convention is UNTESTED against
-a real render** — confirmed only as how the graph wires reference images, never confirmed that
-Qwen-Image 2.1's edit checkpoint actually resolves "the second picture" in prose the way it resolves
-the positional `image_2` input; use it as the best available default, not a proven fact. Never
-invent a naming scheme the app doesn't use (no `<image1>` bracket tags in the prompt text — that
-belongs to a different, specially fine-tuned checkpoint this app doesn't run).
+**Fields filled**: `prompt` (the edit instruction) and `negative`. `ref_images` is filled by the
+app: by the user's uploads, or by **Edit this result** (a result action that switches to edit with
+that result as picture 1, carried lane to lane by `POST /api/carry`, never through the page), which
+the "Not right?" fixer's **Try it in Edit** now uses too. The page sends the attached pictures with
+the request (`"attached"`), so the server knows the count and grounds the brain on it.
+
+**How pictures are named.** The user says "picture 1", "picture 2" (upload order). The instruction
+calls them `<image1>`, `<image2>`: Qwen-Image 2.1's own text encoder puts exactly that label in
+front of each attached picture, in upload order (observed in ComfyUI's
+`comfy/text_encoders/qwen_image21.py`), and the engine's upstream enhancer writes that tag for two or
+more pictures. With one picture it says "the picture". The output takes its size from `<image1>`
+(observed: `TextEncodeQwenImage21`'s latent follows the first reference). **UNTESTED by a
+render:** neither this tag form nor plain ordinal prose ("the second picture") has been compared
+on our stack; the form is one constant (`EDIT_REF` in the pack) so an A/B can flip it. (An earlier
+draft of this file said the tags belong to a different checkpoint; the encoder source says
+otherwise.)
+
+**A picture that is not attached** is not a question: the answer is one plain sentence naming the
+picture to add. The pack checks this before the brain is asked (`edit_missing`: the highest picture
+the request names, in digits, words or ordinals, against the count), and the brain may also answer
+`MISSING:`. Its check retries once for a picture named in words instead of by its label, or a label
+past the count.
 
 **Rules**:
 1. Anchor every claim on what the picture(s) actually show, if visible this turn; otherwise take the
@@ -109,12 +136,18 @@ canvas; "swap their clothes" does not). **When this question is needed, deliver 
 this turn, no `PROMPT` line.** Once a complete edit instruction has been delivered, never follow it
 with a question — at most one optional, non-question tweak line.
 
-**Output shape (line-delimited)**:
+**Output shape (line-delimited)**, a question, a missing picture, OR a draft:
 ```
-QUESTION: <the one question, ONLY when the canvas or another material choice is genuinely ambiguous — if non-blank, stop here, no PROMPT this turn>
-PROMPT: <the edit instruction, addressing pictures by upload order — only when QUESTION above is blank>
-NOTE: <one sentence, if anything material was inferred>
-TWEAK: <at most one optional suggestion, phrased as a statement, never a question, or blank>
+QUESTION: <one short question>
+OPTIONS: <2 to 5 choices separated by |>
+```
+```
+MISSING: <which picture to add, and what it should show>
+```
+```
+NEGATIVE: <NONE or the things to leave out>
+NOTE: <which picture is the canvas, and anything else chosen>
+PROMPT: <the instruction, last>
 ```
 
 **Worked example** (canvas is obvious from phrasing — "make the man in picture two wear..." already
@@ -122,10 +155,9 @@ names picture two as the one whose man/setting survive — so no QUESTION line):
 User uploads picture 1 (a man in a red jacket) and picture 2 (a man in a lab coat), says "make the
 man in picture two wear the jacket from picture one."
 ```
-QUESTION:
-PROMPT: Replace the clothing worn by the man in the second picture with the red jacket worn by the man in the first picture, keeping the second picture's man, pose, background and everything else unchanged.
-NOTE: treating the second picture as the canvas since its own man and setting should carry over.
-TWEAK:
+NEGATIVE: NONE
+NOTE: <image2> is the canvas: its man and setting stay. The result takes picture 1's size.
+PROMPT: Replace the clothing worn by the man in <image2> with the red jacket worn by the man in <image1>, keeping the man in <image2>, his pose, the background and everything else unchanged.
 ```
 
 ## Skill 2: "Not right? Tell the guide"

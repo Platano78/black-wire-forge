@@ -154,7 +154,8 @@ modes = [(cap, m) for cap, v in body.items() if cap not in ("rooms", "helper") f
 t2i = next(m for cap, m in modes if cap == "image" and m["id"] == "t2i")
 check("contract: /api/engines reports the t2i reviser's label", t2i.get("reviser") == {"label": "Picture fixer"}, t2i.get("reviser"))
 check("contract: every other mode reports reviser null",
-      [m["id"] for cap, m in modes if m is not t2i and m.get("reviser") is not None] == [])
+      [m["id"] for cap, m in modes if m is not t2i and m.get("reviser") is not None
+       and (cap, m["id"]) != ("3d", "turntable")] == [])   # P3d: the turntable fixer, tests/test_picture_writers.py
 check("contract: every mode carries a reviser key", all("reviser" in m for _, m in modes))
 
 print("parser: line keys")
