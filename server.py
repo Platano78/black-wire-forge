@@ -223,6 +223,11 @@ def load_config():
                                    or max_images < 1):
         die("\"helper\".\"max_images\" in %s must be a whole number, 1 or more (how many "
             "pictures one guide message may carry)." % CONFIG_FILE)
+    max_tokens = helper.get("max_tokens") if helper is not None else None
+    if max_tokens is not None and (not isinstance(max_tokens, int) or isinstance(max_tokens, bool)
+                                   or max_tokens < 1):
+        die("\"helper\".\"max_tokens\" in %s must be a whole number, 1 or more (the fewest tokens "
+            "every guide reply may use; a model that thinks first needs room for it), e.g. 8192." % CONFIG_FILE)
     return cfg
 
 
@@ -3114,6 +3119,38 @@ def _helper_chat(messages, max_tokens=512, timeout=None):
         raise ValueError(HELPER_BUSY_SENTENCE) from e
 
 
+HELPER_THOUGHT_ONLY = ("Your helper spent its whole answer thinking and wrote nothing. Give it more room with "
+                       "\"helper\": {\"max_tokens\": 8192} in config.json, or use a model that doesn't think first.")
+HELPER_RETRY_TOKENS = 16384
+_OPEN_THINK_RE = re.compile(r"<think>(?!.*</think>).*", re.IGNORECASE | re.DOTALL)
+
+
+class HelperThoughtOnly(Exception):
+    """The helper's whole reply budget went on thinking: nothing was written."""
+
+
+def _guide_helper_chat(messages, max_tokens):
+    """_helper_chat for a guide call (chat, skill, revise) -> (text with any
+    <think> block removed, finish_reason). config's helper.max_tokens raises
+    the budget, never lowers it. A thinking model can spend the whole budget
+    before writing a word (finish "length", nothing left once the thought is
+    removed): that gets ONE retry at four times the budget, capped at
+    HELPER_RETRY_TOKENS; still nothing raises HelperThoughtOnly. Raises
+    ValueError(HELPER_BUSY_SENTENCE) like _helper_chat."""
+    budget = max(max_tokens, HELPER.get("max_tokens") or 0)
+    timeout = HELPER.get("timeout_s", 120)
+    reply, finish = _helper_chat(messages, max_tokens=budget, timeout=timeout)
+    text = _OPEN_THINK_RE.sub("", _THINK_RE.sub("", reply or "")).strip()
+    if text or finish != "length":
+        return text, finish
+    if budget < HELPER_RETRY_TOKENS:
+        reply, finish = _helper_chat(messages, max_tokens=min(budget * 4, HELPER_RETRY_TOKENS), timeout=timeout)
+        text = _OPEN_THINK_RE.sub("", _THINK_RE.sub("", reply or "")).strip()
+    if not text and finish == "length":
+        raise HelperThoughtOnly(HELPER_THOUGHT_ONLY)
+    return text, finish
+
+
 def _resolve_job_output_bytes(job_id, output_index):
     """-> (bytes, filename) for a finished job's output, the same source-
     bytes path a chain/carry uses."""
@@ -3582,11 +3619,12 @@ def guide_chat(p):
     kept, dropped = _trim_guide_history(forwarded)
     kept[-1] = dict(kept[-1], content=_with_pictures(kept[-1]["content"], urls))
     try:
-        reply, finish = _helper_chat([{"role": "system", "content": proj["text"]}] + kept,
-                                     max_tokens=proj["max_tokens"], timeout=HELPER.get("timeout_s", 120))
+        text, finish = _guide_helper_chat([{"role": "system", "content": proj["text"]}] + kept,
+                                          max_tokens=proj["max_tokens"])
+    except HelperThoughtOnly as e:
+        return {"ok": False, "error": str(e)}, 502
     except ValueError as e:
         return {"ok": False, "error": str(e)}, 503
-    text = _THINK_RE.sub("", reply or "").strip()
     truncated = finish == "length" or len(text) > proj["answer_chars"]
     if len(text) > proj["answer_chars"]:
         text = _cap_guide_answer(text, proj["answer_chars"])
@@ -3956,10 +3994,9 @@ def guide_skill(p):
         sent = {"system": w["prompt"], "user": text}
         if refs or attached:
             sent["pictures"] = len(urls)
-        reply, _ = _helper_chat([{"role": "system", "content": sent["system"]},
-                                 {"role": "user", "content": _with_pictures(text, urls)}],
-                                max_tokens=w.get("max_tokens", 1024), timeout=HELPER.get("timeout_s", 120))
-        reply = _THINK_RE.sub("", reply or "").strip()
+        reply, _ = _guide_helper_chat([{"role": "system", "content": sent["system"]},
+                                       {"role": "user", "content": _with_pictures(text, urls)}],
+                                      max_tokens=w.get("max_tokens", 1024))
         try:
             parsed = engines.parse_writer_reply(w, reply)
         except ValueError:
@@ -4016,6 +4053,8 @@ def guide_skill(p):
             # A retry that asks or breaks shape keeps the first draft, problems and all.
             if parsed2 is not None and "values" in parsed2:
                 sent, parsed, (fields, problems) = sent2, parsed2, draft(parsed2)
+    except HelperThoughtOnly as e:
+        return {"ok": False, "error": str(e)}, 502
     except ValueError as e:
         return {"ok": False, "error": str(e)}, 503
     body = {"ok": True, "fields": fields, "problems": problems, "sent": sent, "retried": retried,
@@ -4124,12 +4163,13 @@ def guide_revise(p):
     user += guide_grounding(1, vision)
     sent = {"system": r["prompt"], "user_text": user, "pictures": len(urls)}
     try:
-        reply, _ = _helper_chat([{"role": "system", "content": r["prompt"]},
-                                 {"role": "user", "content": _with_pictures(user, urls)}],
-                                max_tokens=1024, timeout=HELPER.get("timeout_s", 120))
+        reply, _ = _guide_helper_chat([{"role": "system", "content": r["prompt"]},
+                                       {"role": "user", "content": _with_pictures(user, urls)}],
+                                      max_tokens=1024)
+    except HelperThoughtOnly as e:
+        return {"ok": False, "error": str(e)}, 502
     except ValueError as e:
         return {"ok": False, "error": str(e)}, 503
-    reply = _THINK_RE.sub("", reply or "").strip()
     try:
         parsed = engines.parse_reviser_reply(r, reply)
     except ValueError:

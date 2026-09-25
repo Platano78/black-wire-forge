@@ -159,7 +159,11 @@ own.
   conversation). The app reads the helper's context from llama.cpp's `/props`, else from
   `/models`, which on llama.cpp reports the model's TRAINING context rather than what the
   server was started with; set `"context": 16384` (a whole number of tokens) in `helper` to
-  state it yourself, and that wins.
+  state it yourself, and that wins. A model that thinks before it answers can spend a guide
+  reply's whole budget thinking and write nothing; the app then asks once more with four times
+  the budget (at most 16,384 tokens), and if that is still empty it says so in the panel. Set
+  `"max_tokens": 8192` (a whole number of tokens) in `helper` to give every guide reply at least
+  that much room; it never lowers a guide's own budget.
 
   **"Not right? Tell the guide"** on a finished picture sends the picture, the prompt that
   made it and what you say is wrong to the helper, which answers with what went wrong and a
