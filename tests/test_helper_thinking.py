@@ -224,6 +224,39 @@ code, b, budgets = run("/api/guide/revise", REVISE, [THOUGHT])
 check("revise: 502 with the plain sentence", code == 502 and b.get("error") == SENTENCE, (code, b))
 
 # ---------------------------------------------------------------------------
+# 3b. a write or a fix CUT OFF by the length limit (words, but not all of them)
+# ---------------------------------------------------------------------------
+CUT = ("The helper's answer was cut off before it finished. Give it more room with "
+       "\"helper\": {\"max_tokens\": 8192} in config.json.")
+print("skill: cut off mid-write, then finished on the retry")
+code, b, budgets = run("/api/guide/skill", SONG, [{"content": GOOD_SONG[:120], "finish": "length"},
+                                                  {"content": GOOD_SONG, "finish": "stop"}])
+check("skill: the retry's whole write, no cut-off problem", code == 200 and budgets == [1024, 4096]
+      and CUT not in b.get("problems", []) and b.get("fields", {}).get("tags") == "warm pop, clear female vocals",
+      (code, budgets, b.get("problems")))
+
+print("skill: still cut off after the retry -> the fields WITH a problem, never clean")
+code, b, budgets = run("/api/guide/skill", SONG, [{"content": GOOD_SONG, "finish": "length"}])
+check("skill: fields and the cut-off problem", code == 200 and budgets == [1024, 4096] and b.get("fields")
+      and CUT in b.get("problems", []), (code, budgets, b.get("problems")))
+code, b, budgets = run("/api/guide/skill", SONG, [{"content": "Sure! Here is a lovely song ab", "finish": "length"}])
+check("skill: cut off before any field -> 502 with the cut-off sentence", code == 502 and b.get("error") == CUT,
+      (code, b.get("error")))
+
+print("revise: cut off, then finished on the retry; still cut -> a problem")
+code, b, budgets = run("/api/guide/revise", REVISE, [{"content": GOOD_REVISE[:70], "finish": "length"},
+                                                     {"content": GOOD_REVISE, "finish": "stop"}])
+check("revise: the retry's fix, no cut-off problem", code == 200 and budgets == [1024, 4096]
+      and b.get("fix") == "reroll" and CUT not in (b.get("problems") or []), (code, budgets, b))
+code, b, budgets = run("/api/guide/revise", REVISE, [{"content": GOOD_REVISE, "finish": "length"}])
+check("revise: still cut -> the fix WITH the cut-off problem", code == 200 and budgets == [1024, 4096]
+      and b.get("fix") == "reroll" and CUT in (b.get("problems") or []), (code, budgets, b.get("problems")))
+
+print("chat: a reply cut off with words is flagged truncated, not retried (unchanged)")
+code, b, budgets = run("/api/guide/chat", CHAT, [{"content": "About three", "finish": "length"}])
+check("chat: one call, truncated", code == 200 and budgets == [chat_budget] and b.get("truncated") is True, (code, budgets, b))
+
+# ---------------------------------------------------------------------------
 # 4. startup: helper.max_tokens must be a positive whole number
 # ---------------------------------------------------------------------------
 print("startup: a helper.max_tokens that is not a positive whole number is refused")

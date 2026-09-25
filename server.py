@@ -3123,6 +3123,8 @@ def _helper_chat(messages, max_tokens=512, timeout=None):
 
 HELPER_THOUGHT_ONLY = ("Your helper spent its whole answer thinking and wrote nothing. Give it more room with "
                        "\"helper\": {\"max_tokens\": 8192} in config.json, or use a model that doesn't think first.")
+HELPER_CUT_OFF = ("The helper's answer was cut off before it finished. Give it more room with "
+                  "\"helper\": {\"max_tokens\": 8192} in config.json.")
 HELPER_RETRY_TOKENS = 16384
 _OPEN_THINK_RE = re.compile(r"<think>(?!.*</think>).*", re.IGNORECASE | re.DOTALL)
 
@@ -3131,19 +3133,23 @@ class HelperThoughtOnly(Exception):
     """The helper's whole reply budget went on thinking: nothing was written."""
 
 
-def _guide_helper_chat(messages, max_tokens):
+def _guide_helper_chat(messages, max_tokens, retry_cut=False):
     """_helper_chat for a guide call (chat, skill, revise) -> (text with any
     <think> block removed, finish_reason). config's helper.max_tokens raises
     the budget, never lowers it. A thinking model can spend the whole budget
     before writing a word (finish "length", nothing left once the thought is
     removed): that gets ONE retry at four times the budget, capped at
-    HELPER_RETRY_TOKENS; still nothing raises HelperThoughtOnly. Raises
+    HELPER_RETRY_TOKENS; still nothing raises HelperThoughtOnly. With
+    retry_cut (a write or a fix, whose fields a cut-off answer would leave
+    half-written) a reply cut off WITH words gets the same one retry; the
+    caller reads the returned finish to see whether it was still cut. Chat
+    shows a cut-off reply as truncated instead. Raises
     ValueError(HELPER_BUSY_SENTENCE) like _helper_chat."""
     budget = max(max_tokens, HELPER.get("max_tokens") or 0)
     timeout = HELPER.get("timeout_s", 120)
     reply, finish = _helper_chat(messages, max_tokens=budget, timeout=timeout)
     text = _OPEN_THINK_RE.sub("", _THINK_RE.sub("", reply or "")).strip()
-    if text or finish != "length":
+    if finish != "length" or (text and not retry_cut):
         return text, finish
     if budget < HELPER_RETRY_TOKENS:
         reply, finish = _helper_chat(messages, max_tokens=min(budget * 4, HELPER_RETRY_TOKENS), timeout=timeout)
@@ -3991,14 +3997,17 @@ def guide_skill(p):
     if w.get("pictures"):
         request["pictures"] = len(attached)
 
+    cut = []   # per ask(), whether its reply was still cut off after the retry
+
     def ask(text):
         """-> (sent, parsed reply or None, raw reply)."""
         sent = {"system": w["prompt"], "user": text}
         if refs or attached:
             sent["pictures"] = len(urls)
-        reply, _ = _guide_helper_chat([{"role": "system", "content": sent["system"]},
-                                       {"role": "user", "content": _with_pictures(text, urls)}],
-                                      max_tokens=w.get("max_tokens", 1024))
+        reply, finish = _guide_helper_chat([{"role": "system", "content": sent["system"]},
+                                            {"role": "user", "content": _with_pictures(text, urls)}],
+                                           max_tokens=w.get("max_tokens", 1024), retry_cut=True)
+        cut.append(finish == "length")
         try:
             parsed = engines.parse_writer_reply(w, reply)
         except ValueError:
@@ -4027,8 +4036,8 @@ def guide_skill(p):
     try:
         sent, parsed, raw = ask(user)
         if parsed is None:
-            return {"ok": False, "error": GUIDE_SKILL_SHAPE_ERROR, "raw": raw[:GUIDE_SKILL_RAW_LIMIT],
-                    "sent": sent}, 502
+            return {"ok": False, "error": HELPER_CUT_OFF if cut[-1] else GUIDE_SKILL_SHAPE_ERROR,
+                    "raw": raw[:GUIDE_SKILL_RAW_LIMIT], "sent": sent}, 502
         if "question" in parsed and capped:
             # The cap is the server's, not the writer's: ask once more to write.
             sent, parsed, raw = ask(user + "\n\nYou already had your answers. " + GUIDE_SKILL_WRITE_NOW)
@@ -4047,6 +4056,7 @@ def guide_skill(p):
                 body["vision"] = vision
             return body, 200
         fields, problems = draft(parsed)
+        was_cut = cut[-1]
         retried = False
         if problems:
             retried = True
@@ -4055,10 +4065,13 @@ def guide_skill(p):
             # A retry that asks or breaks shape keeps the first draft, problems and all.
             if parsed2 is not None and "values" in parsed2:
                 sent, parsed, (fields, problems) = sent2, parsed2, draft(parsed2)
+                was_cut = cut[-1]
     except HelperThoughtOnly as e:
         return {"ok": False, "error": str(e)}, 502
     except ValueError as e:
         return {"ok": False, "error": str(e)}, 503
+    if was_cut:
+        problems = problems + [HELPER_CUT_OFF]
     body = {"ok": True, "fields": fields, "problems": problems, "sent": sent, "retried": retried,
             "note": parsed.get("note") or ""}
     if (wcap, wmode) != (cap, mode):
@@ -4168,9 +4181,9 @@ def guide_revise(p):
     system = r["prompt"] + ("\n\n" + r["blind_note"] if not vision and r.get("blind_note") else "")
     sent = {"system": system, "user_text": user, "pictures": len(urls)}
     try:
-        reply, _ = _guide_helper_chat([{"role": "system", "content": system},
-                                       {"role": "user", "content": _with_pictures(user, urls)}],
-                                      max_tokens=1024)
+        reply, finish = _guide_helper_chat([{"role": "system", "content": system},
+                                            {"role": "user", "content": _with_pictures(user, urls)}],
+                                           max_tokens=1024, retry_cut=True)
     except HelperThoughtOnly as e:
         return {"ok": False, "error": str(e)}, 502
     except ValueError as e:
@@ -4178,8 +4191,8 @@ def guide_revise(p):
     try:
         parsed = engines.parse_reviser_reply(r, reply)
     except ValueError:
-        return {"ok": False, "error": GUIDE_SKILL_SHAPE_ERROR, "raw": reply[:GUIDE_SKILL_RAW_LIMIT],
-                "sent": sent, "vision": vision}, 502
+        return {"ok": False, "error": HELPER_CUT_OFF if finish == "length" else GUIDE_SKILL_SHAPE_ERROR,
+                "raw": reply[:GUIDE_SKILL_RAW_LIMIT], "sent": sent, "vision": vision}, 502
     body = {"ok": True, "vision": vision, "sent": sent}
     if "question" in parsed:
         body["question"] = parsed["question"]
@@ -4203,6 +4216,8 @@ def guide_revise(p):
             body.update(fields=fields, problems=problems)
     else:
         body.update(parsed, fills=r["fills"], edit_mode=r.get("edit_mode"))
+    if finish == "length" and "question" not in body:
+        body["problems"] = list(body.get("problems") or []) + [HELPER_CUT_OFF]
     return body, 200
 
 

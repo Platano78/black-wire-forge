@@ -3230,6 +3230,13 @@ function renderReviseReply(r, req){
       : skillButton('Use this prompt', 'guideReviseUse', true, () => reviseUsePrompt(r, req)),
       skillButton('Dismiss', 'guideReviseDismiss', false, guideSkillClear));
   }
+  // Problems the settings branch has not already listed (e.g. the answer was cut off).
+  if(r.problems && r.problems.length && !(r.fields && r.target)){
+    const ul = skillEl('ul', null, 'skill-problems');
+    ul.id = 'guideReviseProblems';
+    r.problems.forEach(t => ul.appendChild(skillEl('li', t)));
+    box.appendChild(ul);
+  }
   if(r.vision === false) box.appendChild(skillEl('p', "This helper can't see pictures, so it only has your words to go on.", 'guide-hint'));
   box.appendChild(actions);
   box.hidden = false;
