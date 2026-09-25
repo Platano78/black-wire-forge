@@ -146,13 +146,13 @@ derived is stored.
 ## Harvest
 
 When `job_poller()` marks a job done, `seq_harvest()` looks for a sequence slot waiting
-on that job and attaches the result as a new take — it copies `outputs[0]`, the lane's own
-first render. `run_post_step()` runs a pack's own post-render step (e.g. Pixel Art's
-deterministic quantise) and keeps the transformed file as an ADDITIONAL History output
-(type `"local"`), appended after the lane's original; it never replaces `outputs[0]`. So
-today, a sequence take is the lane's original render, not the post-processed one — the
-post-processed file is still available (in History, as that job's extra output), just not
-the one `seq_harvest()` currently picks up.
+on that job and attaches the result as a new take — it copies the job's `result_output()`:
+the post-step output when the job has one, else `outputs[0]`, the lane's own first render.
+`run_post_step()` runs a pack's own post-render step (e.g. Pixel Art's deterministic
+quantise) and keeps the transformed file as an ADDITIONAL History output (type `"local"`,
+marked `"post"`), appended after the lane's original; it never replaces `outputs[0]`. So a
+sequence take of a mode with a post step is the post-processed file; the lane's original
+render stays in History as that job's first output.
 
 ## The cut
 
@@ -257,5 +257,5 @@ flowchart TD
     Limiter --> Encode[_encode: libx264/aac, faststart]
     Encode --> Peak[_measure_true_peak: measure the delivered file]
     Peak -->|over ceiling, up to CUT_TP_MAX_PASSES| Encode
-    Peak -->|within ceiling| Done[cut file: data/outputs/cuts/*.mp4]
+    Peak -->|within ceiling| Done[cut file: data/seq/sequence id/cuts/cut id.mp4]
 ```
