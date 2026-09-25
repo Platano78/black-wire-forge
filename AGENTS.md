@@ -153,7 +153,7 @@ Against the running server (port 3998 by default; use the `"port"` in `config.js
 
 ## Make something and get the file
 
-Shapes read from `generate()`, `jobs_payload()` and `proxy_view()` in `server.py`.
+Shapes from `server.py`'s `generate()`, `jobs_payload()`, `proxy_view()`.
 
 **1. Submit** — `POST /api/generate`, JSON, at minimum `lane`, `kind`, `mode`, `prompt`
 (everything else has a default):
@@ -187,17 +187,17 @@ curl -s -o lighthouse.png \
   "http://127.0.0.1:3998/api/view?lane=local&filename=<filename>&subfolder=<subfolder>&type=output&dl=1"
 ```
 
-- `dl=1` — the recipe-removed copy (`strip_metadata()` removes the embedded workflow and
-  prompt: model filenames, the full prompt). Give this one to a user who might share it.
-- `keep_recipe=1` in place of `dl=1` — the original, metadata and all.
+- `dl=1` — the recipe-removed copy (`strip_metadata()` drops the embedded workflow: model
+  filenames, the full prompt); give this one to a user who might share it.
+- `keep_recipe=1` instead of `dl=1` — the original, metadata and all.
 - If cleaning fails (unsupported sub-format, missing dependency, parse failure), `dl=1` is
   REFUSED, never silently the original: HTTP 422, `{"error": "Could not remove the recipe from
   this file, so it was not downloaded. Use the plain download if you want the original."}`.
-  Retry with `keep_recipe=1` if the user is fine with the original.
+  Retry with `keep_recipe=1` if the user accepts the original.
 - `type=local` (a `post`-step or process-lane entry) is served from the app's own disk, never
   proxied to a lane; the same `lane`/`dl`/`keep_recipe` query applies.
 
-**Where the file actually lives — answer with BOTH, not just one:**
+**Where the file actually lives — answer with BOTH:**
 
 1. **On the lane's own ComfyUI machine**, in its output folder — the render itself, for every
    `"type": "output"` entry on every job. The app never moves it; `/api/view` only proxies a
@@ -210,7 +210,8 @@ curl -s -o lighthouse.png \
    ComfyUI picture (`t2i`, no `post` step) has NO local copy — check `job["outputs"]` for a
    `"type": "local"` entry before claiming one.
 
-Save a copy only where the user asked (their Downloads folder, a project directory...).
+**Never save a copy the user did not ask for.** If they named no place, save nothing: give them
+the `/api/view` link and say where the original is.
 
 ## Fixing what's missing
 
