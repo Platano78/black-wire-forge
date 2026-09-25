@@ -318,7 +318,8 @@ BRAIN["replies"][:] = ["QUESTION:\nDIAGNOSIS: I can't see the clip, so going by 
 b, code = srv.guide_revise({"room": "video", "job_id": "clip1", "complaint": "the camera never pushes in"})
 check("200: reroll, fills the prompt, no edit mode", code == 200 and b.get("fix") == "reroll" and b.get("fills") == "prompt"
       and b.get("edit_mode") is None and b.get("prompt", "").startswith("A lighthouse lamp"), b)
-check("the clip fixer's own prompt was sent", BRAIN["asked"][-1][0]["content"] == ltx.LTX_REVISER_PROMPT)
+check("the clip fixer's own prompt was sent, with its blind note (this helper cannot see)",
+      BRAIN["asked"][-1][0]["content"] == ltx.LTX_REVISER_PROMPT + "\n\n" + ltx.LTX_REVISER_BLIND)
 BRAIN["replies"][:] = ["QUESTION:\nDIAGNOSIS: x\nFIX: edit\nPROMPT: Make the lamp brighter.\nNOTE:\nTWEAK:"]
 b, code = srv.guide_revise({"room": "video", "job_id": "clip1", "complaint": "too dark"})
 check("FIX edit on a clip -> 502, the shape error (never a broken Edit button)", code == 502 and b.get("ok") is False, b)

@@ -431,6 +431,24 @@ check("revise: grounded truthfully",
       isinstance(user, str) and user.endswith("\n\n[The user attached a picture, but this helper cannot see pictures.]"))
 check("revise: sent counts no pictures", b.get("sent", {}).get("pictures") == 0 and b["sent"]["user_text"] == user)
 
+print("revise: the blind-helper note goes only to a helper that cannot see")
+BLIND = "can't see"
+blind_system = HELPER_STATE["requests"][-1]["messages"][0]["content"]
+check("revise: a blind helper's system prompt carries the blind note",
+      BLIND in blind_system and blind_system == R["prompt"] + "\n\n" + R.get("blind_note", "")
+      and b["sent"]["system"] == blind_system, blind_system[-300:])
+vision_with(MULTIMODAL)
+code, b = revise(BASE, GOOD)
+seeing_system = HELPER_STATE["requests"][-1]["messages"][0]["content"]
+check("revise: a seeing helper's system prompt never mentions not seeing",
+      code == 200 and b.get("vision") is True and BLIND not in seeing_system and b["sent"]["system"] == seeing_system,
+      [ln for ln in seeing_system.splitlines() if BLIND in ln][:3])
+REVISERS = [(pack["id"], mode, rv) for pack in engines.packs() for mode, rv in (pack.get("revisers") or {}).items()]
+check("revisers: every base prompt is free of the blind opener, and every blind note has it",
+      REVISERS and all(BLIND not in rv["prompt"] and BLIND in rv.get("blind_note", "") for _, _, rv in REVISERS),
+      [(pid, mode) for pid, mode, rv in REVISERS if BLIND in rv["prompt"] or BLIND not in rv.get("blind_note", "")])
+vision_with(None)
+
 print("revise: refusals")
 vision_with(MULTIMODAL)
 seed_job("edit1", [("e.png", "image", PNG)], mode="edit")

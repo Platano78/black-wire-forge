@@ -4163,9 +4163,12 @@ def guide_revise(p):
     if answer and answer.strip():
         user += "\nThe user answered: " + answer.strip()
     user += guide_grounding(1, vision)
-    sent = {"system": r["prompt"], "user_text": user, "pictures": len(urls)}
+    # The text-only rules go only to a helper that cannot see: one that can
+    # copied the "I can't see" opener with the picture in front of it.
+    system = r["prompt"] + ("\n\n" + r["blind_note"] if not vision and r.get("blind_note") else "")
+    sent = {"system": system, "user_text": user, "pictures": len(urls)}
     try:
-        reply, _ = _guide_helper_chat([{"role": "system", "content": r["prompt"]},
+        reply, _ = _guide_helper_chat([{"role": "system", "content": system},
                                        {"role": "user", "content": _with_pictures(user, urls)}],
                                       max_tokens=1024)
     except HelperThoughtOnly as e:

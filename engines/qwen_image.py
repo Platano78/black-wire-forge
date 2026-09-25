@@ -139,17 +139,12 @@ PICTURE_REVISER_PROMPT = (
     "\"I asked for two and got three\"), fix it and ask nothing. When they ask you to check it (\"is "
     "anything wrong?\", \"does it look right?\") and a picture is attached, look at it, compare it with "
     "the prompt and answer: do not ask. When they only say it is off (\"it's not right\", \"I don't "
-    "like it\") and name nothing, reply with ONLY the QUESTION line, asking what looks wrong (with no "
-    "picture, start it as rule 2 says), and nothing else.\n"
-    "2. SEE ONLY WHAT IS THERE. The last line of the message says whether a picture is attached.\n"
-    "   With a picture: name only a defect you could point at in it. If it shows what the prompt asks "
+    "like it\") and name nothing, reply with ONLY the QUESTION line, asking what looks wrong, and "
+    "nothing else.\n"
+    "2. SEE ONLY WHAT IS THERE. Name only a defect you could point at in the picture. If it shows what the prompt asks "
     "for and nothing is wrong, say so in DIAGNOSIS (\"Nothing looks wrong: it shows what the prompt "
     "asks for.\"), FIX reroll, and PROMPT is the same prompt unchanged. Never invent a defect. A count "
     "past three things is a rough read.\n"
-    "   With NO picture you cannot see the render: never describe it. If the user's words say what is "
-    "wrong, start DIAGNOSIS with \"I can't see the picture, so going by what you say:\" and fix it. "
-    "If they do not, ask with QUESTION, starting \"I can't see the picture, so tell me:\", what it "
-    "shows that is wrong.\n"
     "3. KNOWN CAUSES on this model. Name the one that fits:\n"
     "   a. A NAMED subject the model may not know (a character, a franchise monster, a brand): the bare "
     "name renders as a guess, often a copy of another subject in the frame or an extra, unrequested "
@@ -196,7 +191,19 @@ PICTURE_REVISER_PROMPT = (
     "The prompt that made it: A red fox sitting in a snowy meadow at dawn.\n"
     "The user says: it's just off\n"
     "[1 picture attached.]\n"
-    "QUESTION: What looks wrong to you: the fox, the snow, the light, or the framing?\n\n"    "EXAMPLE 3\n"
+    "QUESTION: What looks wrong to you: the fox, the snow, the light, or the framing?\n"
+)
+
+# Appended to the fixer's system prompt only when the helper cannot see the
+# picture (server.py guide_revise()): a seeing helper given these lines copied
+# the "I can't see" opener with the picture in front of it.
+PICTURE_REVISER_BLIND = (
+    "NO PICTURE THIS TIME\n"
+    "The picture could not be shown to you, so you cannot see the render: never describe it. If the "
+    "user's words say what is wrong, start DIAGNOSIS with \"I can't see the picture, so going by what "
+    "you say:\" and fix it. If they do not, ask with QUESTION, starting \"I can't see the picture, so "
+    "tell me:\", what it shows that is wrong.\n\n"
+    "EXAMPLE 3\n"
     "The prompt that made it: A red fox sitting in a snowy meadow at dawn.\n"
     "The user says: it's just off\n"
     "[The user attached a picture, but this helper cannot see pictures.]\n"
@@ -573,7 +580,7 @@ ENGINE = {
     "revisers": {
         "t2i": {
             "label": "Picture fixer",
-            "prompt": PICTURE_REVISER_PROMPT,
+            "prompt": PICTURE_REVISER_PROMPT, "blind_note": PICTURE_REVISER_BLIND,
             "keys": ["QUESTION", "DIAGNOSIS", "FIX", "PROMPT", "NOTE", "TWEAK"],
             "fills": "prompt",
             "edit_mode": "edit",

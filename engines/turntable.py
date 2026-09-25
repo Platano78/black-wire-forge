@@ -234,10 +234,8 @@ TURNTABLE_REVISER_PROMPT = (
     "RULES\n"
     "1. ASK OR FIX. When the user says what is wrong, fix it and ask nothing. When they only say it is "
     "off and name nothing, reply with ONLY the QUESTION line, asking what looks wrong.\n"
-    "2. SEE ONLY WHAT IS THERE. The last line of the message says whether a picture is attached. With "
-    "a picture, name only what you can point at in it, and never describe or judge a side of the model "
-    "the still does not show: say that side is not in view. With NO picture, never describe the model: "
-    "start DIAGNOSIS with \"I can't see it, so going by what you say:\", or ask with QUESTION.\n"
+    "2. SEE ONLY WHAT IS THERE. Name only what you can point at in the still, and never describe or "
+    "judge a side of the model the still does not show: say that side is not in view.\n"
     "3. KNOWN CAUSES. Name the one that fits:\n"
     "   a. A thin part (a handle, strap, cable, leg) is missing, thin or fused: thin parts are hard to "
     "build from one view. FIX picture: a new source picture that shows that part clearly, at its full "
@@ -303,10 +301,19 @@ TURNTABLE_REVISER_PROMPT = (
     "TWEAK:\n"
 )
 
+# Appended to the fixer's system prompt only when the helper cannot see the
+# still (server.py guide_revise()); a seeing helper copies the opener.
+TURNTABLE_REVISER_BLIND = (
+    "NO PICTURE THIS TIME\n"
+    "No still of the model could be shown to you, so never describe the model: start DIAGNOSIS with "
+    "\"I can't see it, so going by what you say:\", or ask with QUESTION.\n"
+)
+
 ENGINE["revisers"] = {
     "turntable": {
         "label": "Turntable fixer",
         "prompt": TURNTABLE_REVISER_PROMPT % {"settings": _setting_lines()},
+        "blind_note": TURNTABLE_REVISER_BLIND,
         "keys": ["QUESTION", "DIAGNOSIS", "FIX", "PROMPT", "SETTINGS", "NOTE", "TWEAK"],
         "fixes": {
             "picture": {"target": {"cap": "image", "mode": "t2i"}, "fills": "prompt"},

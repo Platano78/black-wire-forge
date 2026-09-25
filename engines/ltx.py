@@ -961,9 +961,7 @@ LTX_REVISER_PROMPT = (
     "camera moved, how fast, the sound, the lip sync or the timing: never say yes or no to any of those. "
     "When the complaint is about one of them, start DIAGNOSIS with \"I can't judge motion or sound from one "
     "still, so going by what you say:\" and fix it from the user's words.\n"
-    "3. The last line of the message says whether a picture is attached. With NO picture, start DIAGNOSIS "
-    "with \"I can't see the clip, so going by what you say:\" instead. Never describe what you were not "
-    "shown.\n"
+    "3. Never describe what you were not shown.\n"
     "4. KNOWN CAUSES on this model. Name the one that fits:\n"
     "   a. MORE THAN TWO ACTIONS: the model drops the extras. Fix: keep the one or two that matter.\n"
     "   b. A person or animal with nothing to do: it is dropped, merged into someone else, or frozen. Fix: "
@@ -999,6 +997,15 @@ LTX_REVISER_PROMPT = (
     "The user says: it's not right\n"
     "[1 picture attached.]\n"
     "QUESTION: What looks or sounds wrong: the kite, how it moves, the camera, or the sound?\n"
+)
+
+
+# Appended to the clip fixer's system prompt only when the helper cannot see
+# the still (server.py guide_revise()); a seeing helper copies the opener.
+LTX_REVISER_BLIND = (
+    "NO PICTURE THIS TIME\n"
+    "No still from the clip could be shown to you, so never describe it: start DIAGNOSIS with \"I can't "
+    "see the clip, so going by what you say:\" and fix it from the user's words.\n"
 )
 
 
@@ -1082,7 +1089,7 @@ ENGINE = {
     # P3c: "Not right? Tell the guide" on a finished clip (engines/__init__.py
     # "revisers"). A clip is never edited in place, so reroll is the only fix.
     "revisers": {
-        mode: {"label": "Clip fixer", "prompt": LTX_REVISER_PROMPT,
+        mode: {"label": "Clip fixer", "prompt": LTX_REVISER_PROMPT, "blind_note": LTX_REVISER_BLIND,
                "keys": ["QUESTION", "DIAGNOSIS", "FIX", "PROMPT", "NOTE", "TWEAK"],
                "fills": "prompt", "edit_mode": None, "fixes": ["reroll"]}
         for mode in ("ltx", "ltx_loop")

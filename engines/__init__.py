@@ -157,6 +157,10 @@ falsy — is ignored. The dict has exactly these keys:
                          label       short name, e.g. "Picture fixer"
                          prompt      the reviser's system prompt: this
                                      engine's own known failure modes
+                         blind_note  optional: rules (and examples) for a
+                                     helper that cannot see the result,
+                                     appended to prompt ONLY then; the
+                                     prompt itself assumes it can see
                          keys        the reply's line keys, in order:
                                      QUESTION, DIAGNOSIS, FIX, PROMPT, NOTE,
                                      TWEAK, each "KEY: value" on ONE line
