@@ -3984,9 +3984,9 @@ function currentSlot(){
 
 /* The one place every sequence mutation goes through, one at a time: ops wait
    in SEQ_OP_CHAIN and each builds {id, rev, op, ...extra} only when its turn
-   comes, so it carries the rev the op before it left (release gate R2-M1: a
-   "+ generate here" sent while a remove was in flight went out on the old
-   rev, got a 409 and was lost). A 409 still happens when something else moved
+   comes, so it carries the rev the op before it left (without this, a
+   "+ generate here" sent while a remove was still in flight went out on the
+   old rev, got a 409 and was lost). A 409 still happens when something else moved
    the sequence (the server adding a take, another tab): STATE.seq is replaced
    with the server's current object and the SAME extra is sent once more on
    the new rev -- a 409 means the op was not applied, and the extra (for
