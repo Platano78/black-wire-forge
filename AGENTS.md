@@ -319,9 +319,9 @@ scripts/run-tests.sh
 
 Runs `tests/test_*.py` one suite at a time, each under GNU `timeout` (falling back to
 `gtimeout`, then to no time limit at all with one printed note, if neither is on `PATH` --
-stock macOS has neither). The full suite additionally needs `requirements-dev.txt`
-(Playwright) plus `python3 -m playwright install --with-deps chromium`, and `ffmpeg`/`ffprobe`
-on `PATH`. Without any of these, the suites that need them print a plain `SKIP` reason and
+stock macOS has neither), with `.venv/bin/python` when the repo has a `.venv` (else
+`python3`). The full suite additionally needs `requirements-dev.txt` (Playwright) plus
+`.venv/bin/python -m playwright install --with-deps chromium`, and `ffmpeg`/`ffprobe` on `PATH`. Without any of these, the suites that need them print a plain `SKIP` reason and
 exit cleanly — a clean clone with none of the optional deps still passes every suite that
 doesn't need them. A suite exiting non-zero for any other reason is a real `FAIL`. No
 `config.json` is required to run the suite.

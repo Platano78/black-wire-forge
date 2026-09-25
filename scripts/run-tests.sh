@@ -13,6 +13,15 @@ SKIP="${SKIP:-}"
 
 mkdir -p "$SCRATCH_ROOT"
 
+# The repo's own virtual environment when there is one (README installs into
+# .venv; a PEP 668 system python has none of requirements*.txt), else python3.
+if [ -x "$REPO_DIR/.venv/bin/python" ]; then
+    PYTHON="$REPO_DIR/.venv/bin/python"
+else
+    PYTHON="python3"
+fi
+echo "python: $PYTHON"
+
 # GNU `timeout` is not a hard requirement -- stock macOS has no `timeout` at
 # all (only `gtimeout` if coreutils is installed via Homebrew). Fall back to
 # gtimeout, else run every suite with no per-suite time limit and say so once,
@@ -74,9 +83,9 @@ for suite_path in "${SUITES[@]}"; do
 
     start=$(date +%s)
     if [ -n "$TIMEOUT_BIN" ]; then
-        TMPDIR="$CURRENT_SCRATCH" "$TIMEOUT_BIN" "$TIMEOUT" python3 "$suite_path"
+        TMPDIR="$CURRENT_SCRATCH" "$TIMEOUT_BIN" "$TIMEOUT" "$PYTHON" "$suite_path"
     else
-        TMPDIR="$CURRENT_SCRATCH" python3 "$suite_path"
+        TMPDIR="$CURRENT_SCRATCH" "$PYTHON" "$suite_path"
     fi
     exit_code=$?
     end=$(date +%s)

@@ -218,11 +218,17 @@ the suite: every test either spins up its own scratch config (`tests/_scratch_co
 ones that `exec_module` `server.py` directly) or never imports `server.py` as a running app at
 all -- none of them read the one next to `server.py`.
 
-The full suite needs, beyond the Python standard library: `requirements.txt` (numpy, Pillow),
-`requirements-dev.txt` (playwright) plus `python3 -m playwright install --with-deps chromium`, and
-`ffmpeg`/`ffprobe` on `PATH`. Without any of these, the suites that need them print a plain `SKIP`
-reason and exit cleanly rather than failing -- a clean clone with none of the optional deps
-installed still passes the suites that do not need them.
+The runner uses `.venv/bin/python` when the repo has a `.venv`, else `python3`. The full suite
+needs, beyond the Python standard library: `requirements.txt` (numpy, Pillow),
+`requirements-dev.txt` (playwright) plus `.venv/bin/python -m playwright install --with-deps
+chromium`, and `ffmpeg`/`ffprobe` on `PATH`. In the venv from "Install" that is:
+
+    .venv/bin/python -m pip install -r requirements.txt -r requirements-dev.txt
+    .venv/bin/python -m playwright install --with-deps chromium
+
+Without any of these, the suites that need them print a plain `SKIP` reason and exit cleanly
+rather than failing -- a clean clone with none of the optional deps installed still passes the
+suites that do not need them.
 
 ## Licences
 
