@@ -208,11 +208,10 @@ Both filenames are byte-identical to a working install's copy — no rename need
 `int8_convrot` build of the checkpoint (3.96 GB) is also in `Comfy-Org/YuE2` for tighter VRAM,
 but is not the one verified here.
 
-⚠ `yue2_audio_encoder` is a SheetSage2 checkpoint, and **SheetSage2 itself
-(`m-a-p/SheetSage2`) carries its own licence: CC BY-NC 4.0** (confirmed on the Hub), listed
-here beside its download and named among AGENTS.md's non-commercial licences. It's the same
-non-commercial family as YuE2-3B, so it doesn't change the download decision for cover mode,
-but it's worth restating: cover mode pulls in a second CC BY-NC 4.0 model, not just YuE2-3B.
+⚠ `yue2_audio_encoder` is a SheetSage2 checkpoint, and **SheetSage2 (`m-a-p/SheetSage2`)
+has its own licence: CC BY-NC 4.0**, the same non-commercial licence as YuE2-3B. So cover mode
+uses two CC BY-NC 4.0 models, YuE2-3B and SheetSage2; AGENTS.md names both among the
+non-commercial licences to call out.
 
 ## BiRefNet (`engines/cleanup.py`, cutout mode; also required by Pixel Art and TRELLIS2) — image (tool)
 
@@ -303,7 +302,7 @@ ComfyUI-LTXVideo-only: `LTXVContextWindows`, `LTXVLoopingSampler`, `LTXVLatentUp
 | Package | Repo | Licence | Provides |
 |---|---|---|---|
 | ComfyUI-GGUF | [github.com/city96/ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF) | Apache-2.0 | `UnetLoaderGGUF` — used dynamically by `engines/__init__.py`'s `unet_loader()` whenever a role's model file ends `.gguf` (`engines/qwen_image.py`/`engines/pixelart.py`, `engines/ltx.py`, `engines/minimax_h3.py`) |
-| ComfyUI-LTXVideo | [github.com/Lightricks/ComfyUI-LTXVideo](https://github.com/Lightricks/ComfyUI-LTXVideo) | "Other" (Lightricks; not independently re-read here — README already cites the model's own LTX-2.x Community License) | Only the 5 classes named above that are still NOT core: `LTXVContextWindows`, `LTXVLoopingSampler`, `LTXVLatentUpsampler`, `LTXVAudioVAEDecode`, `LTXVEmptyLatentAudio` |
+| ComfyUI-LTXVideo | [github.com/Lightricks/ComfyUI-LTXVideo](https://github.com/Lightricks/ComfyUI-LTXVideo) | "Other" (Lightricks); the LTX-2.5 model itself is under the LTX-2.x Community License (see its section above) | Only the 5 classes named above that are still NOT core: `LTXVContextWindows`, `LTXVLoopingSampler`, `LTXVLatentUpsampler`, `LTXVAudioVAEDecode`, `LTXVEmptyLatentAudio` |
 | ComfyUI-H3-Motion-Context | [github.com/NikoDemon80/ComfyUI-H3-Motion-Context](https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context) | GPL-3.0 | `MiniMaxH3MotionContext`, `MiniMaxH3MotionContextTrim` — `engines/minimax_h3.py`'s `continue` mode only; `MiniMaxH3ImageToVideo`/`MiniMaxH3ReferenceToVideo` themselves are core |
 | ComfyUI-MiniMax-Music-Production-Toolkit | [github.com/jplenio/ComfyUI-MiniMax-Music-Production-Toolkit](https://github.com/jplenio/ComfyUI-MiniMax-Music-Production-Toolkit) | MIT | `MiniMaxParametricEQ`, `MiniMaxAutoEQAnalyze`, `MiniMaxMasteringCompressor` — `engines/audio.py`'s mastering step (off by default) |
 
