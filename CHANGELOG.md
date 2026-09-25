@@ -56,6 +56,10 @@ All notable changes to Black Wire Forge are recorded here.
   spends its whole budget thinking: the app asks once more with four times the room, then
   says plainly what to change. The new `helper.max_tokens` config key gives every guide
   reply at least that many tokens.
+- The "Not right? Tell the guide" fixers no longer open with "I can't see the picture" when
+  the helper can see it: the text-only rules are sent only to a helper that cannot see.
+- Help has a section on the room's guide: writing with it, the preview, Compact/Verbose,
+  "Describe this picture", "Not right?", "Edit this result", and what shows with no helper.
 - A process lane's list of what is missing names the programs it needs (Blender, ffmpeg),
   never GPU model files.
 - Downloading from a lane that is not answering, or that no longer has the file, gives a
