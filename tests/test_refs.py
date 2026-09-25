@@ -110,27 +110,33 @@ from PIL import Image
 SRC_PATH = os.path.join(STORE, "outputs", "src.png")
 Image.new("RGB", (64, 64), (10, 20, 30)).save(SRC_PATH)
 
-OLD_SERVER = subprocess.run(["git", "show", "HEAD:server.py"], cwd=ROOT,
-                             capture_output=True, text=True, check=True).stdout
-OLD_SERVER_PATH = os.path.join(SCRATCH, "old_server.py")
-with open(OLD_SERVER_PATH, "w") as f:
-    f.write(OLD_SERVER)
-
-old_srv = load_server(OLD_SERVER_PATH, os.path.join(SCRATCH, "data_old"), "old")
+# The old-vs-new comparison reads the committed server.py with `git show`;
+# a tree with no git history (a ZIP or archive download) skips just that part.
+_old = subprocess.run(["git", "show", "HEAD:server.py"], cwd=ROOT, capture_output=True, text=True)
+if _old.returncode != 0:
+    print("  SKIP  old-vs-new comparison: `git show HEAD:server.py` failed (%s) -- this tree has no git "
+          "history, e.g. a ZIP download" % ((_old.stderr or "").strip().splitlines() or ["no output"])[-1])
+    old_srv = None
+else:
+    OLD_SERVER_PATH = os.path.join(SCRATCH, "old_server.py")
+    with open(OLD_SERVER_PATH, "w") as f:
+        f.write(_old.stdout)
+    old_srv = load_server(OLD_SERVER_PATH, os.path.join(SCRATCH, "data_old"), "old")
 new_srv = load_server(os.path.join(ROOT, "server.py"), os.path.join(SCRATCH, "data_new"), "new")
 
 CHAIN_JOB = {"id": "chaina1", "lane": "t", "kind": "image", "mode": "t2i", "status": "done",
              "prompt": "a tree", "seed": 42,
              "outputs": [{"filename": "src.png", "subfolder": "", "type": "output", "media": "image"}]}
-old_srv.JOBS[CHAIN_JOB["id"]] = dict(CHAIN_JOB)
 new_srv.JOBS[CHAIN_JOB["id"]] = dict(CHAIN_JOB)
 
 CHAIN_BODY = {"job_id": CHAIN_JOB["id"], "target_lane": "t", "output_index": 0,
               "video_width": 960, "video_height": 544}
-before = call_chain(old_srv, CHAIN_BODY)
-after = call_chain(new_srv, CHAIN_BODY)
-check("both calls succeeded (200)", before[1] == 200 and after[1] == 200, (before, after))
-check("api_chain JSON response is byte-identical old vs new", before == after, (before, after))
+if old_srv is not None:
+    old_srv.JOBS[CHAIN_JOB["id"]] = dict(CHAIN_JOB)
+    before = call_chain(old_srv, CHAIN_BODY)
+    after = call_chain(new_srv, CHAIN_BODY)
+    check("both calls succeeded (200)", before[1] == 200 and after[1] == 200, (before, after))
+    check("api_chain JSON response is byte-identical old vs new", before == after, (before, after))
 
 
 # ---------------------------------------------------------------------------

@@ -150,37 +150,43 @@ def strip_volatile(obj):
     return obj
 
 
-OLD_SERVER = subprocess.run(["git", "show", "HEAD:server.py"], cwd=ROOT,
-                             capture_output=True, text=True, check=True).stdout
-OLD_SERVER_PATH = os.path.join(SCRATCH, "old_server.py")
-with open(OLD_SERVER_PATH, "w") as f:
-    f.write(OLD_SERVER)
-
-old_srv = load_server(OLD_SERVER_PATH, os.path.join(SCRATCH, "data_old"), "old")
+# The old-vs-new comparison reads the committed server.py with `git show`;
+# a tree with no git history (a ZIP or archive download) skips just that part.
+_old = subprocess.run(["git", "show", "HEAD:server.py"], cwd=ROOT, capture_output=True, text=True)
+if _old.returncode != 0:
+    print("  SKIP  old-vs-new comparison: `git show HEAD:server.py` failed (%s) -- this tree has no git "
+          "history, e.g. a ZIP download" % ((_old.stderr or "").strip().splitlines() or ["no output"])[-1])
+    old_srv = None
+else:
+    OLD_SERVER_PATH = os.path.join(SCRATCH, "old_server.py")
+    with open(OLD_SERVER_PATH, "w") as f:
+        f.write(_old.stdout)
+    old_srv = load_server(OLD_SERVER_PATH, os.path.join(SCRATCH, "data_old"), "old")
 new_srv = load_server(os.path.join(ROOT, "server.py"), os.path.join(SCRATCH, "data_new"), "new")
 
 
 # ---------------------------------------------------------------------------
 print("generate() byte-identical to the old api_generate, modulo a fresh job's own bookkeeping")
 
-REFUSED_BODY = {"lane": "t", "kind": "image", "mode": "t2i"}   # no prompt
-before = call_old_api_generate(old_srv, REFUSED_BODY)
-after = new_srv.generate(REFUSED_BODY)
-check("a refused body (no prompt) is truly byte-identical, old vs new",
-      before == after, (before, after))
+if old_srv is not None:
+    REFUSED_BODY = {"lane": "t", "kind": "image", "mode": "t2i"}   # no prompt
+    before = call_old_api_generate(old_srv, REFUSED_BODY)
+    after = new_srv.generate(REFUSED_BODY)
+    check("a refused body (no prompt) is truly byte-identical, old vs new",
+          before == after, (before, after))
 
-IMAGE_BODY = {"lane": "t", "kind": "image", "mode": "t2i", "prompt": "a tree", "seed": 42,
-              "width": 512, "height": 512, "steps": 4, "cfg": 2.5}
-AUDIO_BODY = {"lane": "t", "kind": "audio", "mode": "song", "tags": "upbeat pop", "seed": 7}
-for label, body in (("image t2i", IMAGE_BODY), ("audio song", AUDIO_BODY)):
-    control(PORT_T, [{"filename": "out_%s.png" % label.split()[0], "subfolder": "", "type": "output"}])
-    before = call_old_api_generate(old_srv, body)
-    control(PORT_T, [{"filename": "out_%s.png" % label.split()[0], "subfolder": "", "type": "output"}])
-    after = new_srv.generate(body)
-    check("%s: same http code" % label, before[1] == after[1] == 200, (before[1], after[1]))
-    check("%s: identical modulo id/prompt_id/timestamps" % label,
-          strip_volatile(before[0]) == strip_volatile(after[0]), (strip_volatile(before[0]), strip_volatile(after[0])))
-control(PORT_T, None)
+    IMAGE_BODY = {"lane": "t", "kind": "image", "mode": "t2i", "prompt": "a tree", "seed": 42,
+                  "width": 512, "height": 512, "steps": 4, "cfg": 2.5}
+    AUDIO_BODY = {"lane": "t", "kind": "audio", "mode": "song", "tags": "upbeat pop", "seed": 7}
+    for label, body in (("image t2i", IMAGE_BODY), ("audio song", AUDIO_BODY)):
+        control(PORT_T, [{"filename": "out_%s.png" % label.split()[0], "subfolder": "", "type": "output"}])
+        before = call_old_api_generate(old_srv, body)
+        control(PORT_T, [{"filename": "out_%s.png" % label.split()[0], "subfolder": "", "type": "output"}])
+        after = new_srv.generate(body)
+        check("%s: same http code" % label, before[1] == after[1] == 200, (before[1], after[1]))
+        check("%s: identical modulo id/prompt_id/timestamps" % label,
+              strip_volatile(before[0]) == strip_volatile(after[0]), (strip_volatile(before[0]), strip_volatile(after[0])))
+    control(PORT_T, None)
 
 
 # ---------------------------------------------------------------------------
