@@ -112,7 +112,7 @@ jobs = [
 
 # Fake helper replies as per spec
 ps.HELPER_STATE["replies"] = [
-    "Here's a three-beat plan.\nACTION: add_beats\nA paper airplane leaves a fourth-floor window.\nIt rides the wind over the tram lines.\nIt lands at a child's feet in the square.\n\nACTION: add_ref | picture 1 as set",
+    "Here's a three-beat plan.\n- A paper airplane leaves a fourth-floor window.\nACTION: add_beats\nA paper airplane leaves a fourth-floor window.\nIt rides the wind over the tram lines.\nIt lands at a child's feet in the square.\n\nACTION: add_ref | picture 1 as set",
     "Shot 1 is written.\n`ACTION: open_shot | 1`\nACTION: make_shot | 1\nACTION: cut\nACTION: open_shot | 9\nACTION: fly_away | now"
 ]
 
@@ -232,6 +232,8 @@ try:
         check("Check 1: the reply shows without its ACTION lines",
               ("three-beat plan" in lt) and ("ACTION" not in lt),
               f"last_text: {repr(lt)}")
+        check("Check 1: a beat the reply also lists in its text is not shown twice",
+              "fourth-floor" not in lt, f"last_text: {repr(lt)}")
         # "each action is a button"
         btns = bar_buttons(page)
         check("Check 1: each action is a button",

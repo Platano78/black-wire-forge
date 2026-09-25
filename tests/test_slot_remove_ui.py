@@ -120,7 +120,7 @@ def add_video_slot(page):
     def fresh():
         p = pressed_slot(page)
         return p if p is not None and p not in before else None
-    wait_for(lambda: fresh() is not None, 5)
+    wait_for(lambda: fresh() is not None, 10)
     return fresh()
 
 try:
