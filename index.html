@@ -3840,7 +3840,7 @@ async function handleSlotMake(slot, confirm, shapeOk){
     }
     try{
       const d = await getJSON('/api/sequence?id=' + encodeURIComponent(STATE.seq.id));
-      if(d && d.id) STATE.seq = d;
+      if(d && d.id && STATE.seq && d.id === STATE.seq.id && d.rev >= STATE.seq.rev) STATE.seq = d;   // never step back
     }catch(e){ /* the next poll picks it up */ }
     renderTimeline();
     renderMonitor();
@@ -3982,19 +3982,32 @@ function currentSlot(){
   return (STATE.seq.slots || []).find(s => s.id === STATE.seqSlotId) || null;
 }
 
-/* The one place every sequence mutation goes through: builds {id, rev, op,
-   ...extra}, and on a 409 replaces STATE.seq with the server's current
-   object and says so (§7 item 7). `retry` re-sends the SAME extra (which
-   for update_slot was built from the live DOM a moment ago, so a user's
-   just-typed text is never lost even though it was never separately
-   stashed) against the refreshed rev. */
-async function seqOp(op, extra, opts){
-  opts = opts || {};
+/* The one place every sequence mutation goes through, one at a time: ops wait
+   in SEQ_OP_CHAIN and each builds {id, rev, op, ...extra} only when its turn
+   comes, so it carries the rev the op before it left (release gate R2-M1: a
+   "+ generate here" sent while a remove was in flight went out on the old
+   rev, got a 409 and was lost). A 409 still happens when something else moved
+   the sequence (the server adding a take, another tab): STATE.seq is replaced
+   with the server's current object and the SAME extra is sent once more on
+   the new rev -- a 409 means the op was not applied, and the extra (for
+   update_slot built from the live DOM a moment ago) is still what the user
+   asked for. Only the position moves are not re-sent: a position read before
+   the change may not mean the same place after it; they say so (§7 item 7).
+   `opts.say` is where the op's sentences go (the cable line, or #seqMsg). */
+const SEQ_OP_NO_RETRY = ['move_slot', 'move_ref'];
+let SEQ_OP_CHAIN = Promise.resolve();
+function seqOp(op, extra, opts){
+  const run = SEQ_OP_CHAIN.then(() => seqOpRun(op, extra, opts || {}));
+  SEQ_OP_CHAIN = run.catch(() => null);
+  return run;
+}
+async function seqOpRun(op, extra, opts){
+  const say = opts.say || msgSeq;
   if(!STATE.seq) return null;
   const body = Object.assign({id: STATE.seq.id, rev: STATE.seq.rev, op}, extra);
   let r;
   try{ r = await postJSON('/api/sequence/op', body); }
-  catch(e){ msgSeq(String(e.message || e), 'err'); return null; }
+  catch(e){ say(String(e.message || e), 'err'); return null; }
   if(r && typeof r.rev === 'number' && r.id === STATE.seq.id){
     STATE.seq = r;
     STATE.cutError = null;   // whatever changed may have fixed the last cut refusal
@@ -4012,10 +4025,8 @@ async function seqOp(op, extra, opts){
   }
   if(r && r.sequence){
     STATE.seq = r.sequence;
-    msgSeq('This sequence changed elsewhere — refreshed.', 'err');
-    renderTimeline();
-    renderRefRoom();
-    if(opts.retry){
+    say('This sequence changed elsewhere — refreshed.', 'err');
+    if(opts.retry !== false && !SEQ_OP_NO_RETRY.includes(op)){
       const retryBody = Object.assign({}, body, {rev: STATE.seq.rev});
       let r2;
       try{ r2 = await postJSON('/api/sequence/op', retryBody); } catch(e){ r2 = null; }
@@ -4023,12 +4034,17 @@ async function seqOp(op, extra, opts){
         STATE.seq = r2;
         renderTimeline();
         renderRefRoom();
+        renderSeqPickerList();
         return r2;
       }
+      if(r2 && r2.sequence) STATE.seq = r2.sequence;
+      else if(r2 && r2.error){ say(r2.error, 'err'); renderTimeline(); renderRefRoom(); return null; }
     }
+    renderTimeline();
+    renderRefRoom();
     return null;
   }
-  msgSeq((r && r.error) || 'That did not go through.', 'err');
+  say((r && r.error) || 'That did not go through.', 'err');
   return null;
 }
 
@@ -4754,7 +4770,7 @@ async function doCut(){
   }
   try{
     const d = await getJSON('/api/sequence?id=' + encodeURIComponent(STATE.seq.id));
-    if(d && d.id) STATE.seq = d;
+    if(d && d.id && STATE.seq && d.id === STATE.seq.id && d.rev >= STATE.seq.rev) STATE.seq = d;   // never step back
   }catch(e){ /* the next poll tick picks it up */ }
   renderCutBar();
 }
@@ -4817,26 +4833,12 @@ function msgCable(text, kind){
   el.hidden = !text;
 }
 
+// A cable op is a sequence op like any other (same chain, same rev), with its
+// sentences on the cable line.
 async function cableOp(op, extra){
-  if(!STATE.seq) return null;
-  const body = Object.assign({id: STATE.seq.id, rev: STATE.seq.rev, op}, extra);
-  let r;
-  try{ r = await postJSON('/api/sequence/op', body); }
-  catch(e){ msgCable(String(e.message || e), 'err'); return null; }
-  if(r && typeof r.rev === 'number' && r.id === STATE.seq.id){
-    STATE.seq = r;
-    msgCable('', '');
-    renderTimeline();
-    return r;
-  }
-  if(r && r.sequence){
-    STATE.seq = r.sequence;
-    msgCable('This sequence changed elsewhere — refreshed.', 'err');
-    renderTimeline();
-    return null;
-  }
-  msgCable((r && r.error) || 'That did not go through.', 'err');
-  return null;
+  const r = await seqOp(op, extra, {say: msgCable});
+  if(r){ msgCable('', ''); renderTimeline(); }
+  return r;
 }
 
 function onJackClick(slotId, fieldId, cableId){
@@ -5512,7 +5514,11 @@ async function pollJobs(){
     if(STATE.seq){
       try{
         const sd = await getJSON('/api/sequence?id=' + encodeURIComponent(STATE.seq.id));
-        if(sd && sd.id){ STATE.seq = sd; renderTimeline(); renderRefRoom(); renderSeqPickerList(); }
+        // Never step back: an op that landed while this read was out already
+        // holds a newer rev (the next op must be sent on it).
+        if(sd && sd.id && STATE.seq && sd.id === STATE.seq.id && sd.rev >= STATE.seq.rev){
+          STATE.seq = sd; renderTimeline(); renderRefRoom(); renderSeqPickerList();
+        }
       }catch(e){ /* transient */ }
     }
     if(STATE.selectedJobId || STATE.monitorCut) renderMonitor();

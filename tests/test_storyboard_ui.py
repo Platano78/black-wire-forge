@@ -330,9 +330,9 @@ try:
         check("#seqModeSelect exists once a sequence is open", page.is_visible("#seqModeSelect"))
         if page.is_visible("#seqModeSelect"):
             page.select_option("#seqModeSelect", "sequence")
-            page.wait_for_timeout(500)
+            # Wait on the DOM itself (release gate R2-M2: a fixed 500 ms raced the op).
             check("[data-script-lane] is ABSENT from the DOM in sequence mode (not merely hidden)",
-                  page.query_selector("[data-script-lane]") is None)
+                  wait_true("the script lane leaves the DOM", lambda: page.query_selector("[data-script-lane]") is None, 8))
             mode_after = http_json(URL + "api/sequence?id=" + seq_id).get("mode")
             check("the server's own record of mode is now 'sequence'", mode_after == "sequence", mode_after)
         else:

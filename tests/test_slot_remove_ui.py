@@ -213,10 +213,42 @@ try:
             page.wait_for_load_state("networkidle")
         except Exception:
             pass
-        page.wait_for_timeout(1000)
+        # Wait on the PAGE, not only the server: the page's own copy must lose the tile too.
         check("leaving the room drops an untouched new shot",
-              NEW3 is not None and NEW3 not in slot_ids(), NEW3)
+              NEW3 is not None and wait_for(lambda: NEW3 not in slot_ids()
+                                            and page.query_selector('[data-slot-id="%s"]' % NEW3) is None, 8), NEW3)
         ui.shot(page, "slotremove-7")
+
+        # 7b -- the race (release gate R2-M1): remove one shot and ask for another at once,
+        # without waiting for the first to land. Both must go through, on the current rev.
+        click(page, '#roomStrip [data-room-id="cutting"]')
+        page.wait_for_selector('#seqOpenNote', timeout=15000)
+        try:
+            page.wait_for_load_state("networkidle")
+        except Exception:
+            pass
+        page.wait_for_timeout(800)
+        NEW4 = add_video_slot(page)
+        check("(setup) a fresh video shot to remove", NEW4 is not None)
+        def seq_now():
+            return api("api/sequence?id=" + SEQ)
+        b4 = seq_now()
+        vids_before = [x["id"] for x in b4["slots"] if x["lane"] == "video"]
+        rev_before = b4["rev"]
+        # Both clicks in one tick: the add goes out while the remove is still in flight.
+        page.evaluate("""id => { document.querySelector('[data-slot-remove="' + id + '"]').click();
+                                 document.querySelector('#tlTrackVideo [data-add-lane="video"]').click(); }""", NEW4)
+        # The server reuses a removed shot's id for the next one, so both ops landing
+        # shows as: the same number of video shots, and the rev moved at least twice.
+        def race_settled():
+            d = seq_now()
+            vids = [x["id"] for x in d["slots"] if x["lane"] == "video"]
+            tiles = page.eval_on_selector_all('#tlTrackVideo [data-slot-id]', "els => els.map(e => e.dataset.slotId)")
+            return len(vids) == len(vids_before) and d["rev"] >= rev_before + 2 and sorted(tiles) == sorted(vids)
+        check("remove then add at once: both go through (the shot goes, a new one comes)", wait_for(race_settled, 10),
+              (vids_before, rev_before, seq_now()["rev"]))
+        check("...with no 'changed elsewhere' refusal", "changed elsewhere" not in (page.inner_text("#seqMsg") or ""),
+              page.inner_text("#seqMsg"))
 
         # 8 -- the whole run asked nothing of the user
         check("no dialogs anywhere", not DIALOGS, DIALOGS)
