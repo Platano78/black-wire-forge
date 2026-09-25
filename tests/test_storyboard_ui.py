@@ -256,6 +256,13 @@ try:
         print("make + pick a take on that slot, so staleness has something to attach to")
         if first_beat_id and page.is_visible("#makeBtn"):
             page.click("#makeBtn")
+            # Since the motion writers (P3c), a bracket in an LTX prompt is a Make-time problem:
+            # this beat opens with the other video engine's "[reference generation]" prefix, so
+            # Make asks first. The storyboard flow goes on with "Make anyway".
+            page.wait_for_selector("#makeConfirm:not([hidden])", timeout=10000)
+            check("Make asks first about the bracketed prefix in an LTX prompt",
+                  "[reference generation]" in page.inner_text("#makeConfirmList"), page.inner_text("#makeConfirm"))
+            page.click("#makeAnywayBtn")
             slot_sel = '#tlTrackVideo [data-slot-id]'
             wait_true("the linked video slot leaves 'empty' after Make",
                       lambda: "tl-slot-empty" not in (page.eval_on_selector(slot_sel, "el => el.className") or ""),
@@ -320,7 +327,11 @@ try:
             check("[data-script-lane] absent after switching to sequence mode (skipped -- no mode control)", False)
 
         print("zero console/page errors across the whole run")
-        check("no console or page errors were seen", len(errors) == 0, errors[:10])
+        # The Make-time ask above is a 409 needs_confirm answer, which the browser logs as a failed
+        # resource (sometimes after the click returns): exactly one is expected, not a page error.
+        conflicts = [e for e in errors if "status of 409 (Conflict)" in e]
+        check("exactly one 409 was logged (the Make-time ask)", len(conflicts) == 1, errors[:10])
+        check("no console or page errors were seen", len([e for e in errors if e not in conflicts]) == 0, errors[:10])
 
 finally:
     stop(server)

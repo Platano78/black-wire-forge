@@ -136,6 +136,12 @@ check("Make time: the grid is left to the graph", ltx.shot_check({"prompt": "A f
 print("check: H3")
 check("fl2va / ref2v: plain prompt passes", minimax_h3.h3_shot_check({"prompt": "Live-action, cinematic, a fox runs."}, {}) == [])
 check("fl2va / ref2v: weights are a problem", len(minimax_h3.h3_shot_check({"prompt": "a ((fox)) runs"}, {})) == 1)
+# The engine's own task-type prefix opens a reference prompt in brackets (the vendor's reference
+# prompt spec); a storyboard beat starts with it, and it must not block Make.
+check("ref2v: the leading task-type prefix is not a token weight", minimax_h3.h3_shot_check(
+    {"prompt": "[reference generation] The target video pushes into <Subject 1>."}, {}) == [])
+check("ref2v: a bracket after the prefix still is", len(minimax_h3.h3_shot_check(
+    {"prompt": "[reference generation] a fox [runs]"}, {})) == 1)
 p = minimax_h3.h3_continue_check({"prompt": "Cut to a close-up of the driver from a different angle."}, {})
 check("continue: a new composition is a problem naming what gave it away and where it belongs",
       len(p) == 1 and '"cut to"' in p[0] and '"a close-up of"' in p[0] and "hard cut" in p[0]

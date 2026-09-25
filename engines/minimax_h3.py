@@ -187,10 +187,17 @@ H3_NEW_SHOT_WORDS = (
 _NEW_SHOT_RE = re.compile(r"\b(" + "|".join(re.escape(w) for w in H3_NEW_SHOT_WORDS) + r")\b", re.IGNORECASE)
 
 
+# The engine's own task-type prefix, which opens a reference prompt in square
+# brackets ("[reference generation] ...", "[video editing + reference
+# generation + audio reuse] ...": the vendor's reference prompt spec). It is
+# not a token weight, so the check reads past it.
+_TASK_PREFIX_RE = re.compile(r"^\s*\[[a-z]+(?: [a-z]+)*(?: \+ [a-z]+(?: [a-z]+)*)*\]")
+
+
 def h3_shot_check(values, request):
     """The fl2va / ref2v writer's check, also the Make-time guard: token
-    weights or brackets in the prompt."""
-    found = _WEIGHT_RE.findall(values.get("prompt") or "")
+    weights or brackets in the prompt (past a leading task-type prefix)."""
+    found = _WEIGHT_RE.findall(_TASK_PREFIX_RE.sub("", values.get("prompt") or "", count=1))
     if not found:
         return []
     return ["The prompt has token weights or brackets (%s): this model reads them as words. Write plain "
