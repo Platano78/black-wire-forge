@@ -34,7 +34,9 @@ Ask, in this order, and stop at the first one that applies:
    If either is missing, install it first (Blender: https://www.blender.org/download/) — a
    process lane with a missing binary reports itself down with a plain "needs ..." sentence,
    it does not crash. Then `config.json`'s `"lanes"` needs a **process** lane, not a ComfyUI
-   one — copy-paste this as the whole file (adjust `"port"`/`"bind"` if you changed them):
+   one. If `config.json` does not exist yet, this is the whole file (adjust `"port"`/`"bind"`
+   if you changed them); if it already exists, do not replace it — add just the lane object
+   below to its existing `"lanes"` list:
 
    ```json
    {
@@ -93,8 +95,8 @@ hits `ModuleNotFoundError: PIL` (or numpy) even though the install above succeed
   "Verify" command below from a second terminal or shell. Success looks like this on stdout:
 
   ```
-  Black Wire Forge is up on http://127.0.0.1:3998
-  Loaded 1 lane(s) from config.json
+  [ok] Black Wire Forge is up on http://127.0.0.1:3998
+  [info] Loaded 1 lane(s) from config.json
   Config file: /path/to/config.json
   ```
 
@@ -163,9 +165,11 @@ Each mode object has:
 Without `?lane=`, every mode reports `"available": false` (there is nothing to check
 availability against) — always pass a real lane id.
 
-- `curl -s "http://127.0.0.1:3998/api/guide?room=cutting"` — the room's guide (`"guide"`,
-  `null` for a room without one), whether a helper is configured (`"helper"`), and its reported
-  context (`"helper_context"`, `null` when unknown).
+- `curl -s "http://127.0.0.1:3998/api/guide?room=cutting"` — the room's id (`"room"`), its
+  guide (`"guide"`, `null` for a room without one), whether a helper is configured
+  (`"helper"`), its reported context (`"helper_context"`, `null` when unknown), whether it can
+  see pictures (`"helper_vision"`), and the sentence that says how to add one
+  (`"add_brain"`). An unknown room is `404` with `"error": "There is no room called <room>."`.
 - `POST /api/guide/chat` with `{"room", "verbosity": "compact"|"verbose", "messages": [...]}` —
   one guide turn; `409` with `"no_brain": true` when no `"helper"` is configured. An optional
   `"context": {"mode": <a mode of that room>, "fields": {<field id>: <value>}}` tells the guide
@@ -193,8 +197,10 @@ declares (from `/api/engines`) goes either as a top-level key, or nested under a
 object — the request-value lookup checks both, top-level first. Success:
 `{"ok": true, "job": {"id": "<job-id>", "status": "queued", ...}, "notes": [...]}`. Refusal
 (bad lane, mode unavailable, a field that fails validation, ...):
-`{"ok": false, "error": "<plain sentence>"}`, HTTP 400/409. Keep the `"id"` — everything
-below is keyed on it.
+`{"ok": false, "error": "<plain sentence>"}`, HTTP 400/409 — or 503 right after startup,
+while the app is still reading that lane's model list ("Still checking what <lane name> has
+installed. Try again in a few seconds."): wait a few seconds and send it again. Keep the
+`"id"` — everything below is keyed on it.
 
 **2. Poll for it to finish** — `GET /api/jobs`:
 
