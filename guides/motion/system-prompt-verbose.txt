@@ -332,7 +332,7 @@ VIDEO ROOM — LTX-2.5:
   way (the `long-single-take` preset: length 993, context_length 121).
 - `ltx_loop` is video-only, no sound at all, and has no audio-tied length ceiling — the
   mode for "as long as possible, silent."
-- Craft caution (not a BWF measurement, carried from the project's own LTX notes on
+- Craft caution (not a BWF measurement, carried from notes on
   a different pipeline): chaining separate clips can lose a character's identity within a
   handful of seconds; a windowed single take avoids that failure mode entirely. Give
   every character an active verb and a place in frame — a reference given nothing to do

@@ -641,7 +641,12 @@ else:
 print("guides/: no owner/fleet wording, private tag, decision id or local port")
 import re  # noqa: E402
 LEAKS = [r"owner ruling", r"owner's (ear|box|machine|setup)", r"this fleet", r"our fleet", r"\(private\)",
-         r"\bD-[0-9a-f]{8}\b", r":808[0-9]\b", r"live-trial\.md"]
+         r"\bD-[0-9a-f]{8}\b", r":808[0-9]\b", r"live-trial\.md",
+         # citations of documents that do not ship, and review-history wording
+         r"\bruling\b(?!\s+out)", r"\bspec (§|section)\s*\d", r"\bdesign (spec|notes|brief)\b",
+         r"NotebookLM", r"PROVEN-EXPANDER", r"\bscout notes?\b", r"\bthe project's (own )?[\w -]{0,30}?notes\b",
+         r"internal project research", r"survey of paid AI-film tools\s+(§|section)", r"\bthe project's internal\b",
+         r"maintainer's notebook"]
 hits = []
 for dirpath, _, files in os.walk(os.path.join(ROOT, "guides")):
     for fname in files:

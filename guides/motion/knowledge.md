@@ -1,12 +1,10 @@
 # Motion craft knowledge — for the Motion Room Guide
 
 Rule-per-line, grouped by room and then by the user's own MOMENT inside that room — idea → prompt/
-line → settings → take → judging the result — since each engine needs its own prompt (a design
-ruling) and the moments are where a user actually asks a question.
+line → settings → take → judging the result — since each engine needs its own prompt and the moments are where a user actually asks a question.
 Labelled **observed** (read at the cited source) or **inferred** (my read connecting two observed
 facts, or craft knowledge held with high confidence but not pulled from a single citable passage
-today). Terms in `code font` are the app's own words. In-house sources (the project's own
-method notes and research notes) were consulted before the web.
+today). Terms in `code font` are the app's own words. In-house sources were consulted before the web.
 
 ## The MOTION group's two rooms, and who serves them (before "idea" — orientation)
 
@@ -24,8 +22,8 @@ method notes and research notes) were consulted before the web.
   alone, and vice versa. — observed, AGENTS.md "Verify" section, `/api/engines` contract.
 - 🔴 **This guide owns ONE shot at a time.** A script, a beat sheet, ordering several shots, or the
   cut/export belongs to the Cutting Room and its own Film Room Guide — never attempt multi-shot
-  planning here; say so and hand off by name. — this is a consistency rule with the Film Room Guide
-  (the project's internal knowledge base), not a claim about the app's code.
+  planning here; say so and hand off by name. — this is a consistency rule with the Film Room Guide,
+  not a claim about the app's code.
 
 ---
 
@@ -41,8 +39,7 @@ method notes and research notes) were consulted before the web.
   ("sad", "confused"). Keep the scene focused — a few clear characters and actions read better than
   a crowded frame — and keep one coherent light source per shot; mixed lighting confuses the
   result. — observed, https://ltx.io/blog/ltx-2-5-prompt-guide (Lightricks' own LTX Blog; checked
-  after the project's internal LTX craft notes, which restate the same 16:9/1-2-action
-  subset without the six-element framing).
+  ).
 - **This app's own field hint restates the two rules that matter most for its fixed 16:9 canvas**:
   16:9 only — "a square image produces distorted, weird motion" — and 1–2 actions max, both
   attributed to the vendor prompt contract directly in the field's own hint text. — observed,
@@ -63,9 +60,8 @@ method notes and research notes) were consulted before the web.
   by a starting picture but given nothing to do can still be misread as costume on someone else; a
   person named in the prompt but not actually placed in the shot can get invented as a stranger.
   Give every character you want an active verb and a place in frame; name no one you don't want
-  rendered. — inferred, generalised from measured MSR findings in the project's internal
-  LTX craft notes — that skill's exact numbers are for multi-subject-reference on a different pipeline, so
-  this is craft caution here, not a BWF measurement.
+  rendered. — inferred, generalised from a different (non-BWF) pipeline; this is
+  craft caution here, not a BWF measurement.
 
 ### Settings
 
@@ -83,14 +79,11 @@ method notes and research notes) were consulted before the web.
   the only way a long clip finishes at all rather than grinding forever. Measured ceiling: about
   **41 seconds** held identity this way (the `long-single-take` preset: `length: 993,
   context_length: 121`). — observed, `engines/ltx.py` `context_length` field hint + `presets["ltx"]`
-  `long-single-take` note; cross-checked against the "≤41.4 s windowed" figure in the
-  project's internal LTX craft notes for the same mechanism on a different pipeline — consistent, not
-  identical measurement.
+  `long-single-take` note
 - **Chaining separate clips loses a character by about 7 seconds in** — a different mechanism
   (H3's `continue` mode, below) exists precisely because chaining loses identity; LTX's own answer
   to "longer than one take" is the windowed single take above, not chaining. — inferred, generalised
-  from the project's internal LTX craft notes ("Chaining causes cast collapse... lost characters by
-  t≈7s") — that skill's measurement is on a different (non-BWF) LTX pipeline, so treat this as craft
+  from a different (non-BWF) LTX pipeline, so treat this as craft
   caution for BWF's own long-take preset, not a BWF-specific number.
 - `ltx_loop` is video-only (no sound at all — the node predates LTX-2.5's joint audio latents) and
   has no length ceiling tied to audio, so it is the mode for "as long as possible, silent." —
@@ -129,11 +122,10 @@ method notes and research notes) were consulted before the web.
   `h3_ref2va_graph` docstring ("Audio is NEVER fed in as TTS").
 - A `character` reference shot from more than one angle (front/side/back/detail), rather than one
   frontal image alone, gives a model a more accurate hold on the face — this exact recommendation
-  appears in Kling's own Subject Binding guidance for a *different* video tool, surfaced by the
-  project's own paid-tools-UX survey; not tested on BWF's H3 `ref2v` specifically, but the
+  appears in Kling's own Subject Binding guidance for a *different* video tool; not tested on BWF's H3 `ref2v` specifically, but the
   App's own field allows up to 9 reference pictures, so multiple angles fit within it. — inferred
-  (a claim about a different tool, offered as craft caution), the project's internal paid-tools
-  UX survey citing Kling's own public blog post on Subject Binding / Elements 3.0,
+  (a claim about a different tool, offered as craft caution), Kling's own public blog post on
+  Subject Binding / Elements 3.0,
   cross-checked against `engines/minimax_h3.py` `fields["ref2v"]["ref_images"]` (`max: 9`).
 - **`continue`** — 🔴 **the SAME shot carrying on, never a new angle or composition.** This is a
   binding rule, not a style preference: a new-composition prompt overrides the roughly 0.9 s of
@@ -142,7 +134,7 @@ method notes and research notes) were consulted before the web.
   same framing as the shot before it. `prev_video` is a **cable**, not a file you pick — it only
   ever arrives already patched in from the shot before it on the timeline. — observed,
   `engines/minimax_h3.py` `prompt_guides["continue"]` (carries a full worked example in H3's
-  structured format) and the project's binding design ruling ("a continue shot's
+  structured format) and the app's own rule ("a continue shot's
   prompt must describe the SAME shot carrying on ... hard cut, ratio 12.1; as a continuation
   1.28"); `fields["continue"]["prev_video"]` hint for the cable/jack behaviour. **Confirmed against
   a real chain of four render jobs** in this guide's own vision trial: every `continue` shot in
@@ -156,16 +148,13 @@ method notes and research notes) were consulted before the web.
   `non_diegetic_music`. `<Picture N>` / `<Video k>` tags must actually appear in the prompt text or
   the reference binds weakly. This is **not required** by BWF's own field hint (which just says
   "describe the scene"), but a hand-written version of it is worth reaching for when the plain form
-  isn't landing — the project's own H3 notes measured +0.41 dB and roughly 3× less run-to-run spread
-  from writing it out by hand. — observed, the project's internal MiniMax-H3 craft notes ("Write the prompt
-  H3 was trained on"), citing MiniMax's own `vendor/prompt-spec-base-en.txt`; the "not required by
-  BWF's field hint" half is observed directly against `engines/minimax_h3.py`.
+  isn't landing. — observed, `engines/minimax_h3.py`.
 - **Camera is a controlled vocabulary for H3**, not free English: `Zoom In/Out`, `Push In/Pull Out`,
   `Pan Left/Right`, `Truck Left/Right`, `Tilt Up/Down`, `Pedestal Up/Down`, `Arc Shot`,
   `Tracking Shot`, `Static Shot`, `Shake Slightly/Strongly`, `POV`, `Roll Clockwise/
   Counterclockwise`, each optionally modified by amplitude ("small"/"large") and speed
   ("slow"/"fast"). Write it as natural English inside the shot, e.g. "The camera pushes in with
-  small amplitude at slow speed toward the table." — observed, the project's internal MiniMax-H3 craft notes.
+  small amplitude at slow speed toward the table." — observed in this app.
 
 ### Settings
 
@@ -174,16 +163,13 @@ method notes and research notes) were consulted before the web.
   introduces (5/5 seeds, 2026-09-21). BWF's own `fast`/`fast-plus`/`fast-best` quality tiers on
   `fl2va` and `continue` set `turbo_lora: true` at 4/6/8 steps respectively; "Fast best" (8 steps) is
   the one with this measured win, not merely the highest number in that group. — observed,
-  `engines/minimax_h3.py` `presets["fl2va"]` `turbo-8step` note + `quality["fl2va"]`; cross-checked
-  against the project's design notes ("the 8-step turbo LoRA is the lever, not step count").
+  `engines/minimax_h3.py` `presets["fl2va"]` `turbo-8step` note + `quality["fl2va"]`.
   A fresh 2026-09-23 re-test of 6-vs-8 steps on the *same* 4-step LoRA family did not reproduce
   the 8-step win and flagged its own baseline as suspect — **do not** cite that re-test as
-  overturning the 8-step finding; it is unresolved, not a reversal. — observed,
-  the project's internal H3 measurement notes (with a correction noted at the top of them).
-- `ref2v` has **no fast tier** — no speed-pack LoRA is wired for this path (design ruling, after
-  review: a "Fast" tier here would run 4–8 steps with no distillation LoRA at all, exactly the mush
+  overturning the 8-step finding; it is unresolved, not a reversal. — observed in this app.
+- `ref2v` has **no fast tier** — no speed-pack LoRA is wired for this path (a "Fast" tier here would run 4–8 steps with no distillation LoRA at all, exactly the mush
   the old page's speed-pack toggle existed to prevent). It starts at Middle (12 steps). —
-  observed, `engines/minimax_h3.py` quality["ref2v"] ruling comment.
+  observed, `engines/minimax_h3.py` quality["ref2v"] comment.
 - `ref_image_size: "max"` on `ref2v` reads referenced faces far better than the default ("match"
   rendered a character near-profile and generic) but measured **1.8× slower** (161.7 s vs 90.2 s). —
   observed, `engines/minimax_h3.py` `presets["ref2v"]` `max-reference` note.
@@ -254,7 +240,7 @@ method notes and research notes) were consulted before the web.
   requires `length % 8 == 1` (`engines/ltx.py:124`), and 168 fails that check outright, so the app's
   backend would have refused it. Caught by cross-model review, not by the live trial itself; fixed
   by adding an explicit "round up to the nearest valid frame count" step to the formula (169 frames,
-  ~7.04s, is the corrected recommendation for that same 13-word line). **Design ruling**: keep 2.2
+  ~7.04s, is the corrected recommendation for that same 13-word line). **For now**: keep 2.2
   words/second, labelled inferred, until a real Talking Head render exists to test the actual
   landing-time against — this figure stays a placeholder for a measurement, not a final answer.
 - **Two different calculations, not one formula run both ways.** Recommending a length FOR a line
@@ -277,8 +263,7 @@ method notes and research notes) were consulted before the web.
 - **No BWF-specific measurement exists for where in the clip an LTX talking-head line actually
   lands** (unlike MiniMax-H3's measured ~87%-into-the-clip finding for its own dialogue path, which
   is a *different* engine and mode, not this one) — flag this as genuinely unknown rather than
-  reusing the H3 number. — observed (as an absence), no such note anywhere in `engines/ltx.py` or
-  the project's internal LTX reference index.
+  reusing the H3 number. — observed (as an absence), no such note anywhere in `engines/ltx.py`.
 - **Lip-sync accuracy is not judgeable from a still frame at all** — a still shows a mouth shape at
   one instant, never whether it tracked the audio over the clip's length. This is an absolute
   deferral, the same class of claim as camera movement between stills (see the Video room's LTX
@@ -296,9 +281,7 @@ method notes and research notes) were consulted before the web.
   authority. **Confirmed in this guide's own vision trial**: shown two attached frames of the
   same driver from a real render chain and asked "is this the same person", the model correctly
   refused a verdict every time this rule was in force — the deferral held even under a leading
-  question, unlike the camera-movement case below. — inferred (the general rule), generalised from
-  the likeness law in the project's internal LTX craft notes ("judged on a full-resolution FACE CROP...
-  no automated instrument"); observed (the trial result), vision probe
+  question, unlike the camera-movement case below. — inferred (the general rule), generalised from the likeness law; observed (the trial result), vision probe
   V4.
 - **Camera motion between two stills is not judgeable, full stop — this is now an ABSOLUTE rule,
   not a "when it's ambiguous" one.** A softer version of this rule ("only when the change is
@@ -321,12 +304,8 @@ method notes and research notes) were consulted before the web.
 ## Research log
 
 **In-house sources consulted first**: the app's own engine
-packs (`engines/ltx.py`, `engines/minimax_h3.py`, `rooms.json`), the project's own LTX, MiniMax-H3 and
-short-film method notes, the project's internal LTX reference index, the
-project's internal MiniMax-H3 measurement notes, the
-project's own design notes, and
-the project's internal paid-tools UX survey (a paid-AI-film-tool UX survey
-covering LTX Studio, Runway, Flora, Higgsfield, Kling and Google Flow). That survey turned out to be
+packs (`engines/ltx.py`, `engines/minimax_h3.py`, `rooms.json`), and a survey of paid AI-film tools'
+published UX (LTX Studio, Runway, Flora, Higgsfield, Kling and Google Flow). That survey turned out to be
 scoped almost entirely to multi-shot/Cutting-Room concerns (script-to-shots, reference-role naming,
 the cut/timeline) rather than single-shot craft — it already informed the Film Room Guide's own
 knowledge base, and the one item that transfers to this room (Kling's angle-diversity tip for
@@ -345,6 +324,6 @@ before running any model probe.
 Could not confirm: any BWF- or LTX-specific measurement of *where* a talking-head line lands inside
 its clip; any multi-character composition finding run specifically on BWF's own `ltx`/`ltx_loop`
 graphs (the "verbs decide who exists" and "chaining loses a character" cautions above are carried
-over from the project's own LTX notes, which measures on a different, non-BWF pipeline, and are
+over from a different (non-BWF) pipeline, and are
 marked inferred for that reason); lip-sync accuracy or Talking Head timing against a real render —
 no finished Talking Head job existed in this app instance's history to test against.

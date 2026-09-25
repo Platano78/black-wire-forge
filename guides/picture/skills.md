@@ -1,12 +1,12 @@
 # Picture-group skills — for the Picture Guide
 
-Two writing skills, per the design brief's B2 request shapes and the "Not right? Tell the
+Two writing skills, for the request shapes below and the "Not right? Tell the
 guide" pattern. Output shape: **line-delimited, never JSON with multi-line fields** — small local
 models do not reliably escape newlines inside JSON strings, a lesson proven on this project's own
 earlier song-prompt expander. Each skill below states its exact output lines, in order, one value
 per line.
 
-**Question placement, both skills (design ruling):** the one allowed question is asked BEFORE
+**Question placement, both skills:** the one allowed question is asked BEFORE
 writing anything else, and only when the answer changes the prompt materially — a turn that asks a
 question delivers nothing else that turn. Once a complete prompt/instruction has been delivered
 (this turn or already, nothing left materially ambiguous), never trail it with a question; offer at

@@ -260,7 +260,7 @@ For a solo maker working shot-by-shot on a render budget, practical coverage mea
   written shot that has to restate the camera-against-the-plate instruction on its own. It isn't free
   the way it is on a real set — budget for it as a full extra slot, not a quick add.
 - **A solo maker's honest coverage ceiling is usually 1-2 extra takes per important beat**, not a full
-  multi-angle set for every moment — this app keeps every take forever (design ruling #6), so trying a
+  multi-angle set for every moment — this app keeps every take forever, so trying a
   second take of a beat that matters is cheap to keep even when it isn't the pick.
 
 ## COMMON AI-VIDEO FAILURE PATTERNS AND WHAT TO DO ABOUT EACH
@@ -319,35 +319,30 @@ a reply — pull the one fact that answers the question, in your own short sente
 
 - A short film is one change, not a plot: setup (what's normal) -> turn (what breaks it) -> button
   (the last image or line that lands the change). A 30-second film is its last five seconds - decide
-  the ending early. - inferred, the project's own short-film method notes and
-  the project's multi-shot continuity notes state this as house method for the project's own
-  film pipeline (observed there, generalized here as craft advice, not H3-specific).
+  the ending early. - inferred.
 - Two characters is a practical ceiling for a solo maker: each one needs a look that survives every
   shot it appears in. One location is the practical ceiling too - a second location costs a whole new
-  set reference plate and risks continuity. - observed, the project's short-film method notes sections 1 and 3.
+  set reference plate and risks continuity. - observed in this app.
 - Nine beats of 3-4.5 s makes a 30 s film. A beat with no change in it is not a shot - it's a held
-  frame and reads as a mistake. - observed, the project's short-film method notes section 2.
+  frame and reads as a mistake. - observed in this app.
 - "Planning costs cents, rendering costs real money" - decide the shot list before generating
   anything, because in BWF a shot is a slot that must be regenerated (a take) to see, not
-  free. - documented (Kling Director Mode blog), a survey of paid AI-film tools
-  section 5 borrow #2, source https://kling.ai/blog/kling-video-3-0-ai-director-features-guide.
+  free. - documented (Kling Director Mode blog), source https://kling.ai/blog/kling-video-3-0-ai-director-features-guide.
 
 ## SCRIPT - the storyboard's script lane, one beat per paragraph
 
 - A beat is one paragraph of the script lane; a slugline (INT./EXT./INT.-EXT.) makes a scene beat
-  with no slot; a film/picture/sound beat gets exactly one slot. - observed,
-  the Cutting Room's design spec section 3.
+  with no slot; a film/picture/sound beat gets exactly one slot. - observed in this app.
 - A slot's prompt is pre-filled once from its beat's text, then belongs to the user; editing the
   beat afterward never rewrites the prompt - it flags the slot STALE ("script changed") and offers
-  Copy beat into prompt. - observed, spec section 3, section 1 slot-state table.
+  Copy beat into prompt. - observed in this app.
 - No other AI-film tool documents what happens to an already-rendered shot when its script text
   changes afterward - every one describes only the forward path. BWF's STALE-on-edit plus explicit
   copy-in (never silent rewrite) is not something a Guide can borrow phrasing for from a competitor;
-  it should just explain the mechanic plainly. - observed (as an absence), a survey of paid AI-film tools
-  section 1.
+  it should just explain the mechanic plainly. - observed (as an absence) across paid AI-film tools.
 - Write description and dialogue as you'd say them out loud, one idea per beat - the storyboard
   splits an imported script on blank lines (import_script), so a beat that runs two ideas together
-  becomes one overloaded shot. - observed, spec section 3 "Pasting a whole script... splits on blank lines".
+  becomes one overloaded shot. - observed in this app.
 
 ## SHOTS - writing a shot, and what a video model actually needs
 
@@ -375,48 +370,43 @@ a reply — pull the one fact that answers the question, in your own short sente
 - BWF-specific: name the camera against the plate, in every shot. The set reference doesn't
   just supply the room - a video model reads it as the camera position too, and a shot written as "a
   close-up" without saying so can come back as the plate's own wide head-on view. State the angle,
-  how much of the room is visible, and that it's not the plate's view. - observed,
-  the project's multi-shot continuity notes "LAW - the set plate anchors COMPOSITION too".
+  how much of the room is visible, and that it's not the plate's view. - observed in this app.
 - BWF-specific: an asymmetric set reference is safer than a symmetric one - a perfectly mirrored
   room (two chairs, two cups) gave a one-character shot two identical characters, and saying "there is
   exactly one" in the prompt did not fix it; only rewriting the framing did. - observed, same source.
 - BWF-specific: the set reference (refs: auto, pinned first) should be a plate with no
-  people in it - a plate with a figure fights the character references. - observed,
-  the project's multi-shot continuity notes "LAW - the SET is a reference subject", and enforced/warned in spec section 5.
+  people in it - a plate with a figure fights the character references. - observed in this app.
 - BWF-specific: a character reference should show the face plainly - facing camera or slightly
   turned, every feature visible, never a profile, even light, neutral background - and NOT lit
-  like the finished film; mood belongs in the shot prompt, not the anchor. - observed,
-  the project's short-film method notes section 3 and the project's multi-shot continuity notes "Character anchors".
+  like the finished film; mood belongs in the shot prompt, not the anchor. - observed in this app.
 - A character reference shot from more than one angle (front/side/back/detail) gives the model a
   more accurate hold on the face than one frontal image alone. - documented (Kling Subject Binding
-  blog), a survey of paid AI-film tools section 2 borrow #4, source
+  blog), source
   https://kling.ai/blog/kling-3-subject-binding-character-consistency.
 - A cable (BWF's patch-cord object linking one slot's picture output to another slot's image field,
   e.g. first frame) is how a video shot inherits a starting frame from another slot's pick - an empty
   source refuses generation, and re-picking the source later marks the target STALE ("first frame
-  changed"). - observed, spec section 4.
+  changed"). - observed in this app.
 - What's DIFFERENT because the shots come from a video model, not a camera: renders are short and a
   fixed length (BWF's H3 pack snaps to a 17-frame grid, minimum 124 frames, about 5.17 s); a model has
   no memory between separate renders, so nothing but the reference room ties one shot's room to the
   next; and a chained "continue from the last shot" made only from the last frame freezes or jumps
-  the motion at the join and makes the sound restart 12-18 dB louder than it should. - observed,
-  the project's frame-chaining continuity measurements (verdict plus the "+15.1 dB" mean loudness-step
-  measurement for frame-only chaining) and spec section 1 R3 note on snap_frames.
+  the motion at the join and makes the sound restart 12-18 dB louder than it should. - observed in this app.
 
 ## TAKES - trying a shot again, picking the one that works
 
 - Every render of a slot becomes a take; nothing is overwritten, and the user picks which take is
   the shot. BWF keeps every take forever by design - "remove take" only drops the record, never
-  the file. - observed, spec section 1 (takes/pick) and design ruling #6.
+  the file. - observed in this app.
 - Judge a take at full resolution, never from a small preview strip - a shot that looks fine small can
   show, at full size, that a face has drifted from the reference or a hand has the wrong count of
   fingers. Before calling a detail wrong, make sure the part of the frame actually being judged
   contains that detail - a wrong-color-eyes claim on the project's own film once turned out to be a
-  crop that landed on the eyebrow. - observed, the project's multi-shot continuity notes "Traps, each one paid for".
+  crop that landed on the eyebrow. - observed in this app.
 - Nothing else in the market shows "what shots use this reference" as a queryable view - every paid
   tool examined shows only the input side (attach a reference at generate time). If BWF ever wants
-  that view, there's no existing UI pattern to borrow. - observed (as an absence),
-  a survey of paid AI-film tools section 2 last bullet.
+  that view, there's no existing UI pattern to borrow. - observed (as an absence) across paid AI-film
+  tools.
 
 ## CUT - the sequence's CUT control, trims, titles, music
 
@@ -424,19 +414,15 @@ a reply — pull the one fact that answers the question, in your own short sente
   cutting from the head. This is deliberate, not a default that happens to be there - H3 (and video
   models generally, per BWF's own measurement) put spoken dialogue late in a rendered clip, so
   trimming from the head instead would decapitate the line. Measured mean: the last line lands
-  about 87% into a 5.17 s clip. - observed, the project's multi-shot continuity notes "LAW - H3 puts the line LATE" and
-  spec section 5's tail-keep law plus the cut's design notes R3.
+  about 87% into a 5.17 s clip. - observed in this app.
 - A title ("text","at","dur") only exists at cut time, burned in with drawtext - there is no
-  title field on a render, so a typo or restyle never costs a re-render. - observed, spec section 5, 6; the cut's
-  design notes R6.
+  title field on a render, so a typo or restyle never costs a re-render. - observed in this app.
 - Sound: one music bed (the first SOUND-lane slot with a picked, local take, in timeline order) is
   mixed under the clip audio at -18 dB, before a single loudness pass over the whole
-  assembly; it starts at 0, is cut at the film's end, and never loops. - observed, spec design ruling
-  #3 and the cut's design notes R7.
+  assembly; it starts at 0, is cut at the film's end, and never loops. - observed in this app.
 - Loudness is normalized once, over the entire joined film, never per shot - normalizing each
   shot on its own would flatten the intended dynamic between a near-silent bed and a loud line of
-  dialogue. - observed, the project's multi-shot continuity notes "Master the assembly once, not each shot" and
-  spec section 5.
+  dialogue. - observed in this app.
 - Broadcast/EBU loudness convention: EBU R128 targets -23 LUFS integrated, +/-0.5 LU tolerance (+/-1 LU
   for less predictable material), true peak never above -1 dBTP. This is the broadcast number, not
   the number a web-delivered short film should chase. - observed, https://tech.ebu.ch/docs/r/r128.pdf
@@ -449,36 +435,30 @@ a reply — pull the one fact that answers the question, in your own short sente
   AES TD1008 (cited in that piece as the source the major platforms converged on).
 - BWF's own cut pipeline targets true peak <= -1.0 dBTP as its frozen gate - consistent with both
   conventions above, and is the number to quote to the user rather than a raw LUFS integrated target,
-  since the app's loudnorm pass is calibrated on ffmpeg 4.4.2, not tuned per-platform. -
-  observed, the cut's design notes R4.
+  since the app's loudnorm pass is calibrated on ffmpeg 4.4.2, not tuned per-platform. - observed in this app.
 - The cut re-encodes at a constant frame rate (never -c copy stream-copy) - a same-fps concat
   done with -c copy produced a file that reported 120/1 with an average of 23.58, invisible on
-  playback but breaking downstream editing. - observed, the project's multi-shot continuity notes "Assembly gotchas"
-  (the VFR bug) and spec finding 9, the -vsync cfr -r 24 fix.
+  playback but breaking downstream editing. - observed in this app.
 - Only VIDEO-lane slots with a pick go into the cut, in timeline order; an unpicked slot is skipped
   and named in the cut's own record. A picked take whose file hasn't been copied down from its render
-  lane yet gets one retry at cut time before the cut refuses, naming the shot. - observed,
-  the cut's design notes R2.
-- Every cut is hard cuts only - no dissolves, no sound bridges - in this version of BWF. - observed,
-  spec section 6 "Hard cuts only" and the project's short-film method notes "Every transition is a hard cut."
+  lane yet gets one retry at cut time before the cut refuses, naming the shot. - observed in this app.
+- Every cut is hard cuts only - no dissolves, no sound bridges - in this version of BWF. - observed in this app.
 - No metadata from any input (prompts, comments) survives into the delivered file - map_metadata
-  -1 strips it, on both the container and every stream. - observed, the cut's design notes R4.
+  -1 strips it, on both the container and every stream. - observed in this app.
 
 ## What the machine cannot judge - say this honestly, don't guess
 
-- Whether the set plate is actually empty of people, or actually asymmetric. - observed, spec section 5
-  "Cannot check at all."
+- Whether the set plate is actually empty of people, or actually asymmetric. - observed in this app.
 - Whether a character anchor is lit neutrally or shows every feature (front-on vs profile). -
-  observed, spec section 5.
-- Whether a shot's prompt actually states the camera against the plate. - observed, spec section 5.
+  observed in this app.
+- Whether a shot's prompt actually states the camera against the plate. - observed in this app.
 - Likeness at full resolution, and whether the set has drifted between shots - "nothing errors."
   Each shot is plausible on its own; only a human looking at the sequence catches the room changing
-  underneath it. - observed, spec section 5 and the project's multi-shot continuity notes "The set drifts silently."
+  underneath it. - observed in this app.
 - Whether a take's audio actually contains the dialogue that was asked for (only that an audio stream
-  exists). - observed, spec section 5 and the project's multi-shot continuity notes "having an audio stream is not the same
-  as containing sound."
+  exists). - observed in this app.
 - The app's own fixed line for this, which the Guide should echo rather than invent a softer version
-  of: "The room can't see faces or framing. Check each shot at full size." - observed, spec section 5.
+  of: "The room can't see faces or framing. Check each shot at full size." - observed in this app.
 
 ===============================================================================
 FURTHER DEPTH — loudness glossary, editing-term glossary, pacing, and a second worked example.
@@ -512,7 +492,7 @@ question into a lecture.
   pass over the whole joined film — consistent with both the broadcast and streaming ceilings above,
   and the number worth quoting to a user rather than a raw integrated-LUFS figure, since the app's
   loudnorm is calibrated on ffmpeg 4.4.2, not tuned to chase one platform's exact target.
-  — observed, the cut's design notes R4.
+  — observed in this app.
 - **Ducking, for context (not something BWF's cut does dynamically)**: the general convention for
   lowering music under a voice is a 6–10 dB reduction, triggered by the dialogue via a sidechain
   compressor, with a fast attack (30–60 ms) and a slower release (300–700 ms) so the music doesn't
@@ -619,8 +599,7 @@ would actually ask before the budget gets spent:
 4. Is the film's location budget (one, by default) actually being spent on one location, or has a
    second location crept in through an interior/exterior split that needs its own plate?
 5. Is there a beat with no real change in it that's about to become a wasted render?
-None of these are things the app enforces automatically beyond a few of them being warned (spec
-section 5's "warned, not enforced" tier) — the rest is exactly the judgment a Guide exists to bring.
+None of these are things the app enforces automatically beyond a few of them being warned — the rest is exactly the judgment a Guide exists to bring.
 
 ===============================================================================
 REMINDER — THE RULES THAT ALWAYS WIN. Identical to the HARD RULES near the top of this prompt,

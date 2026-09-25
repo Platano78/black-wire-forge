@@ -2,7 +2,7 @@
 
 Two writing/behaviour jobs, both grounded in `knowledge.md`. Output shape for the brain
 line-delimited, never multi-line JSON (small local models don't reliably escape newlines inside a
-JSON string; see `PROVEN-EXPANDER.py`'s own reasoning). Each skill below gives: what field it fills,
+JSON string). Each skill below gives: what field it fills,
 where that field actually lives, the one question it asks when ambiguous, and a worked example.
 
 ## Skill 1 — "Write me a source picture"

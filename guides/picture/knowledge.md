@@ -9,7 +9,7 @@ render honestly, "Not right? Tell the guide"). Each line ends with **observed** 
 source, or measured directly) or **inferred** (craft generalisation, or a claim about a different
 model, held with reasonable confidence but not pulled from a citable passage today). Terms in
 `code font` are the app's own field/preset ids — the guide must speak in these, not invented names.
-Sourcing order: this app's own code and the maintainer's in-house scout notes first, then the model's own
+Sourcing order: this app's own code first, then the model's own
 card, then general web craft — see "Research log" for what came from where.
 
 ## IDEA — which room, which mode
@@ -123,8 +123,7 @@ card, then general web craft — see "Research log" for what came from where.
   - Both apply cleanly as general Qwen-Image 2.1 craft even though this app's own `prompt_guides`
     (positive-only for `t2i`, plain instruction for `edit`) are shorter — these upstream ideas
     explain *why* those short rules work, without contradicting them.
-- **Vocabulary that transfers from other image models — inferred, cite before using.** The maintainer's
-  NotebookLM research notebook ("AI Artistry: Transforming Photos with Gemini and Meta", 29 sources) is
+- **Vocabulary that transfers from other image models — inferred, cite before using.** A research collection of 29 prompt-craft sources is
   almost entirely about **Nano Banana / Gemini**, a different model family. The craft vocabulary
   below is a reasonable generalisation for a Qwen-Image 2.1 prompt, but the exact prompt *syntax*
   those sources use (JSON-structured prompts, Gemini-specific phrasing) is NOT verified against
@@ -133,8 +132,7 @@ card, then general web craft — see "Research log" for what came from where.
     extreme long shot (a tiny figure in a vast landscape), high angle (looking down, reads
     smaller/vulnerable), bird's-eye view, Dutch angle (tilted, tense), side profile
     (introspective), low angle (reads powerful), over-the-shoulder, off-centre framing, shot from
-    behind, POV. — inferred, https://imaginewithrashid.com/gemini-nano-banana-pro-prompts-for-camera-angles/
-    (via the maintainer's notebook).
+    behind, POV. — inferred, https://imaginewithrashid.com/gemini-nano-banana-pro-prompts-for-camera-angles/.
   - Lens: 35mm (natural/editorial), 50mm (standard), 85mm (portrait compression), 85–100mm
     (telephoto hero shot), wide-angle, macro, anamorphic (cinematic, oval bokeh), fisheye, shallow
     depth of field (creamy bokeh), deep focus. — inferred, same notebook.
@@ -307,17 +305,13 @@ copied into any shipped file — restated and cited.
 - Read directly, first (in-house before web, per the app's own request guard and engine packs):
   `engines/qwen_image.py`, `engines/pixelart.py`, `engines/cleanup.py`, `rooms.json` — this app's
   own repository.
-- Read two in-house scout notes (internal project research, not public) that surfaced the request
-  shapes and failure patterns: one on a Qwen-Image 2.1 user's own workflow (the "describe by
-  appearance, not just name" and "picture 1/picture 2" request shapes) and one on another Qwen-Image
-  2.1 studio's UI (the `@name` → `<imageN>` pattern, confirmed not currently built into BWF).
 - Then the model's own card: Qwen-Image 2.1's Hugging Face page (licence, aspect ratios, resolution
   ceiling) — confirmed the app's own field defaults are inside the model's supported range.
 - Then, restated only (per licence, never copied): the two Qwen-Image 2.1 upstream prompt-rewriter
   system prompts (t2i and edit) published at
   https://github.com/QwenLM/Qwen-Image-2.1/tree/main/prompt_rewrite — Qwen Research License
   Agreement, restated in my own words, cited to that GitHub source.
-- Then general web craft: queried the maintainer's NotebookLM research notebook (29 sources, mostly Nano Banana/Gemini prompt collections)
+- Then general web craft: read a collection of 29 public prompt-craft sources (mostly Nano Banana/Gemini prompt collections)
   for camera-angle, lens and lighting vocabulary that generalises across image models — everything
   pulled from it is labelled inferred, since the source model differs from Qwen-Image 2.1 and none
   of it was trialled against this app's actual renders; and a short web survey of Midjourney's
