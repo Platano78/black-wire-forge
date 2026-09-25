@@ -6011,7 +6011,16 @@ class Handler(BaseHTTPRequestHandler):
             "type": (q.get("type") or ["output"])[0],
         }
         url = lane_url(lane, "/view?" + urllib.parse.urlencode(params))
-        data, ctype = http_get_bytes(url, timeout=120.0)
+        try:
+            data, ctype = http_get_bytes(url, timeout=120.0)
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                return self.send_json({"error": "%s does not have that file any more." % lane["name"]}, 404)
+            return self.send_json({"error": "%s would not hand over that file (it answered %d)."
+                                   % (lane["name"], e.code)}, 502)
+        except OSError:
+            return self.send_json({"error": "%s is not answering, so the file cannot be fetched right now. "
+                                   "Check that ComfyUI is running there." % lane["name"]}, 502)
         download = (q.get("dl") or ["0"])[0] == "1"
         keep = (q.get("keep_recipe") or ["0"])[0] == "1"
         if download and not keep:
