@@ -272,8 +272,9 @@ rule requires the literal substring `trellis` in the path; the upstream file is 
 
 Licence: **GPL-2.0-or-later** — covers the Blender program itself, not the pictures/videos you
 render with it. Not a Hugging Face download: install Blender from
-[blender.org](https://www.blender.org/download/) and have `blender` + `ffmpeg` on `PATH`
-(`command -v blender && command -v ffmpeg`); see AGENTS.md's "Install + start" and the
+[blender.org](https://www.blender.org/download/) and ffmpeg from
+[ffmpeg.org](https://ffmpeg.org/download.html), and have both on `PATH` (check each on its own:
+`command -v blender; command -v ffmpeg`); see AGENTS.md's "Decide the path" and the
 `engines/turntable.py` pack for the `"bins"` it needs.
 
 ## Custom-node packages
