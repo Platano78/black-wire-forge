@@ -64,11 +64,11 @@ Ask, in this order, and stop at the first one that applies:
    curl -s -X POST http://127.0.0.1:3998/api/generate -H 'Content-Type: application/json' \
      -d '{"lane": "cpu", "kind": "3d", "mode": "turntable", "prompt": "", "model": "<the name from step 1>"}'
    #    -> {"ok": true, "job": {"id": "<job-id>", "status": "queued", ...}, ...}
-   # 3. poll until its "status" is "done" (Blender renders on the CPU: minutes); its "outputs" are
-   #    turntable.mp4 and poster.png, both {"subfolder": "<job-id>", "type": "local"}
+   # 3. poll until "status" is "done" (a CPU render: minutes); "outputs": turntable.mp4 and
+   #    poster.png, both {"subfolder": "<job-id>", "type": "local"}
    curl -s "http://127.0.0.1:3998/api/jobs?limit=5"
-   # 4. download the video (a process lane's outputs are type=local, on this machine)
-   curl -s -o turntable.mp4 \
+   # 4. the video is type=local: give the user this link; -o only into a place they named
+   curl -s -o <their path>/turntable.mp4 \
      "http://127.0.0.1:3998/api/view?lane=cpu&filename=turntable.mp4&subfolder=<job-id>&type=local&dl=1"
    ```
 
@@ -181,10 +181,11 @@ a `post`-step pack such as Pixel Art appends a SECOND, `"type": "local"`). On `"
 `"error"` is the already user-facing sentence: show it verbatim.
 
 **3. Get the file** — `GET /api/view` with that entry's `filename`/`subfolder`/`type` and the
-same `lane`:
+same `lane`. **Never save a copy the user did not ask for:** give them the link, and use `-o`
+only for a place they named:
 
 ```
-curl -s -o lighthouse.png \
+curl -s -o <their path>/lighthouse.png \
   "http://127.0.0.1:3998/api/view?lane=local&filename=<filename>&subfolder=<subfolder>&type=output&dl=1"
 ```
 
@@ -198,7 +199,7 @@ curl -s -o lighthouse.png \
 - `type=local` (a `post`-step or process-lane entry) is served from the app's own disk, never
   proxied to a lane; the same `lane`/`dl`/`keep_recipe` query applies.
 
-**Where the file actually lives — answer with BOTH:**
+**Where the file actually lives — tell the user, and answer with BOTH:**
 
 1. **On the lane's own ComfyUI machine**, in its output folder — the render itself, for every
    `"type": "output"` entry on every job. The app never moves it; `/api/view` only proxies a
@@ -210,9 +211,6 @@ curl -s -o lighthouse.png \
    ADDITIONAL `"type": "local"` output beside the lane's render, never replacing it. A plain
    ComfyUI picture (`t2i`, no `post` step) has NO local copy — check `job["outputs"]` for a
    `"type": "local"` entry before claiming one.
-
-**Never save a copy the user did not ask for.** If they named no place, save nothing: give them
-the `/api/view` link and say where the original is.
 
 ## Fixing what's missing
 
