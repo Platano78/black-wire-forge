@@ -2,6 +2,79 @@
 
 All notable changes to Black Wire Forge are recorded here.
 
+## v1.1.0 — 2026-09-25
+
+### Added
+
+- Every room now has a guide you can talk to. The guide page holds a conversation with it
+  through the configured helper, keeps history on the page, and offers a Compact/Verbose
+  toggle. "Help me write this" starts that same conversation with a mode-specific focus,
+  asks what matters for that mode, fills the fields from your answers, and shows a preview
+  before using them.
+- The guide has sourced knowledge for every room group — Sound, Picture, Motion, Object
+  and Film — so its advice is specific to what the room does.
+- The helper can now see what you've already set: its messages carry your current field
+  values so it doesn't repeat itself or guess wrong.
+- Mode writers turn a topic into the right fields for that mode. The first one is Music's
+  song writer — name a voice and it writes lyrics sized to the duration, so a song with
+  words never quietly renders as an instrumental.
+- Sound modes (Background music, Cover, Sound FX, planned song) each write their own
+  fields from a topic. Motion modes (Video, Long take, Talking Head) do the
+  same, and Talking Head now computes the correct clip length from the spoken line
+  instead of trusting the helper to count words.
+- Picture and 3D writers build prompts from subjects, style, setting and action, and 3D
+  "Help me write this" can write a source picture for the Picture room.
+- Pixel Art has its own writer that asks for a sprite (flat colours, thick outline, clear
+  view) — the old advice that produced photoreal close-ups is gone.
+- A finished picture can get a "Not right? Tell the guide" fix. Send the picture, tell
+  the guide what's wrong, and it returns a revised prompt or an edit instruction.
+- In the Cutting Room, "Write this shot" runs that shot's own engine writer so the
+  prompt matches the engine (LTX, H3, etc.). The 3D guide can compare two
+  pictures of an object and say when they don't match.
+- Modes without a dedicated writer get a generic one built from the room guide and the
+  mode's prompt guide, with all values checked against the mode's fields.
+
+### Changed
+
+- The guide panel's "What the brain was asked" disclosure is gone; the preview of the
+  fields stays.
+- The three columns now share width in proportion so the history and the form get real
+  room on wide screens, while small screens keep the sides usable.
+- Pixel Art shows the post-step sprite (scaled with square pixels) as the result; the raw
+  render is one click away as "Before the pixel step".
+- A song with words but no voice now asks before rendering instead of producing a silent
+  instrumental.
+
+### Fixed
+
+- Sending a lane as a list or object now gives a plain error instead of a 500 crash.
+- Pixel Art's palette step works on Pillow older than 9.1.
+- The H3 check no longer flags the vendor's own task-prefix bracket as a problem; other
+  brackets are still caught.
+- A helper that thinks before it answers (a reasoning model) no longer fails every writer
+  with "didn't come back in the expected shape" or leaves an empty guide bubble when it
+  spends its whole budget thinking: the app asks once more with four times the room, then
+  says plainly what to change. The new `helper.max_tokens` config key gives every guide
+  reply at least that many tokens.
+- A process lane's list of what is missing names the programs it needs (Blender, ffmpeg),
+  never GPU model files.
+- Downloading from a lane that is not answering, or that no longer has the file, gives a
+  plain sentence instead of a 500.
+- A request whose Host header carries the wrong port is refused with how to fix it (a proxy
+  must pass the app's own port, or none), not advice to edit `allowed_hosts`, which cannot
+  help.
+- The Object guide no longer says more frames keep a turntable the same length: the video
+  lasts frames ÷ fps.
+- `config.example.json`'s lane is `local` ("This machine"), so the README and AGENTS.md
+  examples run as written. AGENTS.md's no-GPU path now walks a turntable render from upload
+  to download, and no longer tells you to overwrite an existing config.
+- The test suites that need Pillow print a plain SKIP without it instead of crashing, and
+  `scripts/run-tests.sh` uses the repo's `.venv` when there is one.
+- The guides no longer cite internal documents, and several docs were corrected against the
+  code: startup lines, the 503 while a lane's models are still being read, `/api/guide`'s
+  fields, how a sequence take is chosen, where cuts are written, the sample pack in
+  WRITING-A-PACK.md, and the Real-ESRGAN licence source.
+
 ## v1.0.2 — 2026-09-24
 
 ### Fixed
