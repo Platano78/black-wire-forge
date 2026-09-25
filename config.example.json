@@ -6,8 +6,8 @@
 
   "lanes": [
     {
-      "id": "picture-a",
-      "name": "Picture Lane",
+      "id": "local",
+      "name": "This machine",
       "host": "127.0.0.1",
       "port": 8188,
       "caps": ["image"],

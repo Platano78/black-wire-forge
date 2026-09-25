@@ -92,7 +92,8 @@ config, one ComfyUI instance running on the same machine:
 - **allowed_hosts**: extra hostnames the app will answer besides `localhost` and its own
   IP/hostname (see above).
 
-`config.example.json` ships exactly this one-lane localhost example. See "Advanced
+`config.example.json` ships this same `local` lane on localhost (plus a `title`, an empty
+`allowed_hosts` and a `note`). See "Advanced
 configuration" below for multi-lane, multi-GPU, process-lane, status-tile and helper setups.
 
 ## Prerequisites for your first render
