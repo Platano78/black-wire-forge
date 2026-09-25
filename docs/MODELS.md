@@ -209,10 +209,10 @@ Both filenames are byte-identical to a working install's copy — no rename need
 but is not the one verified here.
 
 ⚠ `yue2_audio_encoder` is a SheetSage2 checkpoint, and **SheetSage2 itself
-(`m-a-p/SheetSage2`) carries its own licence: CC BY-NC 4.0** (confirmed on the Hub) — not
-currently named in README's per-engine licence list. It's the same non-commercial family as
-YuE2-3B, so it doesn't change the download decision for cover mode, but it's worth restating:
-cover mode pulls in a second CC BY-NC 4.0 model, not just YuE2-3B.
+(`m-a-p/SheetSage2`) carries its own licence: CC BY-NC 4.0** (confirmed on the Hub), listed
+here beside its download and named among AGENTS.md's non-commercial licences. It's the same
+non-commercial family as YuE2-3B, so it doesn't change the download decision for cover mode,
+but it's worth restating: cover mode pulls in a second CC BY-NC 4.0 model, not just YuE2-3B.
 
 ## BiRefNet (`engines/cleanup.py`, cutout mode; also required by Pixel Art and TRELLIS2) — image (tool)
 
