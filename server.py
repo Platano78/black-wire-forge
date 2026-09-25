@@ -4842,6 +4842,18 @@ def _dispatch_generic(lane, m, able, p, kind, mode):
         # rule 3) -- both already plain English, never Python's own text.
         return {"ok": False, "error": str(e)}, 400
     if lane_kind(lane) == "process":
+        # An upload name that is not in this lane's uploads is refused now,
+        # not as a failed job later (run_process_job() checks again: a file
+        # can still go missing before the job runs).
+        for f in engines.fields(kind, mode) or []:
+            val = args.get(f["id"]) if isinstance(f, dict) else None
+            if f.get("type") not in ("audio", "image", "image_list", "video_list", "model") or not val:
+                continue
+            for name in (val if isinstance(val, list) else [val]):
+                if not os.path.isfile(os.path.join(UPLOADS_DIR, lane["id"], os.path.basename(str(name)))):
+                    return {"ok": False, "error": "There is no uploaded file called %s for %s. Upload it "
+                            "(POST /api/upload) and use the name it answers with."
+                            % (os.path.basename(str(name)), f.get("label") or f["id"])}, 400
         # The run plan is the "prompt": runner.py executes it on this box.
         # File-typed fields carry uploaded filenames; they are staging
         # instructions, kept out of the job record's args on purpose.

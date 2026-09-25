@@ -367,6 +367,14 @@ check("a no-prompt job is titled by its uploaded file's name (prefix stripped)",
 check("the title stays out of the prompt (Use-again must not see it)",
       jt.get("prompt") in (None, ""), repr(jt.get("prompt")))
 
+# 3c. an upload name that does not exist is refused at generate time, not later in the job
+before = set(srv.JOBS)
+code, res = http("/api/generate", {"lane": "proc", "kind": "3d", "mode": "zzstub",
+                                   "src": "c0fb74b6_nosuch.glb", "seed": 7})
+check("a missing upload -> 400 naming the field, before any job exists",
+      code == 400 and res.get("ok") is False and "Input" in (res.get("error") or "")
+      and "upload" in (res.get("error") or "").lower() and set(srv.JOBS) == before, repr((code, res)))
+
 # 4. progress: the PROGRESS i/N lines landed on the job while it ran
 check("progress step/total was updated from the program's output",
       any(t == 3 and s == 3 for s, t in progress_seen), repr(progress_seen))
