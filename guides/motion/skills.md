@@ -86,7 +86,9 @@ unreliably (live trial: a 14-word line came back at 257 frames), so the pack's `
 clip from the written line: **words ÷ 2.2 words/s × 1.15 cushion × 24 fps, rounded UP to the next
 8n+1, never below the 97-frame default** (the one length measured on this hardware). 10 words → 129,
 13 → 169, 14 → 177. One clip holds at most 28 words (361 frames, about 15 s, the field's own UI
-ceiling). A `length` the user states ("a 10 second clip") is kept, not derived.
+ceiling). The brain never writes the length. A length the user states in the request or an answer
+("make it 10 seconds", "97 frames") wins instead, as frames rounded up to 8n+1 (10 s → 241); words
+inside quotes are the line, never a length.
 
 **Rules:** `line` is only the spoken words (no quotes, name or stage directions); the user's exact
 words stay unchanged unless they chose to shorten them, and a shortening is named in NOTE. A topic

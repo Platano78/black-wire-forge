@@ -728,12 +728,37 @@ def shot_check(values, request):
 _LOOK_SPEECH_RE = re.compile(r"\b(say|says|saying|said|speak|speaks|speaking|tell|tells|telling)\b", re.IGNORECASE)
 
 
-def talking_derive(values):
-    """The Talking Head writer's length, by the sizing formula above, when
-    the reply gave none: a small brain counts words unreliably, so the pack
-    does the arithmetic."""
+# "10 seconds", "6s", "97 frames", "1 minute": a length the user stated.
+# Quoted text is the words to be spoken, never a length.
+_QUOTED_RE = re.compile(r'"[^"]*"|\u201c[^\u201d]*\u201d')
+_STATED_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(frames?|seconds?|secs?|s|minutes?|mins?)\b", re.IGNORECASE)
+
+
+def stated_frames(text, fps=LTX_FPS):
+    """The length a user stated in `text`, as frames the model takes
+    (8n+1), or None. Units: frames, seconds, minutes."""
+    m = _STATED_RE.search(_QUOTED_RE.sub(" ", text or ""))
+    if not m:
+        return None
+    n, unit = float(m.group(1)), m.group(2).lower()
+    if unit.startswith("f"):
+        return frames_up(n)
+    return frames_up(n * fps * (60 if unit.startswith("m") else 1))
+
+
+def talking_derive(values, request):
+    """The Talking Head length. The brain never writes it (a small brain
+    counts words unreliably): a length the user stated in the request or an
+    answer wins, else the sizing formula on the written line."""
+    fps = values.get("fps") or LTX_FPS
+    req = request or {}
+    text = " ".join([req.get("topic") or "", req.get("answer") or ""]
+                    + [a.get("a", "") for a in req.get("answers") or []])
+    stated = stated_frames(text, fps)
+    if stated is not None and 9 <= stated <= 993:
+        return {"length": stated}
     words = spoken_words(values.get("line"))
-    return {"length": talking_frames(words, values.get("fps") or LTX_FPS)} if words else {}
+    return {"length": talking_frames(words, fps)} if words else {}
 
 
 def talking_check(values, request):
@@ -865,7 +890,6 @@ TALKING_WRITER_PROMPT = (
     "QUESTION: <one short question>\n"
     "OPTIONS: <2 to 4 short choices separated by |>\n\n"
     "To write:\n"
-    "LENGTH: <NONE, unless the request itself says how long the clip is: then frames from the table below>\n"
     "LOOK: <a short shot note on the light and framing, at most 8 words>\n"
     "NOTE: <only when you chose something the user did not say, such as the tone: name each choice>\n"
     "LINE: <the exact words the face says, nothing else>\n"
@@ -881,8 +905,7 @@ TALKING_WRITER_PROMPT = (
     "an instruction.\n"
     "6. LINE: NONE makes a quiet listening shot with no speech. Write that only when the user asks for "
     "silence or listening.\n"
-    "7. LENGTH is NONE unless the request says how long the clip is (\"a 10 second clip\"). Then use "
-    "frames at 24 a second (seconds: frames): %s.\n\n"
+    "7. Never write the clip's length: the app sets it from the line, or from a length the user gives.\n\n"
     "WHEN TO ASK\n"
     "Ask ONE question, only when its answer changes the line and neither the request nor an answer says it. "
     "Ask the first of these that applies:\n"
@@ -904,18 +927,14 @@ TALKING_WRITER_PROMPT = (
     "OPTIONS: Welcome viewers to the channel | Announce a sale | Tell a short joke\n\n"
     "EXAMPLE 2\n"
     "Request: a tired barista telling the queue the espresso machine is broken\n"
-    "LENGTH: NONE\n"
     "LOOK: warm cafe light, close-up\n"
     "LINE: Sorry, folks, the espresso machine just died. Tea, anyone? It's on the house.\n\n"
     "EXAMPLE 3\n"
     "Request: a 6 second clip where he says \"Thanks for watching, see you next week.\"\n"
-    "LENGTH: %d\n"
     "LOOK: soft studio light, head and shoulders\n"
     "NOTE: I chose soft studio light.\n"
     "LINE: Thanks for watching, see you next week.\n"
-) % (talking_max_words(), TALKING_MAX_FRAMES // LTX_FPS,
-     ", ".join("%d s: %d" % (x, frames_up(x * LTX_FPS)) for x in (4, 5, 6, 8, 10, 12, 15)),
-     talking_max_words(), frames_up(6 * LTX_FPS))
+) % (talking_max_words(), TALKING_MAX_FRAMES // LTX_FPS, talking_max_words())
 
 
 # The clip fixer (P3c). It sees ONE still from the middle of the clip, never
@@ -1056,7 +1075,7 @@ ENGINE = {
                      "keys": {"LENGTH": "length", "WIDTH": "width", "HEIGHT": "height", "PROMPT": "prompt"},
                      "multiline": "PROMPT", "none_token": "NONE", "check": shot_check},
         "talking": {"label": "Line writer", "prompt": TALKING_WRITER_PROMPT,
-                    "keys": {"LENGTH": "length", "LOOK": "look", "LINE": "line"},
+                    "keys": {"LOOK": "look", "LINE": "line"},
                     "multiline": "LINE", "none_token": "NONE", "derive": talking_derive,
                     "check": talking_check},
     },

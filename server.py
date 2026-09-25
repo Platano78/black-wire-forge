@@ -3798,8 +3798,7 @@ def guide_skill(p):
     def draft(parsed):
         fields, problems = _writer_fields(cap, mode, w, parsed["values"])
         if w.get("derive"):
-            for fid, val in w["derive"](_writer_check_values(cap, mode, context, fields)).items():
-                fields.setdefault(fid, val)
+            fields.update(w["derive"](_writer_check_values(cap, mode, context, fields), request))
         return fields, problems + list(w["check"](_writer_check_values(cap, mode, context, fields), request))
 
     try:

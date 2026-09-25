@@ -48,8 +48,8 @@ for mode, label in WRITERS.items():
     check("%s: the multiline key is one of the keys, NONE the empty word" % mode,
           w and w["multiline"] in w["keys"] and w["none_token"] == "NONE")
     check("%s: carries a check" % mode, w and callable(w.get("check")))
-check("talking: LINE is the multiline key and fills the line; LOOK the shot note",
-      engines.writer("video", "talking")["keys"] == {"LENGTH": "length", "LOOK": "look", "LINE": "line"})
+check("talking: LINE is the multiline key and fills the line; LOOK the shot note; the brain never writes the length",
+      engines.writer("video", "talking")["keys"] == {"LOOK": "look", "LINE": "line"})
 check("talking: the pack derives the length", callable(engines.writer("video", "talking").get("derive")))
 check("continue: its writer never fills the previous-shot cable",
       "prev_video" not in engines.writer("video", "continue")["keys"].values())
@@ -92,8 +92,17 @@ else:
 check("one clip (361 frames) holds 28 words, as knowledge.md says", ltx.talking_max_words() == 28)
 check("spoken words: a dash is not a word", ltx.spoken_words("Hey there, welcome back — I saved your spot right here.") == 10)
 check("derive: the length from the line", ltx.talking_derive({"line": "Hey there, welcome back, I saved your spot right here.",
-                                                              "fps": 24}) == {"length": 129})
-check("derive: a listening shot (no line) derives nothing", ltx.talking_derive({"line": "", "fps": 24}) == {})
+                                                              "fps": 24}, DRAFT) == {"length": 129})
+check("derive: a listening shot (no line) derives nothing", ltx.talking_derive({"line": "", "fps": 24}, DRAFT) == {})
+check("stated lengths: seconds, 's', frames, minutes; 'sentences' is not one",
+      [ltx.stated_frames(t) for t in ("make it 10 seconds", "a 6s clip", "97 frames", "1 minute", "2 sentences")]
+      == [241, 145, 97, 1441, None])
+check("stated lengths: words in quotes are the line, not a length",
+      ltx.stated_frames('have him say "5 seconds to midnight, run!"') is None)
+check("derive: a stated length wins over the line",
+      ltx.talking_derive({"line": "Hi.", "fps": 24}, dict(DRAFT, topic="a 10 second clip saying hi")) == {"length": 241})
+check("derive: a length the user answered wins", ltx.talking_derive({"line": "Hi.", "fps": 24}, dict(
+    DRAFT, answers=[{"q": "How long should the clip be?", "a": "8 seconds"}])) == {"length": 193})
 
 print("check: Talking Head")
 LINE10 = "Hey there, welcome back, I saved your spot right here."
@@ -241,10 +250,21 @@ b, code = skill("talking", "talking", "a 10 second clip of her saying hello",
                 ["LENGTH: 241\nLOOK: soft light\nLINE: Hello there."])
 check("a length the user stated is kept, not derived", code == 200 and b["fields"]["length"] == 241, b)
 b, code = skill("talking", "talking", "a 4 second clip where he reads the whole poem",
-                ["LENGTH: 97\nLOOK: soft light\nLINE: " + LINE10, "LENGTH: 129\nLOOK: soft light\nLINE: " + LINE10])
-check("a stated length too short for the line: one retry with the fix sentence, then clean",
-      code == 200 and b["retried"] is True and b["problems"] == [] and b["fields"]["length"] == 129
+                ["LOOK: soft light\nLINE: " + LINE10, "LENGTH: 129\nLOOK: soft light\nLINE: " + LINE10])
+check("a stated length too short for the line stays the user's: one retry, the problem is shown, never overridden",
+      code == 200 and b["retried"] is True and b["fields"]["length"] == 97 and any("129 frames" in x for x in b["problems"])
       and "Set Length to 129 frames" in BRAIN["asked"][1][1]["content"], b)
+b, code = skill("talking", "talking", "a news anchor opening the evening broadcast",
+                ["LENGTH: 257\nLOOK: studio light\nLINE: Good evening, and welcome to the news at nine, here are tonight's top stories."])
+check("the brain's own LENGTH (257, the trial's slip) is ignored: 14 words -> 177", code == 200 and b["fields"]["length"] == 177
+      and b["problems"] == [], b)
+b, code = skill("talking", "talking", "a news anchor opening the evening broadcast, make it 10 seconds",
+                ["LOOK: studio light\nLINE: Good evening, and welcome to the news at nine."])
+check("'make it 10 seconds' -> 241", code == 200 and b["fields"]["length"] == 241, b)
+b, code = skill("talking", "talking", "a news anchor opening the evening broadcast",
+                ["LOOK: studio light\nLINE: Good evening, and welcome to the news at nine."],
+                answers=[{"q": "How long should the clip be?", "a": "8 seconds"}])
+check("a length the user answered is kept: 8 seconds -> 193", code == 200 and b["fields"]["length"] == 193, b)
 b, code = skill("talking", "talking", "say something about Mondays",
                 ["QUESTION: What tone should it have?\nOPTIONS: Excited | Grumpy | Professional"])
 check("a tone question comes back with its options", code == 200 and b.get("question") == "What tone should it have?"

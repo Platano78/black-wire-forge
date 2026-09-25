@@ -86,12 +86,13 @@ falsy — is ignored. The dict has exactly these keys:
                          options     optional {field id: [allowed values]} for
                                      a text field the engine only accepts from
                                      a fixed list (matched without case)
-                         derive      optional callable(values) -> {field id:
-                                     value} for fields the pack computes
-                                     from what was written (e.g. a clip's
-                                     length from its spoken line), filled
-                                     only where the reply left that field
-                                     out. `values` are as check's below.
+                         derive      optional callable(values, request) ->
+                                     {field id: value} for fields the pack
+                                     computes (e.g. a clip's length from its
+                                     spoken line, or from a duration the
+                                     user stated in the request). These
+                                     win over the reply. `values` and
+                                     `request` are as check's below.
                          check       callable(values, request) -> [plain
                                      problem sentences]; [] means fine.
                                      `values` are the mode's coerced field
