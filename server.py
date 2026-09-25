@@ -3019,7 +3019,7 @@ def carry_result(p):
     media = out.get("media") or (mimetypes.guess_type(out.get("filename") or "")[0] or "").split("/")[0]
     if media != "image":
         return {"ok": False, "error": "Only a finished picture can be used as a picture to work from."}, 400
-    lane = LANE_BY_ID.get(p.get("lane"))
+    lane = LANE_BY_ID.get(p.get("lane")) if isinstance(p.get("lane"), str) else None
     if not lane:
         return {"ok": False, "error": "unknown lane"}, 400
     if lane_kind(lane) == "process":
@@ -4198,7 +4198,7 @@ def generate(p):
     api_generate method; every `self.send_json(X[, code])` became
     `return X, code` (code defaulting to 200), and its
     `self._dispatch_generic(...)` became the module-level call below."""
-    lane = LANE_BY_ID.get(p.get("lane"))
+    lane = LANE_BY_ID.get(p.get("lane")) if isinstance(p.get("lane"), str) else None
     if not lane:
         return {"ok": False, "error": "Pick a lane first."}, 400
     with STATE_LOCK:
@@ -6137,7 +6137,7 @@ class Handler(BaseHTTPRequestHandler):
         """Ask a lane to drop its own pending/running item. This is ComfyUI's own
         /interrupt: it cancels a JOB, it does not touch the process."""
         p = self.read_json()
-        lane = LANE_BY_ID.get(p.get("lane"))
+        lane = LANE_BY_ID.get(p.get("lane")) if isinstance(p, dict) and isinstance(p.get("lane"), str) else None
         if not lane:
             return self.send_json({"ok": False, "error": "unknown lane"}, 400)
         if lane_kind(lane) == "process":

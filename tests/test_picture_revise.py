@@ -74,11 +74,16 @@ try:
                              ("an output that is a bool", {"job_id": "picjob1", "output": True, "lane": "t"}, 400),
                              ("a clip, not a picture", {"job_id": "picjob1", "output": 1, "lane": "t"}, 400),
                              ("an unknown lane", {"job_id": "picjob1", "output": 0, "lane": "x"}, 400),
+                             ("a lane that is a list", {"job_id": "picjob1", "output": 0, "lane": ["t"]}, 400),
+                             ("a lane that is an object", {"job_id": "picjob1", "output": 0, "lane": {"id": "t"}}, 400),
                              ("a process lane", {"job_id": "picjob1", "output": 0, "lane": "cpu"}, 400),
                              ("an offline lane", {"job_id": "picjob1", "output": 0, "lane": "off"}, 409),
                              ("not an object", ["picjob1"], 400)):
         b, code = srv.carry_result(req)
         check("refuses %s (%d) with a sentence" % (label, want), code == want and not b["ok"] and b.get("error"), (code, b))
+    for label, bad in (("a list", ["t"]), ("an object", {"id": "t"})):
+        b, code = srv.generate({"lane": bad, "kind": "image", "mode": "t2i", "prompt": "x"})
+        check("generate refuses a lane that is %s (400) with a sentence" % label, code == 400 and not b["ok"] and b.get("error"), (code, b))
 finally:
     LANE.terminate()
 
