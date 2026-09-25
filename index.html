@@ -614,10 +614,20 @@
   #seqMsg.err{color:var(--error)}
   #seqMsg.ok{color:var(--ready)}
   #seqList{display:flex; flex-direction:column; gap:4px; margin-bottom:8px}
-  .seq-row{width:100%; text-align:left; display:flex; flex-direction:column; gap:2px}
+  .seq-row-wrap{display:flex; gap:4px; align-items:stretch}
+  .seq-row{flex:1 1 auto; min-width:0; flex-direction:row; align-items:center; gap:8px}
+  .seq-thumb{flex:none; width:48px; height:27px; background:var(--surface3); overflow:hidden}
+  .seq-thumb img, .seq-thumb video{width:100%; height:100%; object-fit:cover; display:block}
+  .seq-row-text{display:flex; flex-direction:column; gap:2px; min-width:0}
+  .seq-row-title, .seq-row-beat{white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .seq-row-beat{font-size:12px; color:var(--text-mid)}
   .seq-row[aria-pressed="true"]{border-color:var(--accent)}
   #seqNewRow{display:flex; flex-wrap:wrap; gap:6px}
   #seqNewRow input{flex:1 1 100%; min-height:36px; background:var(--surface3); border:1px solid var(--divider);
+  .seq-row-rename, .seq-row-delete{flex:none; font-size:11px}
+  .seq-row-delete.armed{color:var(--error); border-color:var(--error)}
+  .seq-rename-input{min-height:28px; background:var(--surface3); border:1px solid var(--accent); color:var(--text-hi); padding:2px 6px; width:100%}
+  .seq-open-title{background:none; border:0; padding:0; color:var(--text-hi); font-weight:600; cursor:text; text-decoration:underline dotted}
     color:var(--text-hi); padding:6px 8px}
   #seqOpenNote{font-size:12px; color:var(--text-mid); margin-top:8px; display:flex; align-items:center; gap:8px}
   #slotWarnings{font-size:12px}
@@ -1039,6 +1049,8 @@ const STATE = {
   monitorCut: null,    // a cut id the monitor is showing instead of a job (C3.6/F4); cleared by selectSlot()
   newSeqMode: 'sequence',  // C3.5: the New sequence row's mode, kept here because that row is rebuilt whole
   beatDraft: null,     // C3.5: {after: beat index} for the one new-beat card open in the script lane
+  seqRenaming: null,   // {id, where: 'row'|'open'} while a sequence's name is being edited
+  seqDeleteArmed: null // {id, until}: Delete's click-again-to-confirm window
 };
 
 /* ---------------------------------------------------------------------
@@ -3604,25 +3616,78 @@ function renderSeqPickerList(){
     // every op -- for the OPEN sequence, its counts come from STATE.seq
     // instead, which every op/poll already keeps current (review fix,
     // 2026-09-23: "0/4 ready" stuck after every shot was picked).
+function seqWhen(ts){
+  return ts ? new Date(ts * 1000).toLocaleString('en-GB', {weekday:'short', day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit'}) : '';
+}
+
     let slots = s.slots || 0, ready = s.ready || 0;
     if(STATE.seq && STATE.seq.id === s.id){
       slots = (STATE.seq.slots || []).length;
       ready = (STATE.seq.slots || []).filter(x => x.state === 'ready').length;
     }
-    return '<button type="button" class="btn seq-row" data-seq-id="' + esc(s.id) + '"'
-      + (STATE.seq && STATE.seq.id === s.id ? ' aria-pressed="true"' : '') + '>'
-      + '<span>' + esc(s.title || 'Untitled sequence') + '</span>'
-      + '<span class="muted num">' + ready + '/' + slots + ' ready · ' + ago(s.updated || 0) + '</span>'
-      + '</button>';
+    const isOp = STATE.seq && STATE.seq.id === s.id;
+    const title = isOp ? (STATE.seq.title || 'Untitled sequence') : (s.title || 'Untitled sequence');
+    const n = isOp ? (STATE.seq.slots || []).filter(x => x.lane === 'video').length : (s.shots || 0);
+    const when = seqWhen(s.updated || 0);
+    let thumb = '';
+    if(s.thumb && s.thumb.path){
+      const url = '/api/sequence/file?id=' + encodeURIComponent(s.id) + '&path=' + encodeURIComponent(s.thumb.path);
+      thumb = s.thumb.media === 'video'
+        ? '<video src="' + url + '#t=0.1" muted preload="metadata"></video>'
+        : '<img src="' + url + '" alt="">';
+    }
+    let beatLine = '';
+    if(s.first_beat != null){
+      beatLine = '<span class="seq-row-beat">' + esc(s.first_beat) + '</span>';
+    }
+    const meta = n + ' shot' + (n === 1 ? '' : 's') + ' · ' + ready + '/' + slots + ' ready' + (when ? ' · ' + esc(when) : '');
+    const renaming = STATE.seqRenaming;
+    let titleSpan;
+    if(renaming && renaming.id === s.id && renaming.where === 'row'){
+      const val = isOp ? (STATE.seq.title || 'Untitled sequence') : (s.title || 'Untitled sequence');
+      titleSpan = '<input type="text" class="seq-rename-input" data-seq-rename-input="' + esc(s.id) + '"'
+        + ' value="' + esc(val) + '" maxlength="200" aria-label="New name for this sequence">';
+    } else {
+      titleSpan = '<span class="seq-row-title">' + esc(title) + '</span>';
+    }
+    const delArmed = STATE.seqDeleteArmed;
+    const isDelArmed = delArmed && delArmed.id === s.id && Date.now() < delArmed.until;
+    let delBtn;
+    if(isDelArmed){
+      delBtn = '<button type="button" class="btn seq-row-delete armed" data-seq-delete="' + esc(s.id) + '"'
+        + '>Click again to delete</button>';
+    } else {
+      delBtn = '<button type="button" class="btn seq-row-delete" data-seq-delete="' + esc(s.id) + '"'
+        + '>Delete</button>';
+    }
+    const rowTag = (renaming && renaming.id === s.id && renaming.where === 'row') ? 'div' : 'button';
+    return '<div class="seq-row-wrap" data-seq-row="' + esc(s.id) + '">'
+      + '<' + rowTag + ' type="button" class="btn seq-row" data-seq-id="' + esc(s.id) + '"'
+      + (isOp ? ' aria-pressed="true"' : '') + '>'
+      + '<span class="seq-thumb">' + thumb + '</span>'
+      + '<span class="seq-row-text">'
+      + titleSpan + beatLine
+      + '<span class="muted num seq-row-meta">' + meta + '</span>'
+      + '</span>'
+      + '</' + rowTag + '>'
+      + '<button type="button" class="btn seq-row-rename" data-seq-rename="' + esc(s.id) + '"'
+      + ' aria-label="Rename ' + esc(title) + '">Rename</button>'
+      + delBtn
+      + '</div>';
   }).join('');
   body.innerHTML = '<div id="seqList">' + (rows || '<p class="muted">No sequences yet.</p>') + '</div>'
+  if(ae && ae.classList && ae.classList.contains('seq-rename-input')) return;
     + '<div id="seqNewRow"><input type="text" id="seqNewTitle" placeholder="New sequence title">'
     + '<select id="seqNewMode" aria-label="What kind of sequence">'
     + '<option value="sequence"' + (STATE.newSeqMode === 'storyboard' ? '' : ' selected') + '>sequence</option>'
     + '<option value="storyboard"' + (STATE.newSeqMode === 'storyboard' ? ' selected' : '') + '>storyboard</option>'
     + '</select>'
     + '<button type="button" class="btn" id="seqNewBtn">New sequence</button></div>'
-    + (STATE.seq ? '<p id="seqOpenNote">Open: <b>' + esc(STATE.seq.title) + '</b> '
+    + (STATE.seq ? '<p id="seqOpenNote">Open: '
+      + (STATE.seqRenaming && STATE.seqRenaming.id === STATE.seq.id && STATE.seqRenaming.where === 'open'
+        ? '<input type="text" class="seq-rename-input" data-seq-rename-input="' + esc(STATE.seq.id) + '" value="'
+          + esc(STATE.seq.title) + '" maxlength="200" aria-label="New name for this sequence">'
+        : '<button type="button" class="seq-open-title" id="seqOpenTitle" title="Click to rename">' + esc(STATE.seq.title) + '</button>')
       // §2: the two modes are the SAME room, so the mode is a setting on the
       // open sequence rather than a different door -- and the beats survive the
       // trip either way, because set_mode never touches them.
@@ -3631,7 +3696,10 @@ function renderSeqPickerList(){
       + '<option value="storyboard"' + (STATE.seq.mode === 'storyboard' ? ' selected' : '') + '>storyboard</option>'
       + '</select>'
       + '<button type="button" class="btn" id="seqCloseBtn">Close</button></p>' : '');
-  $$('#seqList [data-seq-id]').forEach(b => b.onclick = () => seqOpenById(b.dataset.seqId));
+  $$('#seqList [data-seq-id]').forEach(b => b.onclick = e => {
+    if(e.target.closest('.seq-rename-input')) return;   // typing a new name, not opening it
+    seqOpenById(b.dataset.seqId);
+  });
   if($('#seqNewBtn')) $('#seqNewBtn').onclick = seqCreateNew;
   if($('#seqNewMode')) $('#seqNewMode').onchange = e => { STATE.newSeqMode = e.target.value; };
   if($('#seqModeSelect')) $('#seqModeSelect').onchange = e => seqSetMode(e.target.value);
@@ -3654,6 +3722,34 @@ function seqClose(){
   setSeqHash(null);
   renderSeqPickerList();
   renderTimeline();
+  // Rename buttons
+  $$('.seq-row-rename').forEach(b => b.onclick = () => {
+    STATE.seqRenaming = {id: b.dataset.seqRename, where: 'row'};
+    renderSeqPickerList();
+  });
+  // Delete buttons
+  $$('.seq-row-delete').forEach(b => b.onclick = () => seqDeleteClick(b.dataset.seqDelete));
+  // Rename input events
+  const inp = document.querySelector('.seq-rename-input');
+  if(inp){
+    inp.focus();
+    inp.select();
+    let committed = false;
+    inp.onkeydown = e => {
+      if(e.key === 'Enter') { e.preventDefault(); seqRenameCommit(inp.dataset.seqRenameInput, inp.value); committed = true; }
+      else if(e.key === 'Escape') { committed = true; seqRenameEnd(); }
+    };
+    inp.onblur = () => { if(!committed){ committed = true; if(STATE.seqRenaming && STATE.seqRenaming.id === inp.dataset.seqRenameInput){
+      seqRenameCommit(inp.dataset.seqRenameInput, inp.value);
+    }}};
+  }
+  // Open title button
+  if($('#seqOpenTitle')) $('#seqOpenTitle').onclick = () => {
+    if(STATE.seq){
+      STATE.seqRenaming = {id: STATE.seq.id, where: 'open'};
+      renderSeqPickerList();
+    }
+  };
   renderRefRoom();
   $('#roomForm').hidden = true;
   renderMonitor();
@@ -3661,33 +3757,85 @@ function seqClose(){
 }
 async function seqCreateNew(){
   const input = $('#seqNewTitle');
-  const title = (input && input.value.trim()) || 'Untitled sequence';
+  const title = (input ? input.value.trim() : '');
   const modeSel = $('#seqNewMode');
   const mode = (modeSel && modeSel.value) || STATE.newSeqMode || 'sequence';
   try{
-    const r = await postJSON('/api/sequence', {title: title, mode: mode});
+    r = await postJSON('/api/sequence', {title: title, mode: mode});
     if(!r || !r.id){ msgSeq((r && r.error) || 'Could not start that sequence.', 'err'); return; }
   }catch(e){ msgSeq(String(e.message || e), 'err'); return; }
   await seqLoadList();
-  const r = STATE.seqList.find(s => s.title === title) || null;
-  const newId = (r && r.id) || null;
-  if(newId) await seqOpenById(newId);
-  else renderSeqPickerList();
+  await seqOpenById(r.id);
 }
 async function seqOpenById(id){
   try{
     const d = await getJSON('/api/sequence?id=' + encodeURIComponent(id));
     if(!d || !d.id){ msgSeq('There is no such sequence.', 'err'); return; }
     STATE.seq = d;
+// The rename box keeps focus through the save, and renderSeqPickerList() will not
+// rebuild under a focused box -- so it is let go of first.
+function seqRenameEnd(){
+  STATE.seqRenaming = null;
+  const ae = document.activeElement;
+  if(ae && ae.classList && ae.classList.contains('seq-rename-input')) ae.blur();
+  renderSeqPickerList();
+}
+async function seqRenameCommit(id, text){
+  text = text.trim();
+  if(!text){ seqRenameEnd(); return; }
+  try{
+    if(STATE.seq && STATE.seq.id === id){
+      await seqOp('set_title', {title: text});
+    } else {
+      const d = await getJSON('/api/sequence?id=' + encodeURIComponent(id));
+      const r = await postJSON('/api/sequence/op', {id: id, rev: d.rev, op: 'set_title', title: text});
+      if(!r || typeof r.rev !== 'number') { msgSeq((r && r.error) || 'That name did not save.', 'err'); }
+    }
+    await seqLoadList();
+    seqRenameEnd();
+  }catch(e){ msgSeq(String(e.message || e), 'err'); seqRenameEnd(); }
+}
+function seqDeleteClick(id){
+  const armed = STATE.seqDeleteArmed;
+  if(armed && armed.id === id && Date.now() < armed.until){
+    // second click: confirm delete
+    STATE.seqDeleteArmed = null;
+    const row = document.querySelector('[data-seq-row="' + id + '"] .seq-row-title');
+    const title = row ? row.textContent : id;
+    postJSON('/api/sequence/delete', {id: id}).then(r => {
+      if(r && r.ok){
+        if(STATE.seq && STATE.seq.id === id) seqClose();
+        seqLoadList().then(() => {
+          renderSeqPickerList();
+          msgSeq('Deleted “' + title + '”. Its takes are still in History.', 'ok');
+        });
+      } else {
+        msgSeq((r && r.error) || 'Could not delete that sequence.', 'err');
+      }
+    }).catch(e => msgSeq(String(e.message || e), 'err'));
+  } else {
+    // first click: arm
+    STATE.seqDeleteArmed = {id: id, until: Date.now() + 5000};
+    renderSeqPickerList();
+    setTimeout(() => {
+      if(STATE.seqDeleteArmed && Date.now() >= STATE.seqDeleteArmed.until){
+        STATE.seqDeleteArmed = null;
+        renderSeqPickerList();
+      }
+    }, 5100);
+  }
+}
   }catch(e){ msgSeq(String(e.message || e), 'err'); return; }
   STATE.seqSlotId = null;
   STATE.cutError = null;
   setSeqHash(id);
   renderSeqPickerList();
+  let r;
   renderTimeline();
   renderRefRoom();
   $('#roomForm').hidden = true;
   renderMonitor();
+  if($('#seqNewTitle')) $('#seqNewTitle').value = '';
   renderGuidePanel();   // each sequence has its own conversation
 }
 async function seqEnterRoom(sid){

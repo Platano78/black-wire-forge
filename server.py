@@ -1578,6 +1578,50 @@ def seq_derive(seq):
     return out
 
 
+def _seq_auto_title(seq):
+    """A sequence the app named (title_auto) takes its first beat's opening
+    words, at most 60 characters, whole words only -- until the user names it."""
+    beats = seq.get("beats") or []
+    if not beats:
+        return
+    text = str(beats[0].get("text") or "")
+    line = text.split("\n")[0]
+    words = line.split()
+    if not words:
+        return
+    out = ""
+    for w in words:
+        if out:
+            candidate = out + " " + w
+        else:
+            candidate = w
+        if len(candidate) > 60:
+            if not out:
+                # first word is > 60 chars: use first 60
+                out = line[:60]
+            break
+        out = candidate
+    out = out.rstrip(" ,;:\u2014-")
+    if out:
+        seq["title"] = out
+
+
+def _seq_thumb(seq):
+    """The list row's small picture: the first picked take that has its own
+    local copy, video lane first, then the picture lane. None before that."""
+    for lane, media in (("video", "video"), ("picture", "image")):
+        for slot in seq.get("slots") or []:
+            if slot.get("lane") != lane:
+                continue
+            pick = slot.get("pick")
+            if not pick:
+                continue
+            for t in slot.get("takes") or []:
+                if t.get("job_id") == pick and t.get("file"):
+                    return {"path": t["file"], "media": media}
+    return None
+
+
 # -- validation --------------------------------------------------------------
 
 def _text(val, what, limit=200):
@@ -2191,11 +2235,24 @@ def seq_list():
     for sid, seq in found:
         if seq is None:
             out.append({"id": sid, "title": "(damaged file)", "mode": None, "updated": 0,
-                        "slots": 0, "ready": 0, "damaged": True})
+                        "slots": 0, "ready": 0, "damaged": True,
+                        "created": 0, "first_beat": None, "shots": 0, "thumb": None})
             continue
         d = seq_derive(seq)
+        beats = seq.get("beats") or []
+        first = ""
+        if beats:
+            first = str(beats[0].get("text") or "")
+            first = " ".join(first.split())
+            if len(first) > 120:
+                first = first[:119] + "\u2026"
+        if not beats or not first.strip():
+            first = None
+        shots = sum(1 for s in d["slots"] if s.get("lane") == "video")
+        thumb = _seq_thumb(seq)
         out.append({"id": sid, "title": d.get("title"), "mode": d.get("mode"), "updated": d.get("updated"),
-                    "slots": len(d["slots"]), "ready": sum(1 for s in d["slots"] if s["state"] == "ready")})
+                    "slots": len(d["slots"]), "ready": sum(1 for s in d["slots"] if s["state"] == "ready"),
+                    "created": d.get("created"), "first_beat": first, "shots": shots, "thumb": thumb})
     out.sort(key=lambda s: s["updated"] or 0, reverse=True)
     return out, 200
 
@@ -2215,10 +2272,16 @@ def seq_create(p):
     the `set` ref, by job id only (file: null -- copying it is C3.2's carry())."""
     if not isinstance(p, dict):
         return {"ok": False, "error": "Send a JSON object."}, 400
-    try:
-        title = _text(p.get("title") or "Untitled sequence", "title")
-    except ValueError as e:
-        return {"ok": False, "error": str(e)}, 400
+    raw = p.get("title")
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
+        title = time.strftime("Sequence, %d %b %Y %H:%M")
+        auto = True
+    else:
+        try:
+            title = _text(raw, "title")
+        except ValueError as e:
+            return {"ok": False, "error": str(e)}, 400
+        auto = False
     mode = p.get("mode") or "sequence"
     if mode not in SEQ_MODES:
         return {"ok": False, "error": "A sequence is either a sequence or a storyboard."}, 400
@@ -2242,10 +2305,36 @@ def seq_create(p):
         seq = {"id": sid, "schema": 1, "rev": 1, "title": title, "mode": mode,
                "created": now, "updated": now, "canvas": default_canvas(),
                "refs": refs, "beats": [], "slots": [], "cables": [], "cuts": []}
+        if auto:
+            seq["title_auto"] = True
         _seq_write(seq)
     if refs:
         save_jobs()     # pin the seed in jobs.json now, not on the next unrelated save
     return seq_derive(seq), 200
+
+
+def seq_delete(p):
+    """POST /api/sequence/delete {id}. Moves data/sequences/<id>.json into
+    data/sequences/deleted/ -- never deletes a file (owner ruling 6): the
+    record stays recoverable, and every take, ref and cut under data/seq/<id>/
+    stays where it is."""
+    if not isinstance(p, dict):
+        return {"ok": False, "error": "Send a JSON object."}, 400
+    sid = p.get("id")
+    if not seq_valid_id(sid):
+        return {"ok": False, "error": "That is not a sequence id."}, 400
+    with SEQ_LOCK:
+        path = _seq_path(sid)
+        if not os.path.exists(path):
+            return {"ok": False, "error": "There is no such sequence."}, 404
+        dest_dir = os.path.join(SEQ_DIR, "deleted")
+        os.makedirs(dest_dir, exist_ok=True)
+        dest = os.path.join(dest_dir, sid + ".json")
+        if os.path.exists(dest):
+            dest = os.path.join(dest_dir, "%s.%d.json" % (sid, int(time.time())))
+        os.replace(path, dest)
+    log("Deleted a sequence (its file is kept under sequences/deleted/).")
+    return {"ok": True, "id": sid}, 200
 
 
 def seq_op(p):
@@ -2284,6 +2373,10 @@ def seq_op(p):
                     # move that silently broke a continue link says so) --
                     # every op that returns nothing keeps today's behaviour.
                     extra = SEQ_OPS[op](new, p)
+                    if op == "set_title":
+                        new.pop("title_auto", None)
+                    elif new.get("title_auto"):
+                        _seq_auto_title(new)
                 except ValueError as e:
                     return {"ok": False, "error": str(e)}, 400
                 new["rev"] = seq["rev"] + 1
@@ -6054,6 +6147,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.api_forget()
             if u.path == "/api/sequence":
                 return self.send_json(*seq_create(self.read_json()))
+            if u.path == "/api/sequence/delete":
+                return self.send_json(*seq_delete(self.read_json()))
             if u.path == "/api/sequence/op":
                 return self.send_json(*seq_op(self.read_json()))
             if u.path == "/api/sequence/generate":
