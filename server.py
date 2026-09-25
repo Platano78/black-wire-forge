@@ -1494,23 +1494,40 @@ def _ref_role_warning(ref):
 def slot_warnings(seq, slot):
     """§5 Warned, evaluated per slot for GET /api/sequence. A slot that sees
     the reference room inherits every role-mismatch warning the room itself
-    carries (those are the refs it is about to be handed); a video slot that
-    cannot see the room while the room has a set gets the "invent its own
-    room" sentence; a video slot in a room with no set at all gets a
-    complementary sentence (§5 names this condition but gives no exact
-    wording -- see LOW-CONFIDENCE RULINGS)."""
+    carries (those are the refs it is about to be handed); a video slot gets
+    the set-plate sentence for its own situation -- no set in the room, a
+    recipe that cannot take the room's pictures, or a shot drawing from its
+    words alone -- each naming the fix (add the set plate, or start the
+    shot from a picture)."""
     warnings = []
     refs = seq.get("refs") or []
     has_set = any(r.get("role") == "set" for r in refs)
-    if slot_sees_refs(slot):
+    sees_refs = slot_sees_refs(slot)
+    if sees_refs:
         for ref in refs:
             w = _ref_role_warning(ref)
             if w and w not in warnings:
                 warnings.append(w)
-    elif slot.get("cap") == "video" and has_set:
-        warnings.append("this shot will invent its own room")
-    if slot.get("cap") == "video" and not has_set:
-        warnings.append("the room has no set plate yet")
+    if slot.get("cap") == "video":
+        image_jacks = [j for j in slot_jacks(slot) if j.get("type") == "image"]
+        cables = seq.get("cables") or []
+        starts_from_picture = any((slot.get("values") or {}).get(j["field"]) for j in image_jacks) or any(
+            c.get("to") == slot.get("id") and c.get("field") in {j["field"] for j in image_jacks} for c in cables)
+        if sees_refs and not has_set:
+            warnings.append(
+                "There is no set plate in the REF ROOM yet, so each shot will draw its own version of "
+                "the place. Add a picture of the empty location as the set plate to keep it the same "
+                "from shot to shot.")
+        elif not sees_refs and has_set and not starts_from_picture:
+            w = ("This shot's recipe can't take the REF ROOM's pictures, so the set plate won't reach "
+                 "it and it will draw the place its own way.")
+            if image_jacks:
+                w += " To carry the place over, start it from the set plate."
+            warnings.append(w)
+        elif not sees_refs and not has_set and image_jacks and not starts_from_picture:
+            warnings.append(
+                "This shot draws its place from its words alone. To keep the place the same from shot "
+                "to shot, start each shot from the same picture.")
     return warnings
 
 

@@ -4219,10 +4219,54 @@ function renderSlotMeta(slot){
   }
   if(slot.warnings && slot.warnings.length)
     bits.push('<ul class="slot-warn-list">' + slot.warnings.map(w => '<li>' + esc(w) + '</li>').join('') + '</ul>');
+  // The way out of the set-plate notes sits next to them: use a finished
+  // picture shot as the set plate, or carry one into this shot's picture jack.
+  let warnSet = null, warnJack = null, warnPicked = null;
+  if(slot.cap === 'video' && STATE.seq){
+    const set = (STATE.seq.refs || []).find(r => r.role === 'set');
+    const pics = (STATE.seq.slots || []).filter(s => s.lane === 'picture');
+    const picked = pics.map((s, i) => ({s, n: i + 1, job: findJob(s.pick)}))
+      .find(x => x.s.pick && x.job && x.job.status === 'done' && resultPictureIndex(x.job) >= 0);
+    const jack = (slot.jacks || []).find(j => j.type === 'image');
+    const warns = (slot.warnings || []).join(' ');
+    warnSet = set; warnJack = jack; warnPicked = picked;
+    if(!set && slot.sees_refs && picked && warns.indexOf('no set plate') >= 0)
+      bits.push('<p><button type="button" class="btn" data-warn-action="set-plate">Use picture shot ' + picked.n + ' as the set plate</button></p>');
+    if(set && !slot.sees_refs && jack && warns.indexOf('start it from the set plate') >= 0)
+      bits.push('<p><button type="button" class="btn" data-warn-action="start-from-set">Start it from the set plate</button></p>');
+    if(!set && !slot.sees_refs && jack && picked && warns.indexOf('words alone') >= 0)
+      bits.push('<p><button type="button" class="btn" data-warn-action="start-from-picture">Start it from picture shot ' + picked.n + '</button></p>');
+  }
   el.innerHTML = bits.join('');
   el.hidden = bits.length === 0;
   el.querySelectorAll('[data-copy-beat]').forEach(b => {
     b.onclick = () => copyBeatToPrompt(b.dataset.copyBeat);
+  });
+  el.querySelectorAll('[data-warn-action]').forEach(b => {
+    b.onclick = async () => {
+      const act = b.dataset.warnAction;
+      if(act === 'set-plate' && warnPicked){
+        const r = await seqOp('add_ref', {job_id: warnPicked.job.id, output: resultPictureIndex(warnPicked.job), role: 'set', label: 'Set plate'});
+        if(r){
+          renderRefRoom(); renderTimeline(); renderSlotMeta(currentSlot());
+          msgSeq('Picture shot ' + warnPicked.n + ' is now the set plate.', 'ok');
+        }
+      } else if(act === 'start-from-set' && warnSet && warnJack){
+        await carryPictureInto(warnJack.field, warnSet.job_id, warnSet.output || 0,
+          warnSet.file
+            ? '/api/sequence/file?id=' + encodeURIComponent(STATE.seq.id) + '&path=' + encodeURIComponent(warnSet.file)
+            : null, 'The set plate');
+        renderSlotMeta(currentSlot());
+      } else if(act === 'start-from-picture' && warnPicked && warnJack){
+        const idx = resultPictureIndex(warnPicked.job);
+        const take = (warnPicked.s.takes || []).find(t => t.job_id === warnPicked.s.pick);
+        const thumb = take && take.file
+          ? '/api/sequence/file?id=' + encodeURIComponent(STATE.seq.id) + '&path=' + encodeURIComponent(take.file)
+          : viewURL(warnPicked.job.lane, warnPicked.job.outputs[idx], false);
+        await carryPictureInto(warnJack.field, warnPicked.job.id, idx, thumb, 'Picture shot ' + warnPicked.n);
+        renderSlotMeta(currentSlot());
+      }
+    };
   });
 }
 
