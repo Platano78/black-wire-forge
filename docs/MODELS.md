@@ -244,11 +244,9 @@ Attribution: Real-ESRGAN by Xintao Wang et al.
 |---|---|---|---|---|---|---|
 | `upscale_model` | Official page: [github.com/xinntao/Real-ESRGAN releases](https://github.com/xinntao/Real-ESRGAN/releases) (`RealESRGAN_x4plus.pth`); mirrored on the Hub at `schwgHao/RealESRGAN_x4plus` · `RealESRGAN_x4plus.pth` | 67,040,989 | 67,040,989 | yes | `models/upscale_models` (`UpscaleModelLoader`) | PASS — role rule has no filename requirement |
 
-The Hub mirror's size now matches a working install's actual file exactly, which is real
-evidence it's the right file even though the GitHub Releases page itself was not fetched live
-in this pass (no browser/curl to GitHub Releases was run) — treat the GitHub URL above as
-unverified, not independently confirmed on 2026-09-24, but the Hub mirror is now proven against
-a real working copy.
+The Hub mirror's size matches a working install's actual file exactly, so the mirror is
+proven against a real copy. The GitHub Releases page was not fetched, so its URL above is
+unverified.
 
 ## TRELLIS2 (`engines/mesh3d.py`; also requires BiRefNet — see its section above) — 3d
 
