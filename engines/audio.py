@@ -12,6 +12,7 @@ lane's discovered files), and the SaveAudioAdvanced ``filename_prefix``
 changes from ``owui/...`` to ``blackwire/...`` (R7 -- the only deliberate
 byte difference, matching the other packs' convention).
 """
+import os
 import random
 import re
 
@@ -959,6 +960,193 @@ SONG_WRITER_PROMPT = (
 )
 
 
+def _writer_prompt(name):
+    """One of this pack's writer prompts, engines/audio_writers/<name>.txt."""
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "audio_writers", name + ".txt"),
+              encoding="utf-8") as f:
+        return f.read()
+
+
+def _lyrics_size_problem(lyrics, seconds, what="seconds"):
+    """The song table's sizing rule (SONG_SECTIONS_FOR) for any mode with
+    lyrics and a length -> one problem sentence, or None."""
+    try:
+        seconds = float(seconds)
+    except (TypeError, ValueError):
+        return None
+    need, words = song_sections_needed(seconds)
+    have = song_sections_with_words(lyrics)
+    if have >= need:
+        return None
+    return ("%g %s needs lyrics for at least %d sections (%s); these have %d. Too few words for the "
+            "length plays as a long instrumental stretch." % (seconds, what, need, words, have))
+
+
+# ── music writer (the Music room guide's skill for MiniMax-Music3) ──
+# Owner case 2026-09-24, jobs c05bad44bbfb / eb7682dcebf4 ("the music was hot
+# garbage", 12 and 21 minutes of render): the old helper wrote the caption as
+# Markdown ("**Genre:** ...") padded with things nobody can hear ("a cramped
+# New York City apartment ... smelling of dust and electronics") and left the
+# lyrics EMPTY for a rap. The vendor's caption contract (music_graph's
+# docstring) is three sections, Global Metadata / Vocal Details / Arrangement,
+# about 250-450 words; its example template writes each label on a line of
+# its own with plain sentences under it. Its "Application Scenarios &
+# Imagery" line is left out: it describes scenes, not sound. The words to
+# perform go in `lyrics`, sized to `seconds` like the song writer's.
+
+MUSIC_SECTIONS = ("Global Metadata", "Vocal Details", "Arrangement")
+_MUSIC_LABELS = "global metadata|vocal details|arrangement"
+# A label is a line of its own (Markdown marks around it allowed, so a
+# Markdown caption is still read), or a label and a colon anywhere.
+_MUSIC_LABEL_RE = re.compile(r"(?im)^[\s#*_>-]*(%s)[\s*_]*(?::|$)|\b(%s)\s*:" % (_MUSIC_LABELS, _MUSIC_LABELS))
+_MARKDOWN_RE = re.compile(r"(?m)\*|__|`|^\s{0,3}#{1,6}\s|^\s*[-+•]\s+\S")
+# Vocal Details whose first sentence says one of these are an instrumental.
+_NO_VOCALS_RE = re.compile(r"(?i)\binstrumental\b|\bno (?:lead )?(?:vocals?|voices?|singing|singers?)\b"
+                           r"|\bwithout (?:any )?(?:vocals?|voices?|singing)\b")
+# Words for things that make no sound: the smell in the owner's case, and the
+# vendor template's imagery line. A plain list, not a classifier.
+MUSIC_UNHEARD_WORDS = ("smell", "smells", "smelling", "scent", "scents", "aroma", "odor", "odour", "imagery")
+_UNHEARD_RE = re.compile(r"\b(" + "|".join(MUSIC_UNHEARD_WORDS) + r")\b", re.IGNORECASE)
+# Under the vendor's 250-450, with room: the live trial's first captions ran
+# 156-223 words, so below 200 is sent back once to be written out fully.
+MUSIC_CAPTION_MIN_WORDS = 200
+
+
+def music_caption_sections(caption):
+    """-> {lowercase label: its text} for each of MUSIC_SECTIONS the caption
+    holds (the first of each), its text running to the next label."""
+    caption = caption or ""
+    found = [(m.start(), m.end(), (m.group(1) or m.group(2)).lower()) for m in _MUSIC_LABEL_RE.finditer(caption)]
+    out = {}
+    for i, (_, end, label) in enumerate(found):
+        stop = found[i + 1][0] if i + 1 < len(found) else len(caption)
+        out.setdefault(label, caption[end:stop].strip())
+    return out
+
+
+def music_vocals(caption):
+    """True when the caption describes a voice. Vocal Details decide: a
+    non-empty section describes one unless its first sentence says
+    instrumental / no vocals. Without the section, voice words decide."""
+    vocal = music_caption_sections(caption).get("vocal details")
+    if vocal is None:
+        return song_voice_named(caption) and not _NO_VOCALS_RE.search(caption or "")
+    vocal = vocal.strip(" *_:-\n")
+    return bool(vocal) and not _NO_VOCALS_RE.search(re.split(r"[.!?\n]", vocal, maxsplit=1)[0])
+
+
+def music_check(values, request):
+    """The music writer's check, also run as the Make-time guard for this
+    mode. `request` is unused. -> plain problem sentences, [] when fine."""
+    caption = values.get("caption") or ""
+    lyrics = (values.get("lyrics") or "").strip()
+    problems = []
+    if _MARKDOWN_RE.search(caption):
+        problems.append("The description is written in Markdown (asterisks, # headings or bullets). This model "
+                        "reads every character as description: write plain sentences under the three plain "
+                        "section labels.")
+    missing = [s for s in MUSIC_SECTIONS if s.lower() not in music_caption_sections(caption)]
+    if missing:
+        problems.append("The description has no %s section. This model wants all three, Global Metadata, Vocal "
+                        "Details and Arrangement: a bare description has cut off mid-phrase." % " or ".join(missing))
+    elif len(caption.split()) < MUSIC_CAPTION_MIN_WORDS:
+        problems.append("The description is %d words; this model wants about 250-450, and a bare description has "
+                        "cut off mid-phrase." % len(caption.split()))
+    unheard = []
+    for m in _UNHEARD_RE.finditer(caption):
+        if m.group(1).lower() not in unheard:
+            unheard.append(m.group(1).lower())
+    if unheard:
+        problems.append("The description names %s, which cannot be heard. Keep it to sound: genre, tempo, "
+                        "instruments, the voice and the arrangement; the subject belongs in the lyrics."
+                        % ", ".join(unheard))
+    vocals = music_vocals(caption)
+    if vocals and not lyrics:
+        problems.append("The Vocal Details describe a singer or rapper, but there are no lyrics, so this will "
+                        "likely come out with no real words. Add the lyrics, or make it instrumental.")
+    if lyrics and not vocals:
+        problems.append("There are lyrics, but the Vocal Details describe no voice, so the words will likely be "
+                        "lost. Describe the voice that performs them.")
+    size = _lyrics_size_problem(lyrics, values.get("seconds")) if lyrics else None
+    if size:
+        problems.append(size)
+    return problems
+
+
+# ── planned song writer (YuE2) ──
+# yue2_graph's docstring: `style` is ONE field (the vendor's own example
+# carries language, genre, voice, instruments and tempo together), and
+# `max_duration` is a ceiling, not the rendered length. The voice and sizing
+# rules are the song writer's, sized against that ceiling.
+
+def yue2_check(values, request):
+    """The yue2 writer's check, also the Make-time guard: the song check's
+    voice and sections rules, against max_duration. Empty lyrics are an
+    instrumental. `request` is unused."""
+    lyrics = values.get("lyrics") or ""
+    if not lyrics.strip():
+        return []
+    problems = []
+    if not song_voice_named(values.get("style")):
+        problems.append("There are lyrics, but the style names no voice, so the words will likely be lost. Add a "
+                        "voice to the style, for example \"warm female voice\".")
+    size = _lyrics_size_problem(lyrics, values.get("max_duration"), "seconds of room")
+    if size:
+        problems.append(size)
+    return problems
+
+
+# ── cover arranger (YuE2 cover) ──
+# cover_graph: the TUNE comes from the uploaded track (SheetSage2AudioToABC
+# reads its melody, and its harmony in "full" mode, into ABC notation); the
+# words sung are only the `lyrics` text YuE2GenerateMusic is given. So the
+# track's own words never carry over by themselves: keeping them means
+# putting them in Lyrics.
+
+COVER_NEEDS_TRACK = "Add the song you want covered first: upload it under Source track, then ask me again."
+
+
+def cover_check(values, request):
+    """The cover writer's check, also the Make-time guard: words and a voice
+    go together. `request` is unused."""
+    lyrics = (values.get("lyrics") or "").strip()
+    voiced = song_voice_named(values.get("style"))
+    if lyrics and not voiced:
+        return ["There are lyrics, but the style names no voice, so the words will likely be lost. Add a voice "
+                "to the style, for example \"warm male vocals\"."]
+    if voiced and not lyrics:
+        return ["The style names a voice, but there are no lyrics. The track gives the tune, not its words, so "
+                "this will likely come out with no real words. Put the words in Lyrics, or take the voice out "
+                "of the style for an instrumental."]
+    return []
+
+
+# ── sound effect describer (Stable Audio Open) ──
+# sfx_graph: one prompt, one short clip (the presets measured 2 s and 3 s).
+# Its model card: sound effects and field recordings, "not able to generate
+# realistic vocals". Words asked to be spoken or sung belong in another room.
+
+SFX_WORD_SOUNDS = (
+    "speech", "speaking", "speaks", "spoken", "talking", "talks", "dialogue", "dialog", "narration",
+    "narrator", "narrating", "saying", "says", "voiceover", "voice-over", "announcer", "singing",
+    "sings", "sung", "song", "lyrics",
+)
+_SFX_WORDS_RE = re.compile(r"\b(" + "|".join(re.escape(w) for w in SFX_WORD_SOUNDS) + r")\b", re.IGNORECASE)
+
+
+def sfx_check(values, request):
+    """The sfx writer's check, also the Make-time guard: words asking for
+    speech or singing. `request` is unused."""
+    found = []
+    for m in _SFX_WORDS_RE.finditer(values.get("prompt") or ""):
+        if m.group(1).lower() not in found:
+            found.append(m.group(1).lower())
+    if not found:
+        return []
+    return ["The sound names %s: this model makes sound effects and cannot make words spoken or sung. For a "
+            "voice saying something, use the Talking Head room; for a song, the Music room." % ", ".join(found)]
+
+
 ENGINE = {
     "id": "audio",
     "cap": "audio",
@@ -1046,7 +1234,9 @@ ENGINE = {
                 "Lyrics go in their own field with [Section] tags; leave lyrics empty for an instrumental. "  # source: engines/audio.py:878-881 (field hints)
                 "Return only the comma-separated style/genre tags. Do not write lyrics.",
         "music": "This model needs a three-section Structured Caption (Global "  # source: engines/audio.py:150-156 (music_graph docstring)
-                 "Metadata / Vocal Details / Arrangement), about 250-450 words -- a bare caption truncates mid-phrase.",
+                 "Metadata / Vocal Details / Arrangement), about 250-450 words -- a bare caption truncates mid-phrase. "
+                 "Plain sentences, no Markdown, and only what can be heard; "  # source: engines/audio.py music writer comment (owner case 2026-09-24)
+                 "sung or rapped words go in the lyrics field.",
         "sfx": "A short, one-shot sound description; this mode is tuned for 2-3 second effects.",  # source: engines/audio.py:990,993 (sfx preset notes)
         "yue2": "Style/genre prompt (YuE2's equivalent of ACE-Step's tags). "  # source: engines/audio.py:516-517 (yue2_graph docstring)
                 "Lyrics go in their own field with [Section] tags. "
@@ -1067,6 +1257,43 @@ ENGINE = {
             "none_token": "NONE",
             "options": {"keyscale": SONG_KEYS, "language": SONG_LANGUAGES},
             "check": song_check,
+        },
+        # P3b: the other Sound modes. Each prompt is engines/audio_writers/<mode>.txt.
+        "music": {
+            "label": "Background music writer",
+            "prompt": _writer_prompt("music"),
+            "keys": {"SECONDS": "seconds", "CAPTION": "caption", "LYRICS": "lyrics"},
+            "multiline": ["CAPTION", "LYRICS"],
+            "none_token": "NONE",
+            # a ~350-word caption plus lyrics for 150 s runs past 1024 tokens
+            "max_tokens": 2048,
+            "check": music_check,
+        },
+        "yue2": {
+            "label": "Planned song writer",
+            "prompt": _writer_prompt("yue2"),
+            "keys": {"STYLE": "style", "MAX_DURATION": "max_duration", "MODE": "mode", "LYRICS": "lyrics"},
+            "multiline": "LYRICS",
+            "none_token": "NONE",
+            "check": yue2_check,
+        },
+        "cover": {
+            "label": "Cover arranger",
+            "prompt": _writer_prompt("cover"),
+            "keys": {"STYLE": "style", "MODE": "mode", "LYRICS": "lyrics"},
+            "multiline": "LYRICS",
+            "none_token": "NONE",
+            "keep_token": "KEEP",
+            "needs": {"source_audio_name": COVER_NEEDS_TRACK},
+            "check": cover_check,
+        },
+        "sfx": {
+            "label": "Sound effect writer",
+            "prompt": _writer_prompt("sfx"),
+            "keys": {"SECONDS": "seconds", "NEGATIVE": "negative", "PROMPT": "prompt"},
+            "multiline": "PROMPT",
+            "none_token": "NONE",
+            "check": sfx_check,
         },
     },
     # R1: field descriptors carry curation now (tier/group/order/units/range/
@@ -1299,9 +1526,39 @@ ENGINE = {
         "music": [
             {"id": "music-try", "label": "Background music with vocals", "recipe": "structured-caption-full",
              "quality": "standard",
-             "values": {"caption": "Global Metadata: warm ambient pop. Vocal Details: soft, "
-                                    "breathy female vocals. Arrangement: gentle piano intro "
-                                    "building to a full band chorus."},
+             # The music writer's shape (music_check): a plain three-section caption
+             # of about 250-450 words, and lyrics sized for 150 s because it is sung.
+             # As first shipped (one line per section, no lyrics) it failed that check.
+             "values": {"caption": "Global Metadata\n"
+                                   "Warm ambient pop with a dreamy, unhurried feel at a slow, steady tempo of "
+                                   "around 80 BPM. The mood begins hushed and reflective, grows warmer and more "
+                                   "hopeful as the band fills in, and settles back into a gentle calm at the end. "
+                                   "The mix is soft and spacious, with a round low end, airy highs, a light room "
+                                   "reverb and no harsh edges, so it sits comfortably under other sound.\n"
+                                   "Vocal Details\n"
+                                   "A soft, breathy female lead in a mid register, close to the microphone and "
+                                   "intimate. She sings the verses almost at a whisper with long, relaxed "
+                                   "phrases, then opens up into a fuller, sustained tone on the chorus without "
+                                   "ever pushing. Light layered harmonies join her on the chorus lines, and a "
+                                   "gentle plate reverb keeps the voice floating over the band.\n"
+                                   "Arrangement\n"
+                                   "Intro: a solo felt piano plays slow, open chords with a soft pad humming "
+                                   "underneath. First verse: the voice enters over the piano alone, and a warm "
+                                   "electric bass joins halfway through. First chorus: brushed drums come in "
+                                   "with a soft kick and snare, a clean electric guitar adds shimmering arpeggios, "
+                                   "and the harmonies thicken the hook. Second verse: the drums drop to a quiet "
+                                   "rim click while the piano and bass carry the groove. Second chorus: the full "
+                                   "band returns with a slow string pad swelling beneath it, the fullest point of "
+                                   "the piece. Outro: the band falls away one instrument at a time until only the "
+                                   "piano and a last held vocal note remain, fading out cleanly.",
+                        "lyrics": "[Intro]\nMm, stay a while\n\n"
+                                  "[Verse]\nMorning light across the floor\nQuiet as a closing door\n"
+                                  "Coffee cooling in my hand\nNothing here I need to plan\n\n"
+                                  "[Chorus]\nSlow down, let the day come in\nSoft and golden on my skin\n\n"
+                                  "[Verse]\nWindows open, curtains drift\nEvery minute feels a gift\n"
+                                  "Pages turning, time runs long\nHumming half a summer song\n\n"
+                                  "[Chorus]\nSlow down, let the day come in\nSoft and golden on my skin\n\n"
+                                  "[Outro]\nSoft and golden, stay a while"},
              "why": "background music with clear vocals", "needs": None},
         ],
         "sfx": [
@@ -1311,8 +1568,18 @@ ENGINE = {
         ],
         "yue2": [
             {"id": "yue2-try", "label": "A planned song", "recipe": "planned-full", "quality": "standard",
-             "values": {"style": "uplifting orchestral folk",
-                        "lyrics": "[Verse]\nWe walked along the shoreline,\nchasing the fading light."},
+             # A voice in the style and lyrics sized for the 300 s ceiling (yue2_check):
+             # as first shipped, no voice and one section.
+             "values": {"style": "English, uplifting orchestral folk, acoustic guitar, strings, warm female voice",
+                        "lyrics": "[Verse]\nWe walked along the shoreline,\nchasing the fading light.\n"
+                                  "Our footprints filled with water,\nthe gulls went out of sight.\n\n"
+                                  "[Chorus]\nHold on to the evening,\nthe tide will bring us home.\n\n"
+                                  "[Verse]\nThe lanterns on the harbour\nwere shining one by one.\n"
+                                  "We sang the old songs softly\nuntil the day was done.\n\n"
+                                  "[Chorus]\nHold on to the evening,\nthe tide will bring us home.\n\n"
+                                  "[Bridge]\nAnd if the years should scatter us\nlike sand along the bay,\n"
+                                  "I'll know this shore, I'll know this song,\nI'll find my way.\n\n"
+                                  "[Chorus]\nHold on to the evening,\nthe tide will bring us home."},
              "why": "a song planned from its melody first", "needs": None},
         ],
         "cover": [

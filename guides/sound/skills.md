@@ -79,136 +79,136 @@ When sung or instrumental is unclear, the whole reply is one line: `QUESTION: Su
 
 ## 2. Background music writer — `music` mode (MiniMax-Music3), Music room
 
-**Fields filled:** `caption`, `lyrics`, `seconds`.
+**Fields filled:** `caption`, `lyrics`, `seconds`. (The app's own writer for this mode is
+`engines/audio_writers/music.txt`; its check is `music_check` in `engines/audio.py`.)
 
 **Rules:**
-- `caption` is ALWAYS the three-section Structured Caption (Global Metadata / Vocal Details /
-  Arrangement, ~250-450 words), never a bare description. Vocal Details always states plainly sung
-  vs instrumental. Never quote the user's own lyric lines back into the caption's prose.
-- Default `seconds`: 150 (the only length measured to end cleanly).
-- `lyrics` (separate field, [Section]-tagged) carries the actual words when sung; leave it empty
-  for instrumental.
+- `caption` is ALWAYS the three-section Structured Caption, written as **plain text**: the labels
+  Global Metadata, Vocal Details and Arrangement each on a line of their own, full sentences under
+  each, about 250-450 words. No Markdown: no asterisks, no `#` headings, no bullets. The model reads
+  every character as description.
+- **Only what can be heard**: genre, era, tempo feel, drums, bass, instruments, the voice, the mix,
+  the arrangement. Never places, rooms, smells, weather, objects or the story: the subject goes in
+  the lyrics. (The vendor's own template has an "Application Scenarios & Imagery" line; it is left
+  out for that reason.)
+- Vocal Details names the voice that performs the words (sung or rapped); an instrumental opens
+  Vocal Details with "Instrumental, no vocals." and names the lead instrument.
+- `lyrics` is **required** when it is sung or rapped: real words under every `[Section]` tag, sized
+  to `seconds` with the song writer's table. With no lyrics this model makes no real words. Only
+  words to be performed: no stage directions in brackets or parentheses.
+- `seconds`: 150 unless the user gives a length (the only length measured to end cleanly).
 
-**The one question:** "sung, or instrumental?" when not stated.
+**Questions, one per turn, only when still open:** sung, rapped or instrumental? (OPTIONS: Sung |
+Rapped | Instrumental); who performs it (A male voice | A female voice | A duet); how long (2.5 / 3.5
+/ 5 minutes). In the live trial the brain asked the first when it was genuinely open and the second
+sometimes; it never asked the length and chose 150, naming its choices in NOTE.
 
 **Output shape:**
 ```
-CAPTION_METADATA: <genre, tempo, emotional arc, sonic/production profile>
-CAPTION_VOCAL: <sung: voice config/timbre/register/delivery -- or -- instrumental: what carries the lead melody>
-CAPTION_ARRANGEMENT: <section-by-section timeline of what enters/exits/changes>
-SECONDS: <5-300, default 150>
+SECONDS: <5-300, 150 unless given>
+NOTE: <the choices it made itself>
+CAPTION:
+Global Metadata
+<plain sentences>
+Vocal Details
+<plain sentences>
+Arrangement
+<plain sentences, section by section>
 LYRICS:
-<[Section]-tagged lyric text, or exactly NONE for instrumental>
+<[Section]-tagged words, or exactly NONE for an instrumental>
 ```
-(The app assembles `CAPTION_METADATA`/`CAPTION_VOCAL`/`CAPTION_ARRANGEMENT` into the `caption`
-field's three headings in order.)
+CAPTION and LYRICS both run over several lines; each ends at the next key line.
 
-**Worked example** — topic: "background music for a cozy reading scene, no words":
-```
-CAPTION_METADATA: Warm ambient acoustic pop, gentle and unhurried, 70-80 BPM feel, soft production with light room tone, 150 seconds.
-CAPTION_VOCAL: Instrumental -- no vocals. The lead melodic role is carried by a fingerpicked acoustic guitar, doubled softly by a warm upright piano.
-CAPTION_ARRANGEMENT: Opens with solo acoustic guitar over a few bars, joined by a soft piano countermelody around the one-minute mark, light brushed percussion enters under the midpoint, strings pad in subtly beneath the final third, and the arrangement thins back to solo guitar and a held piano note for a clean fade at the end.
-SECONDS: 150
-LYRICS:
-NONE
-```
+**The check (also at Make):** a Markdown caption; a missing section; a caption under 200 words; a
+word for something that cannot be heard (a smell, imagery); Vocal Details describing a singer or
+rapper with no lyrics ("this will likely come out with no real words"); lyrics with an instrumental
+Vocal Details; lyrics too short for `seconds`.
 
 ## 3. Planned song writer — `yue2` mode (YuE2-3B), Music room
 
-**Fields filled:** `style`, `lyrics`, `max_duration`, `mode`, `plan`.
+**Fields filled:** `style`, `lyrics`, and `max_duration` / `mode` only when the user states them
+(`plan` is left to the form). Writer: `engines/audio_writers/yue2.txt`, check `yue2_check`.
 
 **Rules:**
-- `style` is ONE field: genre, instruments, voice, language, and tempo together, comma-separated —
-  not split the way ACE-Step's `tags`/`bpm`/`keyscale` are.
-- `max_duration` is a ceiling, not a target — default 300, don't try to hit an exact number.
-- `plan: true` (default) for a more coherent take; `mode: "melody"` if this might later become a
-  Cover source, `"full"` otherwise.
+- `style` is ONE comma-separated line: language (English unless asked), genre and era, mood,
+  instruments, and the **voice** whenever there are lyrics.
+- `max_duration` is a ceiling, not a target; the lyrics are sized to it (300 when unset) with the
+  song writer's table, since the song lasts about as long as its words.
+- `mode: melody` only when the user says it will become a cover source.
 
-**The one question:** "sung, or instrumental?" when not stated, same as the other two Music-room
-modes.
+**The one question:** "Sung, or instrumental?" when the request does not say.
 
 **Output shape:**
 ```
-STYLE: <genre, instruments, voice, language, tempo -- one comma-separated string>
-MAX_DURATION: <seconds, 30-300, default 300>
-MODE: <full or melody>
-PLAN: <true or false, default true>
+STYLE: <one line, voice included when sung>
+MAX_DURATION: <NONE unless stated>
+MODE: <NONE unless stated>
+NOTE: <the choices it made itself>
 LYRICS:
-<[Section]-tagged lyric text, or exactly NONE for instrumental>
+<[Section]-tagged words, or exactly NONE for an instrumental>
 ```
 
-**Worked example** — topic: "a warm piano pop song, a woman singing about a slow morning":
-```
-STYLE: English, warm piano pop, expressive female voice, acoustic piano, rounded bass and light drums, lyrical memorable melody, unhurried phrasing, 84 BPM
-MAX_DURATION: 300
-MODE: full
-PLAN: true
-LYRICS:
-[Verse]
-Light comes slow across the floor
-Coffee steam curls by the door
-
-[Chorus]
-Take your time, the day can wait
-Nothing here has come too late
-```
+**The check (also at Make):** lyrics with no voice in `style`; too few sections for `max_duration`.
 
 ## 4. Cover arranger — `cover` mode (YuE2-3B), Cover room
 
-**Fields filled:** `style`, `lyrics`, `mode`. (`source_audio_name` is not written by this skill —
-the user must already have uploaded a track in the room; if none is uploaded, say so and stop
-rather than writing the other fields.)
+**Fields filled:** `style`, `lyrics`, and `mode` only when the user states it. Writer:
+`engines/audio_writers/cover.txt`, check `cover_check`.
+
+**First, a track.** With no uploaded Source track, the guide does not ask anything: it answers
+with one plain sentence to upload the song first (the writer's `needs`; the brain is not called).
+
+**The track gives the tune, never its words.** The engine reads the melody (and, in `full` mode,
+the harmony) from the upload; it sings only what is in `lyrics`. Empty lyrics are an instrumental
+cover, not "the original words".
 
 **Rules:**
-- `style` describes ONLY the new arrangement — never a melody description, since the melody comes
-  from the uploaded track.
-- `lyrics` empty = keep the original words; filled = new words over the new arrangement.
+- `style` describes ONLY the new arrangement plus the voice that sings: never the melody.
+- Keep the original words: when Lyrics already holds them, the writer answers `KEEP` and the field
+  is left as it is; when it does not, it asks the user to paste them into the Lyrics box and press
+  Done.
+- New words: about what the user says (it asks what they are about when nothing says).
 
-**The two questions, ask whichever is unresolved:**
-1. "Keep the original words, or write new ones?"
-2. "Keep the melody (recommended), or let the harmony change too?"
+**Questions:** "Keep the original words, or write new ones?" (OPTIONS: Keep the original words |
+Write new words | No words), then the paste or topic question when needed.
 
 **Output shape:**
 ```
-STYLE: <new arrangement's genre, mood, instrumentation -- never a melody description>
-MODE: <melody or full>
+STYLE: <the new arrangement, voice included when there are words>
+MODE: <NONE unless stated>
+NOTE: <the choices it made itself>
 LYRICS:
-<new [Section]-tagged lyrics, or exactly KEEP to leave the original words>
+<new [Section]-tagged words, or exactly KEEP, or exactly NONE for no words>
 ```
 
-**Worked example** — user has uploaded a folk ballad, wants "a synthwave version, keep the melody,
-same words":
-```
-STYLE: 80s synthwave, driving arpeggiated synth bass, gated reverb drums, neon-lit night drive energy, lush analog pads
-MODE: melody
-LYRICS:
-KEEP
-```
+**The check (also at Make):** lyrics with no voice in `style`; a voice in `style` with no lyrics
+("this will likely come out with no real words").
 
-## 5. Sound effect describer — `sfx` mode (Stable Audio Open), Sound FX room
+## 5. Sound effect writer — `sfx` mode (Stable Audio Open), Sound FX room
 
-**Fields filled:** `prompt`, `negative`, `seconds`.
+**Fields filled:** `prompt`, `seconds`, and `negative` only when the user says what to keep out.
+Writer: `engines/audio_writers/sfx.txt`, check `sfx_check`.
 
 **Rules:**
-- `prompt`: name the sound source in plain, concrete words first; add fidelity/spatial words
-  (stereo, high-quality, close/distant) after if it helps.
-- This engine does not do music or vocals — never write a request for speech or singing here (say
-  so and point at Talking Head instead, per `knowledge.md`).
-- Default `seconds`: 2.0 (one-shot). 3.0 for something with more to play out. Rarely go past that.
+- `prompt`: ONE sound, its source first in plain concrete words, then material and size, the space,
+  and how it plays out; optional "high-quality, stereo" at the end. English.
+- No music, melody, singing or spoken words. Human sounds with no words are fine (footsteps, a crowd
+  murmuring, applause).
+- `seconds`: 2 for a one-shot, 3 when it plays out, longer only when the sound itself lasts (rain,
+  an engine idling) or the user gives a length, at most 10 unless asked. In the live trial the brain
+  kept the form's 2 s for rain; set it by hand for a lasting sound.
 
-**The one question, only when duration is genuinely unclear:** "about how long — a quick one-shot
-(2-3s), or does it need more room to play out?"
+**Not this room:** a request for words spoken gets one line pointing to the Talking Head room; a
+request for music gets one line pointing to the Music room. Otherwise it asks only when the sound
+itself is unnamed ("a sound for my game"), offering 3-4 sounds.
 
 **Output shape:**
 ```
-PROMPT: <the sound, plainly, source first, then production detail>
-NEGATIVE: <what to avoid, or NONE>
-SECONDS: <0.5-30, default 2.0>
+SECONDS: <0.5-30>
+NEGATIVE: <NONE unless stated>
+NOTE: <the choices it made itself>
+PROMPT: <the sound, on one line>
 ```
 
-**Worked example** — topic: "a sword being drawn from its sheath":
-```
-PROMPT: A metal sword sliding out of a leather sheath, a sharp ring at the end, high-quality, stereo
-NEGATIVE: NONE
-SECONDS: 2.0
-```
+**The check (also at Make):** words asking for speech or singing ("saying", "narration", "singing",
+...), with the room to use instead.

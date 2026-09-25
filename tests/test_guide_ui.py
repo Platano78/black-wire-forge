@@ -455,20 +455,42 @@ try:
         page.wait_for_selector("#makeConfirm:not([hidden])", timeout=15000)
         page.click("#makeFixBtn")
         check("confirm: Fix it goes to the guide", page.evaluate("document.activeElement && document.activeElement.id") == "guideInput" and not page.is_visible("#makeConfirm"))
-        print("skill: a mode with no pack writer still writes through the guide (the generic writer)")
+        # P3b: Background music has its own writer now (the generic writer's page path
+        # is covered by the P2c Picture t2i section below).
+        print("Music, background music: a write conversation fills the caption and the lyrics")
         pick(page, "music")
         page.wait_for_timeout(600)
-        check("skill: Help me write this is there for it too", page.is_visible("#helperWriteBtn"), page.evaluate("STATE.mode"))
-        HELPER["reply"] = "PROMPT: calm ambient pads, soft piano, no drums"
+        check("music: Help me write this is there", page.is_visible("#helperWriteBtn"), page.evaluate("STATE.mode"))
+        MCAP = ("Global Metadata\n" + "Dusty 90s drums and a jazz piano loop. " * 30
+                + "\nVocal Details\nA male rapper with a low, gravelly voice.\nArrangement\nIntro: vinyl crackle, then the drums.")
+        MLYR = "\n\n".join("[%s]\n" % t + "\n".join(["kicks on the shelf and the box is new"] * 8) for t in ("Verse", "Hook", "Verse", "Hook"))
+        HELPER["replies"] = ["QUESTION: Who should sing it?\nOPTIONS: A male voice | A female voice | A duet",
+                             "SECONDS: 150\nCAPTION:\n" + MCAP + "\nLYRICS:\n" + MLYR]
         del SKILL_BODIES[:]
-        page.fill("#promptBox", "background music for a rainy cafe")
+        page.fill("#promptBox", "a 90s boom bap rap about my brother's sneakers")
         page.click("#helperWriteBtn")
+        page.wait_for_selector("#guideSkillOptions", timeout=15000)
+        page.click('#guideSkillOptions [data-option="A male voice"]')
         page.wait_for_selector("#guideSkillUse", timeout=15000)
-        check("skill: it went to /api/guide/skill for that mode", SKILL_BODIES and SKILL_BODIES[-1].get("mode") == "music"
-              and SKILL_BODIES[-1].get("topic") == "background music for a rainy cafe", SKILL_BODIES[-1:])
+        check("music: the chosen answer went back with its question", SKILL_BODIES and SKILL_BODIES[-1].get("mode") == "music"
+              and SKILL_BODIES[-1].get("answers") == [{"q": "Who should sing it?", "a": "A male voice"}], SKILL_BODIES[-1:])
+        check("music: the preview shows the description and the lyrics", "Vocal Details" in text_of(page, "#guideSkill")
+              and "kicks on the shelf" in text_of(page, "#guideSkill") and page.query_selector("#guideSkillProblems") is None)
+        shot(page, "music-writer-preview-1280x800")
         page.click("#guideSkillUse")
-        check("skill: Use these fills its prompt box", page.input_value("#promptBox") == "calm ambient pads, soft piano, no drums",
-              page.input_value("#promptBox"))
+        check("music: Use these fills the caption", page.input_value("#promptBox") == MCAP, page.input_value("#promptBox")[:80])
+        check("music: Use these fills the lyrics", page.input_value("#f_lyrics") == MLYR, page.input_value("#f_lyrics")[:80])
+        print("Music, background music: a Markdown caption with no lyrics needs a confirm at Make")
+        page.fill("#promptBox", "**Genre:** boom bap\n**Vocal Details** a raspy rapper")
+        page.fill("#f_lyrics", "")
+        del GEN_BODIES[:]
+        page.click("#makeBtn")
+        page.wait_for_selector("#makeConfirm:not([hidden])", timeout=15000)
+        confirm = text_of(page, "#makeConfirmList")
+        check("music confirm: Markdown and no real words are named", "Markdown" in confirm and "no real words" in confirm, confirm)
+        check("music confirm: nothing was confirmed yet", len(GEN_BODIES) == 1 and "confirm" not in GEN_BODIES[0], GEN_BODIES)
+        shot(page, "music-confirm-1280x800")
+        page.click("#makeFixBtn")
         page.close()
         print("no brain: no Write button, one line on how to add a helper")
         page = browser.new_page(viewport={"width": 1280, "height": 800})

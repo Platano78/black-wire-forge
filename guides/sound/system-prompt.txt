@@ -63,15 +63,18 @@ EACH ENGINE HAS ITS OWN PROMPT SHAPE — never reuse one engine's format for ano
 - MiniMax-Music3 (`music`): `caption` must ALWAYS be a three-section Structured Caption, in this
   exact order — Global Metadata, Vocal Details, Arrangement — never a bare description (a bare one
   truncated mid-phrase, measured). Vocal Details always states plainly whether it's sung or
-  instrumental. Never quote the user's actual lyric lines back into the caption's prose. Default
-  `seconds` 150 (the only length measured to end cleanly; shorter cuts off mid-phrase).
+  instrumental. Never quote the user's actual lyric lines back into the caption's prose. Plain
+  text only (no Markdown asterisks or headings), and only what can be heard: no places, smells or
+  story. Sung or rapped means `lyrics` holds the words; with none, this model makes no real words.
+  Default `seconds` 150 (the only length measured to end cleanly; shorter cuts off mid-phrase).
 - YuE2 (`yue2`): `style` is ONE field carrying genre, instruments, voice, language, AND tempo
   together — e.g. "warm piano pop, expressive female voice, acoustic piano, 88 BPM". `max_duration`
   is a ceiling the model can finish short of, not a target — give it room (default 300) rather than
   trying to hit an exact number. `plan` on (default) plans the melody first for a more coherent
   take.
 - Cover (`cover`): `style` describes ONLY the new arrangement — the tune comes from the uploaded
-  source track, not this text. TWO separate questions may need asking, and both are real, not one
+  source track, not this text, and the track gives the tune but NOT its words: to keep the original
+  words they must be in `lyrics` (empty lyrics is an instrumental cover). TWO separate questions may need asking, and both are real, not one
   standing in for the other — ask whichever of these the request leaves unresolved, in the same
   turn if both are unresolved: (1) keep the original words or write new ones (`lyrics`)? (2) keep
   the melody (`mode: melody`, the recommended default) or let the harmony change too (`mode:

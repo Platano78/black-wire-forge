@@ -78,11 +78,25 @@ falsy — is ignored. The dict has exactly these keys:
                                      string)
                          multiline   the one key (also in `keys`) whose value
                                      runs from its line to the end, e.g.
-                                     "LYRICS"
+                                     "LYRICS"; or a list of such keys in
+                                     reply order, e.g. ["CAPTION",
+                                     "LYRICS"]: then each runs until the
+                                     next line that starts with one of the
+                                     writer's keys, and the first is required
                          none_token  the word that means "empty", e.g. "NONE".
-                                     On the multiline key it means an empty
+                                     On a multiline key it means an empty
                                      field; on any other key, "leave the
                                      field as it is"
+                         keep_token  optional word that means "leave the
+                                     field as it is" on a multiline key,
+                                     e.g. "KEEP"
+                         needs       optional {field id: plain sentence}: a
+                                     field (an upload) the room must already
+                                     hold, per the request's context, before
+                                     the writer can write; without it the
+                                     sentence is the answer and the brain is
+                                     not asked
+                         max_tokens  optional reply budget (default 1024)
                          options     optional {field id: [allowed values]} for
                                      a text field the engine only accepts from
                                      a fixed list (matched without case)
@@ -97,7 +111,7 @@ falsy — is ignored. The dict has exactly these keys:
                        optionally followed by "OPTIONS: a | b | c" (2-5 short
                        choices the page offers as buttons). A written reply
                        may carry one "NOTE: ..." line (e.g. the defaults the
-                       writer chose); a NOTE line inside the multiline part
+                       writer chose); a NOTE line inside a multiline part
                        ends it.
   revisers  optional dict  mode_name -> a fixing skill for the room's guide
                        (POST /api/guide/revise, "Not right? Tell the
@@ -647,41 +661,63 @@ def parse_writer_reply(w, text):
     else {"values": {field id: raw text}, "note": str}. A non-blank QUESTION
     line before the multiline key wins; an OPTIONS line anywhere after it
     gives the choices. The multiline key's value runs to the end (a NOTE line
-    ends it); its none_token means "". Any other key whose value is blank or
-    the none_token is left out. Raises ValueError when the reply holds
-    neither a question nor the multiline key."""
+    ends it); its none_token means "", its keep_token leaves it out. With
+    several multiline keys, each part also ends at the next line that starts
+    with one of the writer's keys not seen yet; a key that already appeared
+    stays as text inside the part, so a repeated header never truncates
+    lyrics. The parts may come in any order. Any other key whose value is blank or the
+    none_token is left out. Raises ValueError when the reply holds neither a
+    question nor the (first) multiline key."""
     text = text or ""
     if _THINK[1] in text:
         text = text.split(_THINK[1], 1)[1]
-    keys, multi, none = w["keys"], w["multiline"], w["none_token"].upper()
-    values, lines, rest, note = {}, None, None, ""
+    keys, none = w["keys"], w["none_token"].upper()
+    split = not isinstance(w["multiline"], str)
+    multis = list(w["multiline"]) if split else [w["multiline"]]
+    keep = (w.get("keep_token") or "").upper()
+    values, note, started, part = {}, "", [], None   # part: [key, first-line value, lines]
+
+    def close():
+        body = "\n".join(([part[1]] if part[1] else []) + part[2]).strip()
+        flat = body.upper().rstrip(".")
+        if not (keep and flat == keep):
+            values[keys[part[0]]] = "" if flat == none else body
+
     all_lines = text.splitlines()
     for i, line in enumerate(all_lines):
         head, value = _writer_line(line)
-        if lines is not None:
+        if part is not None:
             if head == "NOTE" and "NOTE" not in keys:
                 note = value
+                close()
+                part = None
+                if split:
+                    continue
                 break
-            if line.strip().startswith("```"):
+            if split and head in keys and head != part[0] and head not in started:
+                close()
+                part = None
+            else:
+                if not line.strip().startswith("```"):
+                    part[2].append(line)
                 continue
-            lines.append(line)
-            continue
         if head is None:
             continue
-        if head == "QUESTION" and value and value.upper() != none:
+        if head == "QUESTION" and not started and value and value.upper() != none:
             options = next((_writer_options(v, none) for h, v in map(_writer_line, all_lines[i + 1:])
                             if h == "OPTIONS"), [])
             return {"question": value, "options": options}
         if head == "NOTE" and "NOTE" not in keys:
             note = value if value.upper() != none else ""
-        elif head == multi:
-            lines, rest = [], value
-        elif head in keys and value and value.upper() != none:
+        elif head in multis and head not in started:
+            started.append(head)
+            part = [head, value, []]
+        elif head in keys and head not in multis and value and value.upper() != none:
             values[keys[head]] = value
-    if lines is None:
-        raise ValueError("no %s line" % multi)
-    body = "\n".join(([rest] if rest else []) + lines).strip()
-    values[keys[multi]] = "" if body.upper().rstrip(".") == none else body
+    if part is not None:
+        close()
+    if multis[0] not in started:
+        raise ValueError("no %s line" % multis[0])
     return {"values": values, "note": note}
 
 

@@ -76,7 +76,11 @@ Per-engine text shape, in the moment order a user actually fills them:
   what enters/exits/changes) — ~250–450 words total, never a bare description (a bare one truncated
   mid-phrase; the Structured Caption version rendered clean with the clearest lyrics of the three
   engines tried, measured). Never quote/paraphrase the user's own lyric lines into the caption's
-  prose. — **observed**, MiniMax-AI/MiniMax-Music3 (GitHub), the caption-rewriter skill's
+  prose. Write it as **plain text** (the labels on their own lines, no Markdown asterisks or
+  headings) and describe **only what can be heard**; sung or rapped words always go in `lyrics`.
+  A Markdown caption padded with a setting and a smell, with empty lyrics, rendered a rap request
+  as something the maintainer called "hot garbage" (2026-09-24). — **observed**, the vendor's
+  example template (plain labels), the maintainer's listening report. — **observed**, MiniMax-AI/MiniMax-Music3 (GitHub), the caption-rewriter skill's
   "Output Contract", `engines/audio.py` `music_graph` docstring. Vendor's own framing: this is a
   **five-minute full-song vocal model with expressive vocals**, not an "ambience generator" — the
   app's own old code comment calling it that described the old, wrong wiring, not the model. —
@@ -90,11 +94,14 @@ Per-engine text shape, in the moment order a user actually fills them:
   planning" section and its shipped example song request.
 - **`cover` (YuE2-3B, Cover room).** `style` describes ONLY the new arrangement — the tune comes
   from the uploaded source track via the engine's own melody transcription, not from this text.
-  — **observed**, `engines/audio.py` `cover_graph` docstring / `prompt_guides["cover"]`. `lyrics`
-  is optional: empty keeps the original words (carried by the source's melody/harmony), filled
-  writes new `[Section]`-tagged words over the new arrangement — **the one question here is "keep
-  the original words, or write new ones?"** — **inferred**, applying the Music-room voice rule to
-  a cover's equivalent choice; not itself A/B tested on this engine.
+  — **observed**, `engines/audio.py` `cover_graph` docstring / `prompt_guides["cover"]`. The track
+  gives the tune, **not its words**: the graph turns the upload into ABC notation (melody, and
+  harmony in `full` mode) and sings only the `lyrics` text it is given — **observed**, `cover_graph`
+  (SheetSage2AudioToABC → YuE2GenerateMusic's separate `lyrics` input). So empty `lyrics` is an
+  instrumental cover, and keeping the original words means putting them in `lyrics` — **inferred**
+  from that wiring, not heard on a render. **The one question here is "keep the original words, or
+  write new ones?"** — **inferred**, applying the Music-room voice rule to a cover's equivalent
+  choice; not itself A/B tested on this engine.
 - **`sfx` (Stable Audio Open, Sound FX room).** Name the sound source in plain, concrete words
   first ("a wooden door creaking open", "a hammer hitting a wooden surface" — the model card's own
   two examples), then add production/spatial detail (stereo, high-quality, close/distant) if it

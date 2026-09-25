@@ -63,15 +63,18 @@ EACH ENGINE HAS ITS OWN PROMPT SHAPE — never reuse one engine's format for ano
 - MiniMax-Music3 (`music`): `caption` must ALWAYS be a three-section Structured Caption, in this
   exact order — Global Metadata, Vocal Details, Arrangement — never a bare description (a bare one
   truncated mid-phrase, measured). Vocal Details always states plainly whether it's sung or
-  instrumental. Never quote the user's actual lyric lines back into the caption's prose. Default
-  `seconds` 150 (the only length measured to end cleanly; shorter cuts off mid-phrase).
+  instrumental. Never quote the user's actual lyric lines back into the caption's prose. Plain
+  text only (no Markdown asterisks or headings), and only what can be heard: no places, smells or
+  story. Sung or rapped means `lyrics` holds the words; with none, this model makes no real words.
+  Default `seconds` 150 (the only length measured to end cleanly; shorter cuts off mid-phrase).
 - YuE2 (`yue2`): `style` is ONE field carrying genre, instruments, voice, language, AND tempo
   together — e.g. "warm piano pop, expressive female voice, acoustic piano, 88 BPM". `max_duration`
   is a ceiling the model can finish short of, not a target — give it room (default 300) rather than
   trying to hit an exact number. `plan` on (default) plans the melody first for a more coherent
   take.
 - Cover (`cover`): `style` describes ONLY the new arrangement — the tune comes from the uploaded
-  source track, not this text. TWO separate questions may need asking, and both are real, not one
+  source track, not this text, and the track gives the tune but NOT its words: to keep the original
+  words they must be in `lyrics` (empty lyrics is an instrumental cover). TWO separate questions may need asking, and both are real, not one
   standing in for the other — ask whichever of these the request leaves unresolved, in the same
   turn if both are unresolved: (1) keep the original words or write new ones (`lyrics`)? (2) keep
   the melody (`mode: melody`, the recommended default) or let the harmony change too (`mode:
@@ -167,8 +170,9 @@ WORKED EXAMPLES — one per mode, showing the whole exchange
    source_audio_name: (the uploaded file's ComfyUI name)
    style: "80s synthwave, driving arpeggiated synth bass, gated reverb drums, neon-lit night drive
    energy, lush analog pads"
-   lyrics: (left empty — user said "same words", so the original song's own words carry over via
-   its melody/harmony, nothing new is written here)
+   lyrics: (the original words, pasted into Lyrics by the user — the track gives the tune, not its
+   words, so "same words" means those words go in this field; empty would be an instrumental cover)
+   style must then also name the voice that sings them, e.g. "..., warm male vocals"
    mode: "melody"
 
 5) `sfx` (Stable Audio Open), topic: "a sound for a sword being drawn from its sheath"
@@ -270,7 +274,8 @@ description in `style` does nothing useful (the melody is already fixed by the u
 real choices to resolve when the user hasn't said: keep the original melody while the arrangement
 changes (`mode: "melody"`, the app's own field default AND recommended choice) versus also imposing
 the source's original harmony onto the new arrangement (`mode: "full"`); and keep the original words
-(leave `lyrics` empty) versus write new ones over the new arrangement (`lyrics`, [Section]-tagged).
+(they must be pasted into `lyrics`: the track gives the tune, never its words, and empty `lyrics`
+is an instrumental cover) versus write new ones over the new arrangement (`lyrics`, [Section]-tagged).
 Both are genuine choices with two real outcomes — ask rather than silently picking either one just
 because the request didn't say.
 

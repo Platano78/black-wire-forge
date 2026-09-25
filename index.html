@@ -2563,16 +2563,22 @@ function renderGuideToggle(){
 }
 // The room's selected mode and the current values of its primary fields,
 // sent with every turn so the guide never has to ask which mode is picked.
-// The Cutting Room has no modes and sends none. File inputs are left out
-// (the server states what is attached); a long value is cut to the server's
+// The Cutting Room has no modes and sends none. Picture inputs are left out
+// (the server states what is attached); an uploaded sound goes by its file
+// name, so a writer knows it is there; a long value is cut to the server's
 // 500 characters and says so with a trailing ellipsis.
-const GUIDE_CONTEXT_TYPES = ['text', 'textarea', 'select', 'number', 'int', 'checkbox'];
+const GUIDE_CONTEXT_TYPES = ['text', 'textarea', 'select', 'number', 'int', 'checkbox', 'audio'];
 function guideContext(){
   const room = currentRoom(), mode = currentMode();
   if(!room || isCutting(room) || !mode || !STATE.mode) return null;
   const values = currentValues(), fields = {};
   fieldsFor(mode).filter(f => tierOf(f) === 'primary' && GUIDE_CONTEXT_TYPES.includes(f.type))
     .slice(0, 24).forEach(f => {
+      if(f.type === 'audio'){
+        const u = (STATE.uploads[f.id] || [])[0];
+        if(u && u.name) fields[f.id] = String(u.name).slice(0, 500);
+        return;
+      }
       let v = values[f.id];
       if(v === undefined || v === null) return;
       if(f.type === 'number' || f.type === 'int'){

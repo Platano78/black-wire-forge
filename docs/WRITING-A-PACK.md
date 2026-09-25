@@ -126,11 +126,16 @@ at all.
   field values out (`POST /api/guide/skill`, "Help me write this" under the prompt box). Each is a dict:
   `label` (e.g. "Song writer"), `prompt` (the writer's system prompt, this engine's own
   rules), `keys` (`{"TAGS": "tags", ...}`: output line key -> field id), `multiline` (the one
-  key, also in `keys`, whose value runs to the end of the reply, e.g. `"LYRICS"`),
-  `none_token` (e.g. `"NONE"`: on the multiline key it means an empty field, on any other
-  key "leave the field as it is"), optional `options` (`{field id: [allowed values]}` for a
-  text field the engine takes only from a fixed list) and `check(values, request)` -> a list
-  of plain problem sentences. The reply is line-delimited, one `KEY: value` per line, never
+  key, also in `keys`, whose value runs to the end of the reply, e.g. `"LYRICS"`; or a list of
+  them in reply order, e.g. `["CAPTION", "LYRICS"]`, each then running to the next line that
+  starts with one of the writer's keys, the first one required),
+  `none_token` (e.g. `"NONE"`: on a multiline key it means an empty field, on any other
+  key "leave the field as it is"), optional `keep_token` (e.g. `"KEEP"`: on a multiline key,
+  "leave the field as it is"), optional `options` (`{field id: [allowed values]}` for a
+  text field the engine takes only from a fixed list), optional `needs` (`{field id: plain
+  sentence}`: an upload the room must already hold, per the request's context; without it the
+  sentence is the answer and the brain is not asked), optional `max_tokens` (the reply budget,
+  default 1024) and `check(values, request)` -> a list of plain problem sentences. The reply is line-delimited, one `KEY: value` per line, never
   JSON: small models do not reliably escape newlines inside a JSON string. It may instead be
   a single `QUESTION: ...` line, the writer asking one thing before it writes, optionally
   followed by `OPTIONS: a | b | c` (2-5 short choices the page offers as buttons). The page

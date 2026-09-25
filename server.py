@@ -3753,6 +3753,12 @@ def guide_skill(p):
         return {"ok": False, "error": "This mode has no writer yet."}, 404
     if not HELPER:
         return {"ok": False, "no_brain": True, "error": GUIDE_ADD_BRAIN}, 409
+    # A writer that needs an upload first (a cover's source track) says so
+    # plainly instead of asking the brain, which cannot supply it.
+    ctx_fields = (context or {}).get("fields") or {}
+    for fid, sentence in (w.get("needs") or {}).items():
+        if not str(ctx_fields.get(fid) or "").strip():
+            return {"ok": False, "needs": fid, "error": sentence}, 409
     vision = _helper_vision() if refs else None
     try:
         urls = [_guide_picture_url(x) for x in refs] if vision else []
@@ -3783,7 +3789,7 @@ def guide_skill(p):
             sent["pictures"] = len(urls)
         reply, _ = _helper_chat([{"role": "system", "content": sent["system"]},
                                  {"role": "user", "content": _with_pictures(text, urls)}],
-                                max_tokens=1024, timeout=HELPER.get("timeout_s", 120))
+                                max_tokens=w.get("max_tokens", 1024), timeout=HELPER.get("timeout_s", 120))
         reply = _THINK_RE.sub("", reply or "").strip()
         try:
             parsed = engines.parse_writer_reply(w, reply)
