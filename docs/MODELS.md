@@ -235,8 +235,9 @@ exactly, so that's the recommended one.
 
 ## Real-ESRGAN x4plus (`engines/cleanup.py`, upscale mode) — image (tool)
 
-Licence: **BSD-3-Clause** (per README; not independently re-verified here — Real-ESRGAN's
-canonical release is GitHub, not Hugging Face, so no Hub licence tag exists to check against).
+Licence: **BSD-3-Clause** (the licence of the upstream GitHub repository, xinntao/Real-ESRGAN,
+as recorded in this pack's own licence entry in `engines/cleanup.py`; Real-ESRGAN's canonical
+release is GitHub, not Hugging Face, so no Hub licence tag exists to check against).
 Attribution: Real-ESRGAN by Xintao Wang et al.
 
 | Role | Source | HF size | Verified size | Match | ComfyUI folder | Discovery match |
