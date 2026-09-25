@@ -127,21 +127,24 @@ srv.JOBS_FILE = os.path.join(SCRATCH, "jobs.json")
 srv.SEQ_DIR = os.path.join(SCRATCH, "sequences")
 
 print("the post step's output is marked as the result")
-from PIL import Image  # noqa: E402
-buf = io.BytesIO()
-Image.new("RGBA", (256, 256), (200, 40, 40, 255)).save(buf, "PNG")
-srv.http_get_bytes = lambda url, timeout=60.0: (buf.getvalue(), "image/png")
-lane = {"id": "l", "name": "L", "host": "127.0.0.1", "port": 1}
-job = {"id": "pxjob1", "kind": "image", "mode": "pixelart", "status": "done", "args": {"pixel_size": 32},
-       "outputs": [{"filename": "PIXELART_00001_.png", "subfolder": "blackwire", "type": "output", "media": "image"}]}
-with srv.JOBS_LOCK:
-    srv.JOBS[job["id"]] = job
-srv.run_post_step(lane, job)
-outs = srv.JOBS["pxjob1"]["outputs"]
-check("run_post_step appends ONE local output marked post: true",
-      len(outs) == 2 and outs[1].get("post") is True and outs[1]["type"] == "local"
-      and not outs[0].get("post"), outs)
-check("result_output() is the sprite", srv.result_output(srv.JOBS["pxjob1"]) is outs[1])
+if not (importlib.util.find_spec("PIL") and importlib.util.find_spec("numpy")):
+    print("  SKIP  the pixel post step needs Pillow and numpy (requirements.txt), not installed here")
+else:
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGBA", (256, 256), (200, 40, 40, 255)).save(buf, "PNG")
+    srv.http_get_bytes = lambda url, timeout=60.0: (buf.getvalue(), "image/png")
+    lane = {"id": "l", "name": "L", "host": "127.0.0.1", "port": 1}
+    job = {"id": "pxjob1", "kind": "image", "mode": "pixelart", "status": "done", "args": {"pixel_size": 32},
+           "outputs": [{"filename": "PIXELART_00001_.png", "subfolder": "blackwire", "type": "output", "media": "image"}]}
+    with srv.JOBS_LOCK:
+        srv.JOBS[job["id"]] = job
+    srv.run_post_step(lane, job)
+    outs = srv.JOBS["pxjob1"]["outputs"]
+    check("run_post_step appends ONE local output marked post: true",
+          len(outs) == 2 and outs[1].get("post") is True and outs[1]["type"] == "local"
+          and not outs[0].get("post"), outs)
+    check("result_output() is the sprite", srv.result_output(srv.JOBS["pxjob1"]) is outs[1])
 check("result_output() of a job with no post step is its first output",
       srv.result_output({"outputs": [{"filename": "a"}, {"filename": "b"}]}) == {"filename": "a"})
 check("result_output() of a job with no outputs is None", srv.result_output({"outputs": []}) is None)
@@ -170,12 +173,15 @@ check("t2i, edit, cutout, upscale: post is None",
 check("pixelart: the writer is the sprite writer", modes["pixelart"].get("writer") == {"label": "Sprite writer"})
 
 print("a sequence harvests the result, not the render before it")
-srv.SEQ_MEDIA_DIR = os.path.join(SCRATCH, "seq")
-got = []
-srv._carry_source_bytes = lambda j, out, cache_path=None: (got.append(out), b"bytes")[1]
-srv._seq_read = lambda sid: None
-srv.seq_harvest(lane, dict(srv.JOBS["pxjob1"], sequence_id="s1", slot_id="v1"))
-check("seq_harvest copies the post output", got and got[0].get("post") is True, got)
+if "pxjob1" not in srv.JOBS:
+    print("  SKIP  needs the pixel post step's job above (Pillow and numpy), not run here")
+else:
+    srv.SEQ_MEDIA_DIR = os.path.join(SCRATCH, "seq")
+    got = []
+    srv._carry_source_bytes = lambda j, out, cache_path=None: (got.append(out), b"bytes")[1]
+    srv._seq_read = lambda sid: None
+    srv.seq_harvest(lane, dict(srv.JOBS["pxjob1"], sequence_id="s1", slot_id="v1"))
+    check("seq_harvest copies the post output", got and got[0].get("post") is True, got)
 
 shutil.rmtree(SCRATCH, ignore_errors=True)
 print()

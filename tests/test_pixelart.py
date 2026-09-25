@@ -4,7 +4,7 @@ parity with the original internal sprite script.
 
 Run: python3 tests/test_pixelart.py
 """
-import json, os, subprocess, sys, tempfile
+import importlib.util, json, os, subprocess, sys, tempfile
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -105,32 +105,35 @@ Image.fromarray(arr, "RGB").save(%r)
 import engines._quantise as q
 q.quantise_and_dither(%r, %r, target_size=8, n_colors=4, dither_strength=0.0)
 """
-with tempfile.TemporaryDirectory() as td:
-    src_a = os.path.join(td, "src_a.png")
-    out_a = os.path.join(td, "out_a.png")
-    script_old = _OLD_PILLOW_SCRIPT % (ROOT, src_a, src_a, out_a)
-    r_old = subprocess.run([sys.executable, "-c", script_old], capture_output=True, text=True)
+if not (importlib.util.find_spec("PIL") and importlib.util.find_spec("numpy")):
+    print("  SKIP  this check needs Pillow and numpy (requirements.txt), not installed here")
+else:
+    with tempfile.TemporaryDirectory() as td:
+        src_a = os.path.join(td, "src_a.png")
+        out_a = os.path.join(td, "out_a.png")
+        script_old = _OLD_PILLOW_SCRIPT % (ROOT, src_a, src_a, out_a)
+        r_old = subprocess.run([sys.executable, "-c", script_old], capture_output=True, text=True)
 
-    src_b = os.path.join(td, "src_b.png")
-    out_b = os.path.join(td, "out_b.png")
-    script_new = _OLD_PILLOW_SCRIPT.replace(
-        'for name in ("Dither", "Quantize"):\n'
-        "    if hasattr(Image, name):\n"
-        "        delattr(Image, name)\n", ""
-    ) % (ROOT, src_b, src_b, out_b)
-    r_new = subprocess.run([sys.executable, "-c", script_new], capture_output=True, text=True)
+        src_b = os.path.join(td, "src_b.png")
+        out_b = os.path.join(td, "out_b.png")
+        script_new = _OLD_PILLOW_SCRIPT.replace(
+            'for name in ("Dither", "Quantize"):\n'
+            "    if hasattr(Image, name):\n"
+            "        delattr(Image, name)\n", ""
+        ) % (ROOT, src_b, src_b, out_b)
+        r_new = subprocess.run([sys.executable, "-c", script_new], capture_output=True, text=True)
 
-    check("simulated pre-9.1 Pillow (no Image.Dither/Image.Quantize) does not crash",
-          r_old.returncode == 0, r_old.stderr[-800:] if r_old.returncode else "")
-    check("normal (current Pillow) run does not crash",
-          r_new.returncode == 0, r_new.stderr[-800:] if r_new.returncode else "")
-    if r_old.returncode == 0 and r_new.returncode == 0:
-        with open(out_a, "rb") as f:
-            bytes_old = f.read()
-        with open(out_b, "rb") as f:
-            bytes_new = f.read()
-        check("same palette/output bytes with and without the 9.1+ enums",
-              bytes_old == bytes_new, "old=%d bytes new=%d bytes" % (len(bytes_old), len(bytes_new)))
+        check("simulated pre-9.1 Pillow (no Image.Dither/Image.Quantize) does not crash",
+              r_old.returncode == 0, r_old.stderr[-800:] if r_old.returncode else "")
+        check("normal (current Pillow) run does not crash",
+              r_new.returncode == 0, r_new.stderr[-800:] if r_new.returncode else "")
+        if r_old.returncode == 0 and r_new.returncode == 0:
+            with open(out_a, "rb") as f:
+                bytes_old = f.read()
+            with open(out_b, "rb") as f:
+                bytes_new = f.read()
+            check("same palette/output bytes with and without the 9.1+ enums",
+                  bytes_old == bytes_new, "old=%d bytes new=%d bytes" % (len(bytes_old), len(bytes_new)))
 
 print()
 print(("FAILED: %d" % len(FAILED)) if FAILED else "ALL PASS")

@@ -91,6 +91,7 @@ to fix.
 Every check() call is independent -- one failure never aborts the rest.
 """
 import copy
+import importlib.util
 import json
 import os
 import re
@@ -802,9 +803,12 @@ if code_cut3 == 200 and body_cut3.get("ok"):
     check("R3 tail-keep cut reaches status done", entry3 is not None and entry3.get("status") == "done", entry3)
     if entry3 and entry3.get("status") == "done":
         out_path3 = cut_file_path(DATA_DIR, seq_r3["id"], entry3, body_cut3["cut_id"])
-        r, g, b = frame_dominant_color(out_path3, 0.05)
-        check("the cut's first frame is the TAIL colour (green: g dominant), not the head (red)",
-              g > r and g > b, (r, g, b))
+        if importlib.util.find_spec("PIL") is None:
+            print("  SKIP  the tail-keep colour check needs Pillow (requirements.txt), not installed here")
+        else:
+            r, g, b = frame_dominant_color(out_path3, 0.05)
+            check("the cut's first frame is the TAIL colour (green: g dominant), not the head (red)",
+                  g > r and g > b, (r, g, b))
 else:
     check("R3 tail-keep cut accepted", False, (code_cut3, body_cut3))
 
@@ -1025,7 +1029,9 @@ if code_ctu == 200 and body_ctu.get("ok"):
     if entry6u and entry6u.get("status") == "done":
         untitled_out = cut_file_path(DATA_DIR, seq_r6u["id"], entry6u, body_ctu["cut_id"])
 
-if titled_out and os.path.isfile(titled_out) and untitled_out and os.path.isfile(untitled_out):
+if importlib.util.find_spec("PIL") is None:
+    print("  SKIP  the title-window frame diff needs Pillow (requirements.txt), not installed here")
+elif titled_out and os.path.isfile(titled_out) and untitled_out and os.path.isfile(untitled_out):
     f_titled_mid = os.path.join(SCRATCH, "r6_titled_mid.png")
     f_untitled_mid = os.path.join(SCRATCH, "r6_untitled_mid.png")
     extract_frame_png(titled_out, 1.5, f_titled_mid)     # inside [1, 2)
