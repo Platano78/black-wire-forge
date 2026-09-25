@@ -25,9 +25,9 @@ Black Wire Forge is a **web front end** for one or more ComfyUI instances. It:
 - Never commit or share `config.json` — it carries the user's real machine addresses and is
   gitignored on purpose.
 - Before downloading any model weights, tell the user the file size and licence and get an
-  explicit yes. Call out non-commercial licences (Qwen-Image 2.1, YuE2-3B) and
-  territory-restricted ones (MiniMax-H3 — open outside the EU/UK/South Korea/USA) by name —
-  "Getting the models" below (or `docs/MODELS.md`) has every model's source, size and licence.
+  explicit yes. Call out non-commercial licences (Qwen-Image 2.1, YuE2-3B, SheetSage2) and
+  territory-restricted ones (MiniMax-H3 — open outside the EU/UK/South Korea/USA) by name;
+  "Getting the models" (or `docs/MODELS.md`) has each model's source, size and licence.
 - Don't disable or work around the request guard (`request_refusal()` in `server.py`) — it
   is the only thing standing between this app and a browser-based attack against a no-login
   server. If it refuses something legitimate, fix `"allowed_hosts"`, don't patch it out.
@@ -80,7 +80,8 @@ Ask, in this order, and stop at the first one that applies:
 
 ## Install + start
 
-Setting up for a user, do all of this by default (it makes every feature work):
+For a user, do all of this by default (all the app itself needs; renders also need a lane
+with the models):
 
 ```
 test -e config.json || cp config.example.json config.json   # never overwrite a real config
@@ -118,7 +119,7 @@ python3 -m venv .venv
 Against the running server (port 3998 by default; use the `"port"` in `config.json`):
 
 - `curl -s http://127.0.0.1:3998/api/health` → `{"ok": true, "port": 3998, "lanes": N}` (N =
-  lane count). This proves only that the app is up, not any lane.
+  lane count): the app is up, not any lane.
 - `curl -s http://127.0.0.1:3998/api/lanes` → `{"lanes": [...], "title": ..., "fleet_llm": ...}`.
   Per lane: `"up"` — whether its latest poll reached the lane's ComfyUI `/system_stats`
   (`"checked"`: that poll's time; when `false`, `"err"` has the raw connection error).
