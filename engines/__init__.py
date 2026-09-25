@@ -65,6 +65,15 @@ falsy — is ignored. The dict has exactly these keys:
                        A mode with no entry falls back to a generic
                        instruction -- the core, not the pack, owns that
                        fallback text.
+  task_prefix optional str  a regex for the task-type prefix this engine's
+                       own prompts may open with (e.g. a bracketed "[task]"
+                       its vendor's prompt spec puts first). It is matched
+                       at the start of the text. When words written for one
+                       engine are copied into another engine's prompt (a
+                       storyboard beat into its shot), foreign_prefix_stripped()
+                       removes ONE leading prefix declared by a pack other
+                       than the one that runs the shot; the shot's own
+                       engine keeps its prefix, and nothing else is touched.
   writers   optional dict  mode_name -> a writing skill for the room's guide
                        (POST /api/guide/skill): a topic in, this mode's field
                        values out. Each is a dict with:
@@ -289,7 +298,7 @@ falsy — is ignored. The dict has exactly these keys:
 The public API of this module (packs, role_pool, role_rules, model_keys,
 abilities, missing_words, mode_ability, describe, graph_for, modes_for,
 licences, licence_for, caps, cap_word, cap_order, mode_words, mode_room,
-mode_note, prompt_guide, writer, parse_writer_reply, reviser, parse_reviser_reply, reviser_fixes, edit_in, rooms, fields, presets, quality, examples, post_for,
+mode_note, prompt_guide, foreign_prefix_stripped, writer, parse_writer_reply, reviser, parse_reviser_reply, reviser_fixes, edit_in, rooms, fields, presets, quality, examples, post_for,
 unet_loader, quant_words) is all the core needs to stay model-agnostic.
 """
 
@@ -298,6 +307,7 @@ import json
 import logging
 import os
 import pkgutil
+import re
 
 # Cache so the directory scan happens once per process.
 _PACKS = None
@@ -668,6 +678,23 @@ def prompt_guide(cap, mode):
     shape as mode_note()."""
     pack = _owner(cap, mode)
     return (pack.get("prompt_guides") or {}).get(mode) if pack else None
+
+
+def foreign_prefix_stripped(cap, mode, text):
+    """`text` with ONE leading task prefix taken off when another pack than
+    the one running cap+mode declares it (see "task_prefix" above), else
+    `text` unchanged. The shot's own engine keeps its prefix."""
+    if not isinstance(text, str):
+        return text
+    owner = _owner(cap, mode)
+    for pack in _discover():
+        pattern = pack.get("task_prefix")
+        if not pattern or pack is owner:
+            continue
+        m = re.match(pattern, text)
+        if m:
+            return text[m.end():].lstrip()
+    return text
 
 
 def writer(cap, mode):

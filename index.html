@@ -791,6 +791,7 @@
       <div id="helperBar" hidden>
         <button type="button" class="btn" id="helperWriteBtn">Help me write this</button>
         <button type="button" class="btn" id="helperDescribeBtn" hidden>Describe this picture</button>
+        <button type="button" class="btn" id="slotWriteBtn" hidden>Write this shot</button>
         <span id="helperCue"></span>
         <span id="helperSpinner" hidden role="status"></span>
         <button type="button" class="btn" id="helperCancelBtn" hidden>Cancel</button>
@@ -2470,16 +2471,36 @@ function currentImageSource(){
     : (job && job.outputs ? job.outputs.findIndex(o => o.media === 'image') : -1);
   return idx >= 0 ? {job_id: job.id, output: idx} : null;
 }
+// "Write this shot": the beat a Cutting Room shot was made from, when the
+// shot's mode has its engine's own writer (one that writes for itself, not
+// for another room). The Film Room Guide speaks; the shot's writer writes.
+function slotWriteBeat(){
+  const room = currentRoom(), slot = isCutting(room) ? currentSlot() : null, mode = currentMode();
+  if(!slot || !slot.beat_id || !mode || !mode.writer || mode.writer.target || !STATE.seq) return null;
+  return (STATE.seq.beats || []).find(b => b.id === slot.beat_id) || null;
+}
+// The beats either side of it in the script, one line each, for continuity.
+function slotWriteNeighbours(beat){
+  const beats = (STATE.seq && STATE.seq.beats) || [], i = beats.findIndex(b => b.id === beat.id), out = {};
+  const line = b => String(b.text || '').split(/\s+/).filter(Boolean).join(' ').slice(0, 500);
+  if(i > 0 && line(beats[i - 1])) out.before = line(beats[i - 1]);
+  if(i >= 0 && i + 1 < beats.length && line(beats[i + 1])) out.after = line(beats[i + 1]);
+  return out;
+}
 function renderHelperBar(){
   const room = currentRoom(), mode = currentMode();
   const g = GUIDE && GUIDE.guide && room && GUIDE_ROOM === room.id ? GUIDE.guide : null;
-  const show = !!(g && GUIDE.helper && mode && !$('#promptWrap').hidden && !isCutting(room));
+  const cutting = isCutting(room);
+  const show = !!(g && GUIDE.helper && mode && !$('#promptWrap').hidden && (!cutting || slotWriteBeat()));
   $('#helperBar').hidden = !show;
   if(!show) return;
   $('#helperCue').textContent = '→ ' + g.name;
-  $('#helperDescribeBtn').hidden = !currentImageSource() || !$('#promptBox').dataset.fieldId;   // a topic box describes nothing
+  $('#helperWriteBtn').hidden = cutting;
+  $('#slotWriteBtn').hidden = !cutting;
+  $('#helperDescribeBtn').hidden = cutting || !currentImageSource() || !$('#promptBox').dataset.fieldId;   // a topic box describes nothing
 }
 $('#helperWriteBtn').onclick = () => guideSkillRun(undefined, false);
+$('#slotWriteBtn').onclick = () => guideSkillRun(undefined, false, true);
 $('#helperDescribeBtn').onclick = () => guideSkillRun(undefined, true);
 $('#helperCancelBtn').onclick = () => { if(GUIDE_ABORT) GUIDE_ABORT.abort(); };
 
@@ -2628,9 +2649,9 @@ function renderGuideToggle(){
 // name, so a writer knows it is there; a long value is cut to the server's
 // 500 characters and says so with a trailing ellipsis.
 const GUIDE_CONTEXT_TYPES = ['text', 'textarea', 'select', 'number', 'int', 'checkbox', 'audio'];
-function guideContext(){
+function guideContext(shot){
   const room = currentRoom(), mode = currentMode();
-  if(!room || isCutting(room) || !mode || !STATE.mode) return null;
+  if(!room || (isCutting(room) && !shot) || !mode || !STATE.mode) return null;
   const values = currentValues(), fields = {};
   fieldsFor(mode).filter(f => tierOf(f) === 'primary' && GUIDE_CONTEXT_TYPES.includes(f.type))
     .slice(0, 24).forEach(f => {
@@ -2688,7 +2709,7 @@ function renderGuideLog(){
   const open = guideWriteOpen(hist);
   hist.forEach((m, i) => {
     // A write's waiting question is shown once, with its choices, below.
-    if(open && open.mode === STATE.mode && i === hist.length - 1) return;
+    if(writeHere(open) && i === hist.length - 1) return;
     const hints = [];
     if(m.truncated) hints.push('This answer hit its length limit and was cut off. Ask it to continue'
       + (m.verbosity === 'verbose' ? ', or switch to Compact.' : '.'));
@@ -2711,13 +2732,14 @@ function guideBusy(on){
   $('#helperCancelBtn').hidden = !on;
   $('#helperWriteBtn').disabled = on;
   $('#helperDescribeBtn').disabled = on;
+  $('#slotWriteBtn').disabled = on;
 }
 async function guideSend(){
   if(GUIDE_REVISE) return guideReviseRun();   // a result is attached: this is a complaint about it
   if(GUIDE_ABORT || !GUIDE || !GUIDE.guide || !GUIDE.helper) return;
   // The guide asked something for a write: what is typed here answers it.
   const open = !$('#guideSkill').hidden && guideWriteOpen(guideHistLoad(guideHistKey()));
-  if(open && open.mode === STATE.mode && $('#guideInput').value.trim()){
+  if(writeHere(open) && $('#guideInput').value.trim()){
     const a = $('#guideInput').value.trim();
     $('#guideInput').value = '';
     return guideSkillRun(a);
@@ -2799,10 +2821,16 @@ $('#guideVerbosity').addEventListener('click', e => {
 // `wk`: topic (the user's request), q (the guide's question, with its
 // options), a (the user's answer), done (it wrote). The answers the server
 // needs are rebuilt from those marks, so a reload can pick the write up.
-let GUIDE_SKILL = null;    // {w} of the preview on screen
+let GUIDE_SKILL = null;    // {w, slot} of the preview on screen (slot: the Cutting Room shot it fills)
+// The shot on screen in the Cutting Room, or null anywhere else.
+function writeSlotId(){ return isCutting(currentRoom()) ? STATE.seqSlotId || null : null; }
+// A write belongs to the mode, and in the Cutting Room the shot, it was started for.
+function writeHere(st){ return !!st && st.mode === STATE.mode && (st.slot || null) === writeSlotId(); }
 function renderGuideWrite(){
   const g = GUIDE && GUIDE.guide, mode = currentMode();
-  const writes = !!(g && mode && !$('#promptWrap').hidden && !isCutting(currentRoom()));
+  // A preview or question for another shot never fills this one.
+  if(GUIDE_SKILL && (GUIDE_SKILL.slot || null) !== writeSlotId()) guideSkillClear();
+  const writes = !!(g && mode && !$('#promptWrap').hidden && (!isCutting(currentRoom()) || slotWriteBeat()));
   $('#guideWriteNoBrain').hidden = !(writes && !GUIDE.helper);
   if(writes && GUIDE.helper && GUIDE_ROOM === currentRoom().id && $('#guideSkill').hidden) guideWriteRestore();
 }
@@ -2820,11 +2848,12 @@ function guideWriteOpen(hist){
   const answers = [];
   turns.forEach((m, i) => { if(m.wk === 'a' && i && turns[i - 1].wk === 'q') answers.push({q: turns[i - 1].content, a: m.content}); });
   return {w: last.w, mode: top.mode, topic: top.topic || '', pictures: top.pictures || null, answers: answers,
+          slot: top.slot || null, room: top.room || null, neighbours: top.neighbours || null,
           pending: {q: last.content, options: last.options || []}};
 }
 function guideWriteRestore(){
   const st = guideWriteOpen(guideHistLoad(guideHistKey()));
-  if(st && st.mode === STATE.mode) renderGuideQuestion(st);
+  if(writeHere(st)) renderGuideQuestion(st);
 }
 function guideSkillClear(){
   GUIDE_SKILL = null;
@@ -2856,7 +2885,7 @@ function skillButton(label, id, primary, fn){
 function renderGuideQuestion(st, r){
   const box = $('#guideSkill');
   box.textContent = '';
-  GUIDE_SKILL = {w: st.w};
+  GUIDE_SKILL = {w: st.w, slot: st.slot || null};
   box.appendChild(skillEl('div', GUIDE.guide.name, 'guide-who'));
   box.appendChild(skillEl('div', st.pending.q, 'guide-text'));
   if(st.pending.options.length){
@@ -2909,10 +2938,10 @@ function renderGuideMissing(r){
   box.hidden = false;
   box.scrollIntoView({block: 'nearest'});
 }
-function renderGuideSkill(r, w){
+function renderGuideSkill(r, w, slot){
   const box = $('#guideSkill');
   box.textContent = '';
-  GUIDE_SKILL = {w: w};
+  GUIDE_SKILL = {w: w, slot: slot || null};
   box.appendChild(skillEl('div', GUIDE.guide.name, 'guide-who'));
   const mode = skillMode(r);
   box.appendChild(skillEl('div', 'Here is what I wrote.', 'guide-text'));
@@ -2980,7 +3009,10 @@ async function guideSkillUseTarget(r){
 }
 // "Help me write this" / "Describe this picture" start a write (any open one
 // is closed first); an answer (a chip, or the box) continues the open one.
-async function guideSkillRun(answer, describe){
+// "Write this shot" (`shot`, the Cutting Room) starts one for the shot on
+// screen: its beat is the topic, the beats either side go as context, and
+// the shot's own mode's writer writes, from the room that mode lives in.
+async function guideSkillRun(answer, describe, shot){
   if(GUIDE_ABORT || !GUIDE || !GUIDE.helper || !currentMode() || $('#promptWrap').hidden) return;
   const answering = typeof answer === 'string';
   const key = guideHistKey(), room = GUIDE_ROOM, mode = STATE.mode;
@@ -2989,28 +3021,34 @@ async function guideSkillRun(answer, describe){
   if(answering){
     st = guideWriteOpen(hist);
     const a = answer.trim().slice(0, 500);
-    if(!st || !a) return;
+    if(!writeHere(st) || !a) return;
     st.answers.push({q: st.pending.q, a: a});
     turn = {role: 'user', content: a, w: st.w, wk: 'a'};
   } else {
+    const beat = shot ? slotWriteBeat() : null;
+    if(shot && !beat) return;
     const pictures = describe ? [guidePictureRef(currentImageSource())].filter(Boolean) : null;
     if(describe && !pictures.length){ guideShowError('No picture to describe yet.'); return; }
     hist.filter(m => m.wk === 'topic').forEach(m => { m.closed = true; });
-    const topic = $('#promptBox').value.trim();
+    const topic = beat ? String(beat.text || '').trim() : $('#promptBox').value.trim();
     st = {w: Date.now().toString(36), mode: mode, topic: topic, pictures: pictures, answers: []};
-    const said = topic || (describe ? 'Describe this picture.' : '');
+    if(beat) Object.assign(st, {slot: STATE.seqSlotId, room: jobRoom({kind: STATE.cap, mode: mode}),
+                                neighbours: slotWriteNeighbours(beat)});
+    const said = beat ? 'Write this shot: ' + topic : topic || (describe ? 'Describe this picture.' : '');
     turn = said ? {role: 'user', content: said, w: st.w, wk: 'topic', mode: mode, topic: topic, pictures: pictures} : null;
+    if(turn && beat) Object.assign(turn, {slot: st.slot, room: st.room, neighbours: st.neighbours});
   }
   if(turn){ hist.push(turn); guideHistSave(key, hist); }
   guideSkillClear();
   renderGuideLog();
-  const body = {room: room, mode: mode, topic: st.topic};
+  const body = {room: st.room || room, mode: mode, topic: st.topic};
   if(st.pictures) body.pictures = st.pictures;
   // A writer about the mode's own pictures (an edit) gets them, in the form's order.
   const own = !st.pictures && currentMode().writer && currentMode().writer.pictures;
   if(own) body.attached = (STATE.uploads[own] || []).map(u => ({lane: STATE.activeLane, upload: u.name}));
   if(st.answers.length) body.answers = st.answers;
-  const context = guideContext();
+  const context = guideContext(!!st.slot);
+  if(context && st.slot) context.neighbours = st.neighbours || {};
   if(context) body.context = context;
   guideShowError('');
   guideBusy(true);
@@ -3022,7 +3060,8 @@ async function guideSkillRun(answer, describe){
       if(r && r.no_brain) GUIDE_ROOM = null;
       throw new Error((r && r.error) || 'The helper is busy or switched off right now.');
     }
-    if(GUIDE_ROOM !== room || STATE.mode !== mode || guideHistKey() !== key) return;   // the user moved on
+    if(GUIDE_ROOM !== room || STATE.mode !== mode || guideHistKey() !== key
+       || (st.slot || null) !== writeSlotId()) return;   // the user moved on
     const h = guideHistLoad(key);
     if(r.missing){
       // Not a question: a picture to add first. The write is over.
@@ -3044,7 +3083,7 @@ async function guideSkillRun(answer, describe){
                + (r.note ? ' ' + r.note : ''), w: st.w, wk: 'done'});
       guideHistSave(key, h);
       renderGuideLog();
-      renderGuideSkill(r, st.w);
+      renderGuideSkill(r, st.w, st.slot);
     }
   } catch(e){
     // Nothing came back: take this turn out again, so asking again never
@@ -3723,7 +3762,16 @@ function scheduleSlotSave(){
   clearTimeout(SEQ_SAVE_TIMER);
   SEQ_SAVE_TIMER = setTimeout(saveSlotNow, 600);
 }
-async function saveSlotNow(){
+// One save at a time: a save covers the pending autosave (cancelled), and one
+// already in flight finishes first, so two never race on the sequence's rev.
+let SEQ_SAVE_CHAIN = Promise.resolve();
+function saveSlotNow(){
+  clearTimeout(SEQ_SAVE_TIMER);
+  const run = SEQ_SAVE_CHAIN.then(saveSlotOnce);
+  SEQ_SAVE_CHAIN = run.catch(() => null);
+  return run;
+}
+async function saveSlotOnce(){
   const slot = currentSlot();
   if(!slot) return null;
   const mode = currentMode();

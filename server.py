@@ -2041,7 +2041,8 @@ def _add_beat(seq, text, kind, pos=None):
             "values": {}, "refs": "auto", "takes": [], "pick": None, "trim": None, "title": None}
     field = beat_prompt_field(cap, mode)
     if field is not None:
-        slot["values"][field["id"]] = text     # §3: pre-filled ONCE, here and never again
+        # §3: pre-filled ONCE, here and never again -- past another engine's task prefix.
+        slot["values"][field["id"]] = engines.foreign_prefix_stripped(cap, mode, text)
     _check_slot(seq, slot)
     seq["slots"].insert(_beat_slot_index(seq, lane, pos), slot)
     beat["slot_id"] = slot["id"]
@@ -2156,7 +2157,9 @@ def _op_copy_beat_to_prompt(seq, p):
         raise ValueError("This shot's recipe has no text field to write the beat into.")
     if not isinstance(slot.get("values"), dict):
         slot["values"] = {}
-    slot["values"][field["id"]] = beat.get("text")
+    # A beat written in another engine's format loses that engine's one
+    # leading task prefix; anything else stays, for the Make-time check.
+    slot["values"][field["id"]] = engines.foreign_prefix_stripped(slot.get("cap"), slot.get("mode"), beat.get("text"))
 
 
 SEQ_OPS = {
@@ -3818,6 +3821,37 @@ _GROUNDING_ECHO_RE = re.compile(r"\n\s*\[?(?:No picture is attached to this mess
                                 r"|The user attached [^\n]*)\.?[^\n]*\]?\s*$", re.IGNORECASE)
 
 
+# A storyboard shot's write ("Write this shot") carries the beats either side
+# of its own in context.neighbours, one line each, so the shot keeps the
+# story's continuity; the writer is told to write only its own shot.
+GUIDE_NEIGHBOUR_KEYS = (("before", "Before"), ("after", "After"))
+
+
+def _skill_neighbours(context, cap, mode):
+    """Validate context.neighbours -> (block of text or "", error or None).
+    A beat in another engine's format loses that engine's task prefix."""
+    n = (context or {}).get("neighbours") if isinstance(context, dict) else None
+    if n is None:
+        return "", None
+    if not isinstance(n, dict) or set(n) - {k for k, _ in GUIDE_NEIGHBOUR_KEYS}:
+        return "", "The context's \"neighbours\" must be an object with \"before\" and/or \"after\"."
+    lines = []
+    for k, word in GUIDE_NEIGHBOUR_KEYS:
+        v = n.get(k)
+        if v is None:
+            continue
+        if not isinstance(v, str) or len(v) > GUIDE_CONTEXT_VALUE_CHARS:
+            return "", ("The neighbouring beat \"%s\" must be text of at most %d characters."
+                        % (k, GUIDE_CONTEXT_VALUE_CHARS))
+        v = engines.foreign_prefix_stripped(cap, mode, " ".join(v.split()))
+        if v:
+            lines.append("%s: %s" % (word, v))
+    if not lines:
+        return "", None
+    return ("The storyboard's shots either side of this one, for continuity only. Write THIS shot, "
+            "not them:\n" + "\n".join(lines)), None
+
+
 def guide_skill(p):
     """The whole POST /api/guide/skill body -> (body, http code). A mode
     with a pack writer uses it; any other mode with a text field uses the
@@ -3856,6 +3890,9 @@ def guide_skill(p):
     context_line, err = _guide_context_line(room_id, context, with_mode=False)
     if err:
         return {"ok": False, "error": err}, 400
+    neighbours, err = _skill_neighbours(context, cap, mode)
+    if err:
+        return {"ok": False, "error": err}, 400
     w = engines.writer(cap, mode)
     attached, err = _guide_attached(w, cap, mode, p.get("attached"))
     if err:
@@ -3887,13 +3924,15 @@ def guide_skill(p):
         urls = [_guide_picture_url(x) for x in shown] if vision else []
     except ValueError as e:
         return {"ok": False, "error": str(e)}, 400
-    user = (context_line + "\n\n" if context_line else "")
+    user = (context_line + "\n\n" if context_line else "") + (neighbours + "\n\n" if neighbours else "")
+    # Words written for another engine (a beat in its format) lose that
+    # engine's task prefix before this mode's writer reads them.
     if refs:
         user += "Request: Describe the attached picture, as the words for this mode."
         if topic.strip():
-            user += "\nThe user's own words so far: " + topic.strip()
+            user += "\nThe user's own words so far: " + engines.foreign_prefix_stripped(cap, mode, topic.strip())
     else:
-        user += "Request: " + topic.strip()
+        user += "Request: " + engines.foreign_prefix_stripped(cap, mode, topic.strip())
     if answer and answer.strip():
         user += "\n\nThe user answered: " + answer.strip()
     if answers:

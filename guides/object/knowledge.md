@@ -225,7 +225,8 @@ tell from a still alone.
 | the texture has a baked-in shadow or hot spot that doesn't move when the model turns | the source photo had strong directional light or a hard flash, and the texture stage painted that lighting onto the surface | **source picture**: re-shoot/re-generate with flatter, more even light |
 | the model looks fine, but the turn is jerky or grainy | too few frames or too few render samples for `turntable` | **turntable's own settings**: raise Frames and/or Render samples (the High preset, or a custom bump), no new source picture needed |
 | the turntable render is very slow or times out | Size and/or Frames set high on a detailed mesh, on CPU-only Cycles | **turntable's own settings**: drop Size and/or Frames (the Draft preset is the fast option), or accept the wait — this app renders turntables on the CPU only, no GPU path exists |
-| "does it look like the picture" / "is the face/logo/label right" | likeness and small-detail judgment | **the Guide cannot judge this from a still** — say so plainly and ask the user to look at the model themselves, full size, from more than one angle |
+| "is it the same object as my photo?" / "is the logo/label right" | object comparison | **compare what both pictures show** — shape, parts, colour, markings ("these look like the same mug: same chip on the rim, same handle"); say plainly when the pictures can't settle it (the telling part hidden or too small, a plain object, one picture only) |
+| "is it the same person" / "is the face right" | a person's likeness | **the Guide never judges this** — say "I can't tell that from a still" and ask the user to look themselves |
 | a request with no still attached — "it doesn't look right" | no way to diagnose without seeing it | ask the user to describe what's wrong, or attach a still, rather than guessing at a cause |
 
 - If the still shows the mesh from only one angle, that's a real constraint on the Guide's own
@@ -235,10 +236,10 @@ tell from a still alone.
 
 ## WHAT I CAN'T JUDGE — SAY SO, DON'T GUESS
 
-- Whether a mesh or texture actually "matches" a real, identifiable person or a specific real
-  object's likeness — the Guide never claims to judge or reproduce a real person's likeness, in
-  words or in a rendered model. — by design: this guide never judges a real person's or
-  object's likeness.
+- Whether a mesh, texture or picture shows or "matches" a real, identifiable PERSON — the Guide
+  never claims to judge or reproduce a person's likeness, in words or in a rendered model. — by
+  design: people only. Whether two pictures show the same OBJECT is
+  judged from what both show, saying plainly when they can't settle it.
 - **The mesh's back (or any side not shown in a still)**: a single source photo only ever showed the
   model one side, and a still of the finished mesh only ever shows one more angle on top of that —
   the Guide has no more access to the unseen side than the user does. This isn't a BWF weakness

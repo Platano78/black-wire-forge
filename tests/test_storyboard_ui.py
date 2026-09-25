@@ -182,7 +182,12 @@ SCRIPT_SNIPPET = (
 FIRST_FILM_TEXT = ("[reference generation] The target video pushes slowly into <Subject 1> as "
                     "<Subject 2> sets two porcelain cups down on the steel table and offers tea "
                     "to someone off screen. One continuous shot, one speaker.")
-EDITED_FILM_TEXT = FIRST_FILM_TEXT + " (edited)"
+# The beats are in the other video engine's format; the beat's shot is an LTX
+# one, so the one leading "[reference generation]" task prefix is taken off on
+# the way into its prompt (P3e). The edit adds a real stray bracket, which
+# stays, so the Make-time check still asks about it.
+PREFIX = "[reference generation] "
+EDITED_FILM_TEXT = FIRST_FILM_TEXT + " A [wind] gust."
 
 try:
     print("driving the real page: new STORYBOARD sequence -> script lane -> beat edit -> stale -> copy -> mode switch")
@@ -191,6 +196,8 @@ try:
         browser = pw.chromium.launch()
         page = browser.new_page(viewport={"width": 1440, "height": 900})
         page.on("pageerror", lambda e: errors.append("PAGEERROR: %s" % e))
+        conflicts_seen = []   # (url, body) of every 409 answer, to say which ones they were
+        page.on("response", lambda r: conflicts_seen.append((r.url, r.request.post_data)) if r.status == 409 else None)
         page.on("console", lambda m: errors.append("CONSOLE %s: %s" % (m.type, m.text)) if m.type == "error" else None)
         page.goto(URL, wait_until="networkidle", timeout=30000)
         page.wait_for_timeout(1000)
@@ -250,23 +257,18 @@ try:
             check("selecting the beat's slot opens the recipe inspector with a prompt box",
                   has_prompt)
             if has_prompt:
-                check("the prompt box is pre-filled with the beat's own text",
-                      page.input_value("#promptBox") == FIRST_FILM_TEXT, page.input_value("#promptBox"))
+                check("the prompt box is pre-filled with the beat's own text, less the other engine's prefix",
+                      page.input_value("#promptBox") == FIRST_FILM_TEXT[len(PREFIX):], page.input_value("#promptBox"))
 
         print("make + pick a take on that slot, so staleness has something to attach to")
         if first_beat_id and page.is_visible("#makeBtn"):
             page.click("#makeBtn")
-            # Since the motion writers (P3c), a bracket in an LTX prompt is a Make-time problem:
-            # this beat opens with the other video engine's "[reference generation]" prefix, so
-            # Make asks first. The storyboard flow goes on with "Make anyway".
-            page.wait_for_selector("#makeConfirm:not([hidden])", timeout=10000)
-            check("Make asks first about the bracketed prefix in an LTX prompt",
-                  "[reference generation]" in page.inner_text("#makeConfirmList"), page.inner_text("#makeConfirm"))
-            page.click("#makeAnywayBtn")
             slot_sel = '#tlTrackVideo [data-slot-id]'
             wait_true("the linked video slot leaves 'empty' after Make",
                       lambda: "tl-slot-empty" not in (page.eval_on_selector(slot_sel, "el => el.className") or ""),
                       6)
+            check("Make did not ask first: the prefix was stripped, nothing else is a problem",
+                  page.is_hidden("#makeConfirm"), page.inner_text("#makeConfirm"))
             wait_true("slot reaches 'unpicked' (a take exists)",
                       lambda: "tl-slot-unpicked" in (page.eval_on_selector(slot_sel, "el => el.className") or ""), 8)
             page.click('#takesRow [data-pick]')
@@ -309,8 +311,18 @@ try:
             copy_btn.click()
             page.wait_for_timeout(400)
             if page.is_visible("#promptBox"):
-                check("clicking Copy beat into prompt overwrites the prompt with the CURRENT (edited) beat text",
-                      page.input_value("#promptBox") == EDITED_FILM_TEXT, page.input_value("#promptBox"))
+                check("clicking Copy beat into prompt overwrites the prompt with the CURRENT (edited) beat text, "
+                      "less the other engine's prefix",
+                      page.input_value("#promptBox") == EDITED_FILM_TEXT[len(PREFIX):], page.input_value("#promptBox"))
+                print("a real stray bracket still asks at Make time")
+                # No wait for the slot's 600 ms autosave: Make's own save cancels it, so the two
+                # never race on rev (the one-409 check below fails if they do).
+                page.click("#makeBtn")
+                page.wait_for_selector("#makeConfirm:not([hidden])", timeout=10000)
+                asked = page.inner_text("#makeConfirmList")
+                check("Make asks about the stray [wind], not about the stripped prefix",
+                      "[wind]" in asked and "[reference generation]" not in asked, asked)
+                page.click("#makeFixBtn")
         else:
             check("clicking Copy beat into prompt updates the prompt (skipped -- control not visible)", False)
 
@@ -327,10 +339,10 @@ try:
             check("[data-script-lane] absent after switching to sequence mode (skipped -- no mode control)", False)
 
         print("zero console/page errors across the whole run")
-        # The Make-time ask above is a 409 needs_confirm answer, which the browser logs as a failed
+        # The Make-time ask about [wind] above is a 409 needs_confirm answer, which the browser logs as a failed
         # resource (sometimes after the click returns): exactly one is expected, not a page error.
         conflicts = [e for e in errors if "status of 409 (Conflict)" in e]
-        check("exactly one 409 was logged (the Make-time ask)", len(conflicts) == 1, errors[:10])
+        check("exactly one 409 was logged (the Make-time ask)", len(conflicts) == 1, conflicts_seen)
         check("no console or page errors were seen", len([e for e in errors if e not in conflicts]) == 0, errors[:10])
 
 finally:

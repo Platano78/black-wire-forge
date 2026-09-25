@@ -187,11 +187,17 @@ H3_NEW_SHOT_WORDS = (
 _NEW_SHOT_RE = re.compile(r"\b(" + "|".join(re.escape(w) for w in H3_NEW_SHOT_WORDS) + r")\b", re.IGNORECASE)
 
 
-# The engine's own task-type prefix, which opens a reference prompt in square
-# brackets ("[reference generation] ...", "[video editing + reference
-# generation + audio reuse] ...": the vendor's reference prompt spec). It is
-# not a token weight, so the check reads past it.
-_TASK_PREFIX_RE = re.compile(r"^\s*\[[a-z]+(?: [a-z]+)*(?: \+ [a-z]+(?: [a-z]+)*)*\]")
+# The engine's own task-type prefix, which opens a prompt in square brackets:
+# one or more of the vendor's task words joined by " + " ("[reference
+# generation] ...", "[video editing + reference generation + audio reuse] ...",
+# "[video continuation + keyframe completion] ..."; the prompt spec published
+# with MiniMax-H3, huggingface.co/MiniMaxAI/MiniMax-H3). A CLOSED vocabulary:
+# any other bracket ("[wind]") is not a prefix. It is not a token weight, so
+# the check reads past it; the same pattern is the pack's "task_prefix".
+H3_TASK_WORDS = ("reference generation", "audio reference", "video editing", "audio reuse",
+                 "video continuation", "keyframe completion")
+_TASK = "(?:" + "|".join(re.escape(w) for w in H3_TASK_WORDS) + ")"
+_TASK_PREFIX_RE = re.compile(r"^\s*\[" + _TASK + r"(?: \+ " + _TASK + r")*\]")
 
 
 def h3_shot_check(values, request):
@@ -513,6 +519,10 @@ ENGINE = {
     "describe": _describe,
     "mode_words": ENGINE_MODE_WORDS,
     "mode_rooms": {"fl2va": "video", "ref2v": "video", "continue": "video"},
+    # This engine's own task-type prefix (see _TASK_PREFIX_RE): a beat written
+    # for an H3 shot keeps it; copied into another engine's shot, the core
+    # takes it off (engines/__init__.py "task_prefix").
+    "task_prefix": _TASK_PREFIX_RE.pattern,
     "mode_notes": {
         "fl2va": "animates your picture, with sound, up to about 15 seconds",  # source: our internal component notes, engines/minimax_h3.py:244 (preset note)
         "ref2v": "puts the people or clips you upload into a new scene, with sound",  # source: our internal component notes

@@ -84,7 +84,7 @@ the fixer never describes or judges a side the still does not show, and says so 
 is about one. Its fix words replace edit/reroll: `picture` (a new source-picture PROMPT; "Use it in
 the Picture room" fills Picture / text-to-picture), `settings` (a SETTINGS line, `id = value; ...`,
 matched to the turntable's own fields and range-checked; "Use these settings" fills them), or
-`none` (likeness, the unseen side: advice only). The mesh mode's `.glb` result has no still the
+`none` (a person's likeness, the unseen side: advice only). The mesh mode's `.glb` result has no still the
 server can show a brain, so the fixer sits on the turntable.
 
 **Output shape**:
