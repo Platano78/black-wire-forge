@@ -100,6 +100,13 @@ falsy — is ignored. The dict has exactly these keys:
                          options     optional {field id: [allowed values]} for
                                      a text field the engine only accepts from
                                      a fixed list (matched without case)
+                         derive      optional callable(values, request) ->
+                                     {field id: value} for fields the pack
+                                     computes (e.g. a clip's length from its
+                                     spoken line, or from a duration the
+                                     user stated in the request). These
+                                     win over the reply. `values` and
+                                     `request` are as check's below.
                          check       callable(values, request) -> [plain
                                      problem sentences]; [] means fine.
                                      `values` are the mode's coerced field
@@ -127,9 +134,14 @@ falsy — is ignored. The dict has exactly these keys:
                          fills       the field id PROMPT fills on a reroll,
                                      e.g. "prompt"
                          edit_mode   the mode (same cap) to point at when
-                                     FIX is "edit", e.g. "edit"
+                                     FIX is "edit", e.g. "edit"; None when
+                                     the mode has nothing to edit with
+                         fixes       optional list, the FIX values this
+                                     reviser may give (default ["edit",
+                                     "reroll"]); e.g. ["reroll"] for a clip,
+                                     which is never edited in place
                        A non-blank QUESTION ends the reply; otherwise FIX
-                       must be "edit" or "reroll" and PROMPT non-blank.
+                       must be one of `fixes` and PROMPT non-blank.
   fields    optional dict  mode_name -> list of field-descriptor dicts, each
                        with "id", "label", "type" (text/textarea/number/int/
                        select/checkbox/audio/image/image_list/video_list) and
@@ -735,8 +747,8 @@ def parse_reviser_reply(r, text):
     """Parse a reviser's line-delimited reply ->
     {"question": str} when it asks, else {"diagnosis", "fix", "prompt",
     "note", "tweak"} (blank ones ""). Every key is one line; any other line
-    is ignored. Raises ValueError when FIX is not edit/reroll or PROMPT is
-    blank."""
+    is ignored. Raises ValueError when FIX is not one of the reviser's
+    `fixes` (edit/reroll by default) or PROMPT is blank."""
     text = text or ""
     if _THINK[1] in text:
         text = text.split(_THINK[1], 1)[1]
@@ -755,8 +767,8 @@ def parse_reviser_reply(r, text):
         return {"question": values["QUESTION"]}
     fix = (values.get("FIX") or "").split()
     fix = fix[0].strip(".,;").lower() if fix else ""
-    if fix not in REVISER_FIXES:
-        raise ValueError("FIX is not edit or reroll")
+    if fix not in (r.get("fixes") or REVISER_FIXES):
+        raise ValueError("FIX is not one of %s" % " / ".join(r.get("fixes") or REVISER_FIXES))
     if not values.get("PROMPT"):
         raise ValueError("no PROMPT")
     return {"diagnosis": values.get("DIAGNOSIS", ""), "fix": fix, "prompt": values["PROMPT"],

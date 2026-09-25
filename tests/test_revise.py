@@ -153,8 +153,10 @@ code, body = http("/api/engines?lane=t")
 modes = [(cap, m) for cap, v in body.items() if cap not in ("rooms", "helper") for m in v["modes"]]
 t2i = next(m for cap, m in modes if cap == "image" and m["id"] == "t2i")
 check("contract: /api/engines reports the t2i reviser's label", t2i.get("reviser") == {"label": "Picture fixer"}, t2i.get("reviser"))
+CLIP_FIXERS = {"ltx", "ltx_loop", "fl2va", "ref2v", "continue"}   # P3c
 check("contract: every other mode reports reviser null",
-      [m["id"] for cap, m in modes if m is not t2i and m.get("reviser") is not None] == [])
+      [m["id"] for cap, m in modes if m is not t2i and not (cap == "video" and m["id"] in CLIP_FIXERS)
+       and m.get("reviser") is not None] == [])
 check("contract: every mode carries a reviser key", all("reviser" in m for _, m in modes))
 
 print("parser: line keys")

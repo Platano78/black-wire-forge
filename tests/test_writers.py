@@ -140,7 +140,7 @@ W = engines.writer("audio", "song")
 print("contract: the pack's writers key")
 check("contract: song writer has label, prompt, multiline, none_token, check", W is not None and W["label"] == "Song writer" and W["multiline"] == "LYRICS" and W["none_token"] == "NONE" and callable(W["check"]) and W["prompt"].strip() != "")
 check("contract: keys map LYRICS and TAGS to their fields", W["keys"]["LYRICS"] == "lyrics" and W["keys"]["TAGS"] == "tags")
-check("contract: modes without a writer return None", engines.writer("video", "ltx") is None and engines.writer("image", "t2i") is None)
+check("contract: modes without a writer return None", engines.writer("image", "cutout") is None and engines.writer("image", "upscale") is None)
 
 code, body = http("/api/engines?lane=t")
 check("contract: /api/engines answers 200", code == 200)
@@ -148,7 +148,10 @@ song = next(m for m in body["audio"]["modes"] if m["id"] == "song")
 check("contract: /api/engines reports the song writer's label", song["writer"] == {"label": "Song writer"})
 WRITERS = {("audio", "song"): "Song writer", ("image", "pixelart"): "Sprite writer",   # P2, P3a
            ("audio", "music"): "Background music writer", ("audio", "yue2"): "Planned song writer",   # P3b
-           ("audio", "cover"): "Cover arranger", ("audio", "sfx"): "Sound effect writer"}
+           ("audio", "cover"): "Cover arranger", ("audio", "sfx"): "Sound effect writer",
+           ("video", "ltx"): "Shot writer", ("video", "ltx_loop"): "Long take writer",  # P3c
+           ("video", "talking"): "Line writer", ("video", "fl2va"): "Shot writer",
+           ("video", "ref2v"): "Reference shot writer", ("video", "continue"): "Carry-on writer"}
 others = [(cap, m["id"]) for cap, v in body.items() if cap not in ("rooms", "helper") for m in v["modes"] if (cap, m["id"]) not in WRITERS and m.get("writer") is not None]
 check("contract: every other mode reports writer null", others == [], others)
 check("contract: each pack writer reports its label", all(
