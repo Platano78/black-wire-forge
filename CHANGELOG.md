@@ -95,6 +95,8 @@ All notable changes to Black Wire Forge are recorded here.
   "Describe this picture", "Not right?", "Edit this result", and what shows with no helper.
 - A process lane's list of what is missing names the programs it needs (Blender, ffmpeg),
   never GPU model files.
+- A turntable (process-lane) job naming a file that was never uploaded is refused when you
+  press Make, not as a failed job later.
 - Downloading from a lane that is not answering, or that no longer has the file, gives a
   plain sentence instead of a 500.
 - A request whose Host header carries the wrong port is refused with how to fix it (a proxy

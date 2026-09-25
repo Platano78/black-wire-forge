@@ -25,9 +25,9 @@ Black Wire Forge is a **web front end** for one or more ComfyUI instances. It:
 - Never commit or share `config.json` — it carries the user's real machine addresses and is
   gitignored on purpose.
 - Before downloading any model weights, tell the user the file size and licence and get an
-  explicit yes. Call out non-commercial licences (Qwen-Image 2.1, YuE2-3B) and
-  territory-restricted ones (MiniMax-H3 — open outside the EU/UK/South Korea/USA) by name —
-  "Getting the models" below (or `docs/MODELS.md`) has every model's source, size and licence.
+  explicit yes. Call out non-commercial licences (Qwen-Image 2.1, YuE2-3B, SheetSage2) and
+  territory-restricted ones (MiniMax-H3 — open outside the EU/UK/South Korea/USA) by name;
+  "Getting the models" (or `docs/MODELS.md`) has each model's source, size and licence.
 - Don't disable or work around the request guard (`request_refusal()` in `server.py`) — it
   is the only thing standing between this app and a browser-based attack against a no-login
   server. If it refuses something legitimate, fix `"allowed_hosts"`, don't patch it out.
@@ -41,10 +41,10 @@ Ask, in this order, and stop at the first one that applies:
 2. **They have no GPU at all** → only one path works: turning an existing `.glb` into an
    orbiting turntable video on the Blender + `ffmpeg` **process lane** (`engines/turntable.py`,
    CPU-only). Every other room needs a GPU-backed ComfyUI lane; do not try to make
-   image/video/audio/3D generation work without one. First check both binaries are on `PATH`:
-   `command -v blender && command -v ffmpeg`. If either is missing, install it (Blender:
-   https://www.blender.org/download/) — a process lane with a missing binary reports itself
-   down with a plain "needs ..." sentence, it does not crash. The lane is a **process** lane:
+   image/video/audio/3D generation work without one. Check each binary on its own:
+   `command -v blender; command -v ffmpeg` (each prints a path, or nothing if missing), and
+   install what is missing (https://www.blender.org/download/, https://ffmpeg.org/download.html);
+   a lane missing one reports itself down with a plain "needs ..." sentence. The lane is a **process** lane:
    if `config.json` does not exist yet, this is the whole file (adjust `"port"`/`"bind"` if you
    changed them); if it exists, do not replace it — add just the lane object to its `"lanes"`:
 
@@ -53,17 +53,16 @@ Ask, in this order, and stop at the first one that applies:
     "lanes": [{"id": "cpu", "name": "This machine", "kind": "process", "caps": ["3d"]}]}
    ```
 
-   It needs no `host`/`port` (it runs a local program) but **must** declare a non-empty
-   `caps`: nothing about it is discoverable until its binaries are. With the app running, the
-   whole render for a user's `.glb` is:
+   It needs no `host`/`port` but **must** declare a non-empty `caps` (nothing about it is
+   discoverable until its binaries are). With the app running, the whole render is:
 
    ```
    # 1. upload; keep the "name" it answers with
    curl -s -F lane=cpu -F file=@model.glb http://127.0.0.1:3998/api/upload
-   #    -> {"ok": true, "files": [{"name": "c0fb74b6_model.glb", ...}]}
-   # 2. start the turntable with that name as "model"
+   #    -> {"ok": true, "files": [{"name": "<the name>", ...}]}
+   # 2. start the turntable with that name as "model" (a name never uploaded is a 400)
    curl -s -X POST http://127.0.0.1:3998/api/generate -H 'Content-Type: application/json' \
-     -d '{"lane": "cpu", "kind": "3d", "mode": "turntable", "prompt": "", "model": "c0fb74b6_model.glb"}'
+     -d '{"lane": "cpu", "kind": "3d", "mode": "turntable", "prompt": "", "model": "<the name from step 1>"}'
    #    -> {"ok": true, "job": {"id": "<job-id>", "status": "queued", ...}, ...}
    # 3. poll until its "status" is "done" (Blender renders on the CPU: minutes); its "outputs" are
    #    turntable.mp4 and poster.png, both {"subfolder": "<job-id>", "type": "local"}
@@ -81,7 +80,8 @@ Ask, in this order, and stop at the first one that applies:
 
 ## Install + start
 
-Setting up for a user, do all of this by default; it is the path that makes every feature work:
+For a user, do all of this by default (all the app itself needs; renders also need a lane
+with the models):
 
 ```
 test -e config.json || cp config.example.json config.json   # never overwrite a real config
@@ -119,7 +119,7 @@ python3 -m venv .venv
 Against the running server (port 3998 by default; use the `"port"` in `config.json`):
 
 - `curl -s http://127.0.0.1:3998/api/health` → `{"ok": true, "port": 3998, "lanes": N}` (N =
-  lane count). This proves only that the app is up, not any lane.
+  lane count): the app is up, not any lane.
 - `curl -s http://127.0.0.1:3998/api/lanes` → `{"lanes": [...], "title": ..., "fleet_llm": ...}`.
   Per lane: `"up"` — whether its latest poll reached the lane's ComfyUI `/system_stats`
   (`"checked"`: that poll's time; when `false`, `"err"` has the raw connection error).
@@ -154,7 +154,7 @@ Against the running server (port 3998 by default; use the `"port"` in `config.js
 
 ## Make something and get the file
 
-Shapes read from `generate()`, `jobs_payload()` and `proxy_view()` in `server.py`.
+Shapes from `server.py`'s `generate()`, `jobs_payload()`, `proxy_view()`.
 
 **1. Submit** — `POST /api/generate`, JSON, at minimum `lane`, `kind`, `mode`, `prompt`
 (everything else has a default):
@@ -188,17 +188,17 @@ curl -s -o lighthouse.png \
   "http://127.0.0.1:3998/api/view?lane=local&filename=<filename>&subfolder=<subfolder>&type=output&dl=1"
 ```
 
-- `dl=1` — the recipe-removed copy (`strip_metadata()` removes the embedded workflow and
-  prompt: model filenames, the full prompt). Give this one to a user who might share it.
-- `keep_recipe=1` in place of `dl=1` — the original, metadata and all.
+- `dl=1` — the recipe-removed copy (`strip_metadata()` drops the embedded workflow: model
+  filenames, the full prompt); give this one to a user who might share it.
+- `keep_recipe=1` instead of `dl=1` — the original, metadata and all.
 - If cleaning fails (unsupported sub-format, missing dependency, parse failure), `dl=1` is
   REFUSED, never silently the original: HTTP 422, `{"error": "Could not remove the recipe from
   this file, so it was not downloaded. Use the plain download if you want the original."}`.
-  Retry with `keep_recipe=1` if the user is fine with the original.
+  Retry with `keep_recipe=1` if the user accepts the original.
 - `type=local` (a `post`-step or process-lane entry) is served from the app's own disk, never
   proxied to a lane; the same `lane`/`dl`/`keep_recipe` query applies.
 
-**Where the file actually lives — answer with BOTH, not just one:**
+**Where the file actually lives — answer with BOTH:**
 
 1. **On the lane's own ComfyUI machine**, in its output folder — the render itself, for every
    `"type": "output"` entry on every job. The app never moves it; `/api/view` only proxies a
@@ -211,7 +211,8 @@ curl -s -o lighthouse.png \
    ComfyUI picture (`t2i`, no `post` step) has NO local copy — check `job["outputs"]` for a
    `"type": "local"` entry before claiming one.
 
-Save a copy only where the user asked (their Downloads folder, a project directory...).
+**Never save a copy the user did not ask for.** If they named no place, save nothing: give them
+the `/api/view` link and say where the original is.
 
 ## Fixing what's missing
 
