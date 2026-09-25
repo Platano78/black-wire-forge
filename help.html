@@ -87,6 +87,7 @@
       <li><a href="#the-screen">The screen</a></li>
       <li><a href="#machines">Machines</a></li>
       <li><a href="#making-something">Making something</a></li>
+      <li><a href="#the-guide">The room's guide</a></li>
       <li><a href="#first-five-minutes">Your first five minutes</a></li>
       <li><a href="#history">History</a></li>
       <li><a href="#sharing-and-licences">Sharing and licences</a></li>
@@ -153,6 +154,35 @@
 
   <h3>What each room can do right now</h3>
   <div id="roomsLive"><p class="muted">Loading&hellip;</p></div>
+
+  <h2 id="the-guide">The room's guide</h2>
+  <p>Every room has a guide: a helper that knows that room's engines. It sits in the inspector, right
+  under the prompt box and its "Help me write this" button. It is not a separate app: it talks through
+  the optional prompt helper set up in config.json.</p>
+  <ul>
+    <li><strong>Help me write this:</strong> tell it in a few words what you want (in the prompt box), press
+      the button, and the guide writes the fields for that mode. It may ask you one question at a time
+      first; when a question has choices, click one or type your own answer. It asks at most 4 questions,
+      then writes anyway, using sensible defaults and naming each default it picked.</li>
+    <li><strong>The preview:</strong> what it wrote appears in the guide panel field by field. Nothing reaches
+      your form until you press <strong>Use these</strong>; <strong>Dismiss</strong> throws it away and
+      <strong>Start over</strong> begins again. It never starts a job: you still press Make.</li>
+    <li><strong>Talking to it:</strong> you can also just ask the guide a question in its box (Enter sends,
+      Shift+Enter makes a new line). The conversation stays in your browser.</li>
+    <li><strong>Compact / Verbose:</strong> how much the guide knows. Compact suits small models and is the
+      default; Verbose knows more but needs a model with more context. The panel says how much context
+      each needs, and warns you if your helper reports less, but it never switches for you.</li>
+    <li><strong>Describe this picture:</strong> when the mode has a picture in it (one you added, or a
+      result you picked in History), the guide can write the prompt from the picture. The picture is only
+      sent to a helper that can see pictures.</li>
+    <li><strong>Not right? Tell the guide:</strong> on a finished result, press it, say what is wrong, and the
+      guide says what went wrong and gives a revised prompt (or an edit to try). A helper that cannot see
+      pictures says so and goes by your words.</li>
+    <li><strong>Edit this result:</strong> on a finished picture, opens the room's edit mode with that picture
+      already in place as picture 1; say what to change, then press Make.</li>
+    <li><strong>No helper set up?</strong> The guide panel still shows the room's plain guidance, and says how
+      to add a helper. "Help me write this" only appears once a helper is set up.</li>
+  </ul>
 
   <h2 id="first-five-minutes">Your first five minutes</h2>
   <p>Every room with something it can make has its own <strong>Try this</strong> button: one click fills in a
