@@ -351,6 +351,15 @@
   .guide-msg.from-guide .guide-who{color:var(--accent)}
   .guide-text{font-size:14px; white-space:pre-wrap; overflow-wrap:anywhere; max-width:72ch}
   .guide-hint{font-size:11px; color:var(--stale); margin:3px 0 0; max-width:72ch}
+  .guide-actions{display:flex; flex-direction:column; gap:6px; margin-top:6px}
+  .guide-action-row{display:flex; flex-direction:column; align-items:flex-start; gap:2px}
+  .guide-action-beats{margin:0 0 2px 18px; padding:0; font-size:12px; color:var(--text-mid)}
+  .guide-action-why{font-size:11px; color:var(--text-mid)}
+  #guideActionBar{margin-top:6px}
+  /* Compact shows one line of the log, so the latest reply's buttons sit under it;
+     expanded shows them in the conversation itself. */
+  #guidePanel[data-expanded="false"] #guideLog .guide-actions{display:none}
+  #guidePanel[data-expanded="true"] #guideActionBar{display:none}
   #guidePanel[data-expanded="false"] #guideLog{max-height:3.1em; padding:3px 6px}
   #guidePanel[data-expanded="false"] #guideCtxNote{white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
   #guidePanel[data-expanded="false"] #guideInput{min-height:40px; height:40px}
@@ -843,6 +852,7 @@
         <p id="guideSizeNote"></p>
         <p id="guideCtxNote" hidden></p>
         <div id="guideLog" role="log" aria-label="Conversation with the guide"></div>
+        <div id="guideActionBar" hidden></div>
         <div id="guideSkill" class="guide-msg from-guide" hidden aria-live="polite"></div>
         <div id="guideChip" hidden></div>
         <label class="sr-only" for="guideInput">Message the guide</label>
@@ -2814,7 +2824,122 @@ function guideContext(shot){
   if(recipe && !recipe.disabled && recipe.value) ctx.recipe = recipe.value;
   return ctx;
 }
-function guideMsgEl(role, text, hints){
+// "ACTION: <verb> | <arg>" lines in a Film guide reply -> buttons (the guide
+// only ever offers; the user clicks). -> {text, actions: [{verb, arg, beats}]}
+function guideActions(text){
+  const KNOWN = {add_beats: 1, open_shot: 1, make_shot: 1, add_ref: 1, cut: 1};
+  const isKnownAction = line => {
+    const t = line.trim().replace(/^[`*]+|[`*]+$/g, '').trim();
+    const m = t.match(/^ACTION:\s*([a-z_]+)\s*(?:\|\s*(.*))?$/i);
+    return m && KNOWN[m[1].toLowerCase()] ? m : null;
+  };
+  const lines = String(text == null ? '' : text).split('\n');
+  const kept = [], actions = [];
+  for(let i = 0; i < lines.length; i++){
+    const m = isKnownAction(lines[i]);
+    if(!m){ kept.push(lines[i]); continue; }
+    const a = {verb: m[1].toLowerCase(), arg: (m[2] || '').trim(), beats: []};
+    if(a.verb === 'add_beats'){
+      // The beats are the non-empty lines right after it, up to the next
+      // blank line or the next ACTION line; a list marker is dropped.
+      for(let j = i + 1; j < lines.length; j++){
+        if(lines[j].trim() === '' || isKnownAction(lines[j])) break;
+        a.beats.push(lines[j].trim().replace(/^(?:[-*•]|\d+[.)])\s+/, ''));
+      }
+      if(!a.beats.length) continue;   // an add_beats with no beats is dropped
+    }
+    actions.push(a);
+  }
+  while(kept.length && kept[0].trim() === '') kept.shift();
+  while(kept.length && kept[kept.length - 1].trim() === '') kept.pop();
+  return {text: kept.join('\n'), actions: actions};
+}
+// What one parsed action means right now: its button label, and why it
+// can't be run (null = it can).
+function guideActionState(a){
+  let label = '', why = null;
+  const slots = STATE.seq ? (STATE.seq.slots || []) : [];
+  if(!STATE.seq) why = 'Open a sequence first.';
+  if(a.verb === 'add_beats'){
+    label = 'Add these ' + a.beats.length + ' beat' + (a.beats.length === 1 ? '' : 's') + ' to the script';
+  } else if(a.verb === 'open_shot' || a.verb === 'make_shot'){
+    const n = parseInt(a.arg, 10);
+    const vids = slots.filter(s => s.lane === 'video');
+    label = (a.verb === 'open_shot' ? 'Open video shot ' : 'Make video shot ') + (isNaN(n) ? a.arg : n);
+    if(why == null){
+      if(!(n >= 1 && n <= vids.length)) why = 'There is no video shot ' + a.arg + ' yet.';
+      else if(a.verb === 'make_shot' && vids[n - 1].state === 'rendering')
+        why = 'Video shot ' + n + ' is already rendering.';
+    }
+  } else if(a.verb === 'add_ref'){
+    const m = a.arg.match(/^(?:picture(?:\s+shot)?\s+)?(\d+)\s+as\s+(?:the\s+|a\s+)?(set|character|other)\b/i);
+    if(!m){
+      label = 'Add to the REF ROOM';
+      if(why == null) why = 'The guide did not say which picture.';
+    } else {
+      const n = parseInt(m[1], 10), role = m[2].toLowerCase();
+      const pics = slots.filter(s => s.lane === 'picture');
+      label = 'Put picture shot ' + n + ' in the REF ROOM as '
+        + (role === 'set' ? 'the set plate' : 'a ' + role + ' reference');
+      if(why == null){
+        const slot = pics[n - 1] || null;
+        if(!slot) why = 'There is no picture shot ' + n + ' yet.';
+        else {
+          const job = findJob(slot.pick);
+          if(!slot.pick || !job || job.status !== 'done') why = 'Picture shot ' + n + ' has no picked take yet.';
+          else if(role === 'set' && ((STATE.seq.refs || []).some(r => r.role === 'set')))
+            why = 'The REF ROOM already has a set plate.';
+        }
+      }
+    }
+  } else if(a.verb === 'cut'){
+    label = 'Cut the sequence';
+    if(why == null && !slots.some(s => s.lane === 'video' && s.pick))
+      why = 'Pick a take for at least one video shot first.';
+  }
+  return {label: label, why: why};
+}
+// The buttons for one reply's parsed actions (all textContent, like the
+// rest of the panel): a row per action, its beats (add_beats) above the
+// button, its why-line under a disabled one. A done action stays disabled.
+function guideActionsEl(actions, index){
+  const wrap = document.createElement('div');
+  wrap.className = 'guide-actions';
+  const stored = guideHistLoad(guideHistKey())[index] || {};
+  const done = stored.done || [];
+  actions.forEach((a, i) => {
+    const row = document.createElement('div');
+    row.className = 'guide-action-row';
+    const st = guideActionState(a);
+    if(a.verb === 'add_beats'){
+      const ol = document.createElement('ol');
+      ol.className = 'guide-action-beats';
+      a.beats.forEach(b => {
+        const li = document.createElement('li');
+        li.textContent = b;
+        ol.appendChild(li);
+      });
+      row.appendChild(ol);
+    }
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn guide-action';
+    btn.dataset.guideMsg = String(index);
+    btn.dataset.guideAction = String(i);
+    btn.textContent = done.includes(i) ? st.label + ' — done' : st.label;
+    btn.disabled = done.includes(i) || !!st.why;
+    row.appendChild(btn);
+    if(!done.includes(i) && st.why){
+      const why = document.createElement('span');
+      why.className = 'guide-action-why';
+      why.textContent = st.why;
+      row.appendChild(why);
+    }
+    wrap.appendChild(row);
+  });
+  return wrap;
+}
+function guideMsgEl(role, text, hints, opts){
   const d = document.createElement('div');
   d.className = 'guide-msg ' + (role === 'user' ? 'from-user' : 'from-guide');
   const who = document.createElement('div');
@@ -2822,7 +2947,12 @@ function guideMsgEl(role, text, hints){
   who.textContent = role === 'user' ? 'You' : GUIDE.guide.name;
   const body = document.createElement('div');
   body.className = 'guide-text';
-  body.textContent = text;
+  // A Film room reply may carry ACTION: lines: the body shows the rest of
+  // the text, its buttons below (model text stays textContent).
+  let parsed = null;
+  if(role === 'assistant' && isCutting(currentRoom()) && opts && typeof opts.index === 'number')
+    parsed = guideActions(text);
+  body.textContent = parsed ? parsed.text : text;
   d.append(who, body);
   (hints || []).forEach(h => {
     const p = document.createElement('p');
@@ -2830,6 +2960,7 @@ function guideMsgEl(role, text, hints){
     p.textContent = h;
     d.appendChild(p);
   });
+  if(parsed && parsed.actions.length) d.appendChild(guideActionsEl(parsed.actions, opts.index));
   return d;
 }
 // Expanded: the newest at the bottom, in view. Compact shows only the latest
@@ -2852,8 +2983,18 @@ function renderGuideLog(){
       + (m.verbosity === 'verbose' ? ', or switch to Compact.' : '.'));
     if(m.dropped > 0) hints.push('The ' + m.dropped + ' oldest message' + (m.dropped === 1 ? ' was' : 's were')
       + ' left out so the conversation fits; the guide did not see ' + (m.dropped === 1 ? 'it.' : 'them.'));
-    log.appendChild(guideMsgEl(m.role, m.content, hints));
+    log.appendChild(guideMsgEl(m.role, m.content, hints, {index: i}));
   });
+  // Compact shows one line of the log, so the last reply's buttons also sit
+  // in the bar under it; expanded, they are in the conversation itself.
+  const bar = $('#guideActionBar');
+  bar.textContent = '';
+  const last = hist[hist.length - 1];
+  const lastActions = last && last.role === 'assistant' ? guideActions(last.content).actions : [];
+  if(lastActions.length){
+    bar.appendChild(guideActionsEl(lastActions, hist.length - 1));
+    bar.hidden = false;
+  } else bar.hidden = true;
   guideLogScroll();
 }
 // One voice: while the guide works, both the panel and the prompt box's
@@ -2942,6 +3083,75 @@ $('#guideVerbosity').addEventListener('click', e => {
   guideStoreSet('bwf.guide.verbosity', b.dataset.verbosity);
   renderGuideToggle();
 });
+// One of the guide reply's action buttons, clicked: run it (never
+// automatically -- only from that click). One listener for every reply.
+$('#guidePanel').addEventListener('click', e => {
+  const b = e.target.closest('[data-guide-action]');
+  if(!b || b.disabled) return;
+  runGuideAction(parseInt(b.dataset.guideMsg, 10), parseInt(b.dataset.guideAction, 10));
+});
+async function runGuideAction(index, i){
+  const key = guideHistKey();
+  const hist = guideHistLoad(key);
+  const m = hist[index];
+  if(!m || m.role !== 'assistant') return;
+  const a = guideActions(m.content).actions[i];
+  if(!a || guideActionState(a).why) return;
+  $$('#guidePanel [data-guide-action]').forEach(b => { b.disabled = true; });   // the final re-render restores
+  try{
+    const seq = STATE.seq;
+    const slots = (seq && seq.slots) || [];
+    let ok = false;
+    if(a.verb === 'add_beats'){
+      // The beats live on the script lane, which only shows in storyboard view.
+      const switched = seq.mode !== 'storyboard';
+      if(switched) await seqOp('set_mode', {mode: 'storyboard'});
+      let k = 0;
+      for(const beat of a.beats){
+        if(!(await seqOp('insert_beat', {text: beat}))) break;
+        k++;
+      }
+      renderSeqPickerList(); renderTimeline(); renderRefRoom();
+      msgSeq('Added ' + k + ' beat' + (k === 1 ? '' : 's') + ' to the script, each with its own shot'
+        + (switched ? ' (the sequence is in storyboard view now, where the script shows).' : '.'), 'ok');
+      ok = k === a.beats.length;
+    } else if(a.verb === 'open_shot' || a.verb === 'make_shot'){
+      const n = parseInt(a.arg, 10);
+      const vids = slots.filter(s => s.lane === 'video');
+      await selectSlot(vids[n - 1].id);
+      if(a.verb === 'open_shot') $('#roomForm').scrollIntoView({block: 'nearest'});
+      else await handleSlotMake(currentSlot(), false);   // it shows its own confirm/error sentences
+      ok = true;
+    } else if(a.verb === 'add_ref'){
+      const m2 = a.arg.match(/^(?:picture(?:\s+shot)?\s+)?(\d+)\s+as\s+(?:the\s+|a\s+)?(set|character|other)\b/i);
+      if(m2){
+        const n = parseInt(m2[1], 10), role = m2[2].toLowerCase();
+        const slot = slots.filter(s => s.lane === 'picture')[n - 1];
+        const job = findJob(slot.pick);
+        ok = !!(await seqOp('add_ref', {job_id: job.id, output: resultPictureIndex(job), role: role,
+                                        label: role === 'set' ? 'Set plate' : null}));
+        if(ok){
+          renderRefRoom(); renderTimeline();
+          msgSeq('Picture shot ' + n + ' is in the REF ROOM now.', 'ok');
+        }
+      }
+    } else if(a.verb === 'cut'){
+      await doCut();
+      ok = !STATE.cutError;
+    }
+    if(ok){
+      const h = guideHistLoad(key);
+      if(h[index]){
+        h[index].done = (h[index].done || []).concat([i]);
+        guideHistSave(key, h);
+      }
+    }
+  } catch(e){
+    guideShowError(String(e.message || e));
+  } finally {
+    if(guideHistKey() === key) renderGuideLog();
+  }
+}
 
 /* ---------------------------------------------------------------------
    Guide skills: POST /api/guide/skill, from the prompt box's "Help me write
