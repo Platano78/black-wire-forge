@@ -72,8 +72,13 @@ All notable changes to Black Wire Forge are recorded here.
 - `config.example.json`'s lane is `local` ("This machine"), so the README and AGENTS.md
   examples run as written. AGENTS.md's no-GPU path now walks a turntable render from upload
   to download, and no longer tells you to overwrite an existing config.
+- A guide write or fix cut off by the helper's length limit is asked for again with more
+  room, and if it is still cut off it comes back with a problem saying so, never as a clean
+  preview.
 - The test suites that need Pillow print a plain SKIP without it instead of crashing, and
-  `scripts/run-tests.sh` uses the repo's `.venv` when there is one.
+  `scripts/run-tests.sh` uses the repo's `.venv` when there is one. Two suites that compare
+  against the committed code skip that comparison in a download with no git history,
+  instead of failing.
 - The guides no longer cite internal documents, and several docs were corrected against the
   code: startup lines, the 503 while a lane's models are still being read, `/api/guide`'s
   fields, how a sequence take is chosen, where cuts are written, the sample pack in
