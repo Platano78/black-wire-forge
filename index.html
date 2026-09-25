@@ -4482,7 +4482,7 @@ function renderSlotMeta(slot){
     bits.push('<ul class="slot-warn-list">' + slot.warnings.map(w => '<li>' + esc(w) + '</li>').join('') + '</ul>');
   // The way out of the set-plate notes sits next to them: use a finished
   // picture shot as the set plate, or carry one into this shot's picture jack.
-  let warnSet = null, warnJack = null, warnPicked = null;
+  let warnSet = null, warnJack = null, warnPicked = null, warnOwn = null;
   if(slot.cap === 'video' && STATE.seq){
     const set = (STATE.seq.refs || []).find(r => r.role === 'set');
     const pics = (STATE.seq.slots || []).filter(s => s.lane === 'picture');
@@ -4490,13 +4490,25 @@ function renderSlotMeta(slot){
       .find(x => x.s.pick && x.job && x.job.status === 'done' && resultPictureIndex(x.job) >= 0);
     const jack = (slot.jacks || []).find(j => j.type === 'image');
     const warns = (slot.warnings || []).join(' ');
-    warnSet = set; warnJack = jack; warnPicked = picked;
+    // A picture is this shot's own start only when the script says so: a
+    // picture beat directly before this shot's beat (walkthrough 2: "Start it
+    // from picture shot 1" was offered on every shot, window picture and all).
+    const beats = STATE.seq.beats || [], bi = beats.findIndex(b => b.id === slot.beat_id);
+    const prevBeat = bi > 0 ? beats[bi - 1] : null;
+    const own = prevBeat && prevBeat.kind === 'picture' && prevBeat.slot_id
+      ? pics.map((s, i) => ({s, n: i + 1, job: findJob(s.pick)})).find(x => x.s.id === prevBeat.slot_id
+          && x.s.pick && x.job && x.job.status === 'done' && resultPictureIndex(x.job) >= 0) || null
+      : null;
+    warnSet = set; warnJack = jack; warnPicked = picked; warnOwn = own;
     if(!set && slot.sees_refs && picked && warns.indexOf('no set plate') >= 0)
       bits.push('<p><button type="button" class="btn" data-warn-action="set-plate">Use picture shot ' + picked.n + ' as the set plate</button></p>');
     if(set && !slot.sees_refs && jack && warns.indexOf('start it from the set plate') >= 0)
       bits.push('<p><button type="button" class="btn" data-warn-action="start-from-set">Start it from the set plate</button></p>');
-    if(!set && !slot.sees_refs && jack && picked && warns.indexOf('words alone') >= 0)
-      bits.push('<p><button type="button" class="btn" data-warn-action="start-from-picture">Start it from picture shot ' + picked.n + '</button></p>');
+    if(!set && !slot.sees_refs && jack && own && warns.indexOf('words alone') >= 0)
+      bits.push('<p><button type="button" class="btn" data-warn-action="start-from-picture">Start it from picture shot ' + own.n + '</button></p>');
+    else if(!set && !slot.sees_refs && jack && warns.indexOf('words alone') >= 0)
+      bits.push('<p class="hint">Use “Choose a picture you made” under ' + esc(jack.label)
+        + ' if one of your pictures shows this shot’s place.</p>');
   }
   el.innerHTML = bits.join('');
   el.hidden = bits.length === 0;
@@ -4518,13 +4530,13 @@ function renderSlotMeta(slot){
             ? '/api/sequence/file?id=' + encodeURIComponent(STATE.seq.id) + '&path=' + encodeURIComponent(warnSet.file)
             : null, 'The set plate');
         renderSlotMeta(currentSlot());
-      } else if(act === 'start-from-picture' && warnPicked && warnJack){
-        const idx = resultPictureIndex(warnPicked.job);
-        const take = (warnPicked.s.takes || []).find(t => t.job_id === warnPicked.s.pick);
+      } else if(act === 'start-from-picture' && warnOwn && warnJack){
+        const idx = resultPictureIndex(warnOwn.job);
+        const take = (warnOwn.s.takes || []).find(t => t.job_id === warnOwn.s.pick);
         const thumb = take && take.file
           ? '/api/sequence/file?id=' + encodeURIComponent(STATE.seq.id) + '&path=' + encodeURIComponent(take.file)
-          : viewURL(warnPicked.job.lane, warnPicked.job.outputs[idx], false);
-        await carryPictureInto(warnJack.field, warnPicked.job.id, idx, thumb, 'Picture shot ' + warnPicked.n);
+          : viewURL(warnOwn.job.lane, warnOwn.job.outputs[idx], false);
+        await carryPictureInto(warnJack.field, warnOwn.job.id, idx, thumb, 'Picture shot ' + warnOwn.n);
         renderSlotMeta(currentSlot());
       }
     };
@@ -4676,7 +4688,10 @@ function bedSlotLabel(seq){
   const s = (seq.slots || []).find(x => x.lane === 'sound' && x.pick);
   if(!s) return 'Music bed: none picked yet.';
   const job = findJob(s.pick);
-  return 'Music bed: ' + esc((job && job.prompt) || 'a sound shot') + '.';
+  // Plain text (the caller escapes it once); a prompt that already ends a
+  // sentence keeps its own stop rather than getting a second one.
+  const words = String((job && job.prompt) || 'a sound shot').trim();
+  return 'Music bed: ' + words + (/[.!?…]$/.test(words) ? '' : '.');
 }
 /* Never silently degrade (review fix, 2026-09-23): the cut's own
    `loudness` field says which of loudnorm's three real shapes actually

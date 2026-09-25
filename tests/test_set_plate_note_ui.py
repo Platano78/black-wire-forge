@@ -41,14 +41,15 @@ seq_data = {
     "updated": NOW,
     "canvas": {"width": 1024, "height": 576},
     "refs": [],
-    "beats": [],
+    "beats": [{"id": "b1", "kind": "picture", "text": "An empty rooftop at dawn.", "rev": 1, "slot_id": "p1"},
+              {"id": "b2", "kind": "film", "text": "A plane lands on the rooftop.", "rev": 1, "slot_id": "v3"}],
     "cables": [],
     "cuts": [],
     "slots": [
         {
             "id": "p1",
             "lane": "picture",
-            "beat_id": None,
+            "beat_id": "b1",
             "cap": "image",
             "mode": "t2i",
             "recipe": None,
@@ -98,6 +99,12 @@ seq_data = {
             "trim": None,
             "title": None,
         },
+        {"id": "s1", "lane": "sound", "beat_id": None, "cap": "audio", "mode": "song", "recipe": None, "quality": None,
+         "values": {}, "refs": "auto", "takes": [{"job_id": "snd1", "made": NOW, "beat_rev": None,
+         "inputs": {"refs": [], "cables": {}}, "file": None}], "pick": "snd1", "trim": None, "title": None},
+        {"id": "v3", "lane": "video", "beat_id": "b2", "cap": "video", "mode": "ltx", "recipe": None, "quality": None,
+         "values": {"prompt": "A plane lands on the rooftop."}, "refs": "auto", "takes": [], "pick": None,
+         "trim": None, "title": None},
     ],
 }
 
@@ -107,6 +114,9 @@ with open(os.path.join(DATA, "sequences", "s_0000ffff.json"), "w") as f:
 
 # Jobs
 jobs = [
+    {"id": "snd1", "lane": "t", "lane_name": "Fake lane", "kind": "audio", "mode": "song", "status": "done",
+     "prompt": "Soft guitar & glockenspiel. No vocals.", "seed": 1, "created": NOW,
+     "outputs": [{"filename": "snd1.flac", "subfolder": "", "type": "output", "media": "audio"}]},
     {
         "id": "pic1",
         "lane": "t",
@@ -185,6 +195,11 @@ try:
         check("(setup) v2 sees the REF ROOM and v1 does not",
               (slot("v2") or {}).get("sees_refs") is True and (slot("v1") or {}).get("sees_refs") is False)
 
+        # the music bed line: the prompt once, its own full stop kept, never a second one
+        # and never escaped twice (walk-2 finding 3: "No vocals..")
+        check("the music bed line reads the prompt as written",
+              text_of(page, "#cutBedNote") == "Music bed: Soft guitar & glockenspiel. No vocals.",
+              text_of(page, "#cutBedNote"))
         # ---- Check group 1: open_slot v1 ----
         page.click('[data-slot-id="v1"]')
         # Wait for the slot to settle (as per open_slot helper: wait 1.2 s)
@@ -194,13 +209,20 @@ try:
         check("old unexplained sentence gone", "invent its own room" not in W)
         # 1b: "a shot with no picture to start from says it draws its place from words" — "words alone" in W.
         check("draws place from words", "words alone" in W)
-        # 1c: "...and offers to start it from picture shot 1" — [data-warn-action="start-from-picture"] visible, its text contains "picture shot 1".
+        # 1c: picture shot 1 is not this shot's picture (no beat or cable ties them), so no
+        # "Start it from picture shot 1" -- the note points at the picker instead (walk-2 finding 2).
+        check("an unrelated picture is not offered as this shot's start",
+              page.query_selector('[data-warn-action="start-from-picture"]') is None)
+        check("...the note points at the picker instead", "Choose a picture you made" in W, W)
+        ui.shot(page, "setplate-1")
+        # 1d: v3's beat comes right after picture shot 1's beat: that picture is this shot's.
+        page.click('[data-slot-id="v3"]')
+        time.sleep(1.2)
         start_from_pic_btn = page.query_selector('[data-warn-action="start-from-picture"]')
         check("start-from-picture button visible", start_from_pic_btn is not None)
         if start_from_pic_btn:
             btn_text = start_from_pic_btn.inner_text()
             check("start-from-picture button text contains 'picture shot 1'", "picture shot 1" in btn_text)
-        ui.shot(page, "setplate-1")
 
         # ---- Check group 2: open_slot v2 ----
         page.click('[data-slot-id="v2"]')
