@@ -49,9 +49,9 @@ authentication and does not make the app safe to expose beyond a trusted LAN —
 
 The app runs with nothing beyond the Python standard library. `requirements.txt` (numpy,
 Pillow) is optional: without it the server still starts and answers every request, and the
-two things that need them -- Pixel Art's colour-lock/dither step, and the picture->video
-image-fit step -- report themselves unavailable with a plain sentence saying what to install,
-instead of crashing the server. `ffmpeg` is likewise optional: without it the Cutting Room's
+three things that need them -- the clean (recipe-removed) picture download, Pixel Art's
+colour-lock/dither step, and the picture->video image-fit step -- report themselves
+unavailable with a plain sentence saying what to install, instead of crashing the server. `ffmpeg` is likewise optional: without it the Cutting Room's
 cut still opens, it just cannot build one yet (see the Cutting Room's own note in `/help`).
 Install both in a virtual environment -- modern distro Python refuses a bare, global
 `pip install` (PEP 668's "externally managed environment"; confirmed failing on a stock
