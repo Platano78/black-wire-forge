@@ -63,8 +63,10 @@ show). This sample was proven by writing it to `engines/` in a scratch copy of t
 importing it through `engines._discover()`, and calling `my_mode_graph({}, {"my_ckpt":
 "placeholder.safetensors"})` — it imports cleanly and returns the seven-node dict above.
 
-That alone is a working pack: it appears in a room built from its own label, and a lane
-with the right file on disk can run it.
+That alone is an importable skeleton: it loads, and it appears in a room built from its own
+label. It declares no `fields` yet, so nothing the user types reaches the graph
+(`args.get("prompt", "")` stays empty); add a prompt field under `fields` (see "Optional keys,
+and what each one is for" below) before it makes anything worth keeping.
 
 A ComfyUI pack normally declares `roles` (what discovery looks for on a lane); a **process**
 pack instead declares `"lane_kind": "process"` and `"bins"` (the local executables it needs)
