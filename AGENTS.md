@@ -41,10 +41,10 @@ Ask, in this order, and stop at the first one that applies:
 2. **They have no GPU at all** → only one path works: turning an existing `.glb` into an
    orbiting turntable video on the Blender + `ffmpeg` **process lane** (`engines/turntable.py`,
    CPU-only). Every other room needs a GPU-backed ComfyUI lane; do not try to make
-   image/video/audio/3D generation work without one. First check both binaries are on `PATH`:
-   `command -v blender && command -v ffmpeg`. If either is missing, install it (Blender:
-   https://www.blender.org/download/) — a process lane with a missing binary reports itself
-   down with a plain "needs ..." sentence, it does not crash. The lane is a **process** lane:
+   image/video/audio/3D generation work without one. Check each binary on its own:
+   `command -v blender; command -v ffmpeg` (each prints a path, or nothing if missing), and
+   install what is missing (https://www.blender.org/download/, https://ffmpeg.org/download.html);
+   a lane missing one reports itself down with a plain "needs ..." sentence. The lane is a **process** lane:
    if `config.json` does not exist yet, this is the whole file (adjust `"port"`/`"bind"` if you
    changed them); if it exists, do not replace it — add just the lane object to its `"lanes"`:
 
@@ -53,17 +53,16 @@ Ask, in this order, and stop at the first one that applies:
     "lanes": [{"id": "cpu", "name": "This machine", "kind": "process", "caps": ["3d"]}]}
    ```
 
-   It needs no `host`/`port` (it runs a local program) but **must** declare a non-empty
-   `caps`: nothing about it is discoverable until its binaries are. With the app running, the
-   whole render for a user's `.glb` is:
+   It needs no `host`/`port` but **must** declare a non-empty `caps` (nothing about it is
+   discoverable until its binaries are). With the app running, the whole render is:
 
    ```
    # 1. upload; keep the "name" it answers with
    curl -s -F lane=cpu -F file=@model.glb http://127.0.0.1:3998/api/upload
-   #    -> {"ok": true, "files": [{"name": "c0fb74b6_model.glb", ...}]}
-   # 2. start the turntable with that name as "model"
+   #    -> {"ok": true, "files": [{"name": "<the name>", ...}]}
+   # 2. start the turntable with that name as "model" (a name never uploaded is a 400)
    curl -s -X POST http://127.0.0.1:3998/api/generate -H 'Content-Type: application/json' \
-     -d '{"lane": "cpu", "kind": "3d", "mode": "turntable", "prompt": "", "model": "c0fb74b6_model.glb"}'
+     -d '{"lane": "cpu", "kind": "3d", "mode": "turntable", "prompt": "", "model": "<the name from step 1>"}'
    #    -> {"ok": true, "job": {"id": "<job-id>", "status": "queued", ...}, ...}
    # 3. poll until its "status" is "done" (Blender renders on the CPU: minutes); its "outputs" are
    #    turntable.mp4 and poster.png, both {"subfolder": "<job-id>", "type": "local"}
@@ -81,7 +80,7 @@ Ask, in this order, and stop at the first one that applies:
 
 ## Install + start
 
-Setting up for a user, do all of this by default; it is the path that makes every feature work:
+Setting up for a user, do all of this by default (it makes every feature work):
 
 ```
 test -e config.json || cp config.example.json config.json   # never overwrite a real config
