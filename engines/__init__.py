@@ -405,7 +405,7 @@ def abilities(models):
     return out
 
 
-def missing_words(models, ability):
+def missing_words(models, ability, kind=None):
     """Plain-English words for the roles still missing for an ability.
 
     An any-of group contributes ONE label (they describe the same thing, e.g. two
@@ -432,6 +432,10 @@ def missing_words(models, ability):
     the same signal D2 uses to pick a cap's headline) -- and only falls back to
     every pack sharing the cap when NONE of them declares either (a cap made
     entirely of tools, with no primary engine to prefer).
+
+    `kind` ("comfy" or "process"), when given, looks only at packs that run on
+    that kind of lane: a process lane's words are its programs, never a
+    ComfyUI pack's model files, and the other way round.
     """
     def words_for(pack, roles):
         out = []
@@ -445,13 +449,14 @@ def missing_words(models, ability):
                 out.append((pack.get("words") or {}).get(entry, entry))
         return out
 
-    for pack in _discover():
+    packs = [pack for pack in _discover() if kind is None or (pack.get("lane_kind") or "comfy") == kind]
+    for pack in packs:
         roles = pack["provides"].get(ability)
         if roles is None:
             continue
         return words_for(pack, roles)
 
-    sharing = [pack for pack in _discover() if pack["cap"] == ability]
+    sharing = [pack for pack in packs if pack["cap"] == ability]
     declaring = [pack for pack in sharing if pack.get("cap_word") or "cap_order" in pack]
     pool = declaring or sharing
 

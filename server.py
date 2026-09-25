@@ -694,9 +694,11 @@ def missing_for(lane, mode):
     brings its own vocabulary with it. `mode` may be an ability name ("fl2va",
     "image") or a bare cap name ("video", "audio") -- engines.missing_words
     resolves a cap to its shortest-path-to-satisfied ability on its own, so
-    no cap name needs to be spelled out here.
+    no cap name needs to be spelled out here. Only packs that run on this
+    lane's kind are asked, so a process lane names its programs, never a
+    ComfyUI pack's model files.
     """
-    return engines.missing_words(models_for(lane), mode)
+    return engines.missing_words(models_for(lane), mode, lane_kind(lane))
 
 
 

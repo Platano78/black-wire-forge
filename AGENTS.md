@@ -159,7 +159,8 @@ Returns `{"lanes": [...], "title": ..., "fleet_llm": ...}`. For each lane object
   before assuming `able` is capability-shaped.
 - `"missing_image"`, `"missing_video"`, `"missing_audio"`, `"missing_3d"` — plain-English
   sentences (from each engine pack's own `words`) naming which model files are still needed
-  for that capability, populated whenever the lane declares that cap but `able` says no --
+  for that capability (on a `"process"` lane: which programs, e.g. Blender, never model
+  files), populated whenever the lane declares that cap but `able` says no --
   see `lanes_payload()` in `server.py`: this key is computed straight from `able`/`models_for()`
   on every call, with no dependency on `"discovered"`.
 - `"discovered"` (bool) — whether discovery has run against this lane at least once. Only
