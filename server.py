@@ -1501,23 +1501,40 @@ def _ref_role_warning(ref):
 def slot_warnings(seq, slot):
     """§5 Warned, evaluated per slot for GET /api/sequence. A slot that sees
     the reference room inherits every role-mismatch warning the room itself
-    carries (those are the refs it is about to be handed); a video slot that
-    cannot see the room while the room has a set gets the "invent its own
-    room" sentence; a video slot in a room with no set at all gets a
-    complementary sentence (§5 names this condition but gives no exact
-    wording -- see LOW-CONFIDENCE RULINGS)."""
+    carries (those are the refs it is about to be handed); a video slot gets
+    the set-plate sentence for its own situation -- no set in the room, a
+    recipe that cannot take the room's pictures, or a shot drawing from its
+    words alone -- each naming the fix (add the set plate, or start the
+    shot from a picture)."""
     warnings = []
     refs = seq.get("refs") or []
     has_set = any(r.get("role") == "set" for r in refs)
-    if slot_sees_refs(slot):
+    sees_refs = slot_sees_refs(slot)
+    if sees_refs:
         for ref in refs:
             w = _ref_role_warning(ref)
             if w and w not in warnings:
                 warnings.append(w)
-    elif slot.get("cap") == "video" and has_set:
-        warnings.append("this shot will invent its own room")
-    if slot.get("cap") == "video" and not has_set:
-        warnings.append("the room has no set plate yet")
+    if slot.get("cap") == "video":
+        image_jacks = [j for j in slot_jacks(slot) if j.get("type") == "image"]
+        cables = seq.get("cables") or []
+        starts_from_picture = any((slot.get("values") or {}).get(j["field"]) for j in image_jacks) or any(
+            c.get("to") == slot.get("id") and c.get("field") in {j["field"] for j in image_jacks} for c in cables)
+        if sees_refs and not has_set:
+            warnings.append(
+                "There is no set plate in the REF ROOM yet, so each shot will draw its own version of "
+                "the place. Add a picture of the empty location as the set plate to keep it the same "
+                "from shot to shot.")
+        elif not sees_refs and has_set and not starts_from_picture:
+            w = ("This shot's recipe can't take the REF ROOM's pictures, so the set plate won't reach "
+                 "it and it will draw the place its own way.")
+            if image_jacks:
+                w += " To carry the place over, start it from the set plate."
+            warnings.append(w)
+        elif not sees_refs and not has_set and image_jacks and not starts_from_picture:
+            warnings.append(
+                "This shot draws its place from its words alone. To keep the place the same from shot "
+                "to shot, start each shot from the same picture.")
     return warnings
 
 
@@ -1583,6 +1600,50 @@ def seq_derive(seq):
     out["can_title"] = CAN_TITLE
     out["title_reason"] = TITLE_REASON
     return out
+
+
+def _seq_auto_title(seq):
+    """A sequence the app named (title_auto) takes its first beat's opening
+    words, at most 60 characters, whole words only -- until the user names it."""
+    beats = seq.get("beats") or []
+    if not beats:
+        return
+    text = str(beats[0].get("text") or "")
+    line = text.split("\n")[0]
+    words = line.split()
+    if not words:
+        return
+    out = ""
+    for w in words:
+        if out:
+            candidate = out + " " + w
+        else:
+            candidate = w
+        if len(candidate) > 60:
+            if not out:
+                # first word is > 60 chars: use first 60
+                out = line[:60]
+            break
+        out = candidate
+    out = out.rstrip(" ,;:\u2014-")
+    if out:
+        seq["title"] = out
+
+
+def _seq_thumb(seq):
+    """The list row's small picture: the first picked take that has its own
+    local copy, video lane first, then the picture lane. None before that."""
+    for lane, media in (("video", "video"), ("picture", "image")):
+        for slot in seq.get("slots") or []:
+            if slot.get("lane") != lane:
+                continue
+            pick = slot.get("pick")
+            if not pick:
+                continue
+            for t in slot.get("takes") or []:
+                if t.get("job_id") == pick and t.get("file"):
+                    return {"path": t["file"], "media": media}
+    return None
 
 
 # -- validation --------------------------------------------------------------
@@ -2198,11 +2259,24 @@ def seq_list():
     for sid, seq in found:
         if seq is None:
             out.append({"id": sid, "title": "(damaged file)", "mode": None, "updated": 0,
-                        "slots": 0, "ready": 0, "damaged": True})
+                        "slots": 0, "ready": 0, "damaged": True,
+                        "created": 0, "first_beat": None, "shots": 0, "thumb": None})
             continue
         d = seq_derive(seq)
+        beats = seq.get("beats") or []
+        first = ""
+        if beats:
+            first = str(beats[0].get("text") or "")
+            first = " ".join(first.split())
+            if len(first) > 120:
+                first = first[:119] + "\u2026"
+        if not beats or not first.strip():
+            first = None
+        shots = sum(1 for s in d["slots"] if s.get("lane") == "video")
+        thumb = _seq_thumb(seq)
         out.append({"id": sid, "title": d.get("title"), "mode": d.get("mode"), "updated": d.get("updated"),
-                    "slots": len(d["slots"]), "ready": sum(1 for s in d["slots"] if s["state"] == "ready")})
+                    "slots": len(d["slots"]), "ready": sum(1 for s in d["slots"] if s["state"] == "ready"),
+                    "created": d.get("created"), "first_beat": first, "shots": shots, "thumb": thumb})
     out.sort(key=lambda s: s["updated"] or 0, reverse=True)
     return out, 200
 
@@ -2222,10 +2296,16 @@ def seq_create(p):
     the `set` ref, by job id only (file: null -- copying it is C3.2's carry())."""
     if not isinstance(p, dict):
         return {"ok": False, "error": "Send a JSON object."}, 400
-    try:
-        title = _text(p.get("title") or "Untitled sequence", "title")
-    except ValueError as e:
-        return {"ok": False, "error": str(e)}, 400
+    raw = p.get("title")
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
+        title = time.strftime("Sequence, %d %b %Y %H:%M")
+        auto = True
+    else:
+        try:
+            title = _text(raw, "title")
+        except ValueError as e:
+            return {"ok": False, "error": str(e)}, 400
+        auto = False
     mode = p.get("mode") or "sequence"
     if mode not in SEQ_MODES:
         return {"ok": False, "error": "A sequence is either a sequence or a storyboard."}, 400
@@ -2249,10 +2329,36 @@ def seq_create(p):
         seq = {"id": sid, "schema": 1, "rev": 1, "title": title, "mode": mode,
                "created": now, "updated": now, "canvas": default_canvas(),
                "refs": refs, "beats": [], "slots": [], "cables": [], "cuts": []}
+        if auto:
+            seq["title_auto"] = True
         _seq_write(seq)
     if refs:
         save_jobs()     # pin the seed in jobs.json now, not on the next unrelated save
     return seq_derive(seq), 200
+
+
+def seq_delete(p):
+    """POST /api/sequence/delete {id}. Moves data/sequences/<id>.json into
+    data/sequences/deleted/ -- never deletes a file (owner ruling 6): the
+    record stays recoverable, and every take, ref and cut under data/seq/<id>/
+    stays where it is."""
+    if not isinstance(p, dict):
+        return {"ok": False, "error": "Send a JSON object."}, 400
+    sid = p.get("id")
+    if not seq_valid_id(sid):
+        return {"ok": False, "error": "That is not a sequence id."}, 400
+    with SEQ_LOCK:
+        path = _seq_path(sid)
+        if not os.path.exists(path):
+            return {"ok": False, "error": "There is no such sequence."}, 404
+        dest_dir = os.path.join(SEQ_DIR, "deleted")
+        os.makedirs(dest_dir, exist_ok=True)
+        dest = os.path.join(dest_dir, sid + ".json")
+        if os.path.exists(dest):
+            dest = os.path.join(dest_dir, "%s.%d.json" % (sid, int(time.time())))
+        os.replace(path, dest)
+    log("Deleted a sequence (its file is kept under sequences/deleted/).")
+    return {"ok": True, "id": sid}, 200
 
 
 def seq_op(p):
@@ -2291,6 +2397,10 @@ def seq_op(p):
                     # move that silently broke a continue link says so) --
                     # every op that returns nothing keeps today's behaviour.
                     extra = SEQ_OPS[op](new, p)
+                    if op == "set_title":
+                        new.pop("title_auto", None)
+                    elif new.get("title_auto"):
+                        _seq_auto_title(new)
                 except ValueError as e:
                     return {"ok": False, "error": str(e)}, 400
                 new["rev"] = seq["rev"] + 1
@@ -6123,6 +6233,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.api_forget()
             if u.path == "/api/sequence":
                 return self.send_json(*seq_create(self.read_json()))
+            if u.path == "/api/sequence/delete":
+                return self.send_json(*seq_delete(self.read_json()))
             if u.path == "/api/sequence/op":
                 return self.send_json(*seq_op(self.read_json()))
             if u.path == "/api/sequence/generate":

@@ -303,6 +303,13 @@
   .ledger-thumbs{display:flex; gap:6px; flex-wrap:wrap; margin-top:6px}
   .ledger-thumbs .t{width:56px; height:44px; border:1px solid var(--divider); overflow:hidden; position:relative}
   .ledger-thumbs .t img,.ledger-thumbs .t video{width:100%; height:100%; object-fit:cover}
+  .pick-picture-btn{margin-top:6px}
+  .picture-picker{margin-top:6px; padding:6px; border:1px solid var(--divider); background:var(--surface2)}
+  .picker-row{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px}
+  .picker-item{display:flex; flex-direction:column; gap:2px; width:96px; padding:3px; background:var(--surface3); border:1px solid var(--divider); color:var(--text-mid); font-size:10px; text-align:left; cursor:pointer}
+  .picker-item img{width:100%; height:54px; object-fit:cover; display:block}
+  .picker-item span{white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .picker-item:hover{border-color:var(--accent)}
   #promptBox{width:100%; min-height:90px; background:var(--surface3); border:1px solid var(--divider);
     color:var(--text-hi); font-family:var(--serif); font-size:16px; padding:10px; resize:vertical}
   /* The prompt box's writing actions hand the words to the room's guide:
@@ -344,6 +351,15 @@
   .guide-msg.from-guide .guide-who{color:var(--accent)}
   .guide-text{font-size:14px; white-space:pre-wrap; overflow-wrap:anywhere; max-width:72ch}
   .guide-hint{font-size:11px; color:var(--stale); margin:3px 0 0; max-width:72ch}
+  .guide-actions{display:flex; flex-direction:column; gap:6px; margin-top:6px}
+  .guide-action-row{display:flex; flex-direction:column; align-items:flex-start; gap:2px}
+  .guide-action-beats{margin:0 0 2px 18px; padding:0; font-size:12px; color:var(--text-mid)}
+  .guide-action-why{font-size:11px; color:var(--text-mid)}
+  #guideActionBar{margin-top:6px}
+  /* Compact shows one line of the log, so the latest reply's buttons sit under it;
+     expanded shows them in the conversation itself. */
+  #guidePanel[data-expanded="false"] #guideLog .guide-actions{display:none}
+  #guidePanel[data-expanded="true"] #guideActionBar{display:none}
   #guidePanel[data-expanded="false"] #guideLog{max-height:3.1em; padding:3px 6px}
   #guidePanel[data-expanded="false"] #guideCtxNote{white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
   #guidePanel[data-expanded="false"] #guideInput{min-height:40px; height:40px}
@@ -456,6 +472,8 @@
   .tl-slot-ready{border-style:solid; border-color:var(--divider); padding:0}
   .tl-slot-ready img,.tl-slot-ready video{width:100%; height:100%; object-fit:cover; display:block}
   .tl-slot-add{color:var(--text-mid)}
+  .tl-slot-x{flex:none; position:relative; z-index:1; align-self:flex-start; width:16px; height:16px; margin:1px 6px 0 -29px; padding:0; line-height:1; font-size:12px; background:var(--surface2); color:var(--text-mid); border:1px solid var(--divider)}
+  .tl-slot-x:hover{color:var(--error); border-color:var(--error)}
   .tl-stale{
     position:absolute; top:0; right:0; left:0; background:var(--stale); color:var(--on-accent);
     font-size:9px; font-family:var(--mono); letter-spacing:.02em; z-index:1; text-align:left;
@@ -614,8 +632,19 @@
   #seqMsg.err{color:var(--error)}
   #seqMsg.ok{color:var(--ready)}
   #seqList{display:flex; flex-direction:column; gap:4px; margin-bottom:8px}
-  .seq-row{width:100%; text-align:left; display:flex; flex-direction:column; gap:2px}
+  .seq-row-wrap{display:flex; gap:4px; align-items:stretch}
+  #addRefRole{background:var(--surface3); color:var(--text-hi); border:1px solid var(--divider); min-height:32px; font:inherit}
+  .seq-row{flex:1 1 auto; min-width:0; flex-direction:row; align-items:center; gap:8px}
+  .seq-thumb{flex:none; width:48px; height:27px; background:var(--surface3); overflow:hidden}
+  .seq-thumb img, .seq-thumb video{width:100%; height:100%; object-fit:cover; display:block}
+  .seq-row-text{display:flex; flex-direction:column; gap:2px; min-width:0}
+  .seq-row-title, .seq-row-beat{white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .seq-row-beat{font-size:12px; color:var(--text-mid)}
   .seq-row[aria-pressed="true"]{border-color:var(--accent)}
+  .seq-row-rename, .seq-row-delete{flex:none; font-size:11px}
+  .seq-row-delete.armed{color:var(--error); border-color:var(--error)}
+  .seq-rename-input{min-height:28px; background:var(--surface3); border:1px solid var(--accent); color:var(--text-hi); padding:2px 6px; width:100%}
+  .seq-open-title{background:none; border:0; padding:0; color:var(--text-hi); font-weight:600; cursor:text; text-decoration:underline dotted}
   #seqNewRow{display:flex; flex-wrap:wrap; gap:6px}
   #seqNewRow input{flex:1 1 100%; min-height:36px; background:var(--surface3); border:1px solid var(--divider);
     color:var(--text-hi); padding:6px 8px}
@@ -766,6 +795,7 @@
     </div>
     <div id="roomForm">
     <div id="slotWarnings" hidden></div>
+    <div id="slotTools" hidden><button type="button" class="btn" id="slotDeleteBtn">Delete this shot</button></div>
     <div id="laneNote" role="status"></div>
     <!-- H2: "Try this" -- a one-click example per mode, from the packs.
          Sits above the engine picker so it is the first thing offered. -->
@@ -823,6 +853,7 @@
         <p id="guideSizeNote"></p>
         <p id="guideCtxNote" hidden></p>
         <div id="guideLog" role="log" aria-label="Conversation with the guide"></div>
+        <div id="guideActionBar" hidden></div>
         <div id="guideSkill" class="guide-msg from-guide" hidden aria-live="polite"></div>
         <div id="guideChip" hidden></div>
         <label class="sr-only" for="guideInput">Message the guide</label>
@@ -896,6 +927,7 @@
 <div id="timelinePanel" hidden>
   <div class="tl-title">Sequence</div>
   <p id="tlCableMsg" role="status" hidden></p>
+  <p id="tlJackHint" class="hint" hidden>The small circles on a video shot's left edge are its inputs: click one, then click a picture shot to plug that picture in as the shot's starting picture.</p>
   <div id="tlLanes">
     <div id="tlPlayhead" aria-hidden="true"></div>
     <svg id="tlCableSvg" aria-hidden="true"></svg>
@@ -1039,6 +1071,10 @@ const STATE = {
   monitorCut: null,    // a cut id the monitor is showing instead of a job (C3.6/F4); cleared by selectSlot()
   newSeqMode: 'sequence',  // C3.5: the New sequence row's mode, kept here because that row is rebuilt whole
   beatDraft: null,     // C3.5: {after: beat index} for the one new-beat card open in the script lane
+  seqRenaming: null,   // {id, where: 'row'|'open'} while a sequence's name is being edited
+  seqDeleteArmed: null,   // {id, until}: Delete's click-again-to-confirm window
+  slotDeleteArmed: null,  // {id, until}: Delete this shot's click-again-to-confirm window
+  freshSlotId: null       // id of a slot that hasn't been touched yet
 };
 
 /* ---------------------------------------------------------------------
@@ -1403,6 +1439,7 @@ function renderMonitor(){
   // "Add to the reference room" -- never for a video/audio/other result,
   // and never before the render finished.
   const canAddRef = cutting && STATE.seq && o && o.media === 'image' && job.status === 'done';
+  const canStart = cutting && STATE.seq && o && o.media === 'image' && job.status === 'done';
   const info = modeInfo(job.kind, job.mode);
   const beforeWords = 'Before ' + ((info && info.post && info.post.words) || 'the finishing step');
   const actions = (o ? '<button class="btn" id="shareBtn" type="button">Share</button>' : '')
@@ -1413,6 +1450,7 @@ function renderMonitor(){
     + (running && !laneDown ? '<button class="btn" id="stopBtn" type="button">Stop</button>' : '')
     + (finished ? '<button class="btn" id="forgetBtn" type="button">' + forgetLabel + '</button>' : '')
     + (!cutting && canRevise(job) ? '<button class="btn" id="notRightBtn" type="button">Not right? Tell the guide</button>' : '')
+    + (canStart ? '<button class="btn" id="useAsStartBtn" type="button">Use as starting picture</button>' : '')
     + (canAddRef ? '<span id="addRefWrap"><select id="addRefRole"><option value="set">set</option>'
       + '<option value="character">character</option><option value="other" selected>other</option></select>'
       + '<button class="btn" id="addRefBtn" type="button">Add to the reference room</button></span>' : '');
@@ -1461,6 +1499,7 @@ function renderMonitor(){
   if($('#forgetBtn')) $('#forgetBtn').onclick = () => forgetJob(job);
   if($('#notRightBtn')) $('#notRightBtn').onclick = () => openRevise(job);
   if($('#addRefBtn')) $('#addRefBtn').onclick = () => addRefFromMonitor(job, o);
+  if($('#useAsStartBtn')) $('#useAsStartBtn').onclick = () => useAsStartingPicture(job, job.outputs.indexOf(o));
   if(slot){
     setHTML($('#takesStrip'), takesStripHTML(slot));
     wireTakesStrip(slot);
@@ -1914,6 +1953,7 @@ async function selectRoom(id, opts){
   if(!room) return;
   const changed = STATE.room !== room.id;
   const cuttingRoom = isCutting(room);
+  if(changed && isCutting(currentRoom())) await dropFreshSlot();
   STATE.room = room.id;
   if(cuttingRoom){
     setSeqHash(opts.seqId !== undefined ? opts.seqId : seqIdFromHash());
@@ -2072,6 +2112,10 @@ function ledgerRowHTML(f, values){
     + '<div class="ledger-slot" data-field-tier="' + tierOf(f) + '" data-field-id="' + esc(f.id) + '" data-ledger="' + esc(f.id) + '">'
     + '<label class="field-label" for="upload_' + esc(f.id) + '">' + (multi ? 'Add one or more' : 'Choose one') + '</label>'
     + '<input type="file" id="upload_' + esc(f.id) + '" accept="' + accept + '"' + (multi ? ' multiple' : '') + '>'
+    + (isCutting(currentRoom()) && STATE.seq && (f.type === 'image' || f.type === 'image_list')
+      ? '<button type="button" class="btn pick-picture-btn" data-pick-picture="' + esc(f.id) + '">Choose a picture you made</button>'
+        + '<div class="picture-picker" id="picker_' + esc(f.id) + '" hidden></div>'
+      : '')
     + '<div class="ledger-thumbs" id="thumbs_' + esc(f.id) + '"></div>'
     + (f.hint ? '<p class="hint">' + esc(f.hint) + '</p>' : '')
     + '</div>';
@@ -2366,7 +2410,11 @@ async function renderModeFields(){
         const r = await fetch('/api/upload', {method:'POST', body: fd});
         const j = await r.json();
         if(!j.ok) throw new Error(j.error || 'upload failed');
-        setUploads(f.id, j.files);
+        // An uploaded picture shows as a thumbnail (its real shape, so it can
+        // be read before a Make), the way a carried-over result's does.
+        setUploads(f.id, (f.type === 'image' || f.type === 'image_list')
+          ? j.files.map(x => Object.assign({}, x, {thumb: inputViewURL(x.name)}))
+          : j.files);
       } catch(e){
         msgInspector(String(e.message || e), 'err');
       }
@@ -2412,6 +2460,13 @@ function setUploads(fid, files){
   renderTryThis();   // a "Needs a … first" note clears once the file is here
   renderHelperBar();   // "Describe this picture" appears once a file is here
 }
+// A file already on the lane (an upload or a carried picture): its name may
+// carry a subfolder ("sub/name.png"), as the lane's upload returned it.
+function inputViewURL(name){
+  const i = String(name).lastIndexOf('/');
+  return viewURL(STATE.activeLane, {filename: i < 0 ? name : name.slice(i + 1),
+                                    subfolder: i < 0 ? '' : name.slice(0, i), type: 'input'}, false);
+}
 function pictureField(mode){
   return fieldsFor(mode).find(f => f.type === 'image' || f.type === 'image_list') || null;
 }
@@ -2450,6 +2505,99 @@ async function carryIntoPictureField(job, output){
     msgInspector(String(e.message || e), 'err');
     return false;
   }
+}
+// The picker's carry: the same /api/carry, but the field and the output were
+// already chosen from the picker, and a multi-field keeps what it had.
+async function carryPictureInto(fid, jobId, output, thumb, label){
+  msgInspector('Bringing the picture over...', '');
+  try{
+    const r = await postJSON('/api/carry', {job_id: jobId, output: output, lane: STATE.activeLane});
+    if(!r || !r.ok){ msgInspector((r && r.error) || 'That picture could not be brought over.', 'err'); return false; }
+    const f = fieldsFor(currentMode()).find(x => x.id === fid);
+    const entry = Object.assign({}, r.file, {thumb: thumb});
+    if(f && f.type === 'image_list') setUploads(fid, (STATE.uploads[fid] || []).concat([entry]));
+    else setUploads(fid, [entry]);
+    STATE.freshSlotId = null;   // a shot you put a picture in is a shot you are working on
+    await saveSlotNow();
+    msgInspector((label || 'That picture') + ' is now under ' + (f ? f.label : 'the picture') + '.', 'ok');
+    return true;
+  } catch(e){
+    msgInspector(String(e.message || e), 'err');
+    return false;
+  }
+}
+function pickerItemHTML(jid, output, fid, label, thumb){
+  return '<button type="button" class="picker-item"'
+    + ' data-picker-job="' + esc(jid) + '"'
+    + ' data-picker-output="' + esc(output) + '"'
+    + ' data-picker-field="' + esc(fid) + '"'
+    + ' data-picker-label="' + esc(label) + '">'
+    + (thumb ? '<img src="' + esc(thumb) + '" alt="">' : '')
+    + '<span>' + esc(label) + '</span></button>';
+}
+function togglePicturePicker(fid){
+  const box = $('#picker_' + fid);
+  if(!box) return;
+  if(box.hidden){ box.innerHTML = picturePickerHTML(fid); box.hidden = false; }
+  else box.hidden = true;
+}
+function seqFileURL(rel){
+  return '/api/sequence/file?id=' + encodeURIComponent(STATE.seq.id) + '&path=' + encodeURIComponent(rel);
+}
+function picturePickerHTML(fid){
+  const seq = STATE.seq;
+  const groups = [];
+  const used = new Set();
+  // This film's own picture shots, in their timeline order.
+  const filmItems = [];
+  (seq.slots || []).filter(s => s.lane === 'picture').forEach((slot, i) => {
+    if(!slot.pick) return;
+    const job = findJob(slot.pick);
+    const idx = job ? resultPictureIndex(job) : -1;
+    if(!job || job.status !== 'done' || idx < 0) return;
+    used.add(job.id);
+    const take = (slot.takes || []).find(t => t.job_id === slot.pick);
+    const thumb = (take && take.file) ? seqFileURL(take.file) : viewURL(job.lane, job.outputs[idx], false);
+    filmItems.push(pickerItemHTML(job.id, idx, fid, 'Picture shot ' + (i + 1), thumb));
+  });
+  if(filmItems.length) groups.push({title: "This film's pictures", items: filmItems});
+  // The reference room.
+  const refItems = [];
+  (seq.refs || []).forEach(ref => {
+    if(ref.job_id) used.add(ref.job_id);
+    const output = ref.output || 0;
+    let thumb = '';
+    if(ref.file) thumb = seqFileURL(ref.file);
+    else {
+      const job = findJob(ref.job_id);
+      if(job) thumb = viewURL(job.lane, job.outputs[output], false);
+    }
+    const label = ref.role + (ref.label ? ' · ' + ref.label : '');
+    refItems.push(pickerItemHTML(ref.job_id, output, fid, label, thumb));
+  });
+  if(refItems.length) groups.push({title: 'REF ROOM', items: refItems});
+  // Anything else finished, in History order (the two groups above win).
+  const histItems = [];
+  STATE.jobs.forEach(job => {
+    if(histItems.length >= 12 || used.has(job.id) || job.status !== 'done') return;
+    const idx = resultPictureIndex(job);
+    if(idx < 0) return;
+    used.add(job.id);
+    const label = (job.prompt || job.mode || 'a picture').slice(0, 40);
+    histItems.push(pickerItemHTML(job.id, idx, fid, label, viewURL(job.lane, job.outputs[idx], false)));
+  });
+  if(histItems.length) groups.push({title: 'History', items: histItems});
+  if(!groups.length) return '<p class="muted">No finished pictures yet. Make one on the picture lane first.</p>';
+  return groups.map(g => '<div class="field-group-title">' + esc(g.title) + '</div><div class="picker-row">'
+    + g.items.join('') + '</div>').join('');
+}
+async function choosePickerItem(el){
+  const fid = el.dataset.pickerField;
+  const thumb = el.querySelector('img');
+  await carryPictureInto(fid, el.dataset.pickerJob, parseInt(el.dataset.pickerOutput, 10),
+    thumb ? thumb.src : null, el.dataset.pickerLabel);
+  const box = $('#picker_' + fid);
+  if(box) box.hidden = true;
 }
 
 /* ---------------------------------------------------------------------
@@ -2677,7 +2825,127 @@ function guideContext(shot){
   if(recipe && !recipe.disabled && recipe.value) ctx.recipe = recipe.value;
   return ctx;
 }
-function guideMsgEl(role, text, hints){
+// "ACTION: <verb> | <arg>" lines in a Film guide reply -> buttons (the guide
+// only ever offers; the user clicks). -> {text, actions: [{verb, arg, beats}]}
+function guideActions(text){
+  const KNOWN = {add_beats: 1, open_shot: 1, make_shot: 1, add_ref: 1, cut: 1};
+  const isKnownAction = line => {
+    const t = line.trim().replace(/^[`*]+|[`*]+$/g, '').trim();
+    const m = t.match(/^ACTION:\s*([a-z_]+)\s*(?:\|\s*(.*))?$/i);
+    return m && KNOWN[m[1].toLowerCase()] ? m : null;
+  };
+  const lines = String(text == null ? '' : text).split('\n');
+  const kept = [], actions = [];
+  for(let i = 0; i < lines.length; i++){
+    const m = isKnownAction(lines[i]);
+    if(!m){ kept.push(lines[i]); continue; }
+    const a = {verb: m[1].toLowerCase(), arg: (m[2] || '').trim(), beats: []};
+    if(a.verb === 'add_beats'){
+      // The beats are the non-empty lines right after it, up to the next
+      // blank line or the next ACTION line; a list marker is dropped.
+      for(let j = i + 1; j < lines.length; j++){
+        if(lines[j].trim() === '' || isKnownAction(lines[j])) break;
+        a.beats.push(lines[j].trim().replace(/^(?:[-*•]|\d+[.)])\s+/, ''));
+      }
+      if(!a.beats.length) continue;   // an add_beats with no beats is dropped
+    }
+    actions.push(a);
+  }
+  // A reply that also lists the beats in its own words would show them twice:
+  // those lines go, since the button lists them.
+  const beatLines = new Set([].concat(...actions.map(a => a.beats)));
+  for(let i = kept.length - 1; i >= 0; i--)
+    if(beatLines.has(kept[i].trim().replace(/^(?:[-*•]|\d+[.)])\s+/, ''))) kept.splice(i, 1);
+  while(kept.length && kept[0].trim() === '') kept.shift();
+  while(kept.length && kept[kept.length - 1].trim() === '') kept.pop();
+  return {text: kept.join('\n'), actions: actions};
+}
+// What one parsed action means right now: its button label, and why it
+// can't be run (null = it can).
+function guideActionState(a){
+  let label = '', why = null;
+  const slots = STATE.seq ? (STATE.seq.slots || []) : [];
+  if(!STATE.seq) why = 'Open a sequence first.';
+  if(a.verb === 'add_beats'){
+    label = 'Add these ' + a.beats.length + ' beat' + (a.beats.length === 1 ? '' : 's') + ' to the script';
+  } else if(a.verb === 'open_shot' || a.verb === 'make_shot'){
+    const n = parseInt(a.arg, 10);
+    const vids = slots.filter(s => s.lane === 'video');
+    label = (a.verb === 'open_shot' ? 'Open video shot ' : 'Make video shot ') + (isNaN(n) ? a.arg : n);
+    if(why == null){
+      if(!(n >= 1 && n <= vids.length)) why = 'There is no video shot ' + a.arg + ' yet.';
+      else if(a.verb === 'make_shot' && vids[n - 1].state === 'rendering')
+        why = 'Video shot ' + n + ' is already rendering.';
+    }
+  } else if(a.verb === 'add_ref'){
+    const m = a.arg.match(/^(?:picture(?:\s+shot)?\s+)?(\d+)\s+as\s+(?:the\s+|a\s+)?(set|character|other)\b/i);
+    if(!m){
+      label = 'Add to the REF ROOM';
+      if(why == null) why = 'The guide did not say which picture.';
+    } else {
+      const n = parseInt(m[1], 10), role = m[2].toLowerCase();
+      const pics = slots.filter(s => s.lane === 'picture');
+      label = 'Put picture shot ' + n + ' in the REF ROOM as '
+        + (role === 'set' ? 'the set plate' : 'a ' + role + ' reference');
+      if(why == null){
+        const slot = pics[n - 1] || null;
+        if(!slot) why = 'There is no picture shot ' + n + ' yet.';
+        else {
+          const job = findJob(slot.pick);
+          if(!slot.pick || !job || job.status !== 'done') why = 'Picture shot ' + n + ' has no picked take yet.';
+          else if(role === 'set' && ((STATE.seq.refs || []).some(r => r.role === 'set')))
+            why = 'The REF ROOM already has a set plate.';
+        }
+      }
+    }
+  } else if(a.verb === 'cut'){
+    label = 'Cut the sequence';
+    if(why == null && !slots.some(s => s.lane === 'video' && s.pick))
+      why = 'Pick a take for at least one video shot first.';
+  }
+  return {label: label, why: why};
+}
+// The buttons for one reply's parsed actions (all textContent, like the
+// rest of the panel): a row per action, its beats (add_beats) above the
+// button, its why-line under a disabled one. A done action stays disabled.
+function guideActionsEl(actions, index){
+  const wrap = document.createElement('div');
+  wrap.className = 'guide-actions';
+  const stored = guideHistLoad(guideHistKey())[index] || {};
+  const done = stored.done || [];
+  actions.forEach((a, i) => {
+    const row = document.createElement('div');
+    row.className = 'guide-action-row';
+    const st = guideActionState(a);
+    if(a.verb === 'add_beats'){
+      const ol = document.createElement('ol');
+      ol.className = 'guide-action-beats';
+      a.beats.forEach(b => {
+        const li = document.createElement('li');
+        li.textContent = b;
+        ol.appendChild(li);
+      });
+      row.appendChild(ol);
+    }
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn guide-action';
+    btn.dataset.guideMsg = String(index);
+    btn.dataset.guideAction = String(i);
+    btn.textContent = done.includes(i) ? st.label + ' — done' : st.label;
+    btn.disabled = done.includes(i) || !!st.why;
+    row.appendChild(btn);
+    if(!done.includes(i) && st.why){
+      const why = document.createElement('span');
+      why.className = 'guide-action-why';
+      why.textContent = st.why;
+      row.appendChild(why);
+    }
+    wrap.appendChild(row);
+  });
+  return wrap;
+}
+function guideMsgEl(role, text, hints, opts){
   const d = document.createElement('div');
   d.className = 'guide-msg ' + (role === 'user' ? 'from-user' : 'from-guide');
   const who = document.createElement('div');
@@ -2685,7 +2953,12 @@ function guideMsgEl(role, text, hints){
   who.textContent = role === 'user' ? 'You' : GUIDE.guide.name;
   const body = document.createElement('div');
   body.className = 'guide-text';
-  body.textContent = text;
+  // A Film room reply may carry ACTION: lines: the body shows the rest of
+  // the text, its buttons below (model text stays textContent).
+  let parsed = null;
+  if(role === 'assistant' && isCutting(currentRoom()) && opts && typeof opts.index === 'number')
+    parsed = guideActions(text);
+  body.textContent = parsed ? parsed.text : text;
   d.append(who, body);
   (hints || []).forEach(h => {
     const p = document.createElement('p');
@@ -2693,6 +2966,7 @@ function guideMsgEl(role, text, hints){
     p.textContent = h;
     d.appendChild(p);
   });
+  if(parsed && parsed.actions.length) d.appendChild(guideActionsEl(parsed.actions, opts.index));
   return d;
 }
 // Expanded: the newest at the bottom, in view. Compact shows only the latest
@@ -2715,8 +2989,18 @@ function renderGuideLog(){
       + (m.verbosity === 'verbose' ? ', or switch to Compact.' : '.'));
     if(m.dropped > 0) hints.push('The ' + m.dropped + ' oldest message' + (m.dropped === 1 ? ' was' : 's were')
       + ' left out so the conversation fits; the guide did not see ' + (m.dropped === 1 ? 'it.' : 'them.'));
-    log.appendChild(guideMsgEl(m.role, m.content, hints));
+    log.appendChild(guideMsgEl(m.role, m.content, hints, {index: i}));
   });
+  // Compact shows one line of the log, so the last reply's buttons also sit
+  // in the bar under it; expanded, they are in the conversation itself.
+  const bar = $('#guideActionBar');
+  bar.textContent = '';
+  const last = hist[hist.length - 1];
+  const lastActions = last && last.role === 'assistant' ? guideActions(last.content).actions : [];
+  if(lastActions.length){
+    bar.appendChild(guideActionsEl(lastActions, hist.length - 1));
+    bar.hidden = false;
+  } else bar.hidden = true;
   guideLogScroll();
 }
 // One voice: while the guide works, both the panel and the prompt box's
@@ -2805,6 +3089,75 @@ $('#guideVerbosity').addEventListener('click', e => {
   guideStoreSet('bwf.guide.verbosity', b.dataset.verbosity);
   renderGuideToggle();
 });
+// One of the guide reply's action buttons, clicked: run it (never
+// automatically -- only from that click). One listener for every reply.
+$('#guidePanel').addEventListener('click', e => {
+  const b = e.target.closest('[data-guide-action]');
+  if(!b || b.disabled) return;
+  runGuideAction(parseInt(b.dataset.guideMsg, 10), parseInt(b.dataset.guideAction, 10));
+});
+async function runGuideAction(index, i){
+  const key = guideHistKey();
+  const hist = guideHistLoad(key);
+  const m = hist[index];
+  if(!m || m.role !== 'assistant') return;
+  const a = guideActions(m.content).actions[i];
+  if(!a || guideActionState(a).why) return;
+  $$('#guidePanel [data-guide-action]').forEach(b => { b.disabled = true; });   // the final re-render restores
+  try{
+    const seq = STATE.seq;
+    const slots = (seq && seq.slots) || [];
+    let ok = false;
+    if(a.verb === 'add_beats'){
+      // The beats live on the script lane, which only shows in storyboard view.
+      const switched = seq.mode !== 'storyboard';
+      if(switched) await seqOp('set_mode', {mode: 'storyboard'});
+      let k = 0;
+      for(const beat of a.beats){
+        if(!(await seqOp('insert_beat', {text: beat}))) break;
+        k++;
+      }
+      renderSeqPickerList(); renderTimeline(); renderRefRoom();
+      msgSeq('Added ' + k + ' beat' + (k === 1 ? '' : 's') + ' to the script, each with its own shot'
+        + (switched ? ' (the sequence is in storyboard view now, where the script shows).' : '.'), 'ok');
+      ok = k === a.beats.length;
+    } else if(a.verb === 'open_shot' || a.verb === 'make_shot'){
+      const n = parseInt(a.arg, 10);
+      const vids = slots.filter(s => s.lane === 'video');
+      await selectSlot(vids[n - 1].id);
+      if(a.verb === 'open_shot') $('#roomForm').scrollIntoView({block: 'nearest'});
+      else await handleSlotMake(currentSlot(), false);   // it shows its own confirm/error sentences
+      ok = true;
+    } else if(a.verb === 'add_ref'){
+      const m2 = a.arg.match(/^(?:picture(?:\s+shot)?\s+)?(\d+)\s+as\s+(?:the\s+|a\s+)?(set|character|other)\b/i);
+      if(m2){
+        const n = parseInt(m2[1], 10), role = m2[2].toLowerCase();
+        const slot = slots.filter(s => s.lane === 'picture')[n - 1];
+        const job = findJob(slot.pick);
+        ok = !!(await seqOp('add_ref', {job_id: job.id, output: resultPictureIndex(job), role: role,
+                                        label: role === 'set' ? 'Set plate' : null}));
+        if(ok){
+          renderRefRoom(); renderTimeline();
+          msgSeq('Picture shot ' + n + ' is in the REF ROOM now.', 'ok');
+        }
+      }
+    } else if(a.verb === 'cut'){
+      await doCut();
+      ok = !STATE.cutError;
+    }
+    if(ok){
+      const h = guideHistLoad(key);
+      if(h[index]){
+        h[index].done = (h[index].done || []).concat([i]);
+        guideHistSave(key, h);
+      }
+    }
+  } catch(e){
+    guideShowError(String(e.message || e));
+  } finally {
+    if(guideHistKey() === key) renderGuideLog();
+  }
+}
 
 /* ---------------------------------------------------------------------
    Guide skills: POST /api/guide/skill, from the prompt box's "Help me write
@@ -3364,6 +3717,16 @@ function makeConfirmShow(problems, retry){
   $('#makeConfirm').scrollIntoView({block: 'nearest'});
 }
 $('#makeAnywayBtn').onclick = () => { const retry = MAKE_CONFIRM_RETRY; makeConfirmHide(); if(retry) retry(); };
+$('#slotDeleteBtn').onclick = () => {
+  const slot = currentSlot(); if(!slot) return;
+  if(!(slot.takes || []).length){ removeSlot(slot.id); return; }
+  if(STATE.slotDeleteArmed && STATE.slotDeleteArmed.id === slot.id && STATE.slotDeleteArmed.until > Date.now()){
+    STATE.slotDeleteArmed = null; removeSlot(slot.id); return;
+  }
+  STATE.slotDeleteArmed = {id: slot.id, until: Date.now() + 5000};
+  renderSlotMeta(slot);
+  setTimeout(() => renderSlotMeta(currentSlot()), 5100);
+};
 $('#makeFixBtn').onclick = () => {
   makeConfirmHide();
   if(!$('#guidePanel').hidden && !$('#guideTalk').hidden){
@@ -3374,8 +3737,65 @@ $('#makeFixBtn').onclick = () => {
     if(el) el.focus();
   }
 };
-async function handleSlotMake(slot, confirm){
+// A picture that is not the shot's shape comes out stretched or oddly moving:
+// said before anything renders, the way a pack's writer check is. Read from the
+// pictures on screen (a field's thumbnail, or a cabled picture shot's tile).
+function shapeWord(w, h){
+  const r = w / h;
+  const near = x => Math.abs(r - x) / x < 0.03;
+  if(near(1)) return 'square';
+  if(near(16 / 9)) return '16:9';
+  if(near(9 / 16)) return '9:16';
+  if(near(4 / 3)) return '4:3';
+  if(near(3 / 4)) return '3:4';
+  return r > 1 ? 'wide' : 'tall';
+}
+function shotShapeProblems(slot){
+  if(slot.cap !== 'video') return [];
+  const out = [];
+  const v = currentValues();
+  let sw = parseInt(v.width, 10);
+  let sh = parseInt(v.height, 10);
+  if(!(sw > 0) || !(sh > 0)){ sw = STATE.seq.canvas.width; sh = STATE.seq.canvas.height; }
+  const pictures = (STATE.seq.slots || []).filter(s => s.lane === 'picture');
+  for(const f of fieldsFor(currentMode())){
+    if(f.type !== 'image' && f.type !== 'image_list') continue;
+    let said = false;
+    $$('#thumbs_' + f.id + ' img').forEach(img => {
+      if(said || img.naturalWidth <= 0) return;
+      if(Math.abs((img.naturalWidth / img.naturalHeight) / (sw / sh) - 1) > 0.05){
+        out.push(f.label + ' is ' + img.naturalWidth + '×' + img.naturalHeight + ' ('
+          + shapeWord(img.naturalWidth, img.naturalHeight) + '), but this shot is '
+          + sw + '×' + sh + ' (' + shapeWord(sw, sh) + '). '
+          + (f.aspect_warning || 'A picture that is not the shot’s shape can come out stretched or strange.'));
+        said = true;
+      }
+    });
+    if(!said){
+      for(const cable of (STATE.seq.cables || [])){
+        if(cable.to !== slot.id || cable.field !== f.id) continue;
+        const el = document.querySelector('[data-slot-id="' + cable.from + '"] img');
+        if(!el || el.naturalWidth <= 0) continue;
+        if(Math.abs((el.naturalWidth / el.naturalHeight) / (sw / sh) - 1) > 0.05){
+          const n = pictures.findIndex(s => s.id === cable.from) + 1;
+          out.push(f.label + ' comes from picture shot ' + n + ', which is '
+            + shapeWord(el.naturalWidth, el.naturalHeight) + '; it will be cropped to '
+            + shapeWord(sw, sh) + ' to fit this shot, so its edges are cut off.');
+          said = true;
+          break;
+        }
+      }
+    }
+  }
+  return out;
+}
+async function handleSlotMake(slot, confirm, shapeOk){
+  STATE.freshSlotId = null;
   makeConfirmHide();
+  if(!confirm && !shapeOk){
+    const probs = shotShapeProblems(slot);
+    if(probs.length){ makeConfirmShow(probs, () => handleSlotMake(slot, false, true)); return; }
+  }
   $('#makeBtn').disabled = true;
   msgInspector('Saving...', '');
   const saved = await saveSlotNow();
@@ -3385,7 +3805,7 @@ async function handleSlotMake(slot, confirm){
     const req = {id: STATE.seq.id, slot_id: slot.id};
     if(confirm) req.confirm = true;
     const r = await postJSON('/api/sequence/generate', req);
-    if(r && r.needs_confirm){ makeConfirmShow(r.problems, () => handleSlotMake(slot, true)); return; }
+    if(r && r.needs_confirm){ makeConfirmShow(r.problems, () => handleSlotMake(slot, true, true)); return; }
     if(!r.ok){ msgInspector(r.error || 'That did not go through.', 'err'); return; }
     msgInspector('On its way.', 'ok');
     if(r.job){
@@ -3516,6 +3936,7 @@ async function openCredits(){
 --------------------------------------------------------------------- */
 const TL_LANE_CAP = {picture: 'image', video: 'video', sound: 'audio'};
 
+const SEQ_LAST_KEY = 'bwf.seq.last';
 function seqIdFromHash(){
   const m = /(?:^#|&)seq=([^&]+)/.exec(location.hash || '');
   return m ? decodeURIComponent(m[1]) : null;
@@ -3593,6 +4014,10 @@ async function seqLoadList(){
     STATE.seqList = [];
   }
 }
+function seqWhen(ts){
+  return ts ? new Date(ts * 1000).toLocaleString('en-GB', {weekday:'short', day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit'}) : '';
+}
+
 function renderSeqPickerList(){
   const body = $('#seqPickerBody');
   if(!body) return;
@@ -3605,6 +4030,7 @@ function renderSeqPickerList(){
   // its #seqModeSelect) until focus happened to move elsewhere.
   const ae = document.activeElement;
   if(ae && (ae.id === 'seqNewTitle' || ae.id === 'seqNewMode')) return;
+  if(ae && ae.classList && ae.classList.contains('seq-rename-input')) return;
   const list = STATE.seqList || [];
   const rows = list.map(s => {
     // The picker's own list (GET /api/sequences) does not refresh on
@@ -3616,11 +4042,62 @@ function renderSeqPickerList(){
       slots = (STATE.seq.slots || []).length;
       ready = (STATE.seq.slots || []).filter(x => x.state === 'ready').length;
     }
-    return '<button type="button" class="btn seq-row" data-seq-id="' + esc(s.id) + '"'
-      + (STATE.seq && STATE.seq.id === s.id ? ' aria-pressed="true"' : '') + '>'
-      + '<span>' + esc(s.title || 'Untitled sequence') + '</span>'
-      + '<span class="muted num">' + ready + '/' + slots + ' ready · ' + ago(s.updated || 0) + '</span>'
-      + '</button>';
+    const isOp = STATE.seq && STATE.seq.id === s.id;
+    const title = isOp ? (STATE.seq.title || 'Untitled sequence') : (s.title || 'Untitled sequence');
+    const n = isOp ? (STATE.seq.slots || []).filter(x => x.lane === 'video').length : (s.shots || 0);
+    const when = seqWhen(s.updated || 0);
+    let thumb = '';
+    // The open sequence's thumb comes from its live copy: the list is only
+    // re-read on open/rename/delete, so a pick made since would not show.
+    if(isOp){
+      const firstPicked = ['video', 'picture'].map(l => (STATE.seq.slots || []).filter(x => x.lane === l && x.pick)
+        .map(x => ({x, t: (x.takes || []).find(t => t.job_id === x.pick && t.file)})).find(y => y.t)).find(Boolean);
+      s = Object.assign({}, s, {thumb: firstPicked ? {path: firstPicked.t.file, media: firstPicked.x.lane === 'video' ? 'video' : 'image'} : s.thumb});
+    }
+    if(s.thumb && s.thumb.path){
+      const url = '/api/sequence/file?id=' + encodeURIComponent(s.id) + '&path=' + encodeURIComponent(s.thumb.path);
+      thumb = s.thumb.media === 'video'
+        ? '<video src="' + url + '#t=0.1" muted preload="metadata"></video>'
+        : '<img src="' + url + '" alt="">';
+    }
+    let beatLine = '';
+    if(s.first_beat != null){
+      beatLine = '<span class="seq-row-beat">' + esc(s.first_beat) + '</span>';
+    }
+    const meta = n + ' shot' + (n === 1 ? '' : 's') + ' · ' + ready + '/' + slots + ' ready' + (when ? ' · ' + esc(when) : '');
+    const renaming = STATE.seqRenaming;
+    let titleSpan;
+    if(renaming && renaming.id === s.id && renaming.where === 'row'){
+      const val = isOp ? (STATE.seq.title || 'Untitled sequence') : (s.title || 'Untitled sequence');
+      titleSpan = '<input type="text" class="seq-rename-input" data-seq-rename-input="' + esc(s.id) + '"'
+        + ' value="' + esc(val) + '" maxlength="200" aria-label="New name for this sequence">';
+    } else {
+      titleSpan = '<span class="seq-row-title">' + esc(title) + '</span>';
+    }
+    const delArmed = STATE.seqDeleteArmed;
+    const isDelArmed = delArmed && delArmed.id === s.id && Date.now() < delArmed.until;
+    let delBtn;
+    if(isDelArmed){
+      delBtn = '<button type="button" class="btn seq-row-delete armed" data-seq-delete="' + esc(s.id) + '"'
+        + '>Click again to delete</button>';
+    } else {
+      delBtn = '<button type="button" class="btn seq-row-delete" data-seq-delete="' + esc(s.id) + '"'
+        + '>Delete</button>';
+    }
+    const rowTag = (renaming && renaming.id === s.id && renaming.where === 'row') ? 'div' : 'button';
+    return '<div class="seq-row-wrap" data-seq-row="' + esc(s.id) + '">'
+      + '<' + rowTag + ' type="button" class="btn seq-row" data-seq-id="' + esc(s.id) + '"'
+      + (isOp ? ' aria-pressed="true"' : '') + '>'
+      + '<span class="seq-thumb">' + thumb + '</span>'
+      + '<span class="seq-row-text">'
+      + titleSpan + beatLine
+      + '<span class="muted num seq-row-meta">' + meta + '</span>'
+      + '</span>'
+      + '</' + rowTag + '>'
+      + '<button type="button" class="btn seq-row-rename" data-seq-rename="' + esc(s.id) + '"'
+      + ' aria-label="Rename ' + esc(title) + '">Rename</button>'
+      + delBtn
+      + '</div>';
   }).join('');
   body.innerHTML = '<div id="seqList">' + (rows || '<p class="muted">No sequences yet.</p>') + '</div>'
     + '<div id="seqNewRow"><input type="text" id="seqNewTitle" placeholder="New sequence title">'
@@ -3629,7 +4106,11 @@ function renderSeqPickerList(){
     + '<option value="storyboard"' + (STATE.newSeqMode === 'storyboard' ? ' selected' : '') + '>storyboard</option>'
     + '</select>'
     + '<button type="button" class="btn" id="seqNewBtn">New sequence</button></div>'
-    + (STATE.seq ? '<p id="seqOpenNote">Open: <b>' + esc(STATE.seq.title) + '</b> '
+    + (STATE.seq ? '<p id="seqOpenNote">Open: '
+      + (STATE.seqRenaming && STATE.seqRenaming.id === STATE.seq.id && STATE.seqRenaming.where === 'open'
+        ? '<input type="text" class="seq-rename-input" data-seq-rename-input="' + esc(STATE.seq.id) + '" value="'
+          + esc(STATE.seq.title) + '" maxlength="200" aria-label="New name for this sequence">'
+        : '<button type="button" class="seq-open-title" id="seqOpenTitle" title="Click to rename">' + esc(STATE.seq.title) + '</button>')
       // §2: the two modes are the SAME room, so the mode is a setting on the
       // open sequence rather than a different door -- and the beats survive the
       // trip either way, because set_mode never touches them.
@@ -3638,11 +4119,42 @@ function renderSeqPickerList(){
       + '<option value="storyboard"' + (STATE.seq.mode === 'storyboard' ? ' selected' : '') + '>storyboard</option>'
       + '</select>'
       + '<button type="button" class="btn" id="seqCloseBtn">Close</button></p>' : '');
-  $$('#seqList [data-seq-id]').forEach(b => b.onclick = () => seqOpenById(b.dataset.seqId));
+  $$('#seqList [data-seq-id]').forEach(b => b.onclick = e => {
+    if(e.target.closest('.seq-rename-input')) return;   // typing a new name, not opening it
+    seqOpenById(b.dataset.seqId);
+  });
   if($('#seqNewBtn')) $('#seqNewBtn').onclick = seqCreateNew;
   if($('#seqNewMode')) $('#seqNewMode').onchange = e => { STATE.newSeqMode = e.target.value; };
   if($('#seqModeSelect')) $('#seqModeSelect').onchange = e => seqSetMode(e.target.value);
   if($('#seqCloseBtn')) $('#seqCloseBtn').onclick = seqClose;
+  // Rename buttons
+  $$('.seq-row-rename').forEach(b => b.onclick = () => {
+    STATE.seqRenaming = {id: b.dataset.seqRename, where: 'row'};
+    renderSeqPickerList();
+  });
+  // Delete buttons
+  $$('.seq-row-delete').forEach(b => b.onclick = () => seqDeleteClick(b.dataset.seqDelete));
+  // Rename input events
+  const inp = document.querySelector('.seq-rename-input');
+  if(inp){
+    inp.focus();
+    inp.select();
+    let committed = false;
+    inp.onkeydown = e => {
+      if(e.key === 'Enter') { e.preventDefault(); seqRenameCommit(inp.dataset.seqRenameInput, inp.value); committed = true; }
+      else if(e.key === 'Escape') { committed = true; seqRenameEnd(); }
+    };
+    inp.onblur = () => { if(!committed){ committed = true; if(STATE.seqRenaming && STATE.seqRenaming.id === inp.dataset.seqRenameInput){
+      seqRenameCommit(inp.dataset.seqRenameInput, inp.value);
+    }}};
+  }
+  // Open title button
+  if($('#seqOpenTitle')) $('#seqOpenTitle').onclick = () => {
+    if(STATE.seq){
+      STATE.seqRenaming = {id: STATE.seq.id, where: 'open'};
+      renderSeqPickerList();
+    }
+  };
 }
 /* storyboard <-> sequence (C3.5). The lanes, the cables and the cut do not
    move; the script lane appears or goes, and the beats stay in the data either
@@ -3652,7 +4164,9 @@ async function seqSetMode(mode){
   if(!r){ renderSeqPickerList(); return; }
   renderTimeline();
 }
-function seqClose(){
+async function seqClose(){
+  await dropFreshSlot();
+  try{ localStorage.removeItem(SEQ_LAST_KEY); } catch(e){}
   STATE.seq = null;
   STATE.seqSlotId = null;
   STATE.cutError = null;
@@ -3666,22 +4180,75 @@ function seqClose(){
   renderMonitor();
   renderGuidePanel();   // each sequence has its own conversation
 }
+// The rename box keeps focus through the save, and renderSeqPickerList() will not
+// rebuild under a focused box -- so it is let go of first.
+function seqRenameEnd(){
+  STATE.seqRenaming = null;
+  const ae = document.activeElement;
+  if(ae && ae.classList && ae.classList.contains('seq-rename-input')) ae.blur();
+  renderSeqPickerList();
+}
+async function seqRenameCommit(id, text){
+  text = text.trim();
+  if(!text){ seqRenameEnd(); return; }
+  try{
+    if(STATE.seq && STATE.seq.id === id){
+      await seqOp('set_title', {title: text});
+    } else {
+      const d = await getJSON('/api/sequence?id=' + encodeURIComponent(id));
+      const r = await postJSON('/api/sequence/op', {id: id, rev: d.rev, op: 'set_title', title: text});
+      if(!r || typeof r.rev !== 'number') { msgSeq((r && r.error) || 'That name did not save.', 'err'); }
+    }
+    await seqLoadList();
+    seqRenameEnd();
+  }catch(e){ msgSeq(String(e.message || e), 'err'); seqRenameEnd(); }
+}
+function seqDeleteClick(id){
+  const armed = STATE.seqDeleteArmed;
+  if(armed && armed.id === id && Date.now() < armed.until){
+    // second click: confirm delete
+    STATE.seqDeleteArmed = null;
+    const row = document.querySelector('[data-seq-row="' + id + '"] .seq-row-title');
+    const title = row ? row.textContent : id;
+    postJSON('/api/sequence/delete', {id: id}).then(r => {
+      if(r && r.ok){
+        if(STATE.seq && STATE.seq.id === id) seqClose();
+        seqLoadList().then(() => {
+          renderSeqPickerList();
+          msgSeq('Deleted “' + title + '”. Its takes are still in History.', 'ok');
+        });
+      } else {
+        msgSeq((r && r.error) || 'Could not delete that sequence.', 'err');
+      }
+    }).catch(e => msgSeq(String(e.message || e), 'err'));
+  } else {
+    // first click: arm
+    STATE.seqDeleteArmed = {id: id, until: Date.now() + 5000};
+    renderSeqPickerList();
+    setTimeout(() => {
+      if(STATE.seqDeleteArmed && Date.now() >= STATE.seqDeleteArmed.until){
+        STATE.seqDeleteArmed = null;
+        renderSeqPickerList();
+      }
+    }, 5100);
+  }
+}
 async function seqCreateNew(){
   const input = $('#seqNewTitle');
-  const title = (input && input.value.trim()) || 'Untitled sequence';
+  const title = (input ? input.value.trim() : '');
   const modeSel = $('#seqNewMode');
   const mode = (modeSel && modeSel.value) || STATE.newSeqMode || 'sequence';
+  let r;
   try{
-    const r = await postJSON('/api/sequence', {title: title, mode: mode});
+    r = await postJSON('/api/sequence', {title: title, mode: mode});
     if(!r || !r.id){ msgSeq((r && r.error) || 'Could not start that sequence.', 'err'); return; }
   }catch(e){ msgSeq(String(e.message || e), 'err'); return; }
+  if($('#seqNewTitle')) $('#seqNewTitle').value = '';
   await seqLoadList();
-  const r = STATE.seqList.find(s => s.title === title) || null;
-  const newId = (r && r.id) || null;
-  if(newId) await seqOpenById(newId);
-  else renderSeqPickerList();
+  await seqOpenById(r.id);
 }
 async function seqOpenById(id){
+  await dropFreshSlot();
   try{
     const d = await getJSON('/api/sequence?id=' + encodeURIComponent(id));
     if(!d || !d.id){ msgSeq('There is no such sequence.', 'err'); return; }
@@ -3690,6 +4257,7 @@ async function seqOpenById(id){
   STATE.seqSlotId = null;
   STATE.cutError = null;
   setSeqHash(id);
+  try{ localStorage.setItem(SEQ_LAST_KEY, id); } catch(e){ /* storage off: nothing to remember */ }
   renderSeqPickerList();
   renderTimeline();
   renderRefRoom();
@@ -3700,12 +4268,14 @@ async function seqOpenById(id){
 async function seqEnterRoom(sid){
   await seqLoadList();
   renderSeqPickerList();
+  if(!sid){ try{ sid = localStorage.getItem(SEQ_LAST_KEY) || null; } catch(e){ sid = null; } }
   if(sid && STATE.seqList.some(s => s.id === sid)){
     await seqOpenById(sid);
   } else {
     STATE.seq = null;
     STATE.seqSlotId = null;
     if(sid) setSeqHash(null);
+    try{ localStorage.removeItem(SEQ_LAST_KEY); } catch(e){}
     renderSeqPickerList();
     renderTimeline();
     renderRefRoom();
@@ -3731,17 +4301,84 @@ function firstAvailableModeFor(cap){
   const modes = (STATE.engines[cap] && STATE.engines[cap].modes) || [];
   return modes.find(m => m.available) || modes[0] || null;
 }
+// A picture made for a film should already be the film's shape, so it can be a
+// video's starting picture without being squashed: the mode's own default size
+// (its pixel budget), reshaped to the sequence canvas, on the 16-pixel grid.
+function canvasShapedValues(mode){
+  const fs = fieldsFor(mode);
+  const fw = fs.find(f => f.id === 'width' && f.type === 'int');
+  const fh = fs.find(f => f.id === 'height' && f.type === 'int');
+  const c = STATE.seq && STATE.seq.canvas;
+  if(!fw || !fh || !c || !c.width || !c.height || typeof fw.default !== 'number' || typeof fh.default !== 'number') return {};
+  const scale = Math.sqrt((fw.default * fh.default) / (c.width * c.height));
+  const snap = (v, f) => {
+    let x = Math.max(16, Math.round(v * scale / 16) * 16);
+    if(Array.isArray(f.range)) x = Math.max(f.range[0], Math.min(f.range[1], x));
+    return x;
+  };
+  return {width: snap(c.width, fw), height: snap(c.height, fh)};
+}
+// The film so far: every picked video shot's length in the cut (its trim, or the
+// whole take), as the server measured it. 0 before any shot is picked.
+function seqCutSeconds(){
+  return ((STATE.seq && STATE.seq.slots) || []).filter(s => s.lane === 'video' && s.pick && s.trim_effective)
+    .reduce((t, s) => t + (Number(s.trim_effective.len) || 0), 0);
+}
+function cutLengthValues(mode){
+  const secs = seqCutSeconds();
+  const fs = fieldsFor(mode);
+  const f = fs.find(x => x.units === 'seconds' && (x.type === 'number' || x.type === 'int') && tierOf(x) === 'primary')
+         || fs.find(x => x.units === 'seconds' && (x.type === 'number' || x.type === 'int'));
+  if(!f || !(secs > 0)) return {};
+  let v = Math.ceil(secs);
+  if(Array.isArray(f.range)) v = Math.max(f.range[0], Math.min(f.range[1], v));
+  return {[f.id]: v};
+}
 async function addSlot(lane){
+  await dropFreshSlot();
   const cap = TL_LANE_CAP[lane];
   const mode = firstAvailableModeFor(cap);
   if(!mode){ msgSeq('No installed engine makes a ' + lane + ' shot yet.', 'err'); return; }
+  const values = lane === 'picture' ? canvasShapedValues(mode)
+               : lane === 'sound' ? cutLengthValues(mode) : {};
   const before = (STATE.seq.slots || []).length;
-  const r = await seqOp('add_slot', {lane: lane, cap: cap, mode: mode.id});
+  const r = await seqOp('add_slot', {lane: lane, cap: cap, mode: mode.id, values: values});
   if(!r) return;
   renderTimeline();
   const added = r.slots.filter(s => s.lane === lane);
   const newSlot = added[added.length - 1];
-  if(newSlot && r.slots.length > before) selectSlot(newSlot.id);
+  if(newSlot && r.slots.length > before){
+    STATE.freshSlotId = newSlot.id;   // set first: the tile shows as selected mid-select
+    await selectSlot(newSlot.id);
+    if(Object.keys(values).length){
+      if(lane === 'picture'){
+        msgInspector('This picture starts at ' + values.width + '×' + values.height + ', the film’s shape, so it can become a video shot’s starting picture.', '');
+      } else if(lane === 'sound'){
+        // The recipe the form opened on may carry its own length (a song's
+        // 150 s); the shot's value wins, and the sentence says so.
+        const fid = Object.keys(values)[0], rsel = $('#recipeSelect');
+        const preset = ((mode && mode.presets) || []).find(x => rsel && x.id === rsel.value);
+        const theirs = preset && preset.values && preset.values[fid];
+        msgInspector('This sound starts at ' + values[fid] + ' s, the length of the cut so far'
+          + (theirs != null && theirs !== values[fid] ? ', not the recipe’s ' + theirs + ' s.' : '.'), '');
+      }
+    }
+  }
+}
+async function dropFreshSlot(){
+  const id = STATE.freshSlotId; STATE.freshSlotId = null; if(!id || !STATE.seq) return;
+  const slot = (STATE.seq.slots || []).find(s => s.id === id);
+  if(!slot || slot.state !== 'empty' || (slot.takes || []).length) return;
+  const r = await seqOp('remove_slot', {slot_id: id}, {retry: true}); if(!r) return;
+  if(STATE.seqSlotId === id){ STATE.seqSlotId = null; }
+  renderTimeline();
+}
+async function removeSlot(slotId){
+  if(STATE.freshSlotId === slotId) STATE.freshSlotId = null;
+  const r = await seqOp('remove_slot', {slot_id: slotId}, {retry: true}); if(!r) return;
+  if(STATE.seqSlotId === slotId){ STATE.seqSlotId = null; $('#roomForm').hidden = true; STATE.selectedJobId = null; }
+  renderTimeline(); renderMonitor(); renderSlotMeta(currentSlot());
+  msgSeq('Removed that shot. Anything it made is still in History.', 'ok');
 }
 
 function coercedValues(mode){
@@ -3765,6 +4402,7 @@ function coercedValues(mode){
 
 let SEQ_SAVE_TIMER = null;
 function scheduleSlotSave(){
+  STATE.freshSlotId = null;
   if(!STATE.seqSlotId) return;
   clearTimeout(SEQ_SAVE_TIMER);
   SEQ_SAVE_TIMER = setTimeout(saveSlotNow, 600);
@@ -3791,6 +4429,17 @@ async function saveSlotOnce(){
 }
 
 function renderSlotMeta(slot){
+  $('#slotTools').hidden = !slot;
+  if(!slot) return;
+  const delBtn = $('#slotDeleteBtn');
+  if(delBtn){
+    const armed = STATE.slotDeleteArmed && STATE.slotDeleteArmed.id === slot.id && STATE.slotDeleteArmed.until > Date.now();
+    const n = (slot.takes || []).length;
+    if(armed && n)
+      delBtn.textContent = 'Click again to delete — its ' + n + ' take' + (n === 1 ? '' : 's') + ' stay in History';
+    else
+      delBtn.textContent = 'Delete this shot';
+  }
   const el = $('#slotWarnings');
   if(!el) return;
   if(!slot){ el.hidden = true; el.innerHTML = ''; return; }
@@ -3806,14 +4455,59 @@ function renderSlotMeta(slot){
   }
   if(slot.warnings && slot.warnings.length)
     bits.push('<ul class="slot-warn-list">' + slot.warnings.map(w => '<li>' + esc(w) + '</li>').join('') + '</ul>');
+  // The way out of the set-plate notes sits next to them: use a finished
+  // picture shot as the set plate, or carry one into this shot's picture jack.
+  let warnSet = null, warnJack = null, warnPicked = null;
+  if(slot.cap === 'video' && STATE.seq){
+    const set = (STATE.seq.refs || []).find(r => r.role === 'set');
+    const pics = (STATE.seq.slots || []).filter(s => s.lane === 'picture');
+    const picked = pics.map((s, i) => ({s, n: i + 1, job: findJob(s.pick)}))
+      .find(x => x.s.pick && x.job && x.job.status === 'done' && resultPictureIndex(x.job) >= 0);
+    const jack = (slot.jacks || []).find(j => j.type === 'image');
+    const warns = (slot.warnings || []).join(' ');
+    warnSet = set; warnJack = jack; warnPicked = picked;
+    if(!set && slot.sees_refs && picked && warns.indexOf('no set plate') >= 0)
+      bits.push('<p><button type="button" class="btn" data-warn-action="set-plate">Use picture shot ' + picked.n + ' as the set plate</button></p>');
+    if(set && !slot.sees_refs && jack && warns.indexOf('start it from the set plate') >= 0)
+      bits.push('<p><button type="button" class="btn" data-warn-action="start-from-set">Start it from the set plate</button></p>');
+    if(!set && !slot.sees_refs && jack && picked && warns.indexOf('words alone') >= 0)
+      bits.push('<p><button type="button" class="btn" data-warn-action="start-from-picture">Start it from picture shot ' + picked.n + '</button></p>');
+  }
   el.innerHTML = bits.join('');
   el.hidden = bits.length === 0;
   el.querySelectorAll('[data-copy-beat]').forEach(b => {
     b.onclick = () => copyBeatToPrompt(b.dataset.copyBeat);
   });
+  el.querySelectorAll('[data-warn-action]').forEach(b => {
+    b.onclick = async () => {
+      const act = b.dataset.warnAction;
+      if(act === 'set-plate' && warnPicked){
+        const r = await seqOp('add_ref', {job_id: warnPicked.job.id, output: resultPictureIndex(warnPicked.job), role: 'set', label: 'Set plate'});
+        if(r){
+          renderRefRoom(); renderTimeline(); renderSlotMeta(currentSlot());
+          msgSeq('Picture shot ' + warnPicked.n + ' is now the set plate.', 'ok');
+        }
+      } else if(act === 'start-from-set' && warnSet && warnJack){
+        await carryPictureInto(warnJack.field, warnSet.job_id, warnSet.output || 0,
+          warnSet.file
+            ? '/api/sequence/file?id=' + encodeURIComponent(STATE.seq.id) + '&path=' + encodeURIComponent(warnSet.file)
+            : null, 'The set plate');
+        renderSlotMeta(currentSlot());
+      } else if(act === 'start-from-picture' && warnPicked && warnJack){
+        const idx = resultPictureIndex(warnPicked.job);
+        const take = (warnPicked.s.takes || []).find(t => t.job_id === warnPicked.s.pick);
+        const thumb = take && take.file
+          ? '/api/sequence/file?id=' + encodeURIComponent(STATE.seq.id) + '&path=' + encodeURIComponent(take.file)
+          : viewURL(warnPicked.job.lane, warnPicked.job.outputs[idx], false);
+        await carryPictureInto(warnJack.field, warnPicked.job.id, idx, thumb, 'Picture shot ' + warnPicked.n);
+        renderSlotMeta(currentSlot());
+      }
+    };
+  });
 }
 
 async function selectSlot(slotId){
+  if(STATE.freshSlotId && STATE.freshSlotId !== slotId) await dropFreshSlot();
   const slot = (STATE.seq.slots || []).find(s => s.id === slotId);
   if(!slot) return;
   STATE.seqSlotId = slotId;
@@ -3849,6 +4543,16 @@ function applySlotValues(slot){
   if(slot.quality) selectQualityTier(slot.quality);
   Object.entries(slot.values || {}).forEach(([k, v]) => setFieldValue(k, v));
   refreshEnabled(fieldsFor(currentMode()));
+  // A saved picture is a file that lives on the lane, not a form value: put
+  // it back in the field so the next autosave does not write '' over it.
+  fieldsFor(currentMode()).forEach(f => {
+    if(!UPLOAD_TYPES.includes(f.type)) return;
+    const v = (slot.values || {})[f.id];
+    if(!v) return;
+    const names = (Array.isArray(v) ? v : [v]).filter(Boolean);
+    setUploads(f.id, names.map(n => ({name: n, original: n,
+      thumb: (f.type === 'image' || f.type === 'image_list') ? inputViewURL(n) : null})));
+  });
 }
 
 function laneWord(lane){ return lane === 'picture' ? 'the picture lane' : lane === 'video' ? 'the video lane' : 'the sound lane'; }
@@ -3916,13 +4620,17 @@ function renderTimeline(){
     const track = $('#tlTrack' + lane[0].toUpperCase() + lane.slice(1));
     if(!track) return;
     const slots = seq ? (seq.slots || []).filter(s => s.lane === lane) : [];
-    const html = slots.map(slotTileHTML).join('')
+    // An empty shot's × sits right after its tile (a button cannot hold a button).
+    const html = slots.map(slot => slotTileHTML(slot) + (slot.state === 'empty'
+        ? '<button type="button" class="tl-slot-x" data-slot-remove="' + esc(slot.id) + '" aria-label="Remove this empty shot" title="Remove this empty shot">\u00d7</button>'
+        : '')).join('')
       + '<button type="button" class="tl-slot tl-slot-add" data-add-lane="' + lane + '"'
       + (seq ? '' : ' disabled') + '>+ generate here</button>';
     // Write only on change: the slot tiles are the nodes the user hovers
     // and clicks, and they must not be replaced out from under a click.
     if(setHTML(track, html)){
       Array.from(track.querySelectorAll('[data-slot-id]')).forEach(b => b.onclick = () => onSlotTileClick(b.dataset.slotId));
+      track.querySelectorAll('[data-slot-remove]').forEach(b => b.onclick = e => { e.stopPropagation(); removeSlot(b.dataset.slotRemove); });
       const addBtn = track.querySelector('[data-add-lane]');
       if(addBtn) addBtn.onclick = () => addSlot(lane);
     }
@@ -4132,7 +4840,8 @@ function onSlotTileClick(slotId){
 function refreshCableLayer(){
   const lanes = $('#tlLanes'), svg = $('#tlCableSvg'), jackLayer = $('#tlJackLayer');
   if(!lanes || !svg || !jackLayer) return;
-  if(!STATE.seq){ svg.innerHTML = ''; jackLayer.innerHTML = ''; return; }
+  const jackHint = $('#tlJackHint');
+  if(!STATE.seq){ svg.innerHTML = ''; jackLayer.innerHTML = ''; if(jackHint) jackHint.hidden = true; return; }
   const lanesRect = lanes.getBoundingClientRect();
   svg.setAttribute('width', lanesRect.width);
   svg.setAttribute('height', lanesRect.height);
@@ -4210,6 +4919,7 @@ function refreshCableLayer(){
     el.classList.toggle('tl-slot-cable-target', eligible && !isVideoPending);
     el.classList.toggle('tl-slot-cable-target-video', eligible && isVideoPending);
   });
+  if(jackHint) jackHint.hidden = !(STATE.seq && (STATE.seq.slots || []).some(s => (s.jacks || []).length) && !STATE.cablePending);
 }
 document.addEventListener('scroll', e => {
   if(e.target && e.target.classList && e.target.classList.contains('tl-track')) refreshCableLayer();
@@ -4221,6 +4931,12 @@ document.addEventListener('keydown', e => {
     msgCable('', '');
     refreshCableLayer();
   }
+});
+document.addEventListener('click', e => {
+  const open = e.target.closest('[data-pick-picture]');
+  if(open){ togglePicturePicker(open.dataset.pickPicture); return; }
+  const item = e.target.closest('[data-picker-job]');
+  if(item) choosePickerItem(item);
 });
 
 /* ---------------------------------------------------------------------
@@ -4679,6 +5395,36 @@ async function addRefFromMonitor(job, o){
     renderTimeline();
     msgSeq('Added to the reference room.', 'ok');
   }
+}
+// "Use as starting picture": the finished picture becomes the starting
+// picture of the first video shot that still needs one; failing that, a new
+// empty video shot is made for it. The picture is CARRIED onto the lane first
+// (carryPictureInto), exactly as the shot's own picker would do it.
+async function useAsStartingPicture(job, output){
+  const seq = STATE.seq;
+  const firstEmpty = (seq.slots || []).find(s =>
+    s.lane === 'video' && s.state === 'empty'
+    && (() => {
+      const jack = (s.jacks || []).find(j => j.type === 'image');
+      if(!jack) return false;
+      if((seq.cables || []).some(c => c.to === s.id && c.field === jack.field)) return false;
+      return !(s.values || {})[jack.field];
+    })());
+  if(firstEmpty){
+    await selectSlot(firstEmpty.id);
+  } else {
+    await addSlot('video');
+  }
+  const slot = currentSlot();
+  if(!slot || !(slot.jacks || []).some(j => j.type === 'image')){
+    msgSeq('No video recipe here takes a starting picture.', 'err');
+    return;
+  }
+  const jack = (slot.jacks || []).find(j => j.type === 'image');
+  const n = (STATE.seq.slots || []).filter(s => s.lane === 'video').findIndex(s => s.id === slot.id) + 1;
+  const thumb = viewURL(job.lane, job.outputs[output], false);
+  const ok = await carryPictureInto(jack.field, job.id, output, thumb, 'This picture');
+  if(ok) msgInspector('Video shot ' + n + ' now starts from this picture. Say what happens in it, then press Make.', 'ok');
 }
 
 /* ---------------------------------------------------------------------

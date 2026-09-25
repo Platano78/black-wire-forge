@@ -234,6 +234,8 @@ falsy — is ignored. The dict has exactly these keys:
                                    builder's own `[:N]` slice). The core
                                    refuses rather than silently truncating
                                    once a caller would pass more than this.
+                         aspect_warning   (image fields) a sentence the page adds
+                                   when the picture is not the shot's shape.
 
   presets   optional dict  mode_name -> list of {"id", "label", "note",
                        "values"} dicts. A named parameter set (Krita/Fooocus

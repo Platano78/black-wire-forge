@@ -371,8 +371,8 @@ rev6 = b["rev"]
 slot6 = b["slots"][0]["id"]
 check("sees_refs true: refs=='auto' and ref2v has an image_list field",
       b["slots"][0]["sees_refs"] is True, b["slots"][0])
-check("no set yet -> 'the room has no set plate yet'",
-      "the room has no set plate yet" in b["slots"][0]["warnings"], b["slots"][0]["warnings"])
+check("no set yet -> 'no set plate in the REF ROOM yet'",
+      any("no set plate in the REF ROOM yet" in w for w in b["slots"][0]["warnings"]), b["slots"][0]["warnings"])
 
 b, c = op(new_srv, sid6, rev6, "update_slot", slot_id=slot6, refs="off")
 rev6 = b["rev"]
@@ -386,8 +386,8 @@ with new_srv.JOBS_LOCK:
     new_srv.JOBS[NOPRESET_JOB["id"]] = dict(NOPRESET_JOB)
 b, c = op(new_srv, sid6, rev6, "add_ref", job_id=NOPRESET_JOB["id"], output=0, role="set")
 rev6 = b["rev"]
-check("refs=='off': a video slot with a set in the room but no view of it",
-      "this shot will invent its own room" in b["slots"][0]["warnings"], b["slots"][0]["warnings"])
+check("refs=='off': a video slot with a set in the room but no view of it says so",
+      any("can't take the REF ROOM's pictures" in w for w in b["slots"][0]["warnings"]), b["slots"][0]["warnings"])
 
 b, c = op(new_srv, sid6, rev6, "update_slot", slot_id=slot6, refs="auto")
 rev6 = b["rev"]
