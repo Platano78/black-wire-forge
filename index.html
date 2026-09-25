@@ -2399,7 +2399,11 @@ async function renderModeFields(){
         const r = await fetch('/api/upload', {method:'POST', body: fd});
         const j = await r.json();
         if(!j.ok) throw new Error(j.error || 'upload failed');
-        setUploads(f.id, j.files);
+        // An uploaded picture shows as a thumbnail (its real shape, so it can
+        // be read before a Make), the way a carried-over result's does.
+        setUploads(f.id, (f.type === 'image' || f.type === 'image_list')
+          ? j.files.map(x => Object.assign({}, x, {thumb: inputViewURL(x.name)}))
+          : j.files);
       } catch(e){
         msgInspector(String(e.message || e), 'err');
       }
@@ -3510,9 +3514,65 @@ $('#makeFixBtn').onclick = () => {
     if(el) el.focus();
   }
 };
-async function handleSlotMake(slot, confirm){
+// A picture that is not the shot's shape comes out stretched or oddly moving:
+// said before anything renders, the way a pack's writer check is. Read from the
+// pictures on screen (a field's thumbnail, or a cabled picture shot's tile).
+function shapeWord(w, h){
+  const r = w / h;
+  const near = x => Math.abs(r - x) / x < 0.03;
+  if(near(1)) return 'square';
+  if(near(16 / 9)) return '16:9';
+  if(near(9 / 16)) return '9:16';
+  if(near(4 / 3)) return '4:3';
+  if(near(3 / 4)) return '3:4';
+  return r > 1 ? 'wide' : 'tall';
+}
+function shotShapeProblems(slot){
+  if(slot.cap !== 'video') return [];
+  const out = [];
+  const v = currentValues();
+  let sw = parseInt(v.width, 10);
+  let sh = parseInt(v.height, 10);
+  if(!(sw > 0) || !(sh > 0)){ sw = STATE.seq.canvas.width; sh = STATE.seq.canvas.height; }
+  const pictures = (STATE.seq.slots || []).filter(s => s.lane === 'picture');
+  for(const f of fieldsFor(currentMode())){
+    if(f.type !== 'image' && f.type !== 'image_list') continue;
+    let said = false;
+    $$('#thumbs_' + f.id + ' img').forEach(img => {
+      if(said || img.naturalWidth <= 0) return;
+      if(Math.abs((img.naturalWidth / img.naturalHeight) / (sw / sh) - 1) > 0.05){
+        out.push(f.label + ' is ' + img.naturalWidth + '×' + img.naturalHeight + ' ('
+          + shapeWord(img.naturalWidth, img.naturalHeight) + '), but this shot is '
+          + sw + '×' + sh + ' (' + shapeWord(sw, sh) + '). '
+          + (f.aspect_warning || 'A picture that is not the shot’s shape can come out stretched or strange.'));
+        said = true;
+      }
+    });
+    if(!said){
+      for(const cable of (STATE.seq.cables || [])){
+        if(cable.to !== slot.id || cable.field !== f.id) continue;
+        const el = document.querySelector('[data-slot-id="' + cable.from + '"] img');
+        if(!el || el.naturalWidth <= 0) continue;
+        if(Math.abs((el.naturalWidth / el.naturalHeight) / (sw / sh) - 1) > 0.05){
+          const n = pictures.findIndex(s => s.id === cable.from) + 1;
+          out.push(f.label + ' comes from picture shot ' + n + ', which is '
+            + shapeWord(el.naturalWidth, el.naturalHeight) + '; it will be cropped to '
+            + shapeWord(sw, sh) + ' to fit this shot, so its edges are cut off.');
+          said = true;
+          break;
+        }
+      }
+    }
+  }
+  return out;
+}
+async function handleSlotMake(slot, confirm, shapeOk){
   STATE.freshSlotId = null;
   makeConfirmHide();
+  if(!confirm && !shapeOk){
+    const probs = shotShapeProblems(slot);
+    if(probs.length){ makeConfirmShow(probs, () => handleSlotMake(slot, false, true)); return; }
+  }
   $('#makeBtn').disabled = true;
   msgInspector('Saving...', '');
   const saved = await saveSlotNow();
@@ -3522,7 +3582,7 @@ async function handleSlotMake(slot, confirm){
     const req = {id: STATE.seq.id, slot_id: slot.id};
     if(confirm) req.confirm = true;
     const r = await postJSON('/api/sequence/generate', req);
-    if(r && r.needs_confirm){ makeConfirmShow(r.problems, () => handleSlotMake(slot, true)); return; }
+    if(r && r.needs_confirm){ makeConfirmShow(r.problems, () => handleSlotMake(slot, true, true)); return; }
     if(!r.ok){ msgInspector(r.error || 'That did not go through.', 'err'); return; }
     msgInspector('On its way.', 'ok');
     if(r.job){
@@ -4011,13 +4071,48 @@ function firstAvailableModeFor(cap){
   const modes = (STATE.engines[cap] && STATE.engines[cap].modes) || [];
   return modes.find(m => m.available) || modes[0] || null;
 }
+// A picture made for a film should already be the film's shape, so it can be a
+// video's starting picture without being squashed: the mode's own default size
+// (its pixel budget), reshaped to the sequence canvas, on the 16-pixel grid.
+function canvasShapedValues(mode){
+  const fs = fieldsFor(mode);
+  const fw = fs.find(f => f.id === 'width' && f.type === 'int');
+  const fh = fs.find(f => f.id === 'height' && f.type === 'int');
+  const c = STATE.seq && STATE.seq.canvas;
+  if(!fw || !fh || !c || !c.width || !c.height || typeof fw.default !== 'number' || typeof fh.default !== 'number') return {};
+  const scale = Math.sqrt((fw.default * fh.default) / (c.width * c.height));
+  const snap = (v, f) => {
+    let x = Math.max(16, Math.round(v * scale / 16) * 16);
+    if(Array.isArray(f.range)) x = Math.max(f.range[0], Math.min(f.range[1], x));
+    return x;
+  };
+  return {width: snap(c.width, fw), height: snap(c.height, fh)};
+}
+// The film so far: every picked video shot's length in the cut (its trim, or the
+// whole take), as the server measured it. 0 before any shot is picked.
+function seqCutSeconds(){
+  return ((STATE.seq && STATE.seq.slots) || []).filter(s => s.lane === 'video' && s.pick && s.trim_effective)
+    .reduce((t, s) => t + (Number(s.trim_effective.len) || 0), 0);
+}
+function cutLengthValues(mode){
+  const secs = seqCutSeconds();
+  const fs = fieldsFor(mode);
+  const f = fs.find(x => x.units === 'seconds' && (x.type === 'number' || x.type === 'int') && tierOf(x) === 'primary')
+         || fs.find(x => x.units === 'seconds' && (x.type === 'number' || x.type === 'int'));
+  if(!f || !(secs > 0)) return {};
+  let v = Math.ceil(secs);
+  if(Array.isArray(f.range)) v = Math.max(f.range[0], Math.min(f.range[1], v));
+  return {[f.id]: v};
+}
 async function addSlot(lane){
   await dropFreshSlot();
   const cap = TL_LANE_CAP[lane];
   const mode = firstAvailableModeFor(cap);
   if(!mode){ msgSeq('No installed engine makes a ' + lane + ' shot yet.', 'err'); return; }
+  const values = lane === 'picture' ? canvasShapedValues(mode)
+               : lane === 'sound' ? cutLengthValues(mode) : {};
   const before = (STATE.seq.slots || []).length;
-  const r = await seqOp('add_slot', {lane: lane, cap: cap, mode: mode.id});
+  const r = await seqOp('add_slot', {lane: lane, cap: cap, mode: mode.id, values: values});
   if(!r) return;
   renderTimeline();
   const added = r.slots.filter(s => s.lane === lane);
@@ -4025,6 +4120,13 @@ async function addSlot(lane){
   if(newSlot && r.slots.length > before){
     STATE.freshSlotId = newSlot.id;   // set first: the tile shows as selected mid-select
     await selectSlot(newSlot.id);
+    if(Object.keys(values).length){
+      if(lane === 'picture'){
+        msgInspector('This picture starts at ' + values.width + '×' + values.height + ', the film’s shape, so it can become a video shot’s starting picture.', '');
+      } else if(lane === 'sound'){
+        msgInspector('This sound starts at ' + Object.values(values)[0] + ' s, the length of the cut so far.', '');
+      }
+    }
   }
 }
 async function dropFreshSlot(){

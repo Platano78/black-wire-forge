@@ -1101,11 +1101,13 @@ ENGINE = {
                      "(vendor prompt contract). Keep it to 1-2 actions."},
             {"id": "start_image", "label": "Starting picture", "type": "image",
              "tier": "primary", "group": "Content", "order": 2,
+             "aspect_warning": "Use a picture the shot’s shape: the vendor prompt contract says a square image \"produces distorted, weird motion\".",
              "hint": "Optional. Omit for pure text-to-video."},
             {"id": "end_image", "label": "Ending picture (morph)", "type": "image",
              "tier": "advanced", "group": "Content", "order": 3,
              "enabled_when": {"field": "start_image", "truthy": True},
              "disabled_reason": "Needs a starting picture. A morph needs both endpoints.",
+             "aspect_warning": "Use a picture the shot’s shape: the vendor prompt contract says a square image \"produces distorted, weird motion\".",
              "hint": "Turning this on also turns two_stage off automatically is NOT done "
                      "for you. See the sharpen field below."},
             # length % 8 == 1; 97 is the frozen builder's own default (about 4s at 24fps).
