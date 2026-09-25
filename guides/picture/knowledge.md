@@ -72,20 +72,20 @@ card, then general web craft — see "Research log" for what came from where.
   observed, `engines/pixelart.py` `sprite_check`.
 - **Multiple reference pictures are wired by upload order**, not by name: the first picture added
   becomes reference 1, the second reference 2, and so on up to 10. When a user talks about several
-  uploaded pictures by number ("the man in picture two", "picture 1 / picture 2"), write the edit
-  prompt using that same ordinal language ("the first picture" / "the second picture") — this app
-  does not use bracket tokens like `<image1>` in the prompt text itself, only positional image
-  inputs. — observed (the wiring), `engines/qwen_image.py` `qwen_edit_graph()` (`images.image_%d`);
-  **inferred, UNTESTED against a real render** (the ordinal-language convention as the right way to
-  address them in prose) — no `prompt_guide` states an addressing convention; this is read off the
-  graph's positional wiring plus a real-world request shape observed in a scouted Qwen-Image 2.1
-  user's own workflow ("make the man in image two have the clothes of the man in picture one").
-  Upstream's *own* fine-tuned prompt-rewriter (a different, specially-trained checkpoint this app
-  does not run) uses literal `<image1>`/`<image2>` tags in its rewritten output — restated in my own
-  words, not copied, source https://github.com/QwenLM/Qwen-Image-2.1/tree/main/prompt_rewrite (Qwen
-  Research License; craft idea only). Treat ordinal language as the safer default, but this whole
-  convention has never been checked against a real Qwen-Image 2.1 edit render — only against what a
-  chat model writes as a prompt, not against what the engine actually does with it.
+  uploaded pictures by number ("the man in picture two", "picture 1 / picture 2"), the edit prompt
+  names them `<image1>`, `<image2>`: Qwen-Image 2.1's own text encoder puts exactly that label in
+  front of each attached picture, in upload order, so it is the engine's own reference form, not a
+  tag belonging to another checkpoint. The user keeps saying "picture 1 / picture 2"; the Edit
+  writer (`engines/qwen_image.py` `EDIT_REF`, one constant) writes the tags. The output takes its
+  size from picture 1 (the encoder's latent follows the first reference). — observed: the wiring,
+  `engines/qwen_image.py` `qwen_edit_graph()` (`images.image_%d`); the labels, ComfyUI's comfy/text_encoders/qwen_image21.py
+  (`tokenize_with_weights`: `<image{N}>` before each vision block); the size, the
+  `TextEncodeQwenImage21` node in ComfyUI's comfy_extras/nodes_qwen.py. Upstream's prompt rewriter
+  writes the same tags for two or more pictures (restated, not copied; source
+  https://github.com/QwenLM/Qwen-Image-2.1/tree/main/prompt_rewrite, Qwen Research License). An
+  earlier version of this note said the tags belonged to a different checkpoint; the encoder source
+  says otherwise. **UNTESTED by a render:** no edit has yet compared the tags with ordinal prose
+  ("the second picture") on this engine.
 - **Named subjects the model doesn't recognise render wrong — describe appearance, not just the
   name.** A live BWF render (job `c78e51eab415`, 2026-09-24, prompt "...battle between Godzilla and
   MechaKing Ghidorah..."), inspected at full resolution: **three creatures** came back instead of
@@ -328,9 +328,8 @@ copied into any shipped file — restated and cited.
   probed the guide's own endpoint against each. This is
   what surfaced the count-reliability limit, the fabricated-critique risk, and the
   confirm-before-answering rule, none of which were visible from reading code alone.
-- Could not confirm: whether Qwen-Image 2.1 (the base checkpoint this app runs, not the specially
-  fine-tuned PE checkpoints) actually responds to bracket tokens like `<image1>`/`<image2>` in plain
-  prompt text the way the upstream rewriter's *output* does — no render was trialled either way in
-  this pass, chat-only by this pass's scope. Whether the guide's endpoint's count failure
+- Could not confirm by a render: that `<image1>`/`<image2>` in the edit prompt pick out the right
+  pictures better than ordinal prose. The encoder labels the pictures that way (above), but no
+  render was trialled either way, chat-only by this pass's scope. Whether the guide's endpoint's count failure
   (measuring 2 large, well-separated subjects as 4) is specific to this 12B model or a broader small-
   VLM limitation was not tested against a second endpoint.

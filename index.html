@@ -785,7 +785,7 @@
     <!-- The prompt box is the anchor: right under the engine picker, its
          writing actions under it, and the room's guide right under those. -->
     <div id="promptWrap">
-      <label class="field-label" for="promptBox">Prompt</label>
+      <label class="field-label" for="promptBox" id="promptLabel">Prompt</label>
       <textarea id="promptBox"></textarea>
       <p class="hint" id="promptHint"></p>
       <div id="helperBar" hidden>
@@ -1408,6 +1408,7 @@ function renderMonitor(){
     + (before ? '<button class="btn" id="beforeBtn" type="button" aria-pressed="' + (shown === before)
       + '">' + esc(beforeWords) + '</button>' : '')
     + '<button class="btn" id="useAgainBtn" type="button">Use again</button>'
+    + (!cutting && canEditResult(job) ? '<button class="btn" id="editResultBtn" type="button">Edit this result</button>' : '')
     + (running && !laneDown ? '<button class="btn" id="stopBtn" type="button">Stop</button>' : '')
     + (finished ? '<button class="btn" id="forgetBtn" type="button">' + forgetLabel + '</button>' : '')
     + (!cutting && canRevise(job) ? '<button class="btn" id="notRightBtn" type="button">Not right? Tell the guide</button>' : '')
@@ -1450,6 +1451,7 @@ function renderMonitor(){
   setHTML($('#monitorActions'), actions);
   if($('#shareBtn')) $('#shareBtn').onclick = () => openShare(job, o);
   if($('#useAgainBtn')) $('#useAgainBtn').onclick = () => useAgain(job);
+  if($('#editResultBtn')) $('#editResultBtn').onclick = () => editResult(job);
   if($('#beforeBtn')) $('#beforeBtn').onclick = () => {
     STATE.beforeJob = STATE.beforeJob === job.id ? null : job.id;
     renderMonitor();
@@ -2298,9 +2300,21 @@ async function renderModeFields(){
   const ledgerFields = uploadFields.concat(jackFields);
   const rest = fields.filter(f => f !== promptField && !ledgerFields.includes(f));
 
-  $('#promptWrap').hidden = !promptField;
+  // A mode with no prompt whose writer writes for another mode (a 3D model's
+  // source picture) keeps the box as the guide's TOPIC box: not a field.
+  const topicWriter = !promptField && mode && mode.writer && mode.writer.target && STATE.helperOn
+    ? mode.writer : null;
+  $('#promptWrap').hidden = !promptField && !topicWriter;
+  $('#promptLabel').textContent = topicWriter ? 'No picture yet? Say what it should be' : 'Prompt';
   const promptBox = $('#promptBox');
-  if(promptField){
+  if(topicWriter){
+    promptBox.value = '';
+    promptBox.placeholder = topicWriter.topic_label || '';
+    delete promptBox.dataset.fieldId;
+    delete promptBox.dataset.fieldTier;
+    $('#promptHint').textContent = 'The guide writes the words for a picture in the '
+      + (topicWriter.target.room_name || 'other') + ' room.';
+  } else if(promptField){
     promptBox.value = promptField.default || '';
     promptBox.placeholder = promptField.label || '';
     promptBox.dataset.fieldId = promptField.id;
@@ -2351,14 +2365,7 @@ async function renderModeFields(){
         const r = await fetch('/api/upload', {method:'POST', body: fd});
         const j = await r.json();
         if(!j.ok) throw new Error(j.error || 'upload failed');
-        STATE.uploads[f.id] = j.files;
-        const thumbs = $('#thumbs_' + f.id);
-        thumbs.innerHTML = j.files.map((uf, i) =>
-          '<div class="t"><span class="num" style="padding:4px;display:block">' + (i+1) + '</span></div>').join('');
-        const tag = $('[data-ledger-row="' + f.id + '"] .ref-tag');
-        if(tag) tag.textContent = j.files.length + ' loaded';
-        renderTryThis();   // a "Needs a … first" note clears once the file is here
-        renderHelperBar();   // "Describe this picture" appears once a file is here
+        setUploads(f.id, j.files);
       } catch(e){
         msgInspector(String(e.message || e), 'err');
       }
@@ -2391,6 +2398,59 @@ async function renderModeFields(){
   });
 }
 
+// A picture field's files, from an upload or a result carried over ("Edit
+// this result"); a carried result's thumb is the picture itself.
+function setUploads(fid, files){
+  STATE.uploads[fid] = files;
+  const thumbs = $('#thumbs_' + fid);
+  if(thumbs) thumbs.innerHTML = files.map((uf, i) => uf.thumb
+    ? '<div class="t"><img src="' + esc(uf.thumb) + '" alt="picture ' + (i+1) + '"></div>'
+    : '<div class="t"><span class="num" style="padding:4px;display:block">' + (i+1) + '</span></div>').join('');
+  const tag = $('[data-ledger-row="' + fid + '"] .ref-tag');
+  if(tag) tag.textContent = files.length + ' loaded';
+  renderTryThis();   // a "Needs a … first" note clears once the file is here
+  renderHelperBar();   // "Describe this picture" appears once a file is here
+}
+function pictureField(mode){
+  return fieldsFor(mode).find(f => f.type === 'image' || f.type === 'image_list') || null;
+}
+// A finished result's picture output: its result when that is a picture.
+function resultPictureIndex(job){
+  const r = resultOutput(job);
+  if(r && r.media === 'image') return resultIndex(job);
+  return (job.outputs || []).findIndex(o => o.media === 'image');
+}
+function canEditResult(job){
+  const info = modeInfo(job.kind, job.mode);
+  return !!(info && info.edit_in && modeInfo(job.kind, info.edit_in) && job.status === 'done'
+            && resultPictureIndex(job) >= 0);
+}
+// "Edit this result": switch to the mode that edits it (pack-declared), then
+// carry the picture onto the machine that mode runs on, as its first picture.
+async function editResult(job){
+  const target = modeInfo(job.kind, job.mode).edit_in;
+  const room = STATE.rooms.find(r => (r.modes || []).some(m => m.cap === job.kind && m.mode === target));
+  if(room && room.id !== STATE.room) await selectRoom(room.id, {keepJob: true});
+  if(!(await reviseSwitchMode(job.kind, target))) return false;
+  return carryIntoPictureField(job, resultPictureIndex(job));
+}
+async function carryIntoPictureField(job, output){
+  const f = pictureField(currentMode());
+  if(!f){ msgInspector('This mode has no picture to work from.', 'err'); return false; }
+  msgInspector('Bringing the picture over...', '');
+  try{
+    const r = await postJSON('/api/carry', {job_id: job.id, output: output, lane: STATE.activeLane});
+    if(!r || !r.ok) throw new Error((r && r.error) || 'That picture could not be brought over.');
+    const o = job.outputs[output];
+    setUploads(f.id, [Object.assign({}, r.file, {thumb: viewURL(job.lane, o, false)})]);
+    msgInspector('That picture is now picture 1 under ' + f.label + '. Say what to change, then press Make.', 'ok');
+    return true;
+  } catch(e){
+    msgInspector(String(e.message || e), 'err');
+    return false;
+  }
+}
+
 /* ---------------------------------------------------------------------
    "Help me write this" / "Describe this picture": the prompt box's writing
    actions, spoken by the room's guide. They hand the box's words (and, for
@@ -2417,7 +2477,7 @@ function renderHelperBar(){
   $('#helperBar').hidden = !show;
   if(!show) return;
   $('#helperCue').textContent = '→ ' + g.name;
-  $('#helperDescribeBtn').hidden = !currentImageSource();
+  $('#helperDescribeBtn').hidden = !currentImageSource() || !$('#promptBox').dataset.fieldId;   // a topic box describes nothing
 }
 $('#helperWriteBtn').onclick = () => guideSkillRun(undefined, false);
 $('#helperDescribeBtn').onclick = () => guideSkillRun(undefined, true);
@@ -2831,13 +2891,37 @@ function guideInputPlaceholder(){
     : asking ? (asking.pending.options.length ? 'Your answer… (or pick one above)' : 'Your answer…')
     : GUIDE_INPUT_PLACEHOLDER;
 }
+// The mode a written draft fills: another one when the writer says so.
+function skillMode(r){
+  return r && r.target ? modeInfo(r.target.cap, r.target.mode) : currentMode();
+}
+function renderGuideMissing(r){
+  const box = $('#guideSkill');
+  box.textContent = '';
+  GUIDE_SKILL = null;
+  box.appendChild(skillEl('div', GUIDE.guide.name, 'guide-who'));
+  const t = skillEl('div', r.missing, 'guide-text');
+  t.id = 'guideSkillMissing';
+  box.appendChild(t);
+  const actions = skillEl('div', null, 'skill-actions');
+  actions.append(skillButton('Dismiss', 'guideSkillDismiss', false, guideSkillClear));
+  box.appendChild(actions);
+  box.hidden = false;
+  box.scrollIntoView({block: 'nearest'});
+}
 function renderGuideSkill(r, w){
   const box = $('#guideSkill');
   box.textContent = '';
   GUIDE_SKILL = {w: w};
   box.appendChild(skillEl('div', GUIDE.guide.name, 'guide-who'));
-  const mode = currentMode();
+  const mode = skillMode(r);
   box.appendChild(skillEl('div', 'Here is what I wrote.', 'guide-text'));
+  if(r.target){
+    const where = skillEl('p', 'This goes to the ' + (r.target.room_name || r.target.mode_label) + ' room: '
+      + r.target.mode_label + '.', 'guide-hint');
+    where.id = 'guideSkillTarget';
+    box.appendChild(where);
+  }
   const dl = skillEl('dl');
   fieldsFor(mode).filter(f => f.id in r.fields).forEach(f => {
     const v = r.fields[f.id];
@@ -2860,7 +2944,8 @@ function renderGuideSkill(r, w){
   }
   if(r.vision === false) box.appendChild(skillEl('p', "This helper can't see pictures, so it only has your words to go on.", 'guide-hint'));
   const actions = skillEl('div', null, 'skill-actions');
-  actions.append(skillButton('Use these', 'guideSkillUse', true, () => guideSkillUse(r.fields)),
+  actions.append(skillButton('Use these', 'guideSkillUse', true,
+                   () => r.target ? guideSkillUseTarget(r) : guideSkillUse(r.fields)),
                  skillButton('Dismiss', 'guideSkillDismiss', false, guideSkillClear),
                  skillButton('Start over', 'guideSkillRestart', false, () => guideWriteStartOver(w)));
   box.appendChild(actions);
@@ -2884,6 +2969,14 @@ function guideSkillUse(fields){
   const r = $('#promptBox').getBoundingClientRect(), c = $('#inspector').getBoundingClientRect();
   if(!$('#promptWrap').hidden && (r.top < Math.max(0, c.top) || r.bottom > Math.min(innerHeight, c.bottom)))
     $('#promptBox').scrollIntoView({block: 'nearest'});
+}
+// A draft for another mode: go there (room and mode), then fill it.
+async function guideSkillUseTarget(r){
+  if(!(await reviseGoTo(r.target))){
+    guideShowError('That room has nothing installed to take this yet.');
+    return;
+  }
+  guideSkillUse(r.fields);
 }
 // "Help me write this" / "Describe this picture" start a write (any open one
 // is closed first); an answer (a chip, or the box) continues the open one.
@@ -2913,6 +3006,9 @@ async function guideSkillRun(answer, describe){
   renderGuideLog();
   const body = {room: room, mode: mode, topic: st.topic};
   if(st.pictures) body.pictures = st.pictures;
+  // A writer about the mode's own pictures (an edit) gets them, in the form's order.
+  const own = !st.pictures && currentMode().writer && currentMode().writer.pictures;
+  if(own) body.attached = (STATE.uploads[own] || []).map(u => ({lane: STATE.activeLane, upload: u.name}));
   if(st.answers.length) body.answers = st.answers;
   const context = guideContext();
   if(context) body.context = context;
@@ -2928,15 +3024,23 @@ async function guideSkillRun(answer, describe){
     }
     if(GUIDE_ROOM !== room || STATE.mode !== mode || guideHistKey() !== key) return;   // the user moved on
     const h = guideHistLoad(key);
-    if(r.question){
+    if(r.missing){
+      // Not a question: a picture to add first. The write is over.
+      h.forEach(m => { if(m.w === st.w && m.wk === 'topic') m.closed = true; });
+      h.push({role: 'assistant', content: r.missing, w: st.w, wk: 'done'});
+      guideHistSave(key, h);
+      renderGuideLog();
+      renderGuideMissing(r);
+    } else if(r.question){
       h.push({role: 'assistant', content: r.question, w: st.w, wk: 'q', options: r.options || []});
       guideHistSave(key, h);
       renderGuideLog();
       renderGuideQuestion(guideWriteOpen(h) || {w: st.w, pending: {q: r.question, options: r.options || []}}, r);
     } else {
-      const labels = fieldsFor(currentMode()).filter(f => f.id in r.fields).map(f => f.label || f.id);
+      const labels = fieldsFor(skillMode(r)).filter(f => f.id in r.fields).map(f => f.label || f.id);
       h.forEach(m => { if(m.w === st.w && m.wk === 'topic') m.closed = true; });
-      h.push({role: 'assistant', content: 'I wrote ' + (labels.join(', ') || 'nothing') + ' for the form.'
+      h.push({role: 'assistant', content: 'I wrote ' + (labels.join(', ') || 'nothing')
+               + (r.target ? ' for the ' + (r.target.room_name || r.target.mode_label) + ' room.' : ' for the form.')
                + (r.note ? ' ' + r.note : ''), w: st.w, wk: 'done'});
       guideHistSave(key, h);
       renderGuideLog();
@@ -3041,6 +3145,37 @@ function renderReviseReply(r, req){
     box.appendChild(input);
     actions.append(skillButton('Answer', 'guideReviseAnswerBtn', true, () => guideReviseRun(input.value)),
                    skillButton('Dismiss', 'guideReviseDismiss', false, guideSkillClear));
+  } else if(r.target || !['edit', 'reroll'].includes(r.fix)){
+    // A pack's own fix words: a prompt for another room, settings, or advice only.
+    const diag = skillEl('div', r.diagnosis, 'guide-text');
+    diag.id = 'guideReviseDiagnosis';
+    box.appendChild(diag);
+    const where = r.target ? r.target.room_name || r.target.mode_label : '';
+    if(r.fills && r.target){
+      box.appendChild(skillEl('p', 'A new picture for the ' + where + ' room', 'skill-label'));
+      const pre = skillEl('pre', r.prompt);
+      pre.id = 'guideRevisePrompt';
+      box.appendChild(pre);
+    } else if(r.fields && r.target){
+      box.appendChild(skillEl('p', 'New settings', 'skill-label'));
+      const dl = skillEl('dl');
+      dl.id = 'guideReviseSettings';
+      fieldsFor(modeInfo(r.target.cap, r.target.mode)).filter(f => f.id in r.fields)
+        .forEach(f => dl.append(skillEl('dt', f.label || f.id), skillEl('dd', String(r.fields[f.id]))));
+      box.appendChild(dl);
+      if(r.problems && r.problems.length){
+        const ul = skillEl('ul', null, 'skill-problems');
+        r.problems.forEach(t => ul.appendChild(skillEl('li', t)));
+        box.appendChild(ul);
+      }
+    }
+    if(r.note) box.appendChild(skillEl('p', r.note, 'skill-note'));
+    if(r.tweak) box.appendChild(skillEl('p', r.tweak, 'skill-tweak'));
+    if(r.fills && r.target) actions.append(skillButton('Use it in the ' + where + ' room', 'guideReviseTarget', true,
+      () => reviseUseTarget(r, {[r.fills]: r.prompt})));
+    else if(r.fields && r.target) actions.append(skillButton('Use these settings', 'guideReviseUseSettings', true,
+      () => reviseUseTarget(r, r.fields)));
+    actions.append(skillButton('Dismiss', 'guideReviseDismiss', false, guideSkillClear));
   } else {
     const diag = skillEl('div', r.diagnosis, 'guide-text');
     diag.id = 'guideReviseDiagnosis';
@@ -3085,10 +3220,21 @@ async function reviseTryEdit(r, req){
   }
   guideSkillUse({[$('#promptBox').dataset.fieldId || r.fills]: r.prompt});
   reviseDetach();
-  // The page has no way yet to hand a result to an edit as its source.
-  const src = fieldsFor(currentMode()).find(f => f.type === 'image' || f.type === 'image_list');
-  msgInspector('Now pick this picture as the source: download it with Share, then add it under '
-    + (src ? src.label : 'the pictures to work from') + '.', '');
+  if(job) await carryIntoPictureField(job, req.output);
+}
+// A fix that lands in another mode, maybe another room (a new source picture
+// for a 3D model), or in this job's own settings: go there, then fill it.
+async function reviseGoTo(t){
+  if(t.room && t.room !== STATE.room) await selectRoom(t.room, {keepJob: true});
+  return reviseSwitchMode(t.cap, t.mode);
+}
+async function reviseUseTarget(r, fields){
+  if(!(await reviseGoTo(r.target))){
+    guideShowError('That room has nothing installed to take this yet.');
+    return;
+  }
+  guideSkillUse(fields);
+  reviseDetach();
 }
 async function guideReviseRun(answer){
   const req = GUIDE_REVISE;
@@ -3141,7 +3287,7 @@ function focusFirstInput(){
   // empty, inert prompt box (UX review #1/#4, structural note on tool modes).
   // preventScroll: on a phone the inspector sits below the monitor, and a
   // focus-scroll opened the page past the room strip.
-  if(!$('#promptWrap').hidden){ $('#promptBox').focus({preventScroll: true}); return; }
+  if(!$('#promptWrap').hidden && $('#promptBox').dataset.fieldId){ $('#promptBox').focus({preventScroll: true}); return; }
   const firstUpload = $('#ledgerProminentBody input[type=file]');
   if(firstUpload){ firstUpload.focus({preventScroll: true}); return; }
   const firstPrimary = $('#primaryFields [data-field-id]');
@@ -3253,7 +3399,7 @@ async function handleMake(confirm){
   });
   // The WRAPPER is what hides for a prompt-less mode; the box itself never
   // does, so testing the box sent a stale prompt on every cutout/upscale.
-  if(!$('#promptWrap').hidden) body.prompt = $('#promptBox').value;
+  if(!$('#promptWrap').hidden && $('#promptBox').dataset.fieldId) body.prompt = $('#promptBox').value;
   if(SELECTED_QUALITY) body.quality = SELECTED_QUALITY;
   if(confirm === true) body.confirm = true;
   $('#makeBtn').disabled = true;
@@ -4543,6 +4689,7 @@ async function loadEnginesFor(){
   const d = await getJSON('/api/engines' + (STATE.activeLane ? ('?lane=' + encodeURIComponent(STATE.activeLane)) : ''));
   const rooms = Array.isArray(d.rooms) ? d.rooms : [];
   delete d.rooms;
+  STATE.helperOn = !!d.helper;   // a writer for another mode shows its topic box only with a brain
   delete d.helper;   // not a capability; the guide (GET /api/guide) says whether a helper is set up
   STATE.engines = d;
   STATE.rooms = rooms.slice().sort((a, b) => (a.order == null ? 1000 : a.order) - (b.order == null ? 1000 : b.order));

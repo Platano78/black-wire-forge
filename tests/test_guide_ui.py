@@ -595,9 +595,10 @@ try:
         page.wait_for_timeout(300)
         check("revise: Try it in Edit switches to edit and fills its prompt",
               page.input_value("#promptBox") == "Make the dragon gold and keep everything else.", page.input_value("#promptBox"))
-        check("revise: and says how to pick this picture as the source",
-              "pick this picture as the source" in text_of(page, "#inspectorMsg")
-              and "Pictures to work from" in text_of(page, "#inspectorMsg"), text_of(page, "#inspectorMsg"))
+        # P3d: the result itself becomes the edit's first picture (tests/test_picture_ui.py).
+        page.wait_for_function("() => (STATE.uploads.ref_images || []).length === 1", timeout=15000)
+        check("revise: and the result is the edit's picture 1",
+              "picture 1 under Pictures to work from" in text_of(page, "#inspectorMsg"), text_of(page, "#inspectorMsg"))
         print("revise: the remove button detaches it, and Send talks to the guide again")
         pick(page, "t2i")
         page.wait_for_timeout(600)
@@ -688,10 +689,11 @@ try:
             PAGE_FETCHES.extend(p.evaluate("() => window.__fetched || []"))
         def last_user(): return HELPER["requests"][-1]["messages"][-1]["content"] if HELPER["requests"] else None
 
-        print("P2c Picture, t2i (no pack writer): Help me write this -> the Picture Guide")
+        print("P2c Picture, t2i (its pack writer since P3d): Help me write this -> the Picture Guide")
         page = voice_page()
         enter_room(page, url_brain, "picture")
-        check("one voice: t2i has no pack writer", page.evaluate("() => !currentMode().writer"))
+        check("one voice: t2i has its pack writer (P3d)",
+              page.evaluate("() => currentMode().writer.label") == engines.writer("image", "t2i")["label"])
         check("one voice: Help me write this is by the prompt box, cued to the guide", page.is_visible("#helperWriteBtn")
               and text_of(page, "#helperCue") == "→ " + GUIDE_META["picture"]["name"])
         page.fill("#promptBox", "a lighthouse")
@@ -710,8 +712,8 @@ try:
               and body.get("mode") == "t2i" and body.get("topic") == "a lighthouse"
               and (body.get("context") or {}).get("mode") == "t2i" and "pictures" not in body, body)
         system = HELPER["requests"][-1]["messages"][0]["content"] if HELPER["requests"] else ""
-        check("t2i: the brain got the Picture Guide's voice and t2i's own prompt rules",
-              PICTURE_COMPACT.strip() in system and engines.prompt_guide("image", "t2i") in system)
+        check("t2i: the brain got t2i's own writer prompt (P3d; the generic writer: tests/test_generic_writer.py)",
+              system == engines.writer("image", "t2i")["prompt"])
         check("t2i: the reply is a guide message in the guide panel", page.eval_on_selector(
             "#guideSkill", "e => !!e.closest('#guidePanel')") and text_of(page, "#guideSkill .guide-who").lower() == GUIDE_META["picture"]["name"].lower())
         check("t2i: and it is in view", page.evaluate(
@@ -807,8 +809,8 @@ try:
         HELPER["requests"].clear()
         HELPER["replies"] = ["QUESTION: How many kites?\nOPTIONS: One | Two | A whole sky of them",
                              "QUESTION: Where are they flying?",
-                             "WIDTH: 1024\nSTEPS: 999\nPROMPT: two red kites over a grey sea",
-                             "WIDTH: 1024\nSTEPS: 999\nPROMPT: two red kites over a grey sea"]
+                             "WIDTH: 1024\nHEIGHT: 99999\nPROMPT: two red kites over a grey sea",
+                             "WIDTH: 1024\nHEIGHT: 99999\nPROMPT: two red kites over a grey sea"]
         page.fill("#promptBox", "kites")
         page.click("#helperWriteBtn")
         wait_question(page, "How many kites?")
@@ -842,8 +844,8 @@ try:
                                                   {"q": "Where are they flying?", "a": "over a grey sea"}], SKILL_BODIES[-1:])
         check("write: the brain saw both Q/A pairs in order",
               "Q1: How many kites?\nA1: Two\nQ2: Where are they flying?\nA2: over a grey sea" in user_msg(2), user_msg(2))
-        check("write: a bad setting is named, not used", "Steps" in text_of(page, "#guideSkillProblems")
-              and "999" in text_of(page, "#guideSkillProblems"), text_of(page, "#guideSkill"))
+        check("write: a bad setting is named, not used", "Height" in text_of(page, "#guideSkillProblems")
+              and "99999" in text_of(page, "#guideSkillProblems"), text_of(page, "#guideSkill"))
         shot(page, "p2c-write-preview-1280x800")
         page.evaluate("() => { document.querySelector('#inspector').scrollTop = 1e6; window.scrollTo(0, 1e6); }")
         page.click("#guideSkillUse")

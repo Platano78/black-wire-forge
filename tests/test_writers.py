@@ -140,7 +140,8 @@ W = engines.writer("audio", "song")
 print("contract: the pack's writers key")
 check("contract: song writer has label, prompt, multiline, none_token, check", W is not None and W["label"] == "Song writer" and W["multiline"] == "LYRICS" and W["none_token"] == "NONE" and callable(W["check"]) and W["prompt"].strip() != "")
 check("contract: keys map LYRICS and TAGS to their fields", W["keys"]["LYRICS"] == "lyrics" and W["keys"]["TAGS"] == "tags")
-check("contract: modes without a writer return None", engines.writer("image", "cutout") is None and engines.writer("image", "upscale") is None)
+check("contract: modes without a writer return None", engines.writer("image", "cutout") is None
+      and engines.writer("image", "upscale") is None and engines.writer("3d", "turntable") is None)
 
 code, body = http("/api/engines?lane=t")
 check("contract: /api/engines answers 200", code == 200)
@@ -151,11 +152,13 @@ WRITERS = {("audio", "song"): "Song writer", ("image", "pixelart"): "Sprite writ
            ("audio", "cover"): "Cover arranger", ("audio", "sfx"): "Sound effect writer",
            ("video", "ltx"): "Shot writer", ("video", "ltx_loop"): "Long take writer",  # P3c
            ("video", "talking"): "Line writer", ("video", "fl2va"): "Shot writer",
-           ("video", "ref2v"): "Reference shot writer", ("video", "continue"): "Carry-on writer"}
+           ("video", "ref2v"): "Reference shot writer", ("video", "continue"): "Carry-on writer",
+           ("image", "t2i"): "Picture prompt writer", ("image", "edit"): "Edit writer",   # P3d
+           ("3d", "mesh"): "Source picture writer"}
 others = [(cap, m["id"]) for cap, v in body.items() if cap not in ("rooms", "helper") for m in v["modes"] if (cap, m["id"]) not in WRITERS and m.get("writer") is not None]
 check("contract: every other mode reports writer null", others == [], others)
 check("contract: each pack writer reports its label", all(
-    next(m for m in body[cap]["modes"] if m["id"] == mode)["writer"] == {"label": label}
+    next(m for m in body[cap]["modes"] if m["id"] == mode)["writer"]["label"] == label
     for (cap, mode), label in WRITERS.items()))
 check("contract: every mode carries a writer key", all("writer" in m for cap, v in body.items() if cap not in ("rooms", "helper") for m in v["modes"]))
 

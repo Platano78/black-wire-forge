@@ -113,11 +113,31 @@ falsy — is ignored. The dict has exactly these keys:
                                      values. It also runs at Make time: a
                                      request with problems is refused with
                                      needs_confirm until the user confirms.
+                         make_time   optional bool, default True: False
+                                     keeps `check` to the writer's own
+                                     drafts, never a Make-time confirm
+                         target      optional {"cap", "mode"}: the words are
+                                     for ANOTHER mode (in another room),
+                                     e.g. a 3D mode's source picture; `keys`
+                                     then name THAT mode's field ids, and
+                                     the page switches there on "Use these"
+                         topic_label optional: the topic box's placeholder
+                                     for a mode that has no prompt field
+                         pictures    optional field id of the mode's picture
+                                     list the writer writes about: the page
+                                     sends those pictures with the topic
+                         missing     optional callable(text, count) -> a
+                                     plain sentence naming the picture still
+                                     to add, or None: `text` is the request
+                                     and answers, `count` the pictures
+                                     attached; checked before the brain
                        A reply may instead be one "QUESTION: ..." line: the
                        writer asks the user one thing before writing,
                        optionally followed by "OPTIONS: a | b | c" (2-5 short
-                       choices the page offers as buttons). A written reply
-                       may carry one "NOTE: ..." line (e.g. the defaults the
+                       choices the page offers as buttons). A writer with
+                       `pictures` may instead reply one "MISSING: ..." line:
+                       the picture to add, returned as a sentence, never a
+                       question. A written reply may carry one "NOTE: ..." line (e.g. the defaults the
                        writer chose); a NOTE line inside a multiline part
                        ends it.
   revisers  optional dict  mode_name -> a fixing skill for the room's guide
@@ -136,12 +156,27 @@ falsy — is ignored. The dict has exactly these keys:
                          edit_mode   the mode (same cap) to point at when
                                      FIX is "edit", e.g. "edit"; None when
                                      the mode has nothing to edit with
-                         fixes       optional list, the FIX values this
-                                     reviser may give (default ["edit",
-                                     "reroll"]); e.g. ["reroll"] for a clip,
-                                     which is never edited in place
+                         fixes       optional: the FIX values this reviser
+                                     may give, replacing the default
+                                     ["edit", "reroll"]. Either a list of
+                                     those words (e.g. ["reroll"] for a
+                                     clip, which is never edited in place),
+                                     or {FIX word: spec} for fixes that land
+                                     elsewhere. A spec may carry "target"
+                                     {"cap", "mode"} (where the fix lands:
+                                     another room's mode, or this job's
+                                     own), "fills" (the field PROMPT fills
+                                     there: PROMPT is then required) and
+                                     "settings": True (a SETTINGS line,
+                                     "field id = value; ...", sets the
+                                     target's fields). A spec with none of
+                                     these is advice only.
                        A non-blank QUESTION ends the reply; otherwise FIX
-                       must be one of `fixes` and PROMPT non-blank.
+                       must be one of `fixes`, and PROMPT non-blank for a
+                       listed word or a spec that fills a field.
+  edit_in   optional dict  mode_name -> a mode of the same cap that edits a
+                       finished result of this one ("Edit this result"):
+                       its first picture field gets the result.
   fields    optional dict  mode_name -> list of field-descriptor dicts, each
                        with "id", "label", "type" (text/textarea/number/int/
                        select/checkbox/audio/image/image_list/video_list) and
@@ -254,7 +289,7 @@ falsy — is ignored. The dict has exactly these keys:
 The public API of this module (packs, role_pool, role_rules, model_keys,
 abilities, missing_words, mode_ability, describe, graph_for, modes_for,
 licences, licence_for, caps, cap_word, cap_order, mode_words, mode_room,
-mode_note, prompt_guide, writer, parse_writer_reply, reviser, parse_reviser_reply, rooms, fields, presets, quality, examples, post_for,
+mode_note, prompt_guide, writer, parse_writer_reply, reviser, parse_reviser_reply, reviser_fixes, edit_in, rooms, fields, presets, quality, examples, post_for,
 unet_loader, quant_words) is all the core needs to stay model-agnostic.
 """
 
@@ -670,6 +705,7 @@ def _writer_options(value, none):
 def parse_writer_reply(w, text):
     """Parse a writer's line-delimited reply ->
     {"question": str, "options": [..]} when it asks (options may be []),
+    {"missing": str} when a writer with `pictures` says one is missing,
     else {"values": {field id: raw text}, "note": str}. A non-blank QUESTION
     line before the multiline key wins; an OPTIONS line anywhere after it
     gives the choices. The multiline key's value runs to the end (a NOTE line
@@ -715,6 +751,8 @@ def parse_writer_reply(w, text):
                 continue
         if head is None:
             continue
+        if head == "MISSING" and w.get("pictures") and not started and value and value.upper() != none:
+            return {"missing": value}
         if head == "QUESTION" and not started and value and value.upper() != none:
             options = next((_writer_options(v, none) for h, v in map(_writer_line, all_lines[i + 1:])
                             if h == "OPTIONS"), [])
@@ -743,12 +781,32 @@ def reviser(cap, mode):
 REVISER_FIXES = ("edit", "reroll")
 
 
+def reviser_fixes(r):
+    """A reviser's allowed FIX words -> {word: spec}: a `fixes` dict as it
+    is; a `fixes` list (or none: edit/reroll) maps each word to None, the
+    plain meaning (PROMPT refills the reviser's own `fills`)."""
+    f = r.get("fixes")
+    if isinstance(f, dict):
+        return f
+    return {word: None for word in (f or REVISER_FIXES)}
+
+
+def edit_in(cap, mode):
+    """The mode (same cap) that edits a finished result of this mode (see
+    "edit_in" above), or None when there is none or it is not installed."""
+    pack = _owner(cap, mode)
+    target = (pack.get("edit_in") or {}).get(mode) if pack else None
+    return target if target and _owner(cap, target) else None
+
+
 def parse_reviser_reply(r, text):
     """Parse a reviser's line-delimited reply ->
     {"question": str} when it asks, else {"diagnosis", "fix", "prompt",
-    "note", "tweak"} (blank ones ""). Every key is one line; any other line
-    is ignored. Raises ValueError when FIX is not one of the reviser's
-    `fixes` (edit/reroll by default) or PROMPT is blank."""
+    "note", "tweak"} (blank ones ""), plus "settings" {field id: raw text}
+    for a `fixes` spec with "settings". Every key is one line; any other
+    line is ignored. Raises ValueError when FIX is not one of the
+    reviser's `fixes` (edit/reroll by default), or PROMPT (or SETTINGS) is
+    blank where that fix needs it."""
     text = text or ""
     if _THINK[1] in text:
         text = text.split(_THINK[1], 1)[1]
@@ -760,19 +818,32 @@ def parse_reviser_reply(r, text):
         if not sep or head not in keys or head in values:
             continue
         value = value.strip().strip("*").strip()
-        if value.upper() in ("NONE", "N/A", "-"):
+        if head != "FIX" and value.upper() in ("NONE", "N/A", "-"):   # "none" is a fix word
             value = ""
         values[head] = value
     if values.get("QUESTION"):
         return {"question": values["QUESTION"]}
     fix = (values.get("FIX") or "").split()
     fix = fix[0].strip(".,;").lower() if fix else ""
-    if fix not in (r.get("fixes") or REVISER_FIXES):
-        raise ValueError("FIX is not one of %s" % " / ".join(r.get("fixes") or REVISER_FIXES))
-    if not values.get("PROMPT"):
+    fixes = reviser_fixes(r)
+    if fix not in fixes:
+        raise ValueError("FIX is not one of %s" % " / ".join(fixes))
+    spec = fixes[fix]
+    if (spec is None or spec.get("fills")) and not values.get("PROMPT"):
         raise ValueError("no PROMPT")
-    return {"diagnosis": values.get("DIAGNOSIS", ""), "fix": fix, "prompt": values["PROMPT"],
-            "note": values.get("NOTE", ""), "tweak": values.get("TWEAK", "")}
+    out = {"diagnosis": values.get("DIAGNOSIS", ""), "fix": fix, "prompt": values.get("PROMPT", ""),
+           "note": values.get("NOTE", ""), "tweak": values.get("TWEAK", "")}
+    if spec and spec.get("settings"):
+        settings = {}
+        for part in values.get("SETTINGS", "").split(";"):
+            k, sep, v = part.partition("=")
+            k, v = k.strip().lower(), v.strip()
+            if sep and k and v:
+                settings[k] = v
+        if not settings:
+            raise ValueError("no SETTINGS")
+        out["settings"] = settings
+    return out
 
 
 ROOMS_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "rooms.json")

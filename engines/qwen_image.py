@@ -5,6 +5,8 @@ abilities()/missing_for() labels, describe_image(), and the qwen_*_graph
 builders. Logic is verbatim; only the lane->models indirection is replaced
 by the contract's direct ``models`` dict.
 """
+import re
+
 from . import unet_loader, quant_words
 
 
@@ -214,6 +216,276 @@ PICTURE_REVISER_PROMPT = (
 )
 
 
+# ── the Picture guide's writers (engines/__init__.py "writers") ──────────────
+# Rules restated in our own words from guides/picture/skills.md Skill 1 and
+# the engine's upstream prompt enhancer (research licence: never copied). The
+# enhancer turns a request into one long paragraph describing the finished
+# frame, with the shape chosen separately; a generic brain gets that as a
+# line-delimited reply (the JSON lesson from the song expander).
+
+# The shapes the writer may pick, as width x height: each side a multiple of
+# 16 near the 1328x1328 default's pixel count, so every shape costs about the
+# same to render.
+T2I_SHAPES = (
+    ("square 1:1", 1328, 1328), ("wide 16:9", 1664, 928), ("tall 9:16, a phone screen", 928, 1664),
+    ("landscape 4:3", 1472, 1104), ("portrait 3:4", 1104, 1472), ("photo 3:2", 1584, 1056),
+    ("photo 2:3", 1056, 1584), ("cinema 21:9", 1904, 816),
+)
+# "no people" in a positive prompt draws people: the words belong in Things to avoid.
+_NEGATION_RE = re.compile(r"\b(no|not|without|avoid|don't|never)\b", re.IGNORECASE)
+T2I_MIN_WORDS = 40
+
+
+def t2i_check(values, request):
+    """The t2i writer's check on its own drafts (never at Make time: a
+    person's own short prompt is theirs). -> plain problem sentences."""
+    prompt = values.get("prompt") or ""
+    problems = []
+    found = sorted({m.group(1).lower() for m in _NEGATION_RE.finditer(prompt)})
+    if found:
+        problems.append("The prompt says %s: this model draws what the words name, so a thing named there "
+                        "tends to appear. Keep the prompt positive and put what to leave out in Things to "
+                        "avoid." % ", ".join('"%s"' % w for w in found))
+    if len(prompt.split()) < T2I_MIN_WORDS:
+        problems.append("The prompt is only %d words: describe the whole finished frame (who or what is "
+                        "where, colours and materials, the light, the composition) in about 80 to 150 words."
+                        % len(prompt.split()))
+    size = (values.get("width"), values.get("height"))
+    if None not in size and size not in {(w, h) for _, w, h in T2I_SHAPES}:
+        problems.append("Width %s and height %s are not one of the shapes listed: pick one line from the "
+                        "list for both." % size)
+    return problems
+
+
+T2I_WRITER_PROMPT = (
+    "You write the prompt for a text-to-picture model from a short request.\n"
+    "How it works: the model draws exactly what the words describe. It does not know most names, it "
+    "does not count unless told, and it cannot ask.\n\n"
+    "Reply in plain text, no JSON, no markdown, no commentary, in EXACTLY one of these two shapes.\n\n"
+    "To ask:\n"
+    "QUESTION: <one short question>\n"
+    "OPTIONS: <2 to 5 short choices separated by |>\n\n"
+    "To write:\n"
+    "WIDTH: <NONE, unless the request states a shape or a use with a shape: then the width from SHAPES. "
+    "A request that names neither is NONE: the form keeps its own size>\n"
+    "HEIGHT: <NONE, or the height from the SAME line of SHAPES>\n"
+    "NEGATIVE: <NONE, unless the request names things to leave out: then just those things, "
+    "comma-separated, without the word no>\n"
+    "NOTE: <only when you chose something the user did not say, such as the style or the setting: "
+    "name each choice>\n"
+    "PROMPT: <the finished prompt, one paragraph>\n"
+    "PROMPT comes last. Write nothing after it.\n\n"
+    "SHAPES (width x height)\n"
+    + "".join("%s = %d x %d\n" % shape for shape in T2I_SHAPES) +
+    "\nRULES FOR THE PROMPT\n"
+    "1. Describe the FINISHED picture as if you are looking at it: present tense, third person. Never "
+    "\"create\", \"generate\", \"an image of\" or \"you\".\n"
+    "2. Open with one sentence naming the style or medium, the subject and the setting (\"A realistic "
+    "cinematic photograph of ...\", \"A bright 3D animated film still of ...\").\n"
+    "3. Then walk the frame: what is on the left, in the centre, on the right, in front and behind; what "
+    "each thing is doing; its colours and materials.\n"
+    "4. Then one sentence on the light, and one closing sentence on the composition and mood.\n"
+    "5. COUNTS: say how many of every person, animal, creature or object that matters (\"exactly two "
+    "giant monsters\", \"one small dog\"). A fight or a meeting between named subjects has exactly that "
+    "many of their kind in the frame; say so.\n"
+    "6. NAMED SUBJECTS: the model does not reliably know characters, franchise monsters, mascots, "
+    "celebrities or brands by name, and draws a guess, often a copy of another subject in the frame. "
+    "Keep the name AND describe how it looks: body shape, size, colours, material, the number of heads, "
+    "wings, arms or legs, and the two or three features that make it recognisable. Describe each named "
+    "subject in its own sentence, with its place in the frame, so two are never mixed up.\n"
+    "7. Colours get a modifier (deep navy, pale gold); things get a material (brushed steel, worn leather).\n"
+    "8. Positive only: never write no, not, without, avoid or never in PROMPT. What to leave out goes in "
+    "NEGATIVE.\n"
+    "9. Never write a ratio, a resolution or a pixel size in PROMPT: the shape is WIDTH and HEIGHT.\n"
+    "10. A short request still gets a full description of about 80 to 150 words: invent sensible detail "
+    "for everything it leaves open. A request that is already detailed keeps its own words: order and "
+    "clarify them, add no new subjects.\n"
+    "11. Keep every subject, name, count, colour and detail the user gave. Only words that must appear "
+    "as TEXT in the picture (a sign, a title) go in double quotes, exactly as given: quoted words are "
+    "drawn as lettering.\n\n"
+    "WHEN TO ASK\n"
+    "Ask ONE question, only when its answer changes the picture a lot and neither the request nor an "
+    "answer says it. Ask the first of these that applies:\n"
+    "a. SUBJECT: the request is about something words cannot tell the model: the user's own pet, "
+    "person, car or house (\"my dog\", \"my son\"). Ask what it looks like; offer 3-4 typical looks.\n"
+    "b. COUNT: a group of the user's own people or things with no number (\"my kids\", \"our team\").\n"
+    "c. STYLE: the request puts a cartoon or anime character beside a real person (a cartoon mouse and "
+    "a real athlete) and does not say whether the picture is realistic or drawn. OPTIONS: Live action | "
+    "Cartoon | 3D animated. Two monsters, or characters from one world, are no reason to ask: choose "
+    "the style yourself.\n"
+    "d. SHAPE: the request names a use whose shape it does not give (a poster, a cover, a banner, a "
+    "wallpaper). Offer 2-3 shapes from SHAPES.\n"
+    "Never ask about the light, the camera, the colours or any detail you can choose: choose it, and "
+    "name the big choices in NOTE. Once the user has answered, write.\n"
+    "The room line in [brackets] is the form as it is now; it is not the request.\n\n"
+    "EXAMPLE 1\n"
+    "Request: my cat as a medieval knight\n"
+    "QUESTION: What does your cat look like?\n"
+    "OPTIONS: Orange tabby | Black | Grey and white | Calico\n\n"
+    "EXAMPLE 2\n"
+    "Request: my cat as a medieval knight\n"
+    "The user answered: Grey and white\n"
+    "WIDTH: NONE\n"
+    "HEIGHT: NONE\n"
+    "NEGATIVE: NONE\n"
+    "NOTE: I chose a realistic painted style and a castle courtyard.\n"
+    "PROMPT: A detailed realistic oil painting of one grey and white cat dressed as a medieval knight, "
+    "standing upright in a sunlit castle courtyard. The cat stands in the centre, facing slightly left, "
+    "its white chest and paws showing beneath a polished steel breastplate engraved with a small silver "
+    "crest, a deep crimson cape hanging from its shoulders. One front paw rests on the hilt of a short "
+    "sword whose tip touches the worn grey flagstones. Behind it, pale sandstone walls rise to an oak "
+    "gate under a hanging blue and gold banner. Warm late-afternoon sunlight falls from the right and "
+    "catches the edges of the armour. The composition is centred and heroic, with a calm, proud mood.\n\n"
+    "EXAMPLE 3\n"
+    "Request: a wide banner of two robots, a big red one and a small blue one, playing chess in a park, "
+    "no people\n"
+    "WIDTH: 1664\n"
+    "HEIGHT: 928\n"
+    "NEGATIVE: people\n"
+    "NOTE: I chose a bright 3D animated style.\n"
+    "PROMPT: A bright 3D animated film still of exactly two robots playing chess at a stone table in a "
+    "green city park on a summer afternoon. On the left sits a big boxy red robot with dented painted "
+    "steel panels and round glowing amber eyes, one heavy hand hovering over a black knight. On the "
+    "right sits a small round blue robot with a glossy enamel shell and a single thin antenna, leaning "
+    "in to study the board. The chessboard between them is worn white marble with carved wooden pieces. "
+    "Behind them, leafy oak trees and an empty gravel path fade into soft focus. Warm sunlight filters "
+    "through the leaves and dapples the table. The composition is wide and balanced, with a friendly, "
+    "playful mood.\n"
+)
+
+
+# How an edit instruction names the attached pictures. Qwen-Image 2.1's own
+# text encoder labels them "<image1>", "<image2>", ... in upload order
+# (ComfyUI comfy/text_encoders/qwen_image21.py, the tokenizer's template), and
+# the engine's upstream enhancer writes that tag for 2+ pictures. The form is
+# not yet checked against a real render: guides/picture/skills.md says so.
+EDIT_REF = "<image%d>"
+EDIT_PICTURES_LABEL = "Pictures to work from"   # the edit mode's ref_images label, below
+EDIT_MAX_PICTURES = 10
+_ORDINALS = {"first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5, "one": 1, "two": 2,
+             "three": 3, "four": 4, "five": 5}
+_PICTURE_NUMBER_RE = re.compile(
+    r"\b(?:(first|second|third|fourth|fifth)\s+(?:picture|image|photo|pic)"
+    r"|(?:picture|image|photo|pic)\s*#?\s*(\d+|one|two|three|four|five))\b"
+    r"|<image(\d+)>", re.IGNORECASE)
+_BARE_REF_RE = re.compile(r"(?<!<)\b(?:picture|image)\s*(\d+)\b", re.IGNORECASE)
+
+
+def _picture_numbers(text):
+    """Every picture number a text names ("picture 2", "the second image", "<image3>")."""
+    out = set()
+    for m in _PICTURE_NUMBER_RE.finditer(text or ""):
+        word = (m.group(1) or m.group(2) or m.group(3) or "").lower()
+        n = _ORDINALS.get(word) or (int(word) if word.isdigit() else 0)
+        if n:
+            out.add(n)
+    return out
+
+
+def edit_missing(text, count):
+    """The edit writer's picture check, run before the brain: the request
+    (and its answers) against the pictures attached. -> a plain sentence
+    naming the picture to add, or None when everything it names is there."""
+    need = max([1] + sorted(_picture_numbers(text)))
+    if count >= need:
+        return None
+    if count == 0 and need == 1:
+        return "Add the picture to change under %s first, then ask again." % EDIT_PICTURES_LABEL
+    if need > EDIT_MAX_PICTURES:
+        return "An edit takes at most %d pictures, so there is no picture %d." % (EDIT_MAX_PICTURES, need)
+    have = "none is" if count == 0 else ("only 1 is" if count == 1 else "only %d are" % count)
+    return ("This names picture %d, and %s attached: add %s under %s, in the order you talk about them, "
+            "then ask again." % (need, have, "it" if need - count == 1 else "the missing ones",
+                                 EDIT_PICTURES_LABEL))
+
+
+def edit_check(values, request):
+    """The edit writer's check on its own drafts: pictures named in prose
+    instead of the engine's own label, or a label past the pictures attached."""
+    prompt = values.get("prompt") or ""
+    problems = []
+    bare = sorted({int(n) for n in _BARE_REF_RE.findall(prompt)})
+    if bare:
+        problems.append("The instruction names %s in words: call each picture by its label (%s)." % (
+            ", ".join("picture %d" % n for n in bare), ", ".join(EDIT_REF % n for n in bare)))
+    count = request.get("pictures")
+    over = sorted(n for n in _picture_numbers(prompt) if isinstance(count, int) and n > count)
+    if over:
+        problems.append("The instruction names %s, but only %d picture%s attached." % (
+            ", ".join(EDIT_REF % n for n in over), count, " is" if count == 1 else "s are"))
+    return problems
+
+
+EDIT_WRITER_PROMPT = (
+    "You write the instruction for a picture EDITING model from a short request. The model gets the "
+    "pictures the user attached, in order, and your instruction, and draws ONE new picture.\n"
+    "The user calls the pictures picture 1, picture 2 and so on: the order they were added under "
+    "\"" + EDIT_PICTURES_LABEL + "\". In the instruction, call them " + (EDIT_REF % 1) + ", "
+    + (EDIT_REF % 2) + " and so on: that is how the model itself labels them. With only one picture, "
+    "say \"the picture\".\n"
+    "The new picture takes its size and shape from " + (EDIT_REF % 1) + ".\n"
+    "The last line of the message says how many pictures are attached.\n\n"
+    "Reply in plain text, no JSON, no markdown, no commentary, in EXACTLY one of these three shapes.\n\n"
+    "To ask:\n"
+    "QUESTION: <one short question>\n"
+    "OPTIONS: <2 to 5 short choices separated by |>\n\n"
+    "When the request needs a picture that is not attached:\n"
+    "MISSING: <one sentence saying which picture to add and what it should show>\n\n"
+    "To write:\n"
+    "NEGATIVE: <NONE, unless the request names things to leave out: then just those things>\n"
+    "NOTE: <which picture is the canvas when there are two or more, and anything else you chose>\n"
+    "PROMPT: <the instruction, one paragraph>\n"
+    "PROMPT comes last. Write nothing after it.\n\n"
+    "RULES FOR THE INSTRUCTION\n"
+    "1. Lead with the change, as an instruction: Replace, Put, Change, Make, Remove, Add.\n"
+    "2. With two or more pictures, give each its role: which one is the CANVAS (its composition, "
+    "background and everything not mentioned stay) and exactly what is taken from each other picture. "
+    "Name every picture on its own, never \"both pictures\".\n"
+    "3. Say exactly what changes. What stays is named by its role only (\"keep her face, pose and the "
+    "background unchanged\"), never described again in detail.\n"
+    "4. A face, a person or a product that must stay the same is pointed at (\"the woman from "
+    + (EDIT_REF % 2) + "\"), never described feature by feature.\n"
+    "5. A local change (one object, a colour, the background) stays short and exact. A new scene built "
+    "from the pictures (the dog on a beach, a poster) gets its setting, light and composition described.\n"
+    "6. Positive only: what to leave out goes in NEGATIVE. Only words that must appear as TEXT in the "
+    "picture (a sign, a label) go in double quotes: this model draws quoted words as lettering. Keep "
+    "every detail the user gave.\n"
+    "7. Never name a picture number higher than the pictures attached: reply MISSING instead.\n\n"
+    "WHEN TO ASK\n"
+    "Ask ONE question, only when:\n"
+    "a. CANVAS: two or more pictures are attached and the request does not say whose scene survives "
+    "(\"swap their outfits\", \"combine these\"). \"Put X into picture 2\" already says picture 2.\n"
+    "b. WHAT: the request does not say what to change.\n"
+    "Once the user has answered, write.\n"
+    "The room line in [brackets] is the form as it is now; it is not the request.\n\n"
+    "EXAMPLE 1\n"
+    "Request: put the lamp from picture 2 on the desk in picture 1\n"
+    "[2 pictures attached.]\n"
+    "NEGATIVE: NONE\n"
+    "NOTE: " + (EDIT_REF % 1) + " is the canvas: its room and desk stay.\n"
+    "PROMPT: Put the brass desk lamp from " + (EDIT_REF % 2) + " on the right side of the desk in "
+    + (EDIT_REF % 1) + ", at a natural size for the desk, lit to match the room, and keep the desk, "
+    "the room and everything else in " + (EDIT_REF % 1) + " unchanged.\n\n"
+    "EXAMPLE 2\n"
+    "Request: swap their outfits\n"
+    "[2 pictures attached.]\n"
+    "QUESTION: Which picture's person and scene should the result keep?\n"
+    "OPTIONS: Picture 1 | Picture 2\n\n"
+    "EXAMPLE 3\n"
+    "Request: put the dog from picture 2 on the sofa in picture 1\n"
+    "[1 picture attached.]\n"
+    "MISSING: Add the picture of the dog as picture 2 under \"" + EDIT_PICTURES_LABEL + "\"; the sofa "
+    "picture stays picture 1.\n\n"
+    "EXAMPLE 4\n"
+    "Request: make it night\n"
+    "[1 picture attached.]\n"
+    "NEGATIVE: NONE\n"
+    "NOTE:\n"
+    "PROMPT: Change the scene to night: a deep blue sky, warm light glowing in the windows and from "
+    "the street lamps, and keep every building, object and the composition of the picture unchanged.\n"
+)
+
+
 ENGINE = {
     "id": "qwen-image",
     "cap": "image",
@@ -270,6 +542,31 @@ ENGINE = {
         "edit": "Describe the edit to make to the uploaded picture(s) as a positive "  # source: engines/qwen_image.py:234-236 (remove-background preset)
                 "instruction, e.g. \"Remove the background\" works directly as a prompt.",
     },
+    # P3d: the Picture guide's writing skills (engines/__init__.py "writers").
+    "writers": {
+        "t2i": {
+            "label": "Picture prompt writer",
+            "prompt": T2I_WRITER_PROMPT,
+            "keys": {"WIDTH": "width", "HEIGHT": "height", "NEGATIVE": "negative", "PROMPT": "prompt"},
+            "multiline": "PROMPT",
+            "none_token": "NONE",
+            "check": t2i_check,
+            "make_time": False,
+        },
+        "edit": {
+            "label": "Edit writer",
+            "prompt": EDIT_WRITER_PROMPT,
+            "keys": {"NEGATIVE": "negative", "PROMPT": "prompt"},
+            "multiline": "PROMPT",
+            "none_token": "NONE",
+            "check": edit_check,
+            "make_time": False,
+            "pictures": "ref_images",
+            "missing": edit_missing,
+        },
+    },
+    # P3d: "Edit this result": a finished picture of either mode opens in edit.
+    "edit_in": {"t2i": "edit", "edit": "edit"},
     # P2b: the Picture guide's "Not right? Tell the guide" skill
     # (engines/__init__.py's "revisers"); rules restated from
     # guides/picture/skills.md Skill 2 and knowledge.md's JUDGE/FIX section.

@@ -156,6 +156,7 @@ check("contract: /api/engines reports the t2i reviser's label", t2i.get("reviser
 CLIP_FIXERS = {"ltx", "ltx_loop", "fl2va", "ref2v", "continue"}   # P3c
 check("contract: every other mode reports reviser null",
       [m["id"] for cap, m in modes if m is not t2i and not (cap == "video" and m["id"] in CLIP_FIXERS)
+       and (cap, m["id"]) != ("3d", "turntable")   # P3d: the turntable fixer, tests/test_picture_writers.py
        and m.get("reviser") is not None] == [])
 check("contract: every mode carries a reviser key", all("reviser" in m for _, m in modes))
 

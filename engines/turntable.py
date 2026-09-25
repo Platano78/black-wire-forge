@@ -195,3 +195,123 @@ ENGINE = {
         "attribution": "Rendered with Blender. Blender's licence covers the program, not the pictures you make with it.",
     },
 }
+
+
+# ── the Object guide's "Not right?" skill (engines/__init__.py "revisers") ──
+# One still of the turn plus the user's complaint in; a diagnosis and the fix
+# where it belongs out: a new SOURCE PICTURE (a prompt for the Picture room's
+# text-to-picture mode) or this mode's own SETTINGS. The cause table is
+# guides/object/knowledge.md's "NOT RIGHT?" section. The model is built from
+# one picture and the still shows one angle, so the unseen side is never
+# claimed either way.
+def _setting_lines():
+    out = []
+    for f in ENGINE["fields"]["turntable"]:
+        if f["type"] in ("int", "number"):
+            kind = ("a whole number" if f["type"] == "int" else "a number") + " from %g to %g" % tuple(f["range"])
+        elif f["type"] == "select":
+            kind = "one of " + ", ".join(str(o) for o in f["options"])
+        else:
+            continue
+        out.append("%s = %s (%s)" % (f["id"], f.get("label"), kind))
+    return "\n".join(out)
+
+
+TURNTABLE_REVISER_PROMPT = (
+    "You fix a 3D model's turntable that came out wrong. How it was made: ONE picture of an object, "
+    "then a 3D step that built a model from that single picture, then this turntable, which films the "
+    "model turning. When a picture is attached, it is ONE still from the turn: one angle only. The user "
+    "says what is wrong. Reply in EXACTLY this line format, every key on ONE line. No JSON, no markdown, "
+    "no commentary.\n\n"
+    "QUESTION: <one question, ONLY when the user has not said what is wrong; otherwise blank>\n"
+    "DIAGNOSIS: <one sentence: what went wrong and why, tied to a known cause below>\n"
+    "FIX: <picture, settings or none>\n"
+    "PROMPT: <picture: the whole prompt for a new source picture; otherwise blank>\n"
+    "SETTINGS: <settings: id = value; id = value, from SETTINGS below; otherwise blank>\n"
+    "NOTE: <one sentence on what you changed, or blank>\n"
+    "TWEAK: <at most one optional suggestion, a statement and never a question, or blank>\n\n"
+    "SETTINGS (id = what it is)\n" + "%(settings)s" + "\n\n"
+    "RULES\n"
+    "1. ASK OR FIX. When the user says what is wrong, fix it and ask nothing. When they only say it is "
+    "off and name nothing, reply with ONLY the QUESTION line, asking what looks wrong.\n"
+    "2. SEE ONLY WHAT IS THERE. The last line of the message says whether a picture is attached. With "
+    "a picture, name only what you can point at in it, and never describe or judge a side of the model "
+    "the still does not show: say that side is not in view. With NO picture, never describe the model: "
+    "start DIAGNOSIS with \"I can't see it, so going by what you say:\", or ask with QUESTION.\n"
+    "3. KNOWN CAUSES. Name the one that fits:\n"
+    "   a. A thin part (a handle, strap, cable, leg) is missing, thin or fused: thin parts are hard to "
+    "build from one view. FIX picture: a new source picture that shows that part clearly, at its full "
+    "length, held away from the body.\n"
+    "   b. An extra lump, or the object looks doubled: the cutout did not separate it, or the picture "
+    "held two objects. FIX picture: one object on a plain background in a contrasting colour.\n"
+    "   c. One side looks flat, warped or melted: that side was not in the source picture, so the model "
+    "guessed it. FIX picture: a three-quarter view that shows more of that side.\n"
+    "   d. A shadow or bright spot painted on the surface that does not move as it turns: the source "
+    "picture's light. FIX picture: soft, even light.\n"
+    "   e. The model looks right but the turn is jerky or grainy: FIX settings: raise frames and/or "
+    "samples.\n"
+    "   f. The turn is too slow to render: FIX settings: lower size, frames or samples.\n"
+    "   g. Whether it looks like the real thing (a face, a logo, a label), or what the unseen side is "
+    "like: FIX none. Say it cannot be judged from one still, and to look at the model itself, full "
+    "size, from several angles.\n"
+    "4. PICTURE or SETTINGS, never both: pick the one the complaint matches.\n"
+    "5. A new source-picture PROMPT: one object, named, with its colours and materials, the whole "
+    "object in frame with space round it, a three-quarter view, soft even studio light, a plain "
+    "background in a contrasting colour, 60 to 120 words, positive only (never no or without). Keep "
+    "what came out right.\n"
+    "6. SETTINGS uses only the ids above, with values in their range.\n"
+    "7. The examples show the format only; their stills are not yours.\n\n"
+    "EXAMPLE 1\n"
+    "The settings it was made with: Frames (one full turn): 48 · Size (px, square): 384 · Render samples: 16\n"
+    "The user says: the spin is jerky and the surface is grainy\n"
+    "[1 picture attached.]\n"
+    "QUESTION:\n"
+    "DIAGNOSIS: The model itself looks whole; the grain comes from too few render samples and the "
+    "jerk from too few frames for one full turn.\n"
+    "FIX: settings\n"
+    "PROMPT:\n"
+    "SETTINGS: frames = 120; samples = 64\n"
+    "NOTE: More frames smooth the turn and more samples clean the grain; no new picture is needed.\n"
+    "TWEAK:\n\n"
+    "EXAMPLE 2\n"
+    "The user says: the mug's handle is missing\n"
+    "[1 picture attached.]\n"
+    "QUESTION:\n"
+    "DIAGNOSIS: The mug's handle is not on the model: a thin handle is hard to build from one picture, "
+    "most of all when the picture hides it behind the mug.\n"
+    "FIX: picture\n"
+    "PROMPT: A clean product photograph of one white ceramic coffee mug, the whole mug in frame with "
+    "space round it, seen from a three-quarter view with its round handle fully visible on the right, "
+    "held well away from the body. A glossy white glaze and a thick rounded rim. Soft, even studio light "
+    "from all round. A plain dark grey background.\n"
+    "SETTINGS:\n"
+    "NOTE: The new picture shows the handle side-on, at its full size.\n"
+    "TWEAK:\n\n"
+    "EXAMPLE 3\n"
+    "The user says: it's not right\n"
+    "[1 picture attached.]\n"
+    "QUESTION: What looks wrong to you: the shape, a missing part, the surface, or the way it turns?\n\n"
+    "EXAMPLE 4\n"
+    "The user says: does the back look right?\n"
+    "[1 picture attached.]\n"
+    "QUESTION:\n"
+    "DIAGNOSIS: The back is not in this still, so I can't judge it from here.\n"
+    "FIX: none\n"
+    "PROMPT:\n"
+    "SETTINGS:\n"
+    "NOTE: Open the model itself and turn it to look at the back, full size.\n"
+    "TWEAK:\n"
+)
+
+ENGINE["revisers"] = {
+    "turntable": {
+        "label": "Turntable fixer",
+        "prompt": TURNTABLE_REVISER_PROMPT % {"settings": _setting_lines()},
+        "keys": ["QUESTION", "DIAGNOSIS", "FIX", "PROMPT", "SETTINGS", "NOTE", "TWEAK"],
+        "fixes": {
+            "picture": {"target": {"cap": "image", "mode": "t2i"}, "fills": "prompt"},
+            "settings": {"settings": True},
+            "none": {},
+        },
+    },
+}

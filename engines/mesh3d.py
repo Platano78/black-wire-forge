@@ -13,6 +13,7 @@ own first stage IS a background removal, the same model and pool, so it is
 resolved once and read here via the shared ``m`` dict rather than
 re-declared.
 """
+import re
 
 
 def mesh_graph(p, m):
@@ -206,6 +207,90 @@ def mesh_graph(p, m):
     }
 
 
+# ── the Object guide's source-picture writer (engines/__init__.py "writers") ──
+# This mode takes a picture, not words, so its writer writes for the PICTURE
+# room's text-to-picture mode (its `target`): the 3D step cuts the object out
+# of that one picture and builds the model from it, so the picture has to
+# show one whole object from a three-quarter view in soft, even light. Rules
+# from guides/object/knowledge.md (source picture, NOT RIGHT? table).
+_NEGATION_RE = re.compile(r"\b(no|not|without|avoid|don't|never)\b", re.IGNORECASE)
+_VIEW_RE = re.compile(r"three[- ]quarter|3/4", re.IGNORECASE)
+
+
+def source_picture_check(values, request):
+    """The source-picture writer's check on its own drafts (its target is
+    another mode, so never at Make time). -> plain problem sentences."""
+    prompt = values.get("prompt") or ""
+    low = prompt.lower()
+    problems = []
+    if not _VIEW_RE.search(prompt):
+        problems.append("The prompt names no three-quarter view: a 3D model is built from this one "
+                        "picture, and a three-quarter view shows two sides of the object at once.")
+    if "whole" not in low and "entire" not in low:
+        problems.append("The prompt does not ask for the whole object in frame: a cropped part never "
+                        "reaches the model.")
+    if "background" not in low:
+        problems.append("The prompt names no background: ask for a plain background in a colour that "
+                        "stands apart from the object, so the cutout is clean.")
+    found = sorted({m.group(1).lower() for m in _NEGATION_RE.finditer(prompt)})
+    if found:
+        problems.append("The prompt says %s: the picture model tends to draw what is named. Keep it "
+                        "positive and put what to leave out in Things to avoid." % ", ".join('"%s"' % w for w in found))
+    return problems
+
+
+SOURCE_PICTURE_PROMPT = (
+    "You write the prompt for a picture that will be turned into a 3D model. The prompt goes to a "
+    "text-to-picture model. Then the 3D step cuts the object out of that ONE picture and builds the "
+    "model from it: whatever the picture does not show, the model can only guess.\n\n"
+    "Reply in plain text, no JSON, no markdown, no commentary, in EXACTLY one of these two shapes.\n\n"
+    "To ask:\n"
+    "QUESTION: <one short question>\n"
+    "OPTIONS: <2 to 5 short choices separated by |>\n\n"
+    "To write:\n"
+    "NEGATIVE: <things to leave out of the picture, comma-separated, without the word no>\n"
+    "NOTE: <the part most likely to come out wrong in 3D and what to watch for, or the choices you made>\n"
+    "PROMPT: <the finished prompt, one paragraph>\n"
+    "PROMPT comes last. Write nothing after it.\n\n"
+    "RULES FOR THE PROMPT\n"
+    "1. ONE object, named plainly, and nothing else in the picture: no hands holding it, no stand, no "
+    "second object touching it.\n"
+    "2. The WHOLE object in frame, with space all round it: say \"the whole <object> in frame\".\n"
+    "3. A three-quarter view, named: it shows the front and one side at once. Never a flat front view or "
+    "a close-up.\n"
+    "4. Soft, even studio light from all round: name it. Strong light paints its shadows onto the "
+    "model's surface.\n"
+    "5. A plain background in a colour that stands apart from the object (light grey for a dark object, "
+    "dark grey for a white one).\n"
+    "6. Name the object's colours and materials. A real product photo look (\"a clean product "
+    "photograph\") unless the user asks for a style.\n"
+    "7. Thin parts (a handle, a strap, a cable, an antenna, legs) are shown clearly at their full "
+    "length, held away from the body, and named in NOTE as the thing to watch. Glass, mirrors and "
+    "chrome come out badly: say so in NOTE, and describe a matte version unless the user insists.\n"
+    "8. Positive only in PROMPT: never no, not, without, avoid or never. Hard shadows, reflections, "
+    "text and other objects go in NEGATIVE.\n"
+    "9. Keep every detail the user gave. 60 to 120 words.\n\n"
+    "WHEN TO ASK\n"
+    "Ask ONE question, only when the request does not say what the object is (\"my character\", "
+    "\"something for my game\"): offer 3-4 objects that fit. Otherwise write, choosing anything left "
+    "open yourself and naming it in NOTE.\n"
+    "The room line in [brackets] is the form as it is now; it is not the request.\n\n"
+    "EXAMPLE 1\n"
+    "Request: a leather work boot\n"
+    "NEGATIVE: hard shadows, reflections, text, other objects\n"
+    "NOTE: The laces are thin: if they come out fused or missing, try the boot with its laces tucked in.\n"
+    "PROMPT: A clean product photograph of one worn brown leather work boot, the whole boot in frame "
+    "from the toe to the top of the shaft with space all round it, seen from a three-quarter view that "
+    "shows the toe and the outer side. Dark brown oiled leather, a thick black rubber sole with a deep "
+    "tread, tan laces tied in a neat bow. Soft, even studio light from all round. A plain light grey "
+    "background.\n\n"
+    "EXAMPLE 2\n"
+    "Request: my character\n"
+    "QUESTION: What is your character?\n"
+    "OPTIONS: A knight in armour | A small robot | A wizard | A cartoon animal\n"
+)
+
+
 ENGINE = {
     "id": "mesh3d",
     "cap": "3d",
@@ -244,6 +329,21 @@ ENGINE = {
     "mode_rooms": {"mesh": "3d"},
     "mode_notes": {
         "mesh": "gives a .glb file, not a picture",  # source: engines/mesh3d.py:10 (module docstring)
+    },
+    # P3d: "Help me write this" writes the source picture, for the Picture
+    # room's text-to-picture mode (the `target`); "Use these" goes there.
+    "writers": {
+        "mesh": {
+            "label": "Source picture writer",
+            "prompt": SOURCE_PICTURE_PROMPT,
+            "target": {"cap": "image", "mode": "t2i"},
+            "topic_label": "What should the 3D model be of?",
+            "keys": {"NEGATIVE": "negative", "PROMPT": "prompt"},
+            "multiline": "PROMPT",
+            "none_token": "NONE",
+            "check": source_picture_check,
+            "make_time": False,
+        },
     },
     # R2: a picture and no prompt -- the input picker comes first, tier primary.
     "fields": {

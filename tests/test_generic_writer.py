@@ -125,6 +125,10 @@ import engines  # noqa: E402
 import guides  # noqa: E402
 
 G = guides.load_all()
+# P3d gave t2i a pack writer of its own (tests/test_picture_writers.py). This
+# suite gates the GENERIC writer, with t2i as its example mode, so it takes
+# that pack writer out for the run (the server shares this engines module).
+engines._owner("image", "t2i")["writers"].pop("t2i")
 NO_PICTURE = "\n\n[No picture is attached to this message.]"
 PIC = {"lane": "cpu", "upload": "pic.png"}
 

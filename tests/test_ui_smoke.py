@@ -120,11 +120,17 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import threading
 HELPER_REQUESTS = []
 class FakeHelperHandler(BaseHTTPRequestHandler):
+    KITE = ("a red kite over the sea: a bright realistic photograph of one red diamond-shaped kite flying high over a "
+            "calm grey sea on a windy afternoon. The kite sits in the upper left of the frame, its long white tail rippling behind it, "
+            "while pale waves roll toward a wide sandy beach below. Soft overcast light fills the scene evenly. The "
+            "composition is open and airy, with a calm, free mood.")
+
     def do_POST(self):
         n = int(self.headers.get("Content-Length") or 0)
         HELPER_REQUESTS.append(json.loads(self.rfile.read(n) or b"{}"))
         # The guide's writer reply shape (P2c: "Help me write this" goes to the room's guide)
-        resp = json.dumps({"choices": [{"message": {"content": "PROMPT: a red kite over the sea"}}]}).encode()
+        # A draft that passes the t2i writer's own check (P3d: 40+ words, positive only), so it is not retried.
+        resp = json.dumps({"choices": [{"message": {"content": "PROMPT: " + self.KITE}}]}).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(resp)))
@@ -828,7 +834,7 @@ try:
         helper_page.click("#guideSkillUse")
         helper_page.wait_for_timeout(200)
         check("L5: Use these replaces the prompt",
-              helper_page.input_value("#promptBox") == "a red kite over the sea",
+              helper_page.input_value("#promptBox") == FakeHelperHandler.KITE,
               helper_page.input_value("#promptBox"))
         check("L5: nothing was ever sent to /api/generate", len(GENERATED) == genbefore)
         helper_page.close()
