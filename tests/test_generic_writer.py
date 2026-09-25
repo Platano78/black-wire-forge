@@ -174,12 +174,12 @@ check("t2i: the user message is the context line, then the request, grounded",
       user.startswith("[Current room: Picture") and "Request: a lighthouse" in user and user.endswith(NO_PICTURE), user)
 check("t2i: sent is what the brain was asked", b.get("sent") == {"system": system, "user": user}, b.get("sent"))
 
-print("skill: Video ltx and Sound FX")
+print("skill: Video ltx (a pack writer since P3c) and Sound FX")
 HELPER_STATE["reply"] = "PROMPT: A slow push in on a rain-soaked street at night."
 code, b = skill({"room": "video", "mode": "ltx", "topic": "a rainy street"})
 check("ltx: PROMPT fills the prompt", code == 200 and b.get("fields") == {"prompt": "A slow push in on a rain-soaked street at night."}, b)
-check("ltx: the system prompt holds ltx's own prompt_guide",
-      engines.prompt_guide("video", "ltx") in HELPER_STATE["requests"][-1]["messages"][0]["content"])
+check("ltx: its pack writer's own prompt (P3c)",
+      engines.writer("video", "ltx")["prompt"] == HELPER_STATE["requests"][-1]["messages"][0]["content"])
 HELPER_STATE["reply"] = "**PROMPT:** a heavy wooden door creaking open"
 code, b = skill({"room": "sfx", "mode": "sfx", "topic": "a creaky door"})
 check("sfx: PROMPT fills the prompt (bold key tolerated)", code == 200 and b.get("fields") == {"prompt": "a heavy wooden door creaking open"}, b)

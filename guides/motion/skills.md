@@ -1,135 +1,139 @@
 # The Motion Room Guide's skills
 
-Three writing/judging jobs, one per situation the Guide gets pulled into. Each names the exact
-engine rules it must follow, the real app field ids it fills, the ONE question it asks when
-something is ambiguous, and a worked example. Output shape for any field values the Guide hands
-back: **line-delimited, never JSON with multi-line fields** — small models do not reliably escape
-newlines inside JSON strings (measured on the project's own local-model tooling). A field whose value spans multiple lines (the prompt itself) is the LAST line of the
-block, everything after its label to the end of the reply.
+Three writing/judging jobs, one per situation the Guide gets pulled into. Each is a pack skill
+(`writers` / `revisers` in `engines/ltx.py` and `engines/minimax_h3.py`): the engine's own rules live
+in the pack, next to its fields. "Help me write this" is a short conversation: the writer asks at most
+one question per turn, with clickable OPTIONS where the choices are few, and only when the answer
+changes the shot; after four answers it must write, naming its defaults in NOTE. What the user sees
+before anything fills the form is the preview of the engine's own fields.
 
-## Skill 1 — Shot Prompt Writer (Video room)
+Output shape for any field values the Guide hands back: **line-delimited, never JSON with multi-line
+fields** — small models do not reliably escape newlines inside JSON strings (measured on the
+project's own local-model tooling). The multi-line field (the prompt, or the Talking Head line) is
+the LAST line of the block, everything after its label to the end of the reply.
 
-**Job:** topic in, a prompt the chosen engine actually obeys out, plus which fields to fill.
+## Skill 1 — Shot writers (Video room)
 
-**Trigger:** the user describes an idea, a shot, or "make a video of ___" in the Video room.
+**Job:** topic in, a prompt the chosen engine actually obeys out, plus the length when the user
+gave a number of seconds. The Video room's engine is already chosen by the mode, so the writer
+never asks which engine.
 
-**Engine branch — ask first if unclear:**
-- If the user is on **LTX** (`ltx` for a shot with sound, `ltx_loop` for one long silent take):
-  write the prompt as ONE paragraph — shot, scene, action, character, camera move, audio — present
-  tense, spoken lines in quotes. Never token weights or a tag list. State 1-2 actions max. If a
-  square or portrait starting picture is mentioned, say it will distort against this app's fixed
-  16:9 canvas.
-- If the user is on **MiniMax-H3** `fl2va` (starting picture and/or text) or `ref2v` (reference
-  pictures/clips): write plain positive-only description by default. For `ref2v`, any dialogue goes
-  directly inside the prompt text — H3 speaks it; there is no separate voice/TTS field. Offer the
-  fuller structured form (alignment line + `integrated_multimodal_description` /
-  `overall_soundscape` / `non_diegetic_music`, `<Picture N>` tags) only as a second attempt if the
-  plain form isn't landing.
-- If the user is on **MiniMax-H3** `continue`: the prompt MUST describe the SAME shot carrying on —
-  same subject, same camera move, same framing as the shot before. If the user's actual request is
-  a new angle or composition, say plainly that it will override the carried motion before writing
-  it, and offer the choice: continue as asked (risking the override) or write it as a fresh shot
-  instead.
+| Mode | Writer | Fills |
+|---|---|---|
+| `ltx` | Shot writer | `prompt`, `length`, `width`/`height` (only exact pixel sizes) |
+| `ltx_loop` | Long take writer | `prompt`, `length`, `width`/`height` |
+| `fl2va` | Shot writer | `prompt`, `length` |
+| `ref2v` | Reference shot writer | `prompt`, `length` |
+| `continue` | Carry-on writer | `prompt`, `length` (never `prev_video`: that is a cable) |
 
-**Real fields filled** (id, from the pack):
-- `ltx`/`ltx_loop`: `prompt` (the paragraph), `length` (frames, only if the user states a duration),
-  `start_image` (name only if the user has a picture to attach), `audio` (only if the user wants no
-  sound on `ltx`).
-- `fl2va`: `prompt`, `first_frame`/`last_frame` (name only if pictures exist).
-- `ref2v`: `prompt`, `ref_images`/`ref_videos` (name only if the user has them).
-- `continue`: `prompt` only — `prev_video` is a cable, never filled by the Guide or the user typing.
+**LTX (`ltx`, `ltx_loop`):** ONE paragraph, present tense, in the order subject, action, camera,
+setting, light, then (`ltx` only) the sound, with spoken words in quotes. At most two actions (a
+third is dropped). One camera move or a still camera. Posture and gesture, never emotion labels. One
+light source. Every named person gets an action and a place. Never token weights, brackets, tag
+lists or quality words. `ltx_loop` has no sound at all, so its prompt says nothing about sound, and
+suits steady, unbroken motion. A request for a tall or square video keeps the widescreen canvas and
+says in NOTE that a tall or square frame comes out with distorted motion. `length` stays NONE unless
+the request gives a number of seconds; then seconds × 24, up to the next 8n+1 (10 s → 241).
 
-**The ONE question, when needed:** "Are you working in the Video room's LTX side or the MiniMax-H3
-side?" — ask only when the user's phrasing doesn't already make it clear (e.g. they mention
-"reference pictures" → H3 `ref2v`; they mention "no sound, one long take" → LTX `ltx_loop`).
+**MiniMax-H3 (`fl2va`, `ref2v`, `continue`):** one plain, positive-only paragraph: the style first
+("Live-action, cinematic," unless the user names another), subject, action, camera as one of H3's
+named moves in plain words (push in, pull out, pan, tilt, tracking shot, arc shot, static shot, a
+slight shake) with a size and speed, setting and light, then the sound. Anything spoken goes INSIDE
+the prompt in quotes, with who says it: H3 speaks it; there is no separate voice. `ref2v` names each
+reference by what the user calls it ("the woman from the reference picture") and writes the words
+itself when the request asks someone to speak without giving them. `length` stays NONE unless the
+request gives seconds; then seconds × 24 within 124–362 (the app snaps it to H3's own grid).
+
+**`continue`:** the prompt MUST describe the SAME shot carrying on — same subject, camera move,
+framing, place and light, with "keeps / goes on / still" wording — never "cut to", a new angle, a
+close-up of something else or a new scene. The delivered piece is about a second shorter than the
+length, so a stated 8 s becomes 216 frames.
+
+**Questions (the first that applies, and only these):**
+- ACTION — only when nothing happens in the request at all ("a lighthouse"); any verb is an action.
+- CAMERA — `ltx`, `ltx_loop`, `fl2va`: the request has an action but says nothing about the camera.
+- WHO — `ref2v`: the request does not say what the references show (no OPTIONS: the writer cannot see them).
+- NEW SHOT — `continue`: the request asks for a new angle, place or close-up. OPTIONS:
+  `Carry on the same shot | Cut to a new shot`. Carry on keeps the framing and lets the wish happen
+  inside it; Cut writes the new shot and says in NOTE that it belongs in "A video from a starting
+  picture (and text)", because here it plays as a hard cut.
+- WHAT — `continue`: only when the request names no subject at all ("keep going").
+
+**The check** (also the Make-time guard): token weights or brackets in the prompt; while drafting,
+a `length` that is not 8n+1 or a width/height not a multiple of 32 on LTX (at Make time the graph's
+own refusal stands, since confirming cannot help); on `continue`, new-composition words ("cut to",
+"new angle", "a close-up of", "in a close-up", "meanwhile", …), naming the words and where a new
+shot belongs.
+
+**Worked example (LTX, a question then a write):**
+> Request: a paper boat on a stream → QUESTION: What should the boat do? OPTIONS: Drift slowly
+> downstream | Spin in an eddy | Tip over a small fall
+>
+> Answer: Drift slowly downstream → NOTE: I chose a still camera low at the water's edge.
+> PROMPT: A small white paper boat drifts slowly downstream on a calm, clear stream, turning gently as
+> it goes. A still camera sits low at the water's edge. Smooth pebbles and green reeds line the
+> banks, lit by soft afternoon sun from the left. Water trickles and burbles softly, a bird calls in
+> the distance.
+
+## Skill 2 — Line writer (Talking Head room)
+
+**Job:** a topic, a situation or the exact words in; the `line`, a short `look` and a `length` that
+fits the line out. The topic is enough: "a pirate telling a kid to go to bed" gets a line in that
+pirate's voice.
+
+**The writer writes the words; the app works the length out.** A small brain counts words
+unreliably (live trial: a 14-word line came back at 257 frames), so the pack's `derive` sizes the
+clip from the written line: **words ÷ 2.2 words/s × 1.15 cushion × 24 fps, rounded UP to the next
+8n+1, never below the 97-frame default** (the one length measured on this hardware). 10 words → 129,
+13 → 169, 14 → 177. One clip holds at most 28 words (361 frames, about 15 s, the field's own UI
+ceiling). A `length` the user states ("a 10 second clip") is kept, not derived.
+
+**Rules:** `line` is only the spoken words (no quotes, name or stage directions); the user's exact
+words stay unchanged unless they chose to shorten them, and a shortening is named in NOTE. A topic
+gets one or two sentences, 8–20 words, spoken to the camera. `look` is light and framing only
+("warm lamp light, close-up"), never what is said — it rides at the END of the sent prompt as a
+`Shot:` note. `LINE: NONE` is a quiet listening shot.
+
+**Questions:** WHAT (no topic at all: "make him talk", OPTIONS of topics); TONE (a topic with no
+speaker, character or mood: OPTIONS such as warm, deadpan, excited, stern — a named speaker already
+sets the voice); TOO LONG (the user's exact words run past 28: OPTIONS `Shorten it | Split it into
+two clips`; split writes the first part and gives the rest in NOTE).
+
+**The check** (also the Make-time guard): a line longer than the length holds → "Set Length to N
+frames"; a line past what one clip holds → "Shorten it, or split it across two clips"; a shot note
+that carries speech; while drafting, a length that is not 8n+1.
 
 **Worked example:**
-> User: "a fox darting across a snowy field at dawn, cold blue light"
+> Request: a tired barista telling the queue the espresso machine is broken
 >
-> Guide (LTX inferred from no reference pictures, no dialogue): "A red fox darts low across an open
-> snowfield at first light, kicking up a spray of powder with each stride. The camera holds a wide
-> static shot from ground level, lit by cold blue pre-dawn light. Wind hisses faintly across the
-> snow, the fox's paws crunch and thump."
->
-> Fields: `prompt` = the paragraph above. Nothing else — no picture was mentioned, so `start_image`
-> stays empty for pure text-to-video.
+> LOOK: warm cafe light, close-up
+> LINE: Sorry, folks, the espresso machine just died. Tea, anyone? It's on the house.
+> → 12 words, so the app sets Length to 153 frames (about 6.4 s).
 
-## Skill 2 — Talking Head Line (Talking Head room)
+## Skill 3 — Clip fixer ("Not right? Tell the guide", Video room)
 
-**Job:** a topic or a rough line in, a line sized to the clip's real length out, plus the `line`,
-`look`, and `length` fields.
+**Job:** a finished clip's middle still + the prompt that made it + the user's complaint in;
+DIAGNOSIS, FIX, a revised PROMPT and at most one setting TWEAK out. Serves `ltx`, `ltx_loop`,
+`fl2va`, `ref2v`, `continue`; the Talking Head has none yet (its words are a line, not a prompt).
 
-**Trigger:** the user is in the Talking Head room and wants a face to say something.
+**A still is not the clip.** From the still the fixer describes only what is in that one frame (who,
+where, framing, light). It never claims camera movement, speed, sound, speech, lip sync or timing
+from it, never says yes or no to any of those, and opens with "I can't judge motion or sound from one
+still, so going by what you say:" when the complaint is about one of them (this guide's own vision
+trial: only an absolute rule stopped a 12B model confirming a push-in that was not there). With no
+picture it says it cannot see the clip. It never gives a likeness verdict: check the face at full
+size.
 
-**The rule:** clip length is in frames at 24fps (`length ÷ 24` = seconds), and LTX ONLY accepts a
-length where `length % 8 == 1` (9, 17, 25, ... 361, ... 993) — never a plain multiple of 8. Budget
-the spoken line at **~2.2 words/second** (source: casual conversational English runs 120-150 WPM;
-this app has no measured cushion for where the line lands in the clip, unlike a different engine's
-dialogue path — which does NOT apply here — so budget at the low end), plus a ~15% cushion, then
-round the resulting frame count UP to the nearest valid one. A 97-frame default clip (~4.0s)
-comfortably fits roughly **7 words**; a 361-frame clip (~15.0s, the field's own UI ceiling) fits
-roughly **28 words** — that "how many words fit" direction is a different calculation from
-"recommend a length for this line" (divide the clip's seconds by 1.15÷2.2 ≈ 0.523 instead of
-multiplying), not the same formula run backwards.
+**FIX is always reroll:** a clip is made again from the revised prompt, never edited in place (the
+fixer declares `fixes: ["reroll"]`, so an "edit" reply is refused rather than offering an Edit
+button that has nowhere to go).
 
-**Real fields filled:** `face` (name only if a picture exists), `line` (the spoken words, exactly
-as they'll be said — never edited for "flow" without telling the user), `look` (a short shot note
-only — lighting/framing, never an instruction aimed at the line; it rides at the END of the sent
-prompt), `length` (frames: word count ÷ 2.2, +15%, ×24, rounded UP to the nearest valid `8n+1`
-frame count — never a plain seconds×24 number).
+**Known causes it names:** more than two actions (LTX drops extras); a person with nothing to do;
+no camera stated; emotion labels; mixed light; a square or tall starting picture on LTX; token
+weights; on H3, a continue prompt with a new angle/framing/action (hard cut — and "keeps / the same"
+wording is right, keep it); a reference not named in the prompt; a generic reference face (TWEAK:
+Reference image sizing to max); speech not in quotes; the quickest Fast tiers (TWEAK: Fast best or
+Best).
 
-**The ONE question, when ambiguous:** either (a) what tone/delivery the user wants, OR (b) whether
-the line's length needs checking against the clip — never both in the same turn. If the user gave a
-line with no clip-length context, ask (b) first (it changes a field value); once length is settled,
-(a) is the natural follow-up on a later turn, not stacked onto the same one. If the computed length
-would exceed the field's own range, say so and offer to shorten the line or split it across shots —
-never propose a length outside the range.
-
-**Worked example:**
-> User: "I want the guy to say 'Hey there, welcome back — I saved your spot right here.'"
->
-> Guide: counts 10 words → 10 ÷ 2.2 ≈ 4.55s → +15% ≈ 5.23s → 5.23 × 24 ≈ 125.5 frames → round up to
-> the nearest valid frame count → **129 frames** (~5.4s).
->
-> Reply: "That's about 10 words — roughly 5 seconds at a natural pace, so set Length to around
-> 129 frames instead of the 97-frame default, which would likely cut it short. Want it delivered
-> warm and welcoming, or more brisk and businesslike?"
->
-> Fields: `line` = "Hey there, welcome back — I saved your spot right here.", `length` = 129,
-> `look` left for the next turn once tone is known (e.g. "warm lighting" once the user answers).
-
-## Skill 3 — "Not right?" Revise (either room, a finished clip)
-
-**Job:** a still from a finished clip plus the user's complaint in, a revised prompt out — or,
-lacking a picture, a plain question asking the user to describe what's wrong.
-
-**Trigger:** the user reports a render came back wrong (drifted, wrong framing, character changed,
-line got cut off, wrong engine grammar used) and either attaches a still or describes it.
-
-**With a picture attached this turn:** describe only what the still actually shows — framing,
-whether a reference-picture face looks clean and feature-visible, whether the composition matches
-what was asked. Never claim to have watched the clip play, never give a likeness verdict ("I can't
-tell that from here — look at it full size" for any identity/fine-detail claim). Propose the
-smallest prompt change that addresses the stated complaint — one changed clause, not a full
-rewrite, unless the complaint is structural (wrong engine grammar entirely).
-
-**With no picture attached:** say so plainly — "I can't see the render from here" — and ask the
-user to describe what's wrong in their own words (what they expected vs. what they got), then
-revise from that description alone, never guessing at unstated detail.
-
-**Real fields touched:** whichever the original mode used (see Skill 1's field list); typically only
-`prompt` changes, occasionally `length` (if the complaint is "the line got cut off" — recompute per
-Skill 2) or a reference field (if the complaint is "it dropped my reference" — check the reference
-tag is actually named in the prompt text for H3, or that the picture is genuinely 16:9 for LTX).
-
-**The ONE question, when needed:** whichever single fact is missing to write the fix — e.g. "which
-part looked wrong — the face, the motion, or the sound?" — never a checklist of possibilities.
-
-**Worked example (no picture attached):**
-> User: "the continue shot doesn't look like it's continuing, it just cuts"
->
-> Guide: "That happens when the prompt describes a new composition instead of the same shot
-> carrying on — same subject, same camera move, same framing as the shot before. Can you tell me
-> what the continue shot's prompt actually said?"
-> (single question — needed to know whether the hard rule was already followed before proposing a
-> fix)
+**The ONE question:** only when the user names nothing ("it's not right"): "What looks or sounds
+wrong: …?" — never a guessed cause.

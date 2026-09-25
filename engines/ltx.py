@@ -19,7 +19,9 @@ clip from a face picture and a line of dialogue, built on the same
 ``talking_head_prompt``. Chaining pieces together is deferred to C3, not
 built here.
 """
+import math
 import random
+import re
 
 # -- constants, copied verbatim from graph_builders.py:1120-1129 -----------
 LTX25_STAGE1_SIGMAS = "1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0"
@@ -645,6 +647,342 @@ def ltx_loop_graph(p, m):
     return _ltx_loop_graph(p, m)
 
 
+# ── writers and a fixer (the Motion guide's skills; engines/__init__.py "writers"/"revisers") ──
+# Rules restated from this pack's own field hints and docstrings above and
+# guides/motion/knowledge.md (LTX's published prompt contract: one paragraph,
+# present tense, 1-2 actions, no token weights; the talking-head line sizing).
+
+LTX_FPS = 24
+
+# Talking Head line sizing (guides/motion/knowledge.md "Sizing the line to the
+# clip's length"): about 2.2 spoken words a second, plus a 15% cushion, then
+# up to the next length the model takes (8n+1 frames). Never shorter than the
+# field's 97-frame default, the one length measured on this hardware.
+TALKING_WORDS_PER_SECOND = 2.2
+TALKING_CUSHION = 1.15
+TALKING_MIN_FRAMES = 97
+TALKING_MAX_FRAMES = 361    # the field's own ui_range top: "About 4 to 15 seconds"
+
+_WORD_RE = re.compile(r"[A-Za-z0-9À-ɏ']+")
+# "(dog:1.3)", "((snow))", "[wind]": token weights and brackets the model reads as words.
+_WEIGHT_RE = re.compile(r"\([^()]*:\s*\d+(?:\.\d+)?\s*\)|\(\([^()]*\)\)|\[[^\[\]]*\]")
+
+
+def spoken_words(line):
+    """The number of spoken words in a line (a dash or an emoji is not one)."""
+    return len(_WORD_RE.findall(line or ""))
+
+
+def frames_up(frames):
+    """The smallest length the model takes (8n+1) that is at least `frames`."""
+    frames = max(1, int(math.ceil(frames)))
+    return 8 * int(math.ceil((frames - 1) / 8.0)) + 1
+
+
+def talking_frames(words, fps=LTX_FPS):
+    """The Talking Head length for a line of `words` spoken words."""
+    seconds = words / TALKING_WORDS_PER_SECOND * TALKING_CUSHION
+    return max(TALKING_MIN_FRAMES, frames_up(seconds * fps))
+
+
+def talking_max_words(fps=LTX_FPS):
+    """The most words one clip of TALKING_MAX_FRAMES holds."""
+    n = 0
+    while talking_frames(n + 1, fps) <= TALKING_MAX_FRAMES:
+        n += 1
+    return n
+
+
+def _grid_problems(values, request):
+    """Length and size the graph refuses (8n+1 frames, multiples of 32).
+    Only while the writer drafts (its request carries the topic): at Make
+    time the graph's own refusal stands, since confirming cannot help."""
+    if "topic" not in (request or {}):
+        return []
+    out = []
+    length = values.get("length")
+    if isinstance(length, int) and length % 8 != 1:
+        out.append("Length is %d frames, but this model only takes 8n+1 frames (%d or %d)."
+                   % (length, frames_up(length) - 8, frames_up(length)))
+    for fid, label in (("width", "Width"), ("height", "Height")):
+        v = values.get(fid)
+        if isinstance(v, int) and v % 32:
+            out.append("%s is %d, but it must be a multiple of 32 (%d or %d)." % (label, v, v // 32 * 32, v // 32 * 32 + 32))
+    return out
+
+
+def _weight_problems(text):
+    found = _WEIGHT_RE.findall(text or "")
+    if not found:
+        return []
+    return ["The prompt has token weights or brackets (%s): this model reads them as words. Write plain "
+            "sentences instead." % ", ".join(found[:3])]
+
+
+def shot_check(values, request):
+    """The ltx / ltx_loop writer's check, also the Make-time guard: token
+    weights in the prompt, and (while drafting) the length/size grid."""
+    return _weight_problems(values.get("prompt")) + _grid_problems(values, request)
+
+
+_LOOK_SPEECH_RE = re.compile(r"\b(say|says|saying|said|speak|speaks|speaking|tell|tells|telling)\b", re.IGNORECASE)
+
+
+def talking_derive(values):
+    """The Talking Head writer's length, by the sizing formula above, when
+    the reply gave none: a small brain counts words unreliably, so the pack
+    does the arithmetic."""
+    words = spoken_words(values.get("line"))
+    return {"length": talking_frames(words, values.get("fps") or LTX_FPS)} if words else {}
+
+
+def talking_check(values, request):
+    """The Talking Head writer's check, also the Make-time guard: the line
+    must fit the clip, the shot note must not carry speech, and (while
+    drafting) the length must be one the model takes."""
+    out = _grid_problems(values, request)
+    fps = values.get("fps") or LTX_FPS
+    line = values.get("line") or ""
+    words = spoken_words(line)
+    length = values.get("length")
+    if words and isinstance(length, int):
+        need = talking_frames(words, fps)
+        if need > TALKING_MAX_FRAMES and length < need:
+            out.append("The line is %d words and needs about %.0f seconds, longer than one clip holds (%d frames, "
+                       "about %.0f seconds, fits about %d words). Shorten it, or split it across two clips."
+                       % (words, need / float(fps), TALKING_MAX_FRAMES, TALKING_MAX_FRAMES / float(fps),
+                          talking_max_words(fps)))
+        elif length < need:
+            out.append("The line is %d words and needs about %.1f seconds, but Length is %d frames (%.1f seconds), "
+                       "so it would be cut off. Set Length to %d frames."
+                       % (words, need / float(fps), length, length / float(fps), need))
+
+    look = values.get("look") or ""
+    if _LOOK_SPEECH_RE.search(look) or '"' in look:
+        out.append("The shot note (%s) is about lighting and framing; the spoken words go in the line." % look)
+    return out
+
+
+def _shot_writer_prompt(sound, max_frames):
+    """The ltx (sound) / ltx_loop (silent long take) writer's system prompt."""
+    table = ", ".join("%d s: %d" % (s, frames_up(s * LTX_FPS)) for s in (2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 30, 41)
+                      if frames_up(s * LTX_FPS) <= max_frames)
+    what = ("one video shot WITH SOUND: picture and sound are made together from your words"
+            if sound else "one long continuous take with NO SOUND at all")
+    return (
+        "You write the prompt for a video model that makes %s, from a short request. The model follows a "
+        "shot described the way a camera operator reads a shot list, not a poem.\n\n"
+        "Reply in plain text, no JSON, no markdown, no commentary, in EXACTLY one of these two shapes.\n\n"
+        "To ask:\n"
+        "QUESTION: <one short question>\n"
+        "OPTIONS: <2 to 4 short choices separated by |>\n\n"
+        "To write:\n"
+        "LENGTH: <NONE, unless the request itself gives a number of seconds: then frames from the table below>\n"
+        "WIDTH: <NONE, unless the request gives an exact size in pixels: then a multiple of 32>\n"
+        "HEIGHT: <NONE, unless the request gives an exact size in pixels: then a multiple of 32>\n"
+        "NOTE: <only when you chose something the user did not say, such as the camera: name each choice>\n"
+        "PROMPT: <the finished prompt, one paragraph>\n"
+        "PROMPT comes last. Write nothing after it.\n\n"
+        "RULES FOR THE PROMPT\n"
+        "1. ONE paragraph in the present tense, in this order: the subject and how it looks; what it does; "
+        "the camera; the setting; the light%s.\n"
+        "2. At most TWO actions. A third action is silently dropped by the model.\n"
+        "3. The camera: ONE move or a still camera, in plain words (\"the camera slowly pushes in\", \"the "
+        "camera follows from the side\", \"a still, wide shot\").\n"
+        "4. Show feelings by posture, gesture and face (\"shoulders slumped, eyes down\"), never by labels "
+        "(\"sad\").\n"
+        "5. ONE light source (\"low sun from the left\", \"a single desk lamp\").\n"
+        "6. Every person or animal you name gets something to do and a place in the frame. Name no one the "
+        "user did not ask for.\n"
+        "7. NEVER write token weights, brackets, tag lists or quality words (\"(dog:1.3)\", \"[snow]\", "
+        "\"masterpiece\", \"4k\").\n"
+        "8. Keep every subject, name, colour and detail the user gave.\n"
+        "%s"
+        "\nLENGTH stays NONE when the request gives no number of seconds: the form keeps its own length%s. "
+        "LENGTH is in frames at 24 a second, and the model only takes these (seconds: frames): %s. For "
+        "another duration: seconds x 24, then up to the next number in the table's pattern (one more than a "
+        "multiple of 8). At most %d frames.\n"
+        "The picture is widescreen. If the user asks for a tall or square video, keep the prompt as it is, "
+        "leave WIDTH and HEIGHT at NONE, and say in NOTE that a tall or square frame comes out with distorted "
+        "motion on this model.\n\n"
+        "WHEN TO ASK\n"
+        "Most requests need no question: write. Ask ONE question only in the cases below, when neither the "
+        "request nor an answer already says it. Ask the first of these that applies:\n"
+        "a. ACTION: ONLY when nothing happens in the request at all (\"a lighthouse\", \"a city street\"). "
+        "Offer 3-4 things that could happen. Any verb (burning, rolling, runs, pours) is an action: do not "
+        "ask this.\n"
+        "b. CAMERA: the request has an action but says nothing about the camera. Offer 2-4 camera choices "
+        "that suit it, such as follow it, hold wide, push in slowly.\n"
+        "Never ask for more detail about an action the request already gives. Once the user has answered a "
+        "question, write; choose anything still open yourself and name it in NOTE.\n"
+        "The room line in [brackets] is the form as it is now; it is not the request.\n\n"
+        "EXAMPLE 1\n"
+        "Request: a paper boat on a stream\n"
+        "QUESTION: What should the boat do?\n"
+        "OPTIONS: Drift slowly downstream | Spin in an eddy | Tip over a small fall\n\n"
+        "EXAMPLE 2\n"
+        "Request: a paper boat on a stream\n"
+        "The user answered: Drift slowly downstream\n"
+        "LENGTH: NONE\n"
+        "WIDTH: NONE\n"
+        "HEIGHT: NONE\n"
+        "NOTE: I chose a still camera low at the water's edge.\n"
+        "PROMPT: %s\n\n"
+        "EXAMPLE 3\n"
+        "Request: 6 seconds of an old man feeding pigeons on a park bench, the camera slowly pushes in\n"
+        "LENGTH: %d\n"
+        "WIDTH: NONE\n"
+        "HEIGHT: NONE\n"
+        "PROMPT: %s\n"
+    ) % (what,
+         ", and the sound: what is heard, with any spoken words in quotation marks" if sound else
+         ". This take has no sound, so write nothing about sound",
+         "" if sound else "9. It is one long unbroken take: steady, continuous motion suits it; no cuts and no "
+         "scene changes.\n",
+         "" if sound else " (a long take by default)", table, max_frames,
+         ("A small white paper boat drifts slowly downstream on a calm, clear stream, turning gently as it "
+          "goes. A still camera sits low at the water's edge. Smooth pebbles and green reeds line the banks, "
+          "lit by soft afternoon sun from the left." + (" Water trickles and burbles softly, a bird calls "
+                                                        "in the distance." if sound else "")),
+         frames_up(6 * LTX_FPS),
+         ("An old man in a grey wool coat sits on a wooden park bench and tosses breadcrumbs to a cluster of "
+          "pigeons at his feet, smiling as they peck. The camera slowly pushes in toward him. Autumn trees "
+          "stand behind the bench, lit by low morning sun from the right." + (" Pigeons coo and flutter, "
+                                                                               "leaves rustle, distant traffic "
+                                                                               "hums." if sound else "")))
+
+
+LTX_WRITER_PROMPT = _shot_writer_prompt(True, 993)
+LTX_LOOP_WRITER_PROMPT = _shot_writer_prompt(False, 16289)
+
+
+TALKING_WRITER_PROMPT = (
+    "You write the words for a talking head: one face picture that looks into the camera and says one line, "
+    "with its voice, in one short clip. You write the line it says and a short shot note; the app sizes the "
+    "clip to the line.\n\n"
+    "Reply in plain text, no JSON, no markdown, no commentary, in EXACTLY one of these two shapes.\n\n"
+    "To ask:\n"
+    "QUESTION: <one short question>\n"
+    "OPTIONS: <2 to 4 short choices separated by |>\n\n"
+    "To write:\n"
+    "LENGTH: <NONE, unless the request itself says how long the clip is: then frames from the table below>\n"
+    "LOOK: <a short shot note on the light and framing, at most 8 words>\n"
+    "NOTE: <only when you chose something the user did not say, such as the tone: name each choice>\n"
+    "LINE: <the exact words the face says, nothing else>\n"
+    "LINE comes last. Write nothing after it.\n\n"
+    "RULES\n"
+    "1. LINE is only the spoken words: no quotation marks around it, no name, no stage directions.\n"
+    "2. When the request gives the exact words (in quotes, or \"say ...\"), LINE is those words, unchanged.\n"
+    "3. When the request gives a topic or a situation (\"a lighthouse keeper warning sailors about a storm\"), write the "
+    "line yourself, in that speaker's own voice and way of talking, spoken straight to the camera: one or "
+    "two sentences, 8 to 20 words. An answer to your question is a direction, never the line itself.\n"
+    "4. One clip holds at most %d spoken words, about %d seconds.\n"
+    "5. LOOK is the light and framing only (\"warm lamp light, close-up\"), never what is said and never "
+    "an instruction.\n"
+    "6. LINE: NONE makes a quiet listening shot with no speech. Write that only when the user asks for "
+    "silence or listening.\n"
+    "7. LENGTH is NONE unless the request says how long the clip is (\"a 10 second clip\"). Then use "
+    "frames at 24 a second (seconds: frames): %s.\n\n"
+    "WHEN TO ASK\n"
+    "Ask ONE question, only when its answer changes the line and neither the request nor an answer says it. "
+    "Ask the first of these that applies:\n"
+    "a. WHAT: the request gives no topic at all (\"make him talk\"). Offer 3-4 topics. A situation, who "
+    "is talking to whom about what, is enough: do not ask, write.\n"
+    "b. TONE: the request gives a topic but names no speaker, character or mood at all (\"say something "
+    "about rainy days\"). Offer 3-4 deliveries, such as warm, deadpan, excited, stern. A named speaker (a "
+    "cowboy, a coach, a grandmother) already sets the voice: do not ask, write.\n"
+    "c. TOO LONG: the user's exact words run past %d words, several long sentences. QUESTION: Those words "
+    "are longer than one clip holds. Shorten them, or split them into two clips? OPTIONS: Shorten it | "
+    "Split it into two clips\n"
+    "Once the user has answered, write; choose anything still open yourself and name it in NOTE. For "
+    "\"Split it into two clips\", LINE is the first part, and NOTE gives the rest for a second clip. When "
+    "you shorten the user's own words, say so in NOTE.\n"
+    "The room line in [brackets] is the form as it is now; it is not the request.\n\n"
+    "EXAMPLE 1\n"
+    "Request: make her talk\n"
+    "QUESTION: What should she talk about?\n"
+    "OPTIONS: Welcome viewers to the channel | Announce a sale | Tell a short joke\n\n"
+    "EXAMPLE 2\n"
+    "Request: a tired barista telling the queue the espresso machine is broken\n"
+    "LENGTH: NONE\n"
+    "LOOK: warm cafe light, close-up\n"
+    "LINE: Sorry, folks, the espresso machine just died. Tea, anyone? It's on the house.\n\n"
+    "EXAMPLE 3\n"
+    "Request: a 6 second clip where he says \"Thanks for watching, see you next week.\"\n"
+    "LENGTH: %d\n"
+    "LOOK: soft studio light, head and shoulders\n"
+    "NOTE: I chose soft studio light.\n"
+    "LINE: Thanks for watching, see you next week.\n"
+) % (talking_max_words(), TALKING_MAX_FRAMES // LTX_FPS,
+     ", ".join("%d s: %d" % (x, frames_up(x * LTX_FPS)) for x in (4, 5, 6, 8, 10, 12, 15)),
+     talking_max_words(), frames_up(6 * LTX_FPS))
+
+
+# The clip fixer (P3c). It sees ONE still from the middle of the clip, never
+# the clip: guides/motion/knowledge.md "What the room cannot judge" (camera
+# movement between stills is an ABSOLUTE deferral: a softer rule failed on a
+# real render).
+LTX_REVISER_PROMPT = (
+    "You fix a video clip that came out wrong. It was made by a video model from the prompt shown to you, "
+    "and the user says what is wrong with it. When a picture is attached, it is ONE still frame from the "
+    "middle of the clip, not the clip. Reply in EXACTLY this line format, every key on ONE line. No JSON, "
+    "no markdown, no commentary.\n\n"
+    "QUESTION: <one question, ONLY when the user has not said what is wrong; otherwise blank>\n"
+    "DIAGNOSIS: <one sentence: what went wrong and why, tied to a known cause below>\n"
+    "FIX: reroll\n"
+    "PROMPT: <the whole revised prompt>\n"
+    "NOTE: <one sentence on what you changed, or blank>\n"
+    "TWEAK: <at most one setting to change, by its name in the form, as a statement; or blank>\n\n"
+    "RULES\n"
+    "1. ASK OR FIX. When the user says what is wrong, fix it and ask nothing. When they only say it is off "
+    "and name nothing (\"it's not right\", \"I don't like it\"), reply with ONLY the QUESTION line, asking "
+    "what looks or sounds wrong, and nothing else: never guess a cause.\n"
+    "2. A STILL IS NOT THE CLIP. From the still you may describe only what is in that one frame: who and "
+    "what is in it, where, the framing, the light. You can NEVER tell from it how anything moved, how the "
+    "camera moved, how fast, the sound, the lip sync or the timing: never say yes or no to any of those. "
+    "When the complaint is about one of them, start DIAGNOSIS with \"I can't judge motion or sound from one "
+    "still, so going by what you say:\" and fix it from the user's words.\n"
+    "3. The last line of the message says whether a picture is attached. With NO picture, start DIAGNOSIS "
+    "with \"I can't see the clip, so going by what you say:\" instead. Never describe what you were not "
+    "shown.\n"
+    "4. KNOWN CAUSES on this model. Name the one that fits:\n"
+    "   a. MORE THAN TWO ACTIONS: the model drops the extras. Fix: keep the one or two that matter.\n"
+    "   b. A person or animal with nothing to do: it is dropped, merged into someone else, or frozen. Fix: "
+    "give each one an action and a place in the frame; take out anyone not wanted.\n"
+    "   c. No camera stated, so the model picked one. Fix: state ONE camera move, or a still camera.\n"
+    "   d. Feelings named as labels (\"sad\", \"angry\"): nothing visible happens. Fix: posture, gesture, "
+    "face.\n"
+    "   e. Mixed or unstated light. Fix: one light source.\n"
+    "   f. A square or tall starting picture: the picture is widescreen, so motion comes out distorted. Fix: "
+    "say in TWEAK to use a widescreen starting picture.\n"
+    "   g. Token weights, brackets or tag lists: read as words. Fix: plain sentences.\n"
+    "5. FIX is always reroll: a clip is made again from the revised prompt, never edited in place.\n"
+    "6. THE REVISED PROMPT keeps everything that came out right and changes only what the complaint needs: "
+    "one paragraph, present tense, subject, action, camera, setting, light, and the sound when the prompt "
+    "had sound.\n"
+    "7. The examples show the format only; their clips are not the one attached.\n\n"
+    "EXAMPLE 1\n"
+    "The prompt that made it: A chef chops onions, flips a pancake, pours wine, waves at the camera and "
+    "laughs in a busy kitchen.\n"
+    "The user says: he never flips the pancake or pours the wine\n"
+    "[1 picture attached.]\n"
+    "QUESTION:\n"
+    "DIAGNOSIS: I can't judge motion or sound from one still, so going by what you say: the prompt asks for "
+    "five actions and the model keeps only one or two, so the rest were dropped.\n"
+    "FIX: reroll\n"
+    "PROMPT: A chef in a white jacket flips a pancake high out of a pan and catches it, then grins at the "
+    "camera. A still, waist-high shot. A busy steel kitchen, lit by bright overhead light. The pan sizzles, "
+    "plates clatter in the background.\n"
+    "NOTE: Kept two actions, the flip and the grin, and stated the camera and light.\n"
+    "TWEAK:\n\n"
+    "EXAMPLE 2\n"
+    "The prompt that made it: A red kite dances above a windy beach.\n"
+    "The user says: it's not right\n"
+    "[1 picture attached.]\n"
+    "QUESTION: What looks or sounds wrong: the kite, how it moves, the camera, or the sound?\n"
+)
+
+
 def _describe(models):
     return "LTX-2.5" if models.get("ltx_transformer") else ""
 
@@ -708,6 +1046,27 @@ ENGINE = {
                "a square image produces distorted, weird motion.",
         "ltx_loop": "16:9 only, 1-2 actions max (vendor prompt contract); this mode has no sound.",  # source: engines/ltx.py:795-797 (prompt field hint)
         "talking": "The line the face will speak; leave it empty for a quiet listening shot instead of speech.",  # source: engines/ltx.py:835-836 (line field hint)
+    },
+    # P3c: the Motion guide's writing skills (engines/__init__.py "writers").
+    "writers": {
+        "ltx": {"label": "Shot writer", "prompt": LTX_WRITER_PROMPT,
+                "keys": {"LENGTH": "length", "WIDTH": "width", "HEIGHT": "height", "PROMPT": "prompt"},
+                "multiline": "PROMPT", "none_token": "NONE", "check": shot_check},
+        "ltx_loop": {"label": "Long take writer", "prompt": LTX_LOOP_WRITER_PROMPT,
+                     "keys": {"LENGTH": "length", "WIDTH": "width", "HEIGHT": "height", "PROMPT": "prompt"},
+                     "multiline": "PROMPT", "none_token": "NONE", "check": shot_check},
+        "talking": {"label": "Line writer", "prompt": TALKING_WRITER_PROMPT,
+                    "keys": {"LENGTH": "length", "LOOK": "look", "LINE": "line"},
+                    "multiline": "LINE", "none_token": "NONE", "derive": talking_derive,
+                    "check": talking_check},
+    },
+    # P3c: "Not right? Tell the guide" on a finished clip (engines/__init__.py
+    # "revisers"). A clip is never edited in place, so reroll is the only fix.
+    "revisers": {
+        mode: {"label": "Clip fixer", "prompt": LTX_REVISER_PROMPT,
+               "keys": ["QUESTION", "DIAGNOSIS", "FIX", "PROMPT", "NOTE", "TWEAK"],
+               "fills": "prompt", "edit_mode": None, "fixes": ["reroll"]}
+        for mode in ("ltx", "ltx_loop")
     },
     # R4: field descriptors carry curation (tier/group/order/units/range/
     # ui_range/enabled_when) -- see the pack contract docstring in
