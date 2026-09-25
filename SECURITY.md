@@ -20,7 +20,10 @@ must not be relied on to make an internet-exposed deployment safe**:
 
 - **DNS rebinding.** Every request's `Host` header is checked against the app's own
   address — `localhost`, its own IP, its own hostname, and anything you add to
-  `"allowed_hosts"` in `config.json`. A request claiming to be for some other host is
+  `"allowed_hosts"` in `config.json`. A `Host` that carries a port must carry the app's
+  own port (a reverse proxy on another port must forward `Host` without a port, or rewrite
+  it to the app's); a different port is refused before the name is looked at, so
+  `"allowed_hosts"` cannot fix it. A request claiming to be for some other host is
   refused with 403, so a malicious page that tricks your browser into resolving a domain
   to `127.0.0.1` still can't get the app to answer as if it were that domain.
 - **Cross-site `POST`s.** A `POST` must carry `Content-Type: application/json` (or

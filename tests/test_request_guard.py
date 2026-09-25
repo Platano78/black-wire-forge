@@ -184,8 +184,16 @@ check("the 403 body's error names allowed_hosts",
       status == 403 and "allowed_hosts" in (obj.get("error") or ""), obj)
 status, _ = req_json(PORT_A, "GET", "/", host="evil.example:%d" % PORT_A)
 check("GET / with Host evil.example:<port> -> 403", status == 403, status)
-status, _ = req_json(PORT_A, "GET", "/", host="127.0.0.1:%d" % PORT_OTHER)
+status, obj = req_json(PORT_A, "GET", "/", host="127.0.0.1:%d" % PORT_OTHER)
 check("GET / with Host 127.0.0.1:<other port> -> 403", status == 403, status)
+err = obj.get("error") or "" if isinstance(obj, dict) else ""
+check("the port refusal names the app's port and the proxy fix, not allowed_hosts "
+      "(which cannot help: the port is checked first)",
+      str(PORT_A) in err and "proxy" in err and "allowed_hosts" not in err, err)
+status, obj = req_json(PORT_B, "GET", "/", host="forge.lan:%d" % PORT_OTHER)
+err = obj.get("error") or "" if isinstance(obj, dict) else ""
+check("an allowed_hosts name on the wrong port is refused the same way",
+      status == 403 and str(PORT_B) in err and "allowed_hosts" not in err, (status, err))
 status, _ = req(PORT_A, "GET", "/", host=None)
 check("GET / with no Host header -> 400", status == 400, status)
 status, _ = req(PORT_B, "GET", "/", host="forge.lan:%d" % PORT_B)

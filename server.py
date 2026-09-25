@@ -5638,9 +5638,9 @@ def request_refusal(handler):
             return 403, "That Host header is not a valid address."
         port = port or None
     if port is not None and port != str(PORT):
-        return 403, ("This app only answers to its own address, not %s. If that is how you "
-                     "reach it, add \"%s\" to \"allowed_hosts\" in config.json."
-                     % (hostname + ":" + port, hostname))
+        return 403, ("This app only answers on port %d, not %s. A proxy in front of it must "
+                     "pass the Host header with no port, or with port %d."
+                     % (PORT, hostname + ":" + port, PORT))
     hn = hostname.lower().strip("[]")
     allowed = {"localhost", "127.0.0.1", "::1"}
     try:                                   # the local address this connection

@@ -40,7 +40,9 @@ are machine-generated.
 
 The app has no login. It checks that requests arrive through its own address (`localhost`,
 the machine's own IP and hostname work with no configuration; any other name you reach it
-by — a mDNS name, a reverse proxy — goes in `"allowed_hosts"`, e.g. `["forge.lan"]`) and
+by — a mDNS name, a reverse proxy — goes in `"allowed_hosts"`, e.g. `["forge.lan"]`; a proxy
+must pass that `Host` with no port, or with the app's own port, since any other port is refused
+before the name is checked) and
 applies some defense in depth against cross-site browser requests. This is not
 authentication and does not make the app safe to expose beyond a trusted LAN — see
 `SECURITY.md` for exactly what the guard does and does not check.
