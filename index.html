@@ -456,6 +456,8 @@
   .tl-slot-ready{border-style:solid; border-color:var(--divider); padding:0}
   .tl-slot-ready img,.tl-slot-ready video{width:100%; height:100%; object-fit:cover; display:block}
   .tl-slot-add{color:var(--text-mid)}
+  .tl-slot-x{flex:none; position:relative; z-index:1; align-self:flex-start; width:22px; height:22px; margin:2px 6px 0 -34px; padding:0; line-height:1; font-size:14px; background:var(--surface2); color:var(--text-mid); border:1px solid var(--divider)}
+  .tl-slot-x:hover{color:var(--error); border-color:var(--error)}
   .tl-stale{
     position:absolute; top:0; right:0; left:0; background:var(--stale); color:var(--on-accent);
     font-size:9px; font-family:var(--mono); letter-spacing:.02em; z-index:1; text-align:left;
@@ -622,12 +624,12 @@
   .seq-row-title, .seq-row-beat{white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
   .seq-row-beat{font-size:12px; color:var(--text-mid)}
   .seq-row[aria-pressed="true"]{border-color:var(--accent)}
-  #seqNewRow{display:flex; flex-wrap:wrap; gap:6px}
-  #seqNewRow input{flex:1 1 100%; min-height:36px; background:var(--surface3); border:1px solid var(--divider);
   .seq-row-rename, .seq-row-delete{flex:none; font-size:11px}
   .seq-row-delete.armed{color:var(--error); border-color:var(--error)}
   .seq-rename-input{min-height:28px; background:var(--surface3); border:1px solid var(--accent); color:var(--text-hi); padding:2px 6px; width:100%}
   .seq-open-title{background:none; border:0; padding:0; color:var(--text-hi); font-weight:600; cursor:text; text-decoration:underline dotted}
+  #seqNewRow{display:flex; flex-wrap:wrap; gap:6px}
+  #seqNewRow input{flex:1 1 100%; min-height:36px; background:var(--surface3); border:1px solid var(--divider);
     color:var(--text-hi); padding:6px 8px}
   #seqOpenNote{font-size:12px; color:var(--text-mid); margin-top:8px; display:flex; align-items:center; gap:8px}
   #slotWarnings{font-size:12px}
@@ -776,6 +778,7 @@
     </div>
     <div id="roomForm">
     <div id="slotWarnings" hidden></div>
+    <div id="slotTools" hidden><button type="button" class="btn" id="slotDeleteBtn">Delete this shot</button></div>
     <div id="laneNote" role="status"></div>
     <!-- H2: "Try this" -- a one-click example per mode, from the packs.
          Sits above the engine picker so it is the first thing offered. -->
@@ -1050,7 +1053,9 @@ const STATE = {
   newSeqMode: 'sequence',  // C3.5: the New sequence row's mode, kept here because that row is rebuilt whole
   beatDraft: null,     // C3.5: {after: beat index} for the one new-beat card open in the script lane
   seqRenaming: null,   // {id, where: 'row'|'open'} while a sequence's name is being edited
-  seqDeleteArmed: null // {id, until}: Delete's click-again-to-confirm window
+  seqDeleteArmed: null,   // {id, until}: Delete's click-again-to-confirm window
+  slotDeleteArmed: null,  // {id, until}: Delete this shot's click-again-to-confirm window
+  freshSlotId: null       // id of a slot that hasn't been touched yet
 };
 
 /* ---------------------------------------------------------------------
@@ -1926,6 +1931,7 @@ async function selectRoom(id, opts){
   if(!room) return;
   const changed = STATE.room !== room.id;
   const cuttingRoom = isCutting(room);
+  if(changed && isCutting(currentRoom())) await dropFreshSlot();
   STATE.room = room.id;
   if(cuttingRoom){
     setSeqHash(opts.seqId !== undefined ? opts.seqId : seqIdFromHash());
@@ -3369,6 +3375,16 @@ function makeConfirmShow(problems, retry){
   $('#makeConfirm').scrollIntoView({block: 'nearest'});
 }
 $('#makeAnywayBtn').onclick = () => { const retry = MAKE_CONFIRM_RETRY; makeConfirmHide(); if(retry) retry(); };
+$('#slotDeleteBtn').onclick = () => {
+  const slot = currentSlot(); if(!slot) return;
+  if(!(slot.takes || []).length){ removeSlot(slot.id); return; }
+  if(STATE.slotDeleteArmed && STATE.slotDeleteArmed.id === slot.id && STATE.slotDeleteArmed.until > Date.now()){
+    STATE.slotDeleteArmed = null; removeSlot(slot.id); return;
+  }
+  STATE.slotDeleteArmed = {id: slot.id, until: Date.now() + 5000};
+  renderSlotMeta(slot);
+  setTimeout(() => renderSlotMeta(currentSlot()), 5100);
+};
 $('#makeFixBtn').onclick = () => {
   makeConfirmHide();
   if(!$('#guidePanel').hidden && !$('#guideTalk').hidden){
@@ -3380,6 +3396,7 @@ $('#makeFixBtn').onclick = () => {
   }
 };
 async function handleSlotMake(slot, confirm){
+  STATE.freshSlotId = null;
   makeConfirmHide();
   $('#makeBtn').disabled = true;
   msgInspector('Saving...', '');
@@ -3521,6 +3538,7 @@ async function openCredits(){
 --------------------------------------------------------------------- */
 const TL_LANE_CAP = {picture: 'image', video: 'video', sound: 'audio'};
 
+const SEQ_LAST_KEY = 'bwf.seq.last';
 function seqIdFromHash(){
   const m = /(?:^#|&)seq=([^&]+)/.exec(location.hash || '');
   return m ? decodeURIComponent(m[1]) : null;
@@ -3598,6 +3616,10 @@ async function seqLoadList(){
     STATE.seqList = [];
   }
 }
+function seqWhen(ts){
+  return ts ? new Date(ts * 1000).toLocaleString('en-GB', {weekday:'short', day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit'}) : '';
+}
+
 function renderSeqPickerList(){
   const body = $('#seqPickerBody');
   if(!body) return;
@@ -3610,16 +3632,13 @@ function renderSeqPickerList(){
   // its #seqModeSelect) until focus happened to move elsewhere.
   const ae = document.activeElement;
   if(ae && (ae.id === 'seqNewTitle' || ae.id === 'seqNewMode')) return;
+  if(ae && ae.classList && ae.classList.contains('seq-rename-input')) return;
   const list = STATE.seqList || [];
   const rows = list.map(s => {
     // The picker's own list (GET /api/sequences) does not refresh on
     // every op -- for the OPEN sequence, its counts come from STATE.seq
     // instead, which every op/poll already keeps current (review fix,
     // 2026-09-23: "0/4 ready" stuck after every shot was picked).
-function seqWhen(ts){
-  return ts ? new Date(ts * 1000).toLocaleString('en-GB', {weekday:'short', day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit'}) : '';
-}
-
     let slots = s.slots || 0, ready = s.ready || 0;
     if(STATE.seq && STATE.seq.id === s.id){
       slots = (STATE.seq.slots || []).length;
@@ -3676,7 +3695,6 @@ function seqWhen(ts){
       + '</div>';
   }).join('');
   body.innerHTML = '<div id="seqList">' + (rows || '<p class="muted">No sequences yet.</p>') + '</div>'
-  if(ae && ae.classList && ae.classList.contains('seq-rename-input')) return;
     + '<div id="seqNewRow"><input type="text" id="seqNewTitle" placeholder="New sequence title">'
     + '<select id="seqNewMode" aria-label="What kind of sequence">'
     + '<option value="sequence"' + (STATE.newSeqMode === 'storyboard' ? '' : ' selected') + '>sequence</option>'
@@ -3704,24 +3722,6 @@ function seqWhen(ts){
   if($('#seqNewMode')) $('#seqNewMode').onchange = e => { STATE.newSeqMode = e.target.value; };
   if($('#seqModeSelect')) $('#seqModeSelect').onchange = e => seqSetMode(e.target.value);
   if($('#seqCloseBtn')) $('#seqCloseBtn').onclick = seqClose;
-}
-/* storyboard <-> sequence (C3.5). The lanes, the cables and the cut do not
-   move; the script lane appears or goes, and the beats stay in the data either
-   way (§2: one room, not a parallel app). */
-async function seqSetMode(mode){
-  const r = await seqOp('set_mode', {mode: mode});
-  if(!r){ renderSeqPickerList(); return; }
-  renderTimeline();
-}
-function seqClose(){
-  STATE.seq = null;
-  STATE.seqSlotId = null;
-  STATE.cutError = null;
-  STATE.beatDraft = null;   // C3.5: an un-typed draft dies with the sequence
-  BEAT_SAVES = {};
-  setSeqHash(null);
-  renderSeqPickerList();
-  renderTimeline();
   // Rename buttons
   $$('.seq-row-rename').forEach(b => b.onclick = () => {
     STATE.seqRenaming = {id: b.dataset.seqRename, where: 'row'};
@@ -3750,28 +3750,31 @@ function seqClose(){
       renderSeqPickerList();
     }
   };
+}
+/* storyboard <-> sequence (C3.5). The lanes, the cables and the cut do not
+   move; the script lane appears or goes, and the beats stay in the data either
+   way (§2: one room, not a parallel app). */
+async function seqSetMode(mode){
+  const r = await seqOp('set_mode', {mode: mode});
+  if(!r){ renderSeqPickerList(); return; }
+  renderTimeline();
+}
+async function seqClose(){
+  await dropFreshSlot();
+  try{ localStorage.removeItem(SEQ_LAST_KEY); } catch(e){}
+  STATE.seq = null;
+  STATE.seqSlotId = null;
+  STATE.cutError = null;
+  STATE.beatDraft = null;   // C3.5: an un-typed draft dies with the sequence
+  BEAT_SAVES = {};
+  setSeqHash(null);
+  renderSeqPickerList();
+  renderTimeline();
   renderRefRoom();
   $('#roomForm').hidden = true;
   renderMonitor();
   renderGuidePanel();   // each sequence has its own conversation
 }
-async function seqCreateNew(){
-  const input = $('#seqNewTitle');
-  const title = (input ? input.value.trim() : '');
-  const modeSel = $('#seqNewMode');
-  const mode = (modeSel && modeSel.value) || STATE.newSeqMode || 'sequence';
-  try{
-    r = await postJSON('/api/sequence', {title: title, mode: mode});
-    if(!r || !r.id){ msgSeq((r && r.error) || 'Could not start that sequence.', 'err'); return; }
-  }catch(e){ msgSeq(String(e.message || e), 'err'); return; }
-  await seqLoadList();
-  await seqOpenById(r.id);
-}
-async function seqOpenById(id){
-  try{
-    const d = await getJSON('/api/sequence?id=' + encodeURIComponent(id));
-    if(!d || !d.id){ msgSeq('There is no such sequence.', 'err'); return; }
-    STATE.seq = d;
 // The rename box keeps focus through the save, and renderSeqPickerList() will not
 // rebuild under a focused box -- so it is let go of first.
 function seqRenameEnd(){
@@ -3825,28 +3828,49 @@ function seqDeleteClick(id){
     }, 5100);
   }
 }
+async function seqCreateNew(){
+  const input = $('#seqNewTitle');
+  const title = (input ? input.value.trim() : '');
+  const modeSel = $('#seqNewMode');
+  const mode = (modeSel && modeSel.value) || STATE.newSeqMode || 'sequence';
+  let r;
+  try{
+    r = await postJSON('/api/sequence', {title: title, mode: mode});
+    if(!r || !r.id){ msgSeq((r && r.error) || 'Could not start that sequence.', 'err'); return; }
+  }catch(e){ msgSeq(String(e.message || e), 'err'); return; }
+  if($('#seqNewTitle')) $('#seqNewTitle').value = '';
+  await seqLoadList();
+  await seqOpenById(r.id);
+}
+async function seqOpenById(id){
+  await dropFreshSlot();
+  try{
+    const d = await getJSON('/api/sequence?id=' + encodeURIComponent(id));
+    if(!d || !d.id){ msgSeq('There is no such sequence.', 'err'); return; }
+    STATE.seq = d;
   }catch(e){ msgSeq(String(e.message || e), 'err'); return; }
   STATE.seqSlotId = null;
   STATE.cutError = null;
   setSeqHash(id);
+  try{ localStorage.setItem(SEQ_LAST_KEY, id); } catch(e){ /* storage off: nothing to remember */ }
   renderSeqPickerList();
-  let r;
   renderTimeline();
   renderRefRoom();
   $('#roomForm').hidden = true;
   renderMonitor();
-  if($('#seqNewTitle')) $('#seqNewTitle').value = '';
   renderGuidePanel();   // each sequence has its own conversation
 }
 async function seqEnterRoom(sid){
   await seqLoadList();
   renderSeqPickerList();
+  if(!sid){ try{ sid = localStorage.getItem(SEQ_LAST_KEY) || null; } catch(e){ sid = null; } }
   if(sid && STATE.seqList.some(s => s.id === sid)){
     await seqOpenById(sid);
   } else {
     STATE.seq = null;
     STATE.seqSlotId = null;
     if(sid) setSeqHash(null);
+    try{ localStorage.removeItem(SEQ_LAST_KEY); } catch(e){}
     renderSeqPickerList();
     renderTimeline();
     renderRefRoom();
@@ -3873,6 +3897,7 @@ function firstAvailableModeFor(cap){
   return modes.find(m => m.available) || modes[0] || null;
 }
 async function addSlot(lane){
+  await dropFreshSlot();
   const cap = TL_LANE_CAP[lane];
   const mode = firstAvailableModeFor(cap);
   if(!mode){ msgSeq('No installed engine makes a ' + lane + ' shot yet.', 'err'); return; }
@@ -3882,7 +3907,25 @@ async function addSlot(lane){
   renderTimeline();
   const added = r.slots.filter(s => s.lane === lane);
   const newSlot = added[added.length - 1];
-  if(newSlot && r.slots.length > before) selectSlot(newSlot.id);
+  if(newSlot && r.slots.length > before){
+    STATE.freshSlotId = newSlot.id;   // set first: the tile shows as selected mid-select
+    await selectSlot(newSlot.id);
+  }
+}
+async function dropFreshSlot(){
+  const id = STATE.freshSlotId; STATE.freshSlotId = null; if(!id || !STATE.seq) return;
+  const slot = (STATE.seq.slots || []).find(s => s.id === id);
+  if(!slot || slot.state !== 'empty' || (slot.takes || []).length) return;
+  const r = await seqOp('remove_slot', {slot_id: id}); if(!r) return;
+  if(STATE.seqSlotId === id){ STATE.seqSlotId = null; }
+  renderTimeline();
+}
+async function removeSlot(slotId){
+  if(STATE.freshSlotId === slotId) STATE.freshSlotId = null;
+  const r = await seqOp('remove_slot', {slot_id: slotId}); if(!r) return;
+  if(STATE.seqSlotId === slotId){ STATE.seqSlotId = null; $('#roomForm').hidden = true; STATE.selectedJobId = null; }
+  renderTimeline(); renderMonitor(); renderSlotMeta(currentSlot());
+  msgSeq('Removed that shot. Anything it made is still in History.', 'ok');
 }
 
 function coercedValues(mode){
@@ -3906,6 +3949,7 @@ function coercedValues(mode){
 
 let SEQ_SAVE_TIMER = null;
 function scheduleSlotSave(){
+  STATE.freshSlotId = null;
   if(!STATE.seqSlotId) return;
   clearTimeout(SEQ_SAVE_TIMER);
   SEQ_SAVE_TIMER = setTimeout(saveSlotNow, 600);
@@ -3932,6 +3976,17 @@ async function saveSlotOnce(){
 }
 
 function renderSlotMeta(slot){
+  $('#slotTools').hidden = !slot;
+  if(!slot) return;
+  const delBtn = $('#slotDeleteBtn');
+  if(delBtn){
+    const armed = STATE.slotDeleteArmed && STATE.slotDeleteArmed.id === slot.id && STATE.slotDeleteArmed.until > Date.now();
+    const n = (slot.takes || []).length;
+    if(armed && n)
+      delBtn.textContent = 'Click again to delete — its ' + n + ' take' + (n === 1 ? '' : 's') + ' stay in History';
+    else
+      delBtn.textContent = 'Delete this shot';
+  }
   const el = $('#slotWarnings');
   if(!el) return;
   if(!slot){ el.hidden = true; el.innerHTML = ''; return; }
@@ -3955,6 +4010,7 @@ function renderSlotMeta(slot){
 }
 
 async function selectSlot(slotId){
+  if(STATE.freshSlotId && STATE.freshSlotId !== slotId) await dropFreshSlot();
   const slot = (STATE.seq.slots || []).find(s => s.id === slotId);
   if(!slot) return;
   STATE.seqSlotId = slotId;
@@ -4057,13 +4113,17 @@ function renderTimeline(){
     const track = $('#tlTrack' + lane[0].toUpperCase() + lane.slice(1));
     if(!track) return;
     const slots = seq ? (seq.slots || []).filter(s => s.lane === lane) : [];
-    const html = slots.map(slotTileHTML).join('')
+    // An empty shot's × sits right after its tile (a button cannot hold a button).
+    const html = slots.map(slot => slotTileHTML(slot) + (slot.state === 'empty'
+        ? '<button type="button" class="tl-slot-x" data-slot-remove="' + esc(slot.id) + '" aria-label="Remove this empty shot" title="Remove this empty shot">\u00d7</button>'
+        : '')).join('')
       + '<button type="button" class="tl-slot tl-slot-add" data-add-lane="' + lane + '"'
       + (seq ? '' : ' disabled') + '>+ generate here</button>';
     // Write only on change: the slot tiles are the nodes the user hovers
     // and clicks, and they must not be replaced out from under a click.
     if(setHTML(track, html)){
       Array.from(track.querySelectorAll('[data-slot-id]')).forEach(b => b.onclick = () => onSlotTileClick(b.dataset.slotId));
+      track.querySelectorAll('[data-slot-remove]').forEach(b => b.onclick = e => { e.stopPropagation(); removeSlot(b.dataset.slotRemove); });
       const addBtn = track.querySelector('[data-add-lane]');
       if(addBtn) addBtn.onclick = () => addSlot(lane);
     }
