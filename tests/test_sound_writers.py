@@ -70,6 +70,22 @@ p = audio.music_check({"caption": PLAIN, "lyrics": RAP, "seconds": 150.0}, {})
 check("a plain caption with a rapper and lyrics for 150 s passes", p == [], p)
 p = audio.music_check({"caption": PLAIN, "lyrics": "[Verse]\na\n[Hook]\nb", "seconds": 150.0}, {})
 check("too few sections for 150 s", len(p) == 1 and "at least 4" in p[0], p)
+# Music3 fills the whole length and does not stop early (2026-09-28): a 37-line rap was done by ~100 s
+# of a 301 s render and looped to the end; a 21-line sung sheet cut off at 120 s and finished at 180 s.
+RAP37 = "\n\n".join("[%s]\n" % t + "\n".join(["line of the verse right here"] * n)
+                     for t, n in (("Verse", 12), ("Hook", 4), ("Verse", 12), ("Hook", 4), ("Outro", 5)))
+p = audio.music_check({"caption": PLAIN, "lyrics": RAP37, "seconds": 301.0}, {})
+check("37 rapped lines on 301 s: the tail is named, with a length that fits",
+      len(p) == 1 and "wandering music" in p[0] and "about 140" in p[0], p)
+check("37 rapped lines on 150 s passes", audio.music_check({"caption": PLAIN, "lyrics": RAP37, "seconds": 150.0}, {}) == [])
+SUNG = PLAIN.replace("A male rapper with a low, gravelly voice and a relaxed flow.", "A warm female alto sings.")
+SUNG21 = "\n\n".join("[%s]\n" % t + "\n".join(["a sung line of the song"] * n)
+                      for t, n in (("Verse", 6), ("Chorus", 4), ("Verse", 5), ("Chorus", 4), ("Outro", 2)))
+p = audio.music_check({"caption": SUNG, "lyrics": SUNG21, "seconds": 120.0}, {})
+check("21 sung lines on 120 s: named as cut off", len(p) == 1 and "cut off" in p[0], p)
+check("21 sung lines on 180 s passes", audio.music_check({"caption": SUNG, "lyrics": SUNG21, "seconds": 180.0}, {}) == [])
+check("a sung voice over a boom-bap beat is paced as singing (Vocal Details decide, not the genre line)",
+      "boom bap" in SUNG and audio.music_words_end(SUNG, SUNG21) > 150)
 inst = PLAIN.replace("A male rapper with a low, gravelly voice and a relaxed flow.", "Instrumental, no vocals. A flute leads.")
 check("an instrumental with no lyrics passes", audio.music_check({"caption": inst, "lyrics": "", "seconds": 150.0}, {}) == [])
 check("an instrumental with lyrics: the words would be lost", "describe no voice" in " ".join(

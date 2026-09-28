@@ -26,10 +26,10 @@ RULES
    60 to 119 s: at least 2 (a verse and a chorus)
    120 to 179 s: at least 4 (two verses and two choruses)
    180 s or more: at least 5 (two verses, two choruses and a bridge)
-   When unsure, write MORE: too few words for the length plays as a long stretch with no voice.
+   Then fit SECONDS to the words: this model sings a line in about 7 seconds and raps one in about 3, and it does not stop early. SECONDS = about 10 + (lines x 7 sung, or x 3 rapped) + 30. Past the last line it fills the time with wandering music; with too little time it cuts the song off.
 4. ONLY WHAT CAN BE HEARD. The caption describes sound: genre, era, tempo, drums, bass, instruments, the voice, the mix and the arrangement. Never places, rooms, smells, weather, clothes, objects or colours, and never the story: the model cannot hear them. The subject goes in the LYRICS. Never quote or retell the lyrics in the caption.
 5. THE CAPTION is 250-450 words of full plain sentences, never fewer than 250: Global Metadata 4-5 sentences, Vocal Details 3-4 sentences, Arrangement one or two sentences for every section in order. The three labels Global Metadata, Vocal Details and Arrangement go each on a line of its own, exactly as shown. The Vocal Details voice is the one that performs the LYRICS.
-6. SECONDS is 150 unless the request or an answer gives a length. Under 150 has cut off mid-phrase on this model: when the user asks for less, use it and say so in NOTE.
+6. SECONDS: when the request or an answer gives a length, write words that fill it (rule 3) and use it. Otherwise size it to the words (rule 3).
 7. Carry every concrete detail from the request: "80s synth-pop" stays "80s synth-pop", not "pop".
 8. The room line in [brackets] is the form as it is now; it is not the request.
 

@@ -12,6 +12,11 @@ All notable changes to Black Wire Forge are recorded here.
   `UNETLoader` or `UnetLoaderGGUF` from the file type, and YuE2 takes the bf16 or int8
   checkpoint. A lane holding only a native LTX build, or only the int8 YuE2 file, now shows
   those modes as available instead of missing.
+- Music (MiniMax-Music3) songs end when the words end. The model fills whatever length it is given
+  and does not stop early, so a length longer than the lyrics played the last minutes as wandering
+  music. The music writer now sizes the length to its words (about 7 seconds a sung line, about 3 a
+  rapped one), and the check before a render names a length that leaves more than a minute after the
+  last line, or cuts the words off, with a length that fits.
 
 ## v1.1.0 — 2026-09-25
 

@@ -1031,6 +1031,47 @@ def music_vocals(caption):
     return bool(vocal) and not _NO_VOCALS_RE.search(re.split(r"[.!?\n]", vocal, maxsplit=1)[0])
 
 
+# Music3 performs lyrics at its own pace and fills whatever length it is given: past the last
+# line it wanders (measured 2026-09-28: a 37-line rap was done by ~100 s of a 301 s render and
+# looped its outro to the end; sung lines run ~7 s each -- a 21-line sheet cut off at 120 s and
+# finished at 180 s). A model property, not a hardware one.
+MUSIC_SUNG_SECONDS_PER_LINE = 7.2
+MUSIC_RAP_SECONDS_PER_LINE = 2.7
+MUSIC_INTRO_SECONDS = 10.0
+MUSIC_MAX_AFTER_WORDS = 60.0
+_RAP_RE = re.compile(r"\b(rap|raps|rapped|rapper|rappers|rapping|hip[- ]?hop|boom[- ]?bap|MC)\b", re.I)
+
+
+def music_lyric_lines(lyrics):
+    """Lines to be performed: non-empty lines that are not [Section] tags."""
+    return sum(1 for l in (lyrics or "").splitlines() if l.strip() and not re.fullmatch(r"\[[^\]]*\]", l.strip()))
+
+
+def music_words_end(caption, lyrics):
+    """Roughly when the last lyric line lands, in seconds (rap is performed ~2.7x faster)."""
+    vocal = music_caption_sections(caption).get("vocal details") or caption or ""
+    rate = MUSIC_RAP_SECONDS_PER_LINE if _RAP_RE.search(vocal) else MUSIC_SUNG_SECONDS_PER_LINE
+    return MUSIC_INTRO_SECONDS + music_lyric_lines(lyrics) * rate
+
+
+def _music_length_fit_problem(caption, lyrics, seconds):
+    """Length vs words for Music3 -> one problem sentence, or None."""
+    try:
+        seconds = float(seconds)
+    except (TypeError, ValueError):
+        return None
+    end = music_words_end(caption, lyrics)
+    fit = round((end + 30) / 5) * 5
+    if seconds < end:
+        return ("These %d lines need about %d seconds; at %g seconds the song is cut off before the words "
+                "end. Set the length to about %d, or trim the words." % (music_lyric_lines(lyrics), end, seconds, fit))
+    if seconds - end > MUSIC_MAX_AFTER_WORDS:
+        return ("These %d lines are done by about %d seconds; the other %d seconds would be filled with "
+                "wandering music, because this model does not stop early. Set the length to about %d, or add "
+                "words." % (music_lyric_lines(lyrics), end, seconds - end, fit))
+    return None
+
+
 def music_check(values, request):
     """The music writer's check, also run as the Make-time guard for this
     mode. `request` is unused. -> plain problem sentences, [] when fine."""
@@ -1064,6 +1105,8 @@ def music_check(values, request):
         problems.append("There are lyrics, but the Vocal Details describe no voice, so the words will likely be "
                         "lost. Describe the voice that performs them.")
     size = _lyrics_size_problem(lyrics, values.get("seconds")) if lyrics else None
+    if not size and lyrics and vocals:
+        size = _music_length_fit_problem(caption, lyrics, values.get("seconds"))
     if size:
         problems.append(size)
     return problems
