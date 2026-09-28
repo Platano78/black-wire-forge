@@ -12,6 +12,8 @@
       "port": 8188,
       "caps": ["image"],
       "note": "a ComfyUI instance on this machine"
+
+      ,"_downloads_comment": "Optional, per lane, OFF unless you add \"downloads\" below -- a fresh config downloads nothing. It opts THIS lane in to downloading style LoRAs from the \"Browse styles\" catalog: \"downloads\": {\"loras_dir\": \"/absolute/path/to/ComfyUI/models/loras\", \"max_bytes\": 4294967296}. loras_dir must be an absolute path on the machine running this app; max_bytes is optional (default 4 GiB)."
     }
   ]
 }

@@ -6,6 +6,18 @@ All notable changes to Black Wire Forge are recorded here.
 
 ### Added
 
+- Style packs (LoRAs) for the Picture room (t2i, edit) and Pixel Art: pick up to two style LoRAs
+  already installed on the lane, each with its own strength (0-1.5), chained after the model
+  loader; picking none leaves the render graph byte-for-byte the same as before. A "Browse
+  styles" drawer lists matching LoRAs for the lane's picture model from the Hugging Face Hub's
+  public API, with downloads, licence ("licence unknown" when the card states none) and file
+  size; NSFW-tagged packs are hidden unless the drawer's "Advanced" toggle is on. Downloading a
+  file is opt-in per lane (`"downloads": {"loras_dir": "..."}` in config.json) and off by
+  default; without it, "Get it" prints the exact `hf download` command to run on the ComfyUI
+  machine instead. A download is validated server-side end to end (only a Hub URL built from a
+  catalog id, a bare `.safetensors` filename that cannot leave the lane's LoRA folder, a size
+  cap, one at a time per lane, cancellable) before any byte reaches disk.
+
 - "Write this shot" and "Help me write this" now see a shot's own starting or face picture --
   the LTX shot writer (its starting picture), the H3 fl2va shot writer (its starting picture),
   and the Talking Head line writer (its face picture) -- the same way the Picture room's edit

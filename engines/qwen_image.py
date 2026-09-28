@@ -10,6 +10,56 @@ import re
 from . import unet_loader, quant_words
 
 
+# LORA-1, Build A: the Style picker chains up to two LoraLoaderModelOnly
+# nodes (same pattern the H3 speed pack already uses after a loader) onto
+# the model wire, between the UNet loader ("1") and whatever reads it next
+# (APG, or the KSampler/ModelSamplingAuraFlow wiring below). Reserved node
+# ids "30"/"31" -- unused elsewhere in this pack or pixelart.py's own
+# appended nodes ("20"-"24"). With no style chosen this returns model_ref
+# UNCHANGED, so the graph stays byte-identical to today (pinned by
+# tests/test_qwen_style_golden.py).
+def apply_style_loras(g, p, model_ref):
+    for i, (name_key, strength_key) in enumerate(
+            (("style_1", "style_1_strength"), ("style_2", "style_2_strength")), start=1):
+        name = p.get(name_key)
+        if not name:
+            continue
+        nid = str(29 + i)  # "30", "31"
+        strength = float(p.get(strength_key) or 1.0)
+        g[nid] = {"class_type": "LoraLoaderModelOnly",
+                  "inputs": {"model": model_ref, "lora_name": name, "strength_model": strength}}
+        model_ref = [nid, 0]
+    return model_ref
+
+
+# Declared once, shared by t2i, edit (below) and pixelart.py (which reuses
+# these graph builders directly) -- one field list, never three copies to
+# drift. Discovery rule (Build A): filename contains qwen_image/qwen-image,
+# case-insensitive -- agnostic, no hard-coded filenames. Options are filled
+# in server-side per lane (server.py's engines_payload), from the lane's
+# discovered "lora" pool filtered by this "match" rule.
+STYLE_FIELDS = [
+    {"id": "style_1", "label": "Style", "type": "pool_select", "pool": "lora",
+     "match": {"any": ["qwen_image", "qwen-image"]}, "default": "",
+     "tier": "advanced", "group": "Style", "order": 20,
+     "hint": "A style pack installed on this lane, if any. \"None\" changes nothing."},
+    {"id": "style_1_strength", "label": "Style strength", "type": "number", "default": 1.0,
+     "tier": "advanced", "group": "Style", "order": 21,
+     "units": "strength", "range": [0, 1.5], "ui_range": [0, 1.5],
+     "enabled_when": {"field": "style_1", "truthy": True},
+     "disabled_reason": "Only used when a Style pack is chosen."},
+    {"id": "style_2", "label": "Style 2", "type": "pool_select", "pool": "lora",
+     "match": {"any": ["qwen_image", "qwen-image"]}, "default": "",
+     "tier": "advanced", "group": "Style", "order": 22,
+     "hint": "A second style pack, stacked on top of the first."},
+    {"id": "style_2_strength", "label": "Style 2 strength", "type": "number", "default": 1.0,
+     "tier": "advanced", "group": "Style", "order": 23,
+     "units": "strength", "range": [0, 1.5], "ui_range": [0, 1.5],
+     "enabled_when": {"field": "style_2", "truthy": True},
+     "disabled_reason": "Only used when a second Style pack is chosen."},
+]
+
+
 def _describe(models):
     name = (models.get("qwen_unet") or "").lower()
     ver = " 2.1" if "2.1" in name else ""
@@ -42,10 +92,10 @@ def qwen_t2i_graph(p, m):
         "6": {"class_type": "EmptyLatentImage",
               "inputs": {"width": p["width"], "height": p["height"], "batch_size": 1}},
     }
-    model_out = ["1", 0]
+    model_out = apply_style_loras(g, p, ["1", 0])
     if guidance_style == "Balanced":
         g["11"] = {"class_type": "APG", "inputs": {
-            "model": ["1", 0],
+            "model": model_out,
             "eta": float(p.get("apg_eta", 1.0)),
             "norm_threshold": float(p.get("apg_norm_threshold", 10.0)),
             "momentum": float(p.get("apg_momentum", 0.3))}}
@@ -86,10 +136,10 @@ def qwen_edit_graph(p, m):
             "clip": ["2", 0], "prompt": p["prompt"], "negative_prompt": p.get("negative", ""),
             "resolution": int(p.get("resolution", 1024)), "vae": ["3", 0]}},
     }
-    model_out = ["1", 0]
+    model_out = apply_style_loras(g, p, ["1", 0])
     if guidance_style == "Balanced":
         g["11"] = {"class_type": "APG", "inputs": {
-            "model": ["1", 0],
+            "model": model_out,
             "eta": float(p.get("apg_eta", 1.0)),
             "norm_threshold": float(p.get("apg_norm_threshold", 10.0)),
             "momentum": float(p.get("apg_momentum", 0.3))}}
@@ -670,7 +720,7 @@ ENGINE = {
              "units": "cutoff", "range": [1, 64], "ui_range": [4, 16],
              "enabled_when": {"field": "guidance_style", "equals": "Balanced"},
              "disabled_reason": "Only used when Guidance style is Balanced."},
-        ],
+        ] + STYLE_FIELDS,
         "edit": [
             {"id": "prompt", "label": "Prompt", "type": "textarea",
              "tier": "primary", "group": "Content", "order": 1},
@@ -738,7 +788,7 @@ ENGINE = {
              "units": "cutoff", "range": [1, 64], "ui_range": [4, 16],
              "enabled_when": {"field": "guidance_style", "equals": "Balanced"},
              "disabled_reason": "Only used when Guidance style is Balanced."},
-        ],
+        ] + STYLE_FIELDS,
     },
     # R3: named parameter sets. `default` covers the plain path (the app's
     # existing production defaults); the others cite real measurements --
@@ -865,4 +915,12 @@ ENGINE = {
         "shippable": False,
         "attribution": "Qwen-Image 2.1 by Alibaba Qwen team",
     },
+    # LORA-1 Build B: which Hugging Face Hub base-model id a lane's "Browse
+    # styles" catalog should query, and how to tell this pack owns that
+    # lane -- the SAME "match" rule style_1 already uses on the "lora" pool,
+    # applied here to the resolved "role" filename instead. Declared here so
+    # server.py (engine-agnostic by design) never names "qwen" itself; see
+    # engines.style_catalogs().
+    "style_catalog": {"role": "qwen_unet", "match": {"any": ["qwen_image", "qwen-image"]},
+                      "hf_base": "Qwen/Qwen-Image-2.1"},
 }

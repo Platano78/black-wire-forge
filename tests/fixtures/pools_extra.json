@@ -1,0 +1,16 @@
+{
+ "lora": {
+  "LoraLoaderModelOnly.lora_name": [
+   [
+    "licon_msr/LTX-2.3-Licon-MSR-V2.safetensors",
+    "licon_msr25/LTX-2.5-Licon-MSR-V1.safetensors",
+    "minimax_h3/lightx2v_hybrid-4to8step-Turbo_r48.safetensors",
+    "minimax_h3/loras/minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors",
+    "minimax_h3/loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+    "minimax_h3/loras/minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+    "pixel-sdxl/pixel-art-xl.safetensors",
+    "test_style_qwen_image.safetensors"
+   ]
+  ]
+ }
+}

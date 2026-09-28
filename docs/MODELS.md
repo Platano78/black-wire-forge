@@ -44,6 +44,16 @@ Verified working source: `Abiray/Qwen-Image-2.1-GGUF`'s `qwen_image_2.1_Q6_K.ggu
 BiRefNet (`birefnet_model` — see the BiRefNet section below); downloading only the three rows
 above leaves Pixel Art unavailable.
 
+### Style packs (LoRAs)
+
+Not a required model — optional, per lane. Any `.safetensors` LoRA already in the lane's ComfyUI
+`models/loras` whose filename contains `qwen_image` or `qwen-image` shows up as a "Style" choice
+in the Picture and Pixel Art forms automatically (`engines/qwen_image.py`'s `STYLE_FIELDS`); the
+app never ships one. The Picture room's "Browse styles" drawer lists candidates for this model
+from the Hugging Face Hub's public adapters API — licence and file size shown, downloading opt-in
+per lane (see AGENTS.md's "Getting the models"). No LoRA here is vetted or shippable; check its
+own licence before using its output commercially.
+
 ## LTX-2.5 (`engines/ltx.py`) — video
 
 Licence: **LTX-2.x Community License** ([official text](https://raw.githubusercontent.com/Lightricks/LTX-2/main/LICENSE-2_x)), confirmed live 2026-09-24. Section 2.1: *"Entities with annual

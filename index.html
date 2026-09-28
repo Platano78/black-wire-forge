@@ -802,6 +802,9 @@
     <div>
       <h2 id="roomHeading"></h2>
       <p id="roomBlurb"></p>
+      <!-- LORA-1 Build B: only shown when the current mode has a "pool_select"
+           style field (renderModeFields toggles this). -->
+      <button class="btn" id="browseStylesBtn" type="button" hidden>Browse styles</button>
     </div>
     <p id="roomPlainNote" hidden></p>
     <!-- Sequence picker (C3.3, §7): the Cutting Room's own entry point --
@@ -1007,6 +1010,22 @@
     <button class="close-x" type="button" data-close="shareDialog" aria-label="Close">&times;</button>
   </div>
   <div class="dialog-body" id="shareBody"></div>
+</dialog>
+
+<!-- LORA-1 Build B: the "Browse styles" catalog drawer. Server-driven --
+     this page names no model family and builds no download URL itself. -->
+<dialog id="lorasDialog">
+  <div class="dialog-head">
+    <h2>Browse styles</h2>
+    <button class="close-x" type="button" data-close="lorasDialog" aria-label="Close">&times;</button>
+  </div>
+  <div class="dialog-body">
+    <label style="display:flex; align-items:center; gap:6px">
+      <input type="checkbox" id="lorasAdvanced"> Advanced (show packs marked not for all audiences)
+    </label>
+    <p id="lorasMsg" role="status"></p>
+    <div id="lorasBody"></div>
+  </div>
 </dialog>
 
 <script>
@@ -2145,9 +2164,12 @@ function fieldControlHTML(f, carry){
     return '<textarea id="' + id + '" data-field-id="' + esc(f.id) + '" data-field-tier="' + tierOf(f) + '">'
       + esc(val) + '</textarea>';
   }
-  if(f.type === 'select'){
+  if(f.type === 'select' || f.type === 'pool_select'){
+    // LORA-1: a pool_select's "" option is "None" (the field's own default,
+    // as declared) -- its live options come from server.py, filled in per
+    // lane from that lane's discovered pool, never a hard-coded list here.
     return '<select id="' + id + '" data-field-id="' + esc(f.id) + '" data-field-tier="' + tierOf(f) + '">'
-      + (f.options || []).map(o => '<option value="' + esc(o) + '"' + (o === val ? ' selected' : '') + '>' + esc(o) + '</option>').join('')
+      + (f.options || []).map(o => '<option value="' + esc(o) + '"' + (o === val ? ' selected' : '') + '>' + esc(o === '' ? 'None' : o) + '</option>').join('')
       + '</select>';
   }
   if(f.type === 'checkbox'){
@@ -2547,6 +2569,9 @@ async function renderModeFields(){
   // not "everything else that happens to also be a text/number field".
   const advancedTotal = fields.filter(f => tierOf(f) === 'advanced').length;
   $('#advancedSummary').textContent = 'Everything else (' + advancedTotal + ')';
+  // LORA-1 Build B: only a mode with a "pool_select" style field can browse
+  // a matching style catalog.
+  $('#browseStylesBtn').hidden = !fields.some(f => f.type === 'pool_select');
 
   // Only now does every field exist: the quality tier's values, then the
   // recipe's on top (applyPreset runs applyTierValues first). Run earlier,
@@ -4139,6 +4164,92 @@ async function openCredits(){
       }).join('')
     : '<p class="muted">No licence data available yet.</p>');
   dlg.showModal();
+}
+
+/* ---------------------------------------------------------------------
+   LORA-1 Build B: the "Browse styles" catalog drawer.
+--------------------------------------------------------------------- */
+function humanBytes(n){
+  if(n == null) return 'size unknown';
+  const units = ['B','KB','MB','GB'];
+  let v = n, i = 0;
+  while(v >= 1024 && i < units.length - 1){ v /= 1024; i++; }
+  return (i === 0 ? v : v.toFixed(1)) + ' ' + units[i];
+}
+let LORAS_POLL = null;
+async function renderDownloadStatus(lane){
+  const r = await getJSON('/api/lora/download?lane=' + encodeURIComponent(lane));
+  const d = r.download;
+  if(!d){ $('#lorasMsg').textContent = ''; return; }
+  if(d.done){
+    $('#lorasMsg').textContent = d.ok ? (d.file + ' is ready.') : (d.error || 'Download failed.');
+    clearInterval(LORAS_POLL);
+    LORAS_POLL = null;
+  } else {
+    $('#lorasMsg').innerHTML = 'Getting ' + esc(d.file) + ': ' + humanBytes(d.bytes)
+      + (d.total ? ' of ' + humanBytes(d.total) : '')
+      + ' <button type="button" class="btn" id="lorasCancelBtn">Cancel</button>';
+    const b = $('#lorasCancelBtn');
+    if(b) b.onclick = () => postJSON('/api/lora/download/cancel', {lane});
+  }
+}
+async function loraGetIt(lane, downloadsOn, repo, file){
+  if(!downloadsOn){
+    const cmd = 'hf download ' + repo + ' ' + file + ' --local-dir <ComfyUI>/models/loras';
+    // The message shows the command regardless; the clipboard write is a
+    // best-effort convenience that must never block or delay it (a denied
+    // or slow permission prompt must not hang "Get it").
+    $('#lorasMsg').textContent = 'Downloads are off for this lane. Run on the ComfyUI machine: ' + cmd;
+    if(navigator.clipboard) navigator.clipboard.writeText(cmd)
+      .then(() => { $('#lorasMsg').textContent += ' (copied)'; }, () => {});
+    return;
+  }
+  const r = await postJSON('/api/lora/download', {lane, repo, file});
+  if(!r.ok){ $('#lorasMsg').textContent = r.error || 'Could not start the download.'; return; }
+  if(LORAS_POLL) clearInterval(LORAS_POLL);
+  LORAS_POLL = setInterval(() => renderDownloadStatus(lane), 1500);
+  renderDownloadStatus(lane);
+}
+let LORAS_REQ = 0;
+async function openLoraDrawer(){
+  const lane = STATE.activeLane;
+  const dlg = $('#lorasDialog');
+  if(!lane){ $('#lorasMsg').textContent = 'Pick a machine first.'; dlg.showModal(); return; }
+  const laneInfo = STATE.lanes.find(l => l.id === lane) || {};
+  $('#lorasAdvanced').onchange = () => openLoraDrawer();
+  const advanced = $('#lorasAdvanced').checked ? 1 : 0;
+  $('#lorasBody').innerHTML = '<p class="muted">Loading…</p>';
+  dlg.showModal();
+  // The Advanced toggle can fire a second request before the first answers;
+  // a stale reply must never overwrite what the LATEST toggle state asked for.
+  const myReq = ++LORAS_REQ;
+  let r;
+  try {
+    r = await getJSON('/api/catalog/loras?lane=' + encodeURIComponent(lane) + '&advanced=' + advanced);
+  } catch(e){
+    if(myReq !== LORAS_REQ) return;
+    $('#lorasBody').innerHTML = '<p class="muted">' + esc(String(e.message || e)) + '</p>';
+    return;
+  }
+  if(myReq !== LORAS_REQ) return;
+  if(!r.ok){ $('#lorasBody').innerHTML = '<p class="muted">' + esc(r.error || '') + '</p>'; return; }
+  if(r.note){ $('#lorasBody').innerHTML = '<p class="muted">' + esc(r.note) + '</p>'; return; }
+  if(!r.loras || !r.loras.length){ $('#lorasBody').innerHTML = '<p class="muted">Nothing found.</p>'; return; }
+  $('#lorasBody').innerHTML = r.loras.map(pack => {
+    const lic = pack.licence ? esc(pack.licence) : 'licence unknown';
+    const files = (pack.files || []).map(f =>
+      '<div class="ledger-row"><span>' + esc(f.filename) + ' (' + humanBytes(f.size) + ')</span>'
+      + '<span class="leader"></span>'
+      + '<button type="button" class="btn" data-get-repo="' + esc(pack.id) + '" data-get-file="' + esc(f.filename) + '">Get it</button></div>'
+    ).join('');
+    return '<div class="credit-row"><div class="name">' + esc(pack.id) + ' <span class="muted">· ' + lic + '</span></div>'
+      + '<div class="attribution">' + pack.downloads + ' downloads · ' + pack.likes + ' likes'
+      + (pack.nsfw ? ' · not for all audiences' : '') + '</div>' + files + '</div>';
+  }).join('');
+  $$('#lorasBody [data-get-repo]').forEach(b => {
+    b.onclick = () => loraGetIt(lane, laneInfo.downloads, b.dataset.getRepo, b.dataset.getFile);
+  });
+  renderDownloadStatus(lane);
 }
 
 /* ---------------------------------------------------------------------
@@ -5789,6 +5900,7 @@ function bindStaticUI(){
     if(id && roomById(id) && (id !== STATE.room || tryId)) selectRoom(id, {tryId});
   });
   $('#creditsBtn').onclick = openCredits;
+  $('#browseStylesBtn').onclick = openLoraDrawer;
   $$('[data-close]').forEach(b => b.onclick = () => $('#' + b.dataset.close).close());
   $('#makeBtn').onclick = handleMake;
 

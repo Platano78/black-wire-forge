@@ -45,7 +45,7 @@ import re
 import tempfile
 
 from . import _quantise
-from .qwen_image import qwen_edit_graph, qwen_t2i_graph
+from .qwen_image import STYLE_FIELDS, qwen_edit_graph, qwen_t2i_graph
 
 
 def pixelart_graph(p, m):
@@ -321,7 +321,7 @@ ENGINE = {
              "units": "strength", "range": [0, 1], "ui_range": [0, 0.3],
              "hint": "0 keeps flat, crisp colour edges. Raising it adds a fine dotted "
                      "texture; a hard metal surface usually looks better with it off."},
-        ],
+        ] + STYLE_FIELDS,
     },
     "presets": {
         "pixelart": [

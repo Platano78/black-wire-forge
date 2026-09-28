@@ -189,6 +189,21 @@ def load_config():
             lane.setdefault("gpu_label", lane.get("box") or lane["host"])
         if lane.get("models") is not None and not isinstance(lane["models"], dict):
             die("lanes[%d] (%s): \"models\" must be an object if present." % (i, lane["id"]))
+        # LORA-1 Build C: downloads are OPT-IN PER LANE (owner ruling
+        # 2026-09-28) -- absent by default, so a fresh config downloads
+        # nothing. Present, it must at least name where a LoRA file lands.
+        dl = lane.get("downloads")
+        if dl is not None:
+            if not isinstance(dl, dict) or not dl.get("loras_dir"):
+                die("lanes[%d] (%s): \"downloads\" must be an object with at least "
+                    "\"loras_dir\" (an absolute path) if present." % (i, lane["id"]))
+            if not os.path.isabs(dl["loras_dir"]):
+                die("lanes[%d] (%s): \"downloads\".\"loras_dir\" must be an absolute path."
+                    % (i, lane["id"]))
+            mb = dl.get("max_bytes")
+            if mb is not None and (not isinstance(mb, int) or isinstance(mb, bool) or mb <= 0):
+                die("lanes[%d] (%s): \"downloads\".\"max_bytes\" must be a positive whole "
+                    "number of bytes if present." % (i, lane["id"]))
 
     # "models" is OPTIONAL. Model filenames are discovered from each lane at
     # runtime; anything named here simply overrides what was found. Only the
@@ -501,6 +516,213 @@ def http_post_multipart(url, fields, files, timeout=180.0):
 
 
 # ---------------------------------------------------------------------------
+# LORA-1 Build B/C: a browsable Hugging Face Hub catalog of style LoRAs for
+# the lane's picture model, and a guarded download of one file into it.
+#
+# Verified fact (orchestrator, this session): GET https://huggingface.co/api/
+# models?filter=base_model:adapter:<base>&sort=downloads&limit=50 lists the
+# adapters for <base>, no key needed. That listing carries no file sizes and
+# no cardData.license (checked live 2026-09-28); GET /api/models/<id>?
+# blobs=true does, for one repo at a time -- so a catalog build is one list
+# call plus one detail call per repo it returns, cached below.
+# ---------------------------------------------------------------------------
+
+# Test-only override (never read outside this): points the CATALOG's list/
+# detail calls at a local fixture server instead of the real Hub, so a UI
+# suite can drive a real "Browse styles" render with no live network. The
+# DOWNLOAD url below is never affected -- it always resolves against the
+# real huggingface.co host, per Build C's own rule.
+HF_API = os.environ.get("BWF_TEST_HF_API") or "https://huggingface.co/api/models"
+CATALOG_CACHE_SECONDS = 600
+CATALOG_LOCK = threading.Lock()
+CATALOG_CACHE = {}   # base_id -> (fetched_at, [entry, ...])
+_NSFW_RE = re.compile(r"nsfw|nude", re.IGNORECASE)
+DOWNLOAD_DEFAULT_MAX_BYTES = 4 * 1024 ** 3
+DOWNLOAD_LOCK = threading.Lock()
+DOWNLOADS = {}        # lane_id -> {"repo","file","bytes","total","done","ok","error","cancel"}
+REPO_ID_RE = re.compile(r"^[\w.-]+/[\w.-]+$")
+
+
+def _hf_base_for_lane(m):
+    """The HF base-model id for whatever picture family this lane's
+    discovered models belong to, or None (Build B: "unknown family ->
+    empty list"). Asks each pack's OWN "style_catalog" declaration
+    (engines.style_catalogs()) which role and match rule identify it --
+    this core names no model itself, engine-independence ratchet included."""
+    for sc in engines.style_catalogs():
+        name = (m.get(sc["role"]) or "").lower()
+        if _rule_matches([name], sc.get("match") or {}):
+            return sc["hf_base"]
+    return None
+
+
+def _build_catalog(base_id):
+    listing = http_get_json(
+        "%s?filter=base_model:adapter:%s&sort=downloads&limit=50"
+        % (HF_API, urllib.parse.quote(base_id, safe="")), timeout=HTTP_TIMEOUT) or []
+    out = []
+    for item in listing:
+        repo_id = item.get("id") or item.get("modelId")
+        if not repo_id or not REPO_ID_RE.match(repo_id):
+            continue
+        tags = item.get("tags") or []
+        nsfw = ("not-for-all-audiences" in tags) or bool(_NSFW_RE.search(repo_id))
+        try:
+            detail = http_get_json(
+                "%s/%s?blobs=true" % (HF_API, urllib.parse.quote(repo_id, safe="/")),
+                timeout=HTTP_TIMEOUT) or {}
+        except Exception:
+            detail = {}
+        licence = (detail.get("cardData") or {}).get("license")
+        files = [{"filename": s["rfilename"], "size": s.get("size")}
+                 for s in (detail.get("siblings") or [])
+                 if isinstance(s.get("rfilename"), str) and s["rfilename"].endswith(".safetensors")]
+        out.append({"id": repo_id, "downloads": item.get("downloads", 0),
+                    "likes": item.get("likes", 0), "licence": licence,
+                    "nsfw": nsfw, "files": files})
+    return out
+
+
+def catalog_for(base_id):
+    """The cached catalog for one HF base model id, rebuilt at most every
+    CATALOG_CACHE_SECONDS."""
+    now = time.time()
+    with CATALOG_LOCK:
+        cached = CATALOG_CACHE.get(base_id)
+    if cached and now - cached[0] < CATALOG_CACHE_SECONDS:
+        return cached[1]
+    data = _build_catalog(base_id)
+    with CATALOG_LOCK:
+        CATALOG_CACHE[base_id] = (now, data)
+    return data
+
+
+class DownloadsOff(ValueError):
+    """Security review Finding 4: the ONE refusal in Build C that must
+    surface as 403, not 400 (spec section C's last bullet). A ValueError
+    subclass so existing `except ValueError` callers still catch it if they
+    don't care about the distinction; callers that DO care catch this
+    first."""
+    pass
+
+
+def _lora_download_target(lane, repo, filename):
+    """Build C: every download-safety rule in one place. Returns (url, dest,
+    max_bytes) or raises ValueError (DownloadsOff for the opt-in check) with
+    the plain sentence to refuse with."""
+    dl = lane.get("downloads")
+    if not isinstance(dl, dict) or not dl.get("loras_dir"):
+        raise DownloadsOff("Downloads are off for %s. Set \"downloads\" on this lane in "
+                           "config.json to turn them on." % lane["name"])
+    if not isinstance(repo, str) or not REPO_ID_RE.match(repo):
+        raise ValueError("That is not a valid Hugging Face repo id.")
+    try:
+        catalog = catalog_for(_hf_base_for_lane(models_for(lane)) or "")
+    except Exception:
+        catalog = []
+    entry = next((c for c in catalog if c["id"] == repo), None)
+    if entry is None:
+        raise ValueError("That pack is not in this lane's catalog. Browse styles again and "
+                          "pick \"Get it\" from the list.")
+    if not isinstance(filename, str) or os.path.basename(filename) != filename \
+            or filename.startswith(".") or not filename.endswith(".safetensors"):
+        raise ValueError("That is not a valid .safetensors filename.")
+    if not any(f["filename"] == filename for f in entry["files"]):
+        raise ValueError("That file is not listed for %s in the catalog." % repo)
+    loras_dir = os.path.abspath(dl["loras_dir"])
+    dest = os.path.abspath(os.path.join(loras_dir, filename))
+    if os.path.dirname(dest) != loras_dir:
+        raise ValueError("That filename would land outside the lane's LoRA folder.")
+    if os.path.exists(dest):
+        raise ValueError("%s already has a file named %s." % (lane["name"], filename))
+    max_bytes = dl.get("max_bytes") or DOWNLOAD_DEFAULT_MAX_BYTES
+    url = "https://huggingface.co/%s/resolve/main/%s" % (
+        urllib.parse.quote(repo, safe="/"), urllib.parse.quote(filename))
+    return url, dest, max_bytes
+
+
+def _allowed_download_host(host):
+    """Security review Finding 2: a redirect target is allowed only on
+    Hugging Face's own hosts. Confirmed live 2026-09-28 (a HEAD against a
+    real resolve URL, in development, never in a test): huggingface.co's
+    resolve endpoint 302s to *.hf.co (its CDN, e.g. us.aws.cdn.hf.co)."""
+    host = (host or "").lower()
+    return host in ("huggingface.co", "hf.co") or host.endswith(".huggingface.co") or host.endswith(".hf.co")
+
+
+class _PinnedRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Default urllib follows a redirect to ANY host. This refuses one that
+    isn't https and on an allowed Hugging Face host, so a compromised/MITM'd
+    resolve response can't make the server fetch-and-write bytes from an
+    attacker-controlled host."""
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        u = urllib.parse.urlparse(newurl)
+        if u.scheme != "https" or not _allowed_download_host(u.hostname):
+            raise ValueError("The download redirected to an untrusted address; refused.")
+        return urllib.request.HTTPRedirectHandler.redirect_request(
+            self, req, fp, code, msg, headers, newurl)
+
+
+_DOWNLOAD_OPENER = urllib.request.build_opener(_PinnedRedirectHandler)
+
+
+def _run_lora_download(lane, url, dest, max_bytes, repo, filename):
+    state = {"repo": repo, "file": filename, "bytes": 0, "total": None,
+             "done": False, "ok": False, "error": "", "cancel": False}
+    with DOWNLOAD_LOCK:
+        DOWNLOADS[lane["id"]] = state
+    part = dest + ".part"
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    try:
+        with _DOWNLOAD_OPENER.open(urllib.request.Request(url), timeout=60.0) as r:
+            total = r.headers.get("Content-Length")
+            state["total"] = int(total) if total and total.isdigit() else None
+            if state["total"] and state["total"] > max_bytes:
+                raise ValueError("That file is %d bytes, over the %d byte limit."
+                                 % (state["total"], max_bytes))
+            got = 0
+            # Security review Finding 4: O_EXCL|O_NOFOLLOW refuses a
+            # pre-existing ".part" path outright -- a real file OR a
+            # symlink -- instead of writing through it.
+            fd = os.open(part, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o644)
+            with os.fdopen(fd, "wb") as f:
+                while True:
+                    with DOWNLOAD_LOCK:
+                        if DOWNLOADS.get(lane["id"], {}).get("cancel"):
+                            raise ValueError("Cancelled.")
+                    chunk = r.read(1 << 20)
+                    if not chunk:
+                        break
+                    got += len(chunk)
+                    if got > max_bytes:
+                        raise ValueError("That file is over the %d byte limit." % max_bytes)
+                    f.write(chunk)
+                    state["bytes"] = got
+        os.replace(part, dest)
+        state["ok"] = True
+        discover_lane(lane)   # Build B: so the picker lists it right away
+    except OSError as e:
+        # Security review Finding 3: never let a filesystem error's own
+        # message (it embeds the absolute path) reach a client -- name only
+        # the file, and the error class.
+        state["error"] = "Could not write %s (%s)." % (filename, e.__class__.__name__)
+        try:
+            if os.path.exists(part):
+                os.remove(part)
+        except OSError:
+            pass
+    except Exception as e:
+        try:
+            if os.path.exists(part):
+                os.remove(part)
+        except OSError:
+            pass
+        state["error"] = str(e)
+    finally:
+        state["done"] = True
+
+
+# ---------------------------------------------------------------------------
 # Model discovery
 #
 # You should not have to transcribe .safetensors filenames into a config file.
@@ -562,8 +784,11 @@ def _rank(name, rule, small_card):
     return score - len(name) * 0.01
 
 
-def pick_model(pool, rule, small_card):
-    """Best filename in `pool` for one role, or None."""
+def _rule_matches(pool, rule):
+    """Every name in `pool` that satisfies `rule` (all/none/any substrings,
+    case-insensitive). Shared by pick_model (picks the single best match)
+    and a "pool_select" field's options (LORA-1: every match is offered,
+    not just the best)."""
     must_all = rule.get("all") or []
     must_none = rule.get("none") or []
     must_any = rule.get("any") or []
@@ -577,9 +802,43 @@ def pick_model(pool, rule, small_card):
         if must_any and not any(t in n for t in must_any):
             continue
         hits.append(name)
+    return hits
+
+
+def pick_model(pool, rule, small_card):
+    """Best filename in `pool` for one role, or None."""
+    hits = _rule_matches(pool, rule)
     if not hits:
         return None
     return sorted(hits, key=lambda x: (-_rank(x, rule, small_card), x))[0]
+
+
+def pool_select_options(lane, f):
+    """LORA-1: every filename in lane's discovered `f["pool"]` that matches
+    `f["match"]`, for a "pool_select" field -- the live options a picker
+    offers for this lane. Never a hard-coded list."""
+    with DISCOVERY_LOCK:
+        pool = list((DISCOVERY.get(lane["id"]) or {}).get("pools", {}).get(f.get("pool"), []))
+    return _rule_matches(pool, f.get("match") or {})
+
+
+def fields_with_pool_options(cap, mode, lane):
+    """LORA-1: a "pool_select" field's live options, from THIS lane's
+    discovered pool -- the static declaration never carries a filename.
+    Copies only the fields that need it; every other field is the pack's
+    own object, unchanged. A plain function (not a Handler method) so it
+    works the same whether called from a request or from a test with no
+    Handler instance at all (see tests/test_examples.py)."""
+    fields = engines.fields(cap, mode)
+    if not lane:
+        return fields
+    out = []
+    for f in fields:
+        if f.get("type") == "pool_select":
+            f = dict(f)
+            f["options"] = [""] + pool_select_options(lane, f)
+        out.append(f)
+    return out
 
 
 def fetch_pool(lane, pool):
@@ -4681,13 +4940,19 @@ def _generate_legacy(p, lane, m, able, kind, mode, qmode, prompt, seed, steps):
                 if fid in args:
                     continue
                 val = _field_request_value(p, req_values, fid)
-                if ftype == "select" and val == "":
+                if ftype in ("select", "pool_select") and val == "":
                     val = None
                 if ftype in ("audio", "image", "image_list", "video_list", "model") and (
                         (isinstance(val, str) and not val.strip()) or val == []):
                     val = None
                 if val is None:
                     continue
+                # LORA-1: a "pool_select" value must be one the lane's own
+                # discovered pool actually offers right now, same discipline
+                # as "select"'s options check -- never a filename passed
+                # straight into the graph unchecked.
+                if ftype == "pool_select" and val not in pool_select_options(lane, f):
+                    raise ValueError("%s is not available on %s." % (f.get("label", fid), lane["name"]))
                 args[fid] = _coerce_field_value(f, val)
         except ValueError as e:
             return {"ok": False, "error": str(e)}, 400
@@ -4941,7 +5206,7 @@ def _dispatch_generic(lane, m, able, p, kind, mode):
             # E2: absent/empty on a select is "use the field's default",
             # the same as absent on any other type (val is None below) --
             # never a coercion attempt on "".
-            if ftype == "select" and val == "":
+            if ftype in ("select", "pool_select") and val == "":
                 val = None
             # E3: empty on a file-typed field ("" for a single upload, "" or
             # [] for a list of them) is "not given", the same as absent --
@@ -4952,6 +5217,9 @@ def _dispatch_generic(lane, m, able, p, kind, mode):
                 val = None
             if val is None:
                 continue
+            # LORA-1: same live-pool check as the legacy image path above.
+            if ftype == "pool_select" and val not in pool_select_options(lane, f):
+                raise ValueError("%s is not available on %s." % (f.get("label", fid), lane["name"]))
             args[fid] = _coerce_field_value(f, val)
             if ftype in ("text", "textarea") and not prompt_text:
                 prompt_text = str(val)
@@ -6116,6 +6384,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(*guide_payload((q.get("room") or [""])[0]))
             if u.path == "/api/guide/history":
                 return self.send_json(*guide_history_get((q.get("key") or [""])[0]))
+            if u.path == "/api/catalog/loras":
+                return self.send_json(*self.api_catalog_loras(q))
+            if u.path == "/api/lora/download":
+                return self.send_json(*self.api_lora_download_status(q))
             self.send_json({"error": "not found"}, 404)
         except BrokenPipeError:
             pass
@@ -6153,6 +6425,11 @@ class Handler(BaseHTTPRequestHandler):
                 "files": models_for(l),
                 **{"missing_%s" % c: missing_for(l, c) if (c in l["caps"] and not able.get(c)) else []
                    for c in engines.caps()},
+                # LORA-1: whether this lane opted in to catalog downloads
+                # (config.json "downloads"), and where -- never a value the
+                # page can use to build a path itself, only to know whether
+                # to offer the "Get it" button or the copy-paste command.
+                "downloads": bool(isinstance(l.get("downloads"), dict) and l["downloads"].get("loras_dir")),
                 "up": bool(st.get("up")), "err": st.get("err", ""),
                 "device": st.get("device", ""),
                 "vram_free": st.get("vram_free", 0), "vram_total": st.get("vram_total", 0),
@@ -6223,7 +6500,7 @@ class Handler(BaseHTTPRequestHandler):
                     "available": bool(able.get(ability)) and deps_reason is None and not kind_mismatch,
                     "missing": model_missing if kind_mismatch else
                                model_missing + ([deps_reason] if deps_reason else []),
-                    "fields": engines.fields(cap, mode),
+                    "fields": fields_with_pool_options(cap, mode, lane),
                     "presets": engines.presets(cap, mode),
                     # H2: the "Try this" row -- a one-click example per mode.
                     "examples": engines.examples(cap, mode),
@@ -6267,6 +6544,73 @@ class Handler(BaseHTTPRequestHandler):
         # same "skip this key" rule as "rooms".
         out["helper"] = bool(HELPER)
         return out
+
+
+    def api_catalog_loras(self, q):
+        lane = LANE_BY_ID.get((q.get("lane") or [""])[0])
+        if not lane:
+            return {"ok": False, "error": "Pick a lane first."}, 400
+        advanced = (q.get("advanced") or ["0"])[0] == "1"
+        base_id = _hf_base_for_lane(models_for(lane))
+        if not base_id:
+            return {"ok": True, "loras": [], "note":
+                    "This lane's picture model isn't one this app has a style catalog for yet."}, 200
+        try:
+            catalog = catalog_for(base_id)
+        except Exception as e:
+            return {"ok": False, "error": "Could not reach Hugging Face: %s" % e}, 502
+        if not advanced:
+            catalog = [c for c in catalog if not c["nsfw"]]
+        return {"ok": True, "loras": catalog, "base_id": base_id}, 200
+
+    def api_lora_download_status(self, q):
+        lane = LANE_BY_ID.get((q.get("lane") or [""])[0])
+        if not lane:
+            return {"ok": False, "error": "Pick a lane first."}, 400
+        with DOWNLOAD_LOCK:
+            state = dict(DOWNLOADS.get(lane["id"]) or {})
+        return {"ok": True, "download": state or None}, 200
+
+    def api_lora_download_start(self, p):
+        lane = LANE_BY_ID.get(p.get("lane")) if isinstance(p.get("lane"), str) else None
+        if not lane:
+            return {"ok": False, "error": "Pick a lane first."}, 400
+        # Security review Finding 1: the check and the claim must be ONE
+        # atomic step under DOWNLOAD_LOCK -- the placeholder below is
+        # registered here, before _lora_download_target's (possibly slow,
+        # possibly network-hitting) validation runs unlocked, so a second
+        # concurrent start for the same lane sees it and is refused.
+        with DOWNLOAD_LOCK:
+            running = DOWNLOADS.get(lane["id"])
+            if running and not running.get("done"):
+                return {"ok": False, "error": "A download is already running for %s." % lane["name"]}, 409
+            DOWNLOADS[lane["id"]] = {"repo": p.get("repo"), "file": p.get("file"), "bytes": 0,
+                                     "total": None, "done": False, "ok": False, "error": "",
+                                     "cancel": False}
+        try:
+            url, dest, max_bytes = _lora_download_target(lane, p.get("repo"), p.get("file"))
+        except DownloadsOff as e:
+            with DOWNLOAD_LOCK:
+                DOWNLOADS.pop(lane["id"], None)
+            return {"ok": False, "error": str(e)}, 403
+        except ValueError as e:
+            with DOWNLOAD_LOCK:
+                DOWNLOADS.pop(lane["id"], None)
+            return {"ok": False, "error": str(e)}, 400
+        threading.Thread(target=_run_lora_download,
+                         args=(lane, url, dest, max_bytes, p.get("repo"), p.get("file")),
+                         daemon=True).start()
+        return {"ok": True}, 200
+
+    def api_lora_download_cancel(self, p):
+        lane = LANE_BY_ID.get(p.get("lane")) if isinstance(p.get("lane"), str) else None
+        if not lane:
+            return {"ok": False, "error": "Pick a lane first."}, 400
+        with DOWNLOAD_LOCK:
+            state = DOWNLOADS.get(lane["id"])
+            if state and not state.get("done"):
+                state["cancel"] = True
+        return {"ok": True}, 200
 
     def jobs_payload(self, q):
         limit = int((q.get("limit") or ["60"])[0])
@@ -6418,6 +6762,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(*guide_revise(self.read_json()))
             if u.path == "/api/guide/history":
                 return self.send_json(*guide_history_set(self.read_json()))
+            if u.path == "/api/lora/download":
+                return self.send_json(*self.api_lora_download_start(self.read_json()))
+            if u.path == "/api/lora/download/cancel":
+                return self.send_json(*self.api_lora_download_cancel(self.read_json()))
             self.send_json({"error": "not found"}, 404)
         except BrokenPipeError:
             pass

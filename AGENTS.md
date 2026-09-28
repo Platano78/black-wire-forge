@@ -295,6 +295,12 @@ also names the custom-node package (with its repo URL) behind every non-core nod
 uses, and says which classes ship in core ComfyUI already. Tell the user the file size and
 licence and get an explicit yes before recommending any download (see "Rules for the agent").
 
+**Style LoRAs (the Picture room's "Browse styles" catalog) are off by default, same rule.** A
+lane downloads nothing until its config.json entry sets `"downloads": {"loras_dir": "..."}` —
+absent, "Get it" only prints the `hf download` command to run yourself. On, it still shows the
+file's size and licence ("licence unknown" when the Hub card states none) before you pick it;
+NSFW-tagged packs stay hidden behind the drawer's own "Advanced" toggle.
+
 ## Where to read further
 
 - `README.md` — full install/config reference

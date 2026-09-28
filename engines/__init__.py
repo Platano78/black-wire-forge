@@ -590,6 +590,19 @@ def modes_for(cap):
     return modes
 
 
+def style_catalogs():
+    """Each pack's "style_catalog" declaration (LORA-1 Build B), or [] --
+    role name, the pool-match rule, and the Hugging Face base-model id to
+    query for that pack's family. server.py stays engine-agnostic by asking
+    THIS, never naming a model itself."""
+    out = []
+    for pack in _discover():
+        sc = pack.get("style_catalog")
+        if sc:
+            out.append(sc)
+    return out
+
+
 def licences():
     """Each pack's licence entries, each with an added 'engine' key = pack id.
 

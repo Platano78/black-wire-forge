@@ -1,0 +1,265 @@
+{
+ "details": {
+  "Alissonerdx/BFS-Best-Face-Swap": {
+   "cardData": {
+    "base_model": [
+     "Qwen/Qwen-Image-2.1",
+     "Qwen/Qwen-Image-Edit-2511",
+     "black-forest-labs/FLUX.2-klein-9B",
+     "black-forest-labs/FLUX.2-klein-4B",
+     "black-forest-labs/FLUX.2-klein-base-4B",
+     "black-forest-labs/FLUX.2-klein-base-9B",
+     "black-forest-labs/FLUX.2-klein-9b-fp8",
+     "black-forest-labs/FLUX.2-klein-4b-fp8",
+     "krea/Krea-2-Raw"
+    ],
+    "language": [
+     "en"
+    ],
+    "library_name": "diffusers",
+    "license": "mit",
+    "pipeline_tag": "image-to-image",
+    "tags": [
+     "lora",
+     "qwen-image",
+     "qwen-image-2.1",
+     "qwen-image-edit",
+     "face-swap",
+     "head-swap",
+     "body-swap",
+     "image-editing",
+     "comfyui",
+     "bfs"
+    ]
+   },
+   "siblings": [
+    {
+     "blobId": "8f536f5dc64032aecc655b0348b055a9e8aac595",
+     "lfs": {
+      "pointerSize": 134,
+      "sha256": "7dc0a53aba4dbc70c204f498936a619d226559da11011f748c389189af46b664",
+      "size": 209753576
+     },
+     "rfilename": "bfs_body_swap_v1.0_qwen_2.1.safetensors",
+     "size": 209753576
+    },
+    {
+     "blobId": "ef94e122f9b5c196fa6ccd0fe484f455834fc4f6",
+     "lfs": {
+      "pointerSize": 134,
+      "sha256": "0b3d043714c912c55c525ac68a53f50dbfaa6a024d735c28dfed12cd214a0d79",
+      "size": 914160176
+     },
+     "rfilename": "bfs_body_swap_v1_krea2.safetensors",
+     "size": 914160176
+    }
+   ]
+  },
+  "e-n-v-y/Qwen-Image-2.1-Fix": {
+   "cardData": {
+    "base_model": "Qwen/Qwen-Image-2.1",
+    "instance_prompt": null,
+    "tags": [
+     "text-to-image",
+     "lora",
+     "diffusers",
+     "template:diffusion-lora"
+    ],
+    "widget": [
+     {
+      "output": {
+       "url": "https://huggingface.co/e-n-v-y/Qwen-Image-2.1-Fix/resolve/main/images/qwen21-comparison-_00124_.png"
+      },
+      "text": "-"
+     },
+     {
+      "output": {
+       "url": "https://huggingface.co/e-n-v-y/Qwen-Image-2.1-Fix/resolve/main/images/qwen21-comparison-_00126_.png"
+      },
+      "text": "-"
+     },
+     {
+      "output": {
+       "url": "https://huggingface.co/e-n-v-y/Qwen-Image-2.1-Fix/resolve/main/images/qwen21-comparison-_00125_.png"
+      },
+      "text": "-"
+     },
+     {
+      "output": {
+       "url": "https://huggingface.co/e-n-v-y/Qwen-Image-2.1-Fix/resolve/main/images/qwen21-comparison-_00127_.png"
+      },
+      "text": "-"
+     },
+     {
+      "output": {
+       "url": "https://huggingface.co/e-n-v-y/Qwen-Image-2.1-Fix/resolve/main/images/qwen21-comparison-_00128_.png"
+      },
+      "text": "-"
+     },
+     {
+      "output": {
+       "url": "https://huggingface.co/e-n-v-y/Qwen-Image-2.1-Fix/resolve/main/images/qwen21-comparison-_00130_.png"
+      },
+      "text": "-"
+     },
+     {
+      "output": {
+       "url": "https://huggingface.co/e-n-v-y/Qwen-Image-2.1-Fix/resolve/main/images/qwen21-comparison-_00131_.png"
+      },
+      "text": "-"
+     },
+     {
+      "output": {
+       "url": "https://huggingface.co/e-n-v-y/Qwen-Image-2.1-Fix/resolve/main/images/qwen21-comparison-_00132_.png"
+      },
+      "text": "-"
+     },
+     {
+      "output": {
+       "url": "https://huggingface.co/e-n-v-y/Qwen-Image-2.1-Fix/resolve/main/images/qwen21-comparison-_00153_.png"
+      },
+      "text": "-"
+     },
+     {
+      "output": {
+       "url": "https://huggingface.co/e-n-v-y/Qwen-Image-2.1-Fix/resolve/main/images/qwen21-comparison-_00154_.png"
+      },
+      "text": "-"
+     },
+     {
+      "output": {
+       "url": "https://huggingface.co/e-n-v-y/Qwen-Image-2.1-Fix/resolve/main/images/qwen21-comparison-_00155_.png"
+      },
+      "text": "-"
+     },
+     {
+      "output": {
+       "url": "https://huggingface.co/e-n-v-y/Qwen-Image-2.1-Fix/resolve/main/images/qwen21-comparison-_00156_.png"
+      },
+      "text": "-"
+     },
+     {
+      "output": {
+       "url": "https://huggingface.co/e-n-v-y/Qwen-Image-2.1-Fix/resolve/main/images/qwen21-comparison-_00160_.png"
+      },
+      "text": "-"
+     },
+     {
+      "output": {
+       "url": "https://huggingface.co/e-n-v-y/Qwen-Image-2.1-Fix/resolve/main/images/qwen21-comparison-_00163_.png"
+      },
+      "text": "-"
+     },
+     {
+      "output": {
+       "url": "https://huggingface.co/e-n-v-y/Qwen-Image-2.1-Fix/resolve/main/images/qwen21-comparison-_00167_.png"
+      },
+      "text": "-"
+     }
+    ]
+   },
+   "siblings": [
+    {
+     "blobId": "7214d19d799880dc6ee02015d4753ce53a51255a",
+     "lfs": {
+      "pointerSize": 134,
+      "sha256": "e4a369158b957aee3a8316d94dbe00c98f7d648ef3d1926ccf7283915b6db60c",
+      "size": 111612000
+     },
+     "rfilename": "qwen-image-2.1-fix-1.0-comfy.safetensors",
+     "size": 111612000
+    }
+   ]
+  },
+  "f23gg/NSFW-LORA-Qwen-Image-2.1": {
+   "cardData": {
+    "base_model": "Qwen/Qwen-Image-2.1",
+    "instance_prompt": null,
+    "tags": [
+     "text-to-image",
+     "lora",
+     "diffusers",
+     "template:diffusion-lora"
+    ],
+    "widget": [
+     {
+      "output": {
+       "url": "https://huggingface.co/f23gg/NSFW-LORA-Qwen-Image-2.1/resolve/main/images/CopyQ.yzlOCU.png"
+      },
+      "text": "-"
+     }
+    ]
+   },
+   "siblings": [
+    {
+     "blobId": "b9f2d4b06e5d8095bc71fd2ece8f738972b3da01",
+     "lfs": {
+      "pointerSize": 134,
+      "sha256": "c29f503f3515877882fd6b10f6849c78a4f2337c09021f4bd4b93d060c311aea",
+      "size": 159436456
+     },
+     "rfilename": "NSFW Qwen Lora.safetensors",
+     "size": 159436456
+    }
+   ]
+  }
+ },
+ "listing": [
+  {
+   "downloads": 150020,
+   "id": "Alissonerdx/BFS-Best-Face-Swap",
+   "likes": 977,
+   "modelId": "Alissonerdx/BFS-Best-Face-Swap",
+   "tags": [
+    "diffusers",
+    "lora",
+    "qwen-image",
+    "qwen-image-2.1",
+    "qwen-image-edit",
+    "face-swap",
+    "head-swap",
+    "body-swap",
+    "image-editing",
+    "comfyui",
+    "bfs",
+    "image-to-image",
+    "en",
+    "base_model:Qwen/Qwen-Image-2.1",
+    "base_model:adapter:Qwen/Qwen-Image-2.1",
+    "license:mit",
+    "region:us"
+   ]
+  },
+  {
+   "downloads": 4872,
+   "id": "e-n-v-y/Qwen-Image-2.1-Fix",
+   "likes": 58,
+   "modelId": "e-n-v-y/Qwen-Image-2.1-Fix",
+   "tags": [
+    "diffusers",
+    "text-to-image",
+    "lora",
+    "template:diffusion-lora",
+    "base_model:Qwen/Qwen-Image-2.1",
+    "base_model:adapter:Qwen/Qwen-Image-2.1",
+    "region:us"
+   ]
+  },
+  {
+   "downloads": 1794,
+   "id": "f23gg/NSFW-LORA-Qwen-Image-2.1",
+   "likes": 1,
+   "modelId": "f23gg/NSFW-LORA-Qwen-Image-2.1",
+   "tags": [
+    "diffusers",
+    "text-to-image",
+    "lora",
+    "template:diffusion-lora",
+    "base_model:Qwen/Qwen-Image-2.1",
+    "base_model:adapter:Qwen/Qwen-Image-2.1",
+    "region:us",
+    "not-for-all-audiences"
+   ]
+  }
+ ]
+}
