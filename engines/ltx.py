@@ -866,7 +866,9 @@ def _shot_writer_prompt(sound, max_frames):
     ) % (what,
          ", and the sound: what is heard, with any spoken words in quotation marks" if sound else
          ". This take has no sound, so write nothing about sound",
-         "" if sound else "9. It is one long unbroken take: steady, continuous motion suits it; no cuts and no "
+         ("9. When a starting picture is attached, match its light: that picture is the true light, even if it "
+          "conflicts with a light already named for an earlier shot.\n") if sound else
+         "9. It is one long unbroken take: steady, continuous motion suits it; no cuts and no "
          "scene changes.\n",
          "" if sound else " (a long take by default)", table, max_frames,
          ("A small white paper boat drifts slowly downstream on a calm, clear stream, turning gently as it "
@@ -909,7 +911,9 @@ TALKING_WRITER_PROMPT = (
     "an instruction.\n"
     "6. LINE: NONE makes a quiet listening shot with no speech. Write that only when the user asks for "
     "silence or listening.\n"
-    "7. Never write the clip's length: the app sets it from the line, or from a length the user gives.\n\n"
+    "7. Never write the clip's length: the app sets it from the line, or from a length the user gives.\n"
+    "8. When the face picture is attached, write LOOK from what it actually shows -- its light and framing "
+    "-- over a guess from the request's words alone.\n\n"
     "WHEN TO ASK\n"
     "Ask ONE question, only when its answer changes the line and neither the request nor an answer says it. "
     "Ask the first of these that applies:\n"
@@ -1083,14 +1087,15 @@ ENGINE = {
     "writers": {
         "ltx": {"label": "Shot writer", "prompt": LTX_WRITER_PROMPT,
                 "keys": {"LENGTH": "length", "WIDTH": "width", "HEIGHT": "height", "PROMPT": "prompt"},
-                "multiline": "PROMPT", "none_token": "NONE", "check": shot_check},
+                "multiline": "PROMPT", "none_token": "NONE", "check": shot_check,
+                "pictures": "start_image"},
         "ltx_loop": {"label": "Long take writer", "prompt": LTX_LOOP_WRITER_PROMPT,
                      "keys": {"LENGTH": "length", "WIDTH": "width", "HEIGHT": "height", "PROMPT": "prompt"},
                      "multiline": "PROMPT", "none_token": "NONE", "check": shot_check},
         "talking": {"label": "Line writer", "prompt": TALKING_WRITER_PROMPT,
                     "keys": {"LOOK": "look", "LINE": "line"},
                     "multiline": "LINE", "none_token": "NONE", "derive": talking_derive,
-                    "check": talking_check},
+                    "check": talking_check, "pictures": "face"},
     },
     # P3c: "Not right? Tell the guide" on a finished clip (engines/__init__.py
     # "revisers"). A clip is never edited in place, so reroll is the only fix.

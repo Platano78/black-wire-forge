@@ -4,6 +4,21 @@ All notable changes to Black Wire Forge are recorded here.
 
 ## Unreleased
 
+### Added
+
+- "Write this shot" and "Help me write this" now see a shot's own starting or face picture --
+  the LTX shot writer (its starting picture), the H3 fl2va shot writer (its starting picture),
+  and the Talking Head line writer (its face picture) -- the same way the Picture room's edit
+  writer already sees its own pictures. A vision-capable helper matches the picture's light
+  instead of guessing from earlier shots' words alone; with no vision-capable helper, behaviour
+  is unchanged (the existing "this helper can't see pictures" note). H3's ref2v and continue
+  writers are unchanged: ref2v's own prompt is written around not seeing its references, and
+  continue has no picture field at all (it carries the previous shot over a video jack).
+- The guide conversation (including guide actions and their done markers) is now also saved on
+  the server, per room or per open sequence, so it survives a reload on another device, a
+  blocked-storage browser, or clearing site data. The browser's own copy is still the fast,
+  immediate cache; the server copy is a best-effort background sync, last write wins.
+
 ### Fixed
 
 - The Talking Head Line writer no longer overwrites a Length you set yourself in the form. It

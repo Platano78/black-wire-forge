@@ -279,6 +279,8 @@ H3_FL2VA_WRITER_PROMPT = (
     + _H3_REPLY + _H3_RULES
     + "7. When the user says a starting picture is set, the prompt carries on from that picture: describe "
       "what happens in it next, naming the subject in the user's own words.\n"
+      "8. When that starting picture is attached, match what it actually shows -- its light, framing and "
+      "the subject's appearance -- over anything guessed from the words alone.\n"
     + _h3_lengths() +
     "\nWHEN TO ASK\n"
     "Most requests need no question: write. Ask ONE question only in the cases below, when neither the "
@@ -564,7 +566,8 @@ ENGINE = {
     "writers": {
         "fl2va": {"label": "Shot writer", "prompt": H3_FL2VA_WRITER_PROMPT,
                   "keys": {"LENGTH": "length", "PROMPT": "prompt"},
-                  "multiline": "PROMPT", "none_token": "NONE", "check": h3_shot_check},
+                  "multiline": "PROMPT", "none_token": "NONE", "check": h3_shot_check,
+                  "pictures": "first_frame"},
         "ref2v": {"label": "Reference shot writer", "prompt": H3_REF2V_WRITER_PROMPT,
                   "keys": {"LENGTH": "length", "PROMPT": "prompt"},
                   "multiline": "PROMPT", "none_token": "NONE", "check": h3_shot_check},

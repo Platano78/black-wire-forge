@@ -74,10 +74,26 @@ try:
         check("the preview shows the line, the shot note and the length the app worked out",
               LINE in preview and "bright morning light, close-up" in preview and "153" in preview, preview)
         check("the answer went back with its question", BODIES[-1].get("answers") == [{"q": "What tone should it have?", "a": "Excited"}], BODIES[-1:])
+        check("no face picture set: the request carries no attached pictures", not BODIES[-1].get("attached"), BODIES[-1].get("attached"))
         page.click("#guideSkillUse")
         val = lambda f: page.input_value('#inspector [data-field-id="%s"]' % f)
         check("Use these fills line, look and length", (val("line"), val("look"), val("length")) ==
               (LINE, "bright morning light, close-up", "153"), (val("line"), val("look"), val("length")))
+        print("Talking Head: a face picture set -- it rides along in Help me write this too")
+        FACE_PNG = os.path.join(S, "face.png")
+        with open(FACE_PNG, "wb") as f:
+            f.write(bytes.fromhex("89504e470d0a1a0a0000000d4948445200000001000000010802000000907753de"
+                                  "0000000c4944415408d763f8cfc000000301010018dd8db00000000049454e44ae426082"))
+        page.set_input_files("#upload_face", FACE_PNG)
+        page.wait_for_selector("#thumbs_face img", timeout=15000)
+        REPLIES[:] = ["LENGTH: NONE\nLOOK: soft light\nLINE: " + LINE]
+        page.fill("#promptBox", "say something about Mondays")
+        page.click("#helperWriteBtn")
+        page.wait_for_selector("#guideSkillUse", timeout=15000)
+        b_face = BODIES[-1]
+        check("a face picture set: the write request carries it as attached",
+              isinstance(b_face.get("attached"), list) and len(b_face["attached"]) == 1
+              and b_face["attached"][0].get("lane") == "t" and b_face["attached"][0].get("upload"), b_face)
         print("Video: Not right? on a finished ltx clip")
         page.goto("about:blank"); page.goto(URL + "#room=video", wait_until="networkidle")
         page.wait_for_selector('#binBody tr[data-job="clipjob1"]', timeout=15000)

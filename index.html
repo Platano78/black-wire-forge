@@ -2857,8 +2857,56 @@ function guideHistLoad(key){
   } catch(e){ return []; }
 }
 function guideHistSave(key, hist){
-  const ok = guideStoreSet(key, hist.length ? JSON.stringify(hist.slice(-GUIDE_HIST_MAX)) : null);
+  const trimmed = hist.length ? hist.slice(-GUIDE_HIST_MAX) : [];
+  const ok = guideStoreSet(key, trimmed.length ? JSON.stringify(trimmed) : null);
   if(!ok) guideShowError('This browser would not save the conversation, so it will be gone after a reload.');
+  guideHistPush(key, trimmed);
+}
+// B2: localStorage stays the immediate, synchronous cache (unchanged above);
+// the server copy is a debounced, best-effort push -- a reload/device switch
+// reads it back via guideHistSync(), never this call directly. The pending
+// hist for each key is kept alongside its timer so a reload/close can flush
+// it (below) instead of losing it -- Clear conversation is a real, shorter
+// history that must reach the server before a stale, longer one can win.
+const GUIDE_HIST_PUSH_TIMERS = {};
+function guideHistPush(key, hist){
+  clearTimeout(GUIDE_HIST_PUSH_TIMERS[key] && GUIDE_HIST_PUSH_TIMERS[key].timer);
+  GUIDE_HIST_PUSH_TIMERS[key] = {hist: hist, timer: setTimeout(() => {
+    delete GUIDE_HIST_PUSH_TIMERS[key];
+    postJSON('/api/guide/history', {key: key, history: hist}).catch(() => {});
+  }, 400)};
+}
+window.addEventListener('pagehide', () => {
+  for(const key in GUIDE_HIST_PUSH_TIMERS){
+    const pending = GUIDE_HIST_PUSH_TIMERS[key];
+    clearTimeout(pending.timer);
+    try{
+      navigator.sendBeacon('/api/guide/history',
+        new Blob([JSON.stringify({key: key, history: pending.hist})], {type: 'application/json'}));
+    } catch(e){ /* no sendBeacon: the next guideHistSync still has localStorage to fall back on */ }
+  }
+});
+// B2: on room/sequence entry, the server's copy wins ONLY when it is longer
+// than what is already local -- a conversation only ever grows by turns, so
+// more turns means it came from a later save (another device, or a reload
+// that raced this fetch). The local turn count is read again right here,
+// not the count from when this fetch started: a save that happened while
+// this was in flight (e.g. answering a write's next question right after a
+// reload) must never be clobbered by a now-stale server snapshot. A shorter
+// or equal server copy is left alone and pushed up instead, so nothing
+// already said is ever lost either way.
+let GUIDE_HIST_SYNCED_KEY = null;
+async function guideHistSync(key){
+  if(!key || key === GUIDE_HIST_SYNCED_KEY) return;
+  GUIDE_HIST_SYNCED_KEY = key;
+  let r;
+  try{ r = await getJSON('/api/guide/history?key=' + encodeURIComponent(key)); }
+  catch(e){ return; }   // unreachable: keep localStorage as the source, no error shown
+  if(!r || r.ok === false || !Array.isArray(r.history)) return;
+  const local = guideHistLoad(key);
+  if(r.history.length > local.length) guideHistSave(key, r.history);
+  else if(local.length) guideHistPush(key, local);
+  if(GUIDE && guideHistKey() === key) renderGuideLog();
 }
 function guideShowError(text){
   $('#guideError').textContent = text || '';
@@ -2895,6 +2943,7 @@ async function renderGuidePanel(){
   placeGuidePanel(room);
   renderGuideExpand();
   $('#guidePanel').hidden = false;
+  guideHistSync(guideHistKey());   // B2: room entry, and a sequence switch within the Cutting Room
   if(GUIDE_ROOM !== room.id){
     GUIDE_ROOM = room.id;
     GUIDE = null;

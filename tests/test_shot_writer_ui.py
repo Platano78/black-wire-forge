@@ -80,6 +80,7 @@ try:
         b = BODIES[-1]
         check("the request is the LTX mode, from its own room, with the beat as the topic",
               (b.get("room"), b.get("mode"), b.get("topic")) == ("video", "ltx", B1), b)
+        check("no starting picture set: the request carries no attached pictures", not b.get("attached"), b.get("attached"))
         check("the beats either side go as context", (b.get("context") or {}).get("neighbours") == {"before": SLUG, "after": B2}, b)
         check("the brain got LTX's own writer", bool(ASKED) and ASKED[-1][0]["content"] == ltx.ENGINE["writers"]["ltx"]["prompt"])
         check("the Film Room Guide speaks", "film room guide" in page.inner_text("#guideSkill").lower(), page.inner_text("#guideSkill"))
@@ -93,6 +94,20 @@ try:
         page.wait_for_timeout(1500)
         saved = next(s for s in api("api/sequence?id=" + seq["id"])["slots"] if s["id"] == film[0]["slot_id"])
         check("...and the shot saves it", saved["values"].get("prompt") == LTX_OUT, saved["values"].get("prompt"))
+        print("that same LTX shot, now with a starting picture: it rides along in Write this shot")
+        START_PNG = os.path.join(S, "start.png")
+        with open(START_PNG, "wb") as f:
+            f.write(bytes.fromhex("89504e470d0a1a0a0000000d4948445200000001000000010802000000907753de"
+                                  "0000000c4944415408d763f8cfc000000301010018dd8db00000000049454e44ae426082"))
+        page.set_input_files("#upload_start_image", START_PNG)
+        page.wait_for_selector("#thumbs_start_image img", timeout=15000)
+        REPLIES[:] = ["LENGTH: NONE\nPROMPT: " + LTX_OUT]
+        page.click("#slotWriteBtn")
+        page.wait_for_selector("#guideSkillUse", timeout=15000)
+        b2 = BODIES[-1]
+        check("a starting picture set: the write request carries it as attached",
+              isinstance(b2.get("attached"), list) and len(b2["attached"]) == 1
+              and b2["attached"][0].get("lane") == "t" and b2["attached"][0].get("upload"), b2)
         print("an H3 shot: H3's own writer, its own task prefix kept")
         page.click('[data-script-lane] [data-beat-id="%s"]' % film[1]["id"])
         page.wait_for_selector("#slotWriteBtn", state="visible", timeout=15000)
@@ -113,6 +128,22 @@ try:
         page.click('[data-script-lane] [data-beat-id="%s"]' % film[0]["id"])
         page.wait_for_timeout(500)
         check("the H3 preview does not follow the user to the LTX shot", page.is_hidden("#guideSkill"))
+        print("an H3 fl2va shot with a starting picture: it rides along too, the same as LTX's")
+        cur = api("api/sequence?id=" + seq["id"])
+        api("api/sequence/op", {"id": cur["id"], "rev": cur["rev"], "op": "update_slot",
+                                "slot_id": film[2]["slot_id"], "mode": "fl2va"})
+        page.reload(wait_until="networkidle")   # the mode change was made out-of-band via the API
+        page.click('[data-script-lane] [data-beat-id="%s"]' % film[2]["id"])
+        page.wait_for_selector("#slotWriteBtn", state="visible", timeout=15000)
+        page.set_input_files("#upload_first_frame", START_PNG)
+        page.wait_for_selector("#thumbs_first_frame img", timeout=15000)
+        REPLIES[:] = ["LENGTH: NONE\nPROMPT: " + H3_OUT]
+        page.click("#slotWriteBtn")
+        page.wait_for_selector("#guideSkillUse", timeout=15000)
+        b3 = BODIES[-1]
+        check("fl2va with a starting picture: the write request carries it as attached",
+              b3.get("mode") == "fl2va" and isinstance(b3.get("attached"), list) and len(b3["attached"]) == 1
+              and b3["attached"][0].get("lane") == "t" and b3["attached"][0].get("upload"), b3)
         check("no console or page errors", errors == [], errors[:5])
 finally:
     for p in PROCS: p.terminate()

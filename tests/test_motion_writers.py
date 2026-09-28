@@ -48,6 +48,23 @@ for mode, label in WRITERS.items():
     check("%s: the multiline key is one of the keys, NONE the empty word" % mode,
           w and w["multiline"] in w["keys"] and w["none_token"] == "NONE")
     check("%s: carries a check" % mode, w and callable(w.get("check")))
+check("ltx: writes about its own start picture, the way the edit writer writes about ref_images",
+      engines.writer("video", "ltx").get("pictures") == "start_image")
+check("ltx: start_image is really a picture field on this mode",
+      any(f["id"] == "start_image" and f["type"] == "image" for f in engines.fields("video", "ltx")))
+check("ltx_loop: no start-picture wiring (text-to-video only, out of scope)",
+      "pictures" not in engines.writer("video", "ltx_loop"))
+check("talking: writes about its own face picture, the way the shot writers write about their own",
+      engines.writer("video", "talking").get("pictures") == "face")
+check("talking: face is really a picture field on this mode",
+      any(f["id"] == "face" and f["type"] == "image" for f in engines.fields("video", "talking")))
+check("fl2va: writes about its own starting picture",
+      engines.writer("video", "fl2va").get("pictures") == "first_frame")
+check("fl2va: first_frame is really a picture field on this mode",
+      any(f["id"] == "first_frame" and f["type"] == "image" for f in engines.fields("video", "fl2va")))
+check("continue: no picture wiring -- it has no picture field at all, only a video jack (prev_video)",
+      "pictures" not in engines.writer("video", "continue")
+      and not any(f["type"] == "image" for f in engines.fields("video", "continue")))
 check("talking: LINE is the multiline key and fills the line; LOOK the shot note; the brain never writes the length",
       engines.writer("video", "talking")["keys"] == {"LOOK": "look", "LINE": "line"})
 check("talking: the pack derives the length", callable(engines.writer("video", "talking").get("derive")))

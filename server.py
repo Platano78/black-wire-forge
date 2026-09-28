@@ -89,6 +89,7 @@ LOCAL_OUTPUTS_DIR = os.path.join(DATA_DIR, "outputs")
 JOBS_FILE = os.path.join(DATA_DIR, "jobs.json")
 SEQ_DIR = os.path.join(DATA_DIR, "sequences")   # one <id>.json per sequence
 SEQ_MEDIA_DIR = os.path.join(DATA_DIR, "seq")   # <id>/{refs,takes,cuts}/ -- media a sequence owns
+GUIDE_HIST_DIR = os.path.join(DATA_DIR, "guide_history")   # one <key>.json per guide conversation
 CONFIG_FILE = os.environ.get("GENCENTER_CONFIG") or os.path.join(APP_DIR, "config.json")
 EXAMPLE_FILE = os.path.join(APP_DIR, "config.example.json")
 
@@ -244,6 +245,7 @@ TITLE = CONFIG.get("title", "Black Wire Forge")
 os.makedirs(CHAIN_DIR, exist_ok=True)
 os.makedirs(LOCAL_OUTPUTS_DIR, exist_ok=True)
 os.makedirs(SEQ_DIR, exist_ok=True)
+os.makedirs(GUIDE_HIST_DIR, exist_ok=True)
 
 # ---------------------------------------------------------------------------
 # C3.6 -- the cut (the internal sequence/storyboard design spec Section 6, R1/R6).
@@ -351,6 +353,9 @@ PROMPT_INDEX = {}    # (lane_id, prompt_id) -> job_id
 SAVE_LOCK = threading.Lock()
 # Held across a sequence's whole read-modify-WRITE, not only the snapshot.
 SEQ_LOCK = threading.Lock()
+# B2: guide conversation history (data/guide_history/<key>.json) -- plain-room
+# conversations have no sequence, so this is its own lock, not SEQ_LOCK.
+GUIDE_HIST_LOCK = threading.Lock()
 
 # Process lanes (kind "process"): the pack builds a run plan of argv steps
 # and runner.py executes it locally. One FIFO per lane; a job's plan and
@@ -3405,6 +3410,116 @@ def _room_guide(room_id):
     return True, GUIDES.get(room.get("guide")) if room.get("guide") else None
 
 
+# B2: guide history on the server (data/guide_history/<key>.json), the same
+# atomic tmp+fsync+os.replace shape as _seq_read/_seq_write. <key> is exactly
+# what the client's own guideHistKey() computes today ("bwf.guide.hist." +
+# room id, plus ".<sequence id>" in the Cutting Room) -- never guessed at:
+# every part is checked against a REAL room or sequence, which also closes
+# off path traversal (nothing past the prefix can be anything else).
+GUIDE_HIST_KEY_PREFIX = "bwf.guide.hist."
+GUIDE_HIST_MAX_TURNS = 200
+GUIDE_HIST_MAX_BYTES = 256 * 1024
+
+
+def _guide_hist_key_parts(key):
+    """A guide history key -> (room_id, seq_id or None), or None to refuse."""
+    if not isinstance(key, str) or not key.startswith(GUIDE_HIST_KEY_PREFIX):
+        return None
+    rest = key[len(GUIDE_HIST_KEY_PREFIX):]
+    room_id, dot, seq_id = rest.partition(".")
+    room = next((r for r in engines.rooms() if r.get("id") == room_id), None)
+    if room is None:
+        return None
+    if dot:
+        if room.get("kind") != "cutting" or not seq_valid_id(seq_id):
+            return None
+        return room_id, seq_id
+    return room_id, None
+
+
+def _guide_hist_path(key):
+    parts = _guide_hist_key_parts(key)
+    if parts is None:
+        raise ValueError("That is not a guide history key.")
+    room_id, seq_id = parts
+    return os.path.join(GUIDE_HIST_DIR, room_id + (("." + seq_id) if seq_id else "") + ".json")
+
+
+def _guide_hist_read(key):
+    """Caller holds GUIDE_HIST_LOCK. [] when nothing is stored yet, or the
+    file is damaged -- never guessed at; an empty history is the same safe
+    fallback a blocked-localStorage browser already sees today."""
+    path = _guide_hist_path(key)
+    if not os.path.exists(path):
+        return []
+    try:
+        with open(path) as f:
+            hist = json.load(f)
+    except ValueError:
+        return []
+    return hist if isinstance(hist, list) else []
+
+
+def _guide_hist_write(key, hist):
+    """Caller holds GUIDE_HIST_LOCK. Per-writer tmp name, fsync, then os.replace."""
+    path = _guide_hist_path(key)
+    tmp = "%s.%d.tmp" % (path, threading.get_ident())
+    with open(tmp, "w") as f:
+        json.dump(hist, f)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+
+
+def _guide_hist_turn_ok(turn):
+    """The same shape the client's own guideHistLoad() keeps: {"role": "user"
+    or "assistant", "content": <str>, ...}. Extra keys (w, done, neighbours,
+    mode, topic, ...) ride along untouched -- the action "done" marker lives
+    in one of them, which is what makes re-applying an action idempotent
+    across a reload or a device switch."""
+    return (isinstance(turn, dict) and turn.get("role") in ("user", "assistant")
+            and isinstance(turn.get("content"), str))
+
+
+def _guide_hist_trim(hist):
+    """Cap at GUIDE_HIST_MAX_TURNS turns, then GUIDE_HIST_MAX_BYTES of JSON,
+    oldest dropped first -- the same "drop the oldest" rule as the client's
+    own GUIDE_HIST_MAX trim, just with the server's own numbers. Never drops
+    the single newest turn just to fit the byte cap."""
+    hist = hist[-GUIDE_HIST_MAX_TURNS:]
+    while len(hist) > 1 and len(json.dumps(hist).encode("utf-8")) > GUIDE_HIST_MAX_BYTES:
+        hist = hist[1:]
+    return hist
+
+
+def guide_history_get(key):
+    """GET /api/guide/history?key=<key> -> ({ok, history}, code)."""
+    if _guide_hist_key_parts(key) is None:
+        return {"ok": False, "error": "That is not a guide history key."}, 400
+    with GUIDE_HIST_LOCK:
+        hist = _guide_hist_read(key)
+    return {"ok": True, "history": hist}, 200
+
+
+def guide_history_set(p):
+    """POST /api/guide/history {key, history} -> ({ok}, code). Replaces the
+    stored array wholesale -- the client already computes the full trimmed
+    array before every guideHistSave() call, so a whole-array replace matches
+    its own logic exactly."""
+    if not isinstance(p, dict):
+        return {"ok": False, "error": "Send a JSON object."}, 400
+    key = p.get("key")
+    if _guide_hist_key_parts(key) is None:
+        return {"ok": False, "error": "That is not a guide history key."}, 400
+    hist = p.get("history")
+    if not isinstance(hist, list) or not all(_guide_hist_turn_ok(t) for t in hist):
+        return {"ok": False, "error": "\"history\" must be a list of {\"role\", \"content\", ...} turns."}, 400
+    hist = _guide_hist_trim(hist)
+    with GUIDE_HIST_LOCK:
+        _guide_hist_write(key, hist)
+    return {"ok": True}, 200
+
+
 def _ctx_int(v):
     return v if isinstance(v, int) and not isinstance(v, bool) and v > 0 else None
 
@@ -5999,6 +6114,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.sequence_file(q)
             if u.path == "/api/guide":
                 return self.send_json(*guide_payload((q.get("room") or [""])[0]))
+            if u.path == "/api/guide/history":
+                return self.send_json(*guide_history_get((q.get("key") or [""])[0]))
             self.send_json({"error": "not found"}, 404)
         except BrokenPipeError:
             pass
@@ -6299,6 +6416,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(*guide_skill(self.read_json()))
             if u.path == "/api/guide/revise":
                 return self.send_json(*guide_revise(self.read_json()))
+            if u.path == "/api/guide/history":
+                return self.send_json(*guide_history_set(self.read_json()))
             self.send_json({"error": "not found"}, 404)
         except BrokenPipeError:
             pass
