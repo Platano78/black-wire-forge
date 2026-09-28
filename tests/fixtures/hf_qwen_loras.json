@@ -261,5 +261,10 @@
     "not-for-all-audiences"
    ]
   }
- ]
+ ],
+ "readmes": {
+  "Alissonerdx/BFS-Best-Face-Swap": "---\nlicense: mit\n---\n# BFS Best Face Swap\n\nA LoRA that swaps faces cleanly while keeping the original lighting and skin tone intact.\n\nTrigger word: `bfsface`\n\nRecommended strength: 0.9\n",
+  "e-n-v-y/Qwen-Image-2.1-Fix": "---\ntags:\n  - lora\nwidget:\n- output:\n    url: https://huggingface.co/e-n-v-y/Qwen-Image-2.1-Fix/resolve/main/images/qwen21-comparison-_00124_.png\n  text: '-'\n---\n# Qwen Image 2.1 Fix LoRA\n\n<Gallery />\n\n## Model description\n\nA lora that, when used with the proper settings, fixes most of the image generation issues with Qwen Image 2.1.\n",
+  "f23gg/NSFW-LORA-Qwen-Image-2.1": "---\ntags:\n  - lora\n---\n# NSFW LORA Qwen Image 2.1\n\n<Gallery />\n\n## Download model\n\n[Download](/f23gg/NSFW-LORA-Qwen-Image-2.1/tree/main) them in the Files & versions tab.\n"
+ }
 }

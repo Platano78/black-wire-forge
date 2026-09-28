@@ -49,10 +49,18 @@ above leaves Pixel Art unavailable.
 Not a required model — optional, per lane. Any `.safetensors` LoRA already in the lane's ComfyUI
 `models/loras` whose filename contains `qwen_image` or `qwen-image` shows up as a "Style" choice
 in the Picture and Pixel Art forms automatically (`engines/qwen_image.py`'s `STYLE_FIELDS`); the
-app never ships one. The Picture room's "Browse styles" drawer lists candidates for this model
-from the Hugging Face Hub's public adapters API — licence and file size shown, downloading opt-in
-per lane (see AGENTS.md's "Getting the models"). No LoRA here is vetted or shippable; check its
-own licence before using its output commercially.
+app never ships one. The "Browse styles" drawer lists candidates for this model from the Hugging
+Face Hub's public adapters API — name, description, licence and file size shown, downloading
+opt-in per lane (see AGENTS.md's "Getting the models"). No LoRA here is vetted or shippable; check
+its own licence before using its output commercially.
+
+Getting a downloaded file into ComfyUI's own folder: point the lane's `downloads.loras_dir` at
+ComfyUI's `models/loras` when BWF and ComfyUI run on the same machine; on different machines it
+must be a folder BWF can write and ComfyUI can read (e.g. a network share mounted on both — how
+you set that up is your call). Either way ComfyUI only re-lists a folder on its next rescan, so
+refresh the lane if a just-downloaded pack doesn't show up as a model yet. Without `downloads` set
+at all, "Get it" just prints the `hf download ... --local-dir <ComfyUI>/models/loras/<folder>`
+command to run yourself.
 
 ## LTX-2.5 (`engines/ltx.py`) — video
 

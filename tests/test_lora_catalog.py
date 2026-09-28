@@ -1,8 +1,10 @@
-"""LORA-1 Build B acceptance gate: the "Browse styles" catalog build --
-filtering (NSFW hidden unless advanced, licence-unknown kept), the family ->
-HF base-model map, and the 10-minute cache -- against a RECORDED Hugging
-Face API fixture (tests/fixtures/hf_qwen_loras.json). NO live network call
-happens in this file; http_get_json is monkeypatched.
+"""LORA-1 Build B acceptance gate (updated for LORA-2B): the "Browse styles"
+catalog build -- every pack listed with its nsfw flag (owner ruling
+2026-09-28: no hiding), licence-unknown kept, the family -> HF base-model
+map, and the 10-minute cache -- against a RECORDED Hugging Face API fixture
+(tests/fixtures/hf_qwen_loras.json). NO live network call happens in this
+file; http_get_json AND the README fetch (LORA-2B's description/trigger/
+strength/preview source) are both monkeypatched.
 
 The fixture was captured live 2026-09-28 against:
   GET https://huggingface.co/api/models?filter=base_model:adapter:Qwen/Qwen-Image-2.1&sort=downloads&limit=50
@@ -45,13 +47,17 @@ def fake_http_get_json(url, timeout=8.0):
 
 
 srv.http_get_json = fake_http_get_json
+srv._fetch_readme_text = lambda repo_id: ""   # LORA-2B: no README fixture here -- see test_lora_catalog_v2.py
 srv.CATALOG_CACHE.clear()
 
-print("_hf_base_for_lane: the qwen_image family maps to the verified HF base id")
-check("qwen_unet filename -> Qwen/Qwen-Image-2.1",
-      srv._hf_base_for_lane({"qwen_unet": "qwen_image_2.1_Q6_K.gguf"}) == "Qwen/Qwen-Image-2.1")
-check("an unrelated/unknown family -> None", srv._hf_base_for_lane({"qwen_unet": "some_other_model.gguf"}) is None)
-check("no qwen_unet at all -> None", srv._hf_base_for_lane({}) is None)
+print("_families_for_lane (LORA-2B, replaces the old single-family _hf_base_for_lane): "
+      "the qwen_image family maps to the verified HF base id")
+check("qwen_unet filename -> the family whose hf_base is Qwen/Qwen-Image-2.1",
+      [f["hf_base"] for f in srv._families_for_lane({"qwen_unet": "qwen_image_2.1_Q6_K.gguf"})]
+      == ["Qwen/Qwen-Image-2.1"])
+check("an unrelated/unknown family -> no family present",
+      srv._families_for_lane({"qwen_unet": "some_other_model.gguf"}) == [])
+check("no qwen_unet at all -> no family present", srv._families_for_lane({}) == [])
 
 print()
 print("_build_catalog / catalog_for: shape, licence and files per entry")
@@ -67,7 +73,8 @@ nsfw_entry = next((c for c in catalog if c["nsfw"]), None)
 check("the not-for-all-audiences repo is flagged nsfw", nsfw_entry is not None, [c["id"] for c in catalog])
 
 print()
-print("filtering: /api/catalog/loras hides nsfw unless advanced=1")
+print("owner ruling 2026-09-28: /api/catalog/loras never hides nsfw -- every pack is listed, "
+      "each carrying its own nsfw flag for the page to badge")
 obj = srv.Handler.__new__(srv.Handler)
 LANE = {"id": "q", "name": "Qwen lane", "caps": ["image"]}
 srv.LANE_BY_ID[LANE["id"]] = LANE
@@ -75,12 +82,12 @@ with srv.DISCOVERY_LOCK:
     srv.DISCOVERY[LANE["id"]] = {"models": {"qwen_unet": "qwen_image_2.1_Q6_K.gguf"},
                                  "pools": {}, "checked": 1.0, "err": ""}
 plain, code = srv.Handler.api_catalog_loras(obj, {"lane": ["q"]})
-check("advanced=0 (default): 200 and nsfw entries excluded",
-      code == 200 and all(not c["nsfw"] for c in plain["loras"]), plain)
-adv, code2 = srv.Handler.api_catalog_loras(obj, {"lane": ["q"], "advanced": ["1"]})
-check("advanced=1: the nsfw entry is included", any(c["nsfw"] for c in adv["loras"]), adv)
+check("200 and the nsfw entry IS included, with no query flag at all",
+      code == 200 and any(c["nsfw"] for c in plain["loras"]), plain)
+check("an old caller's advanced=1 is accepted and ignored, same result",
+      srv.Handler.api_catalog_loras(obj, {"lane": ["q"], "advanced": ["1"]})[0]["loras"] == plain["loras"])
 check("licence-unknown entries are still shown (never dropped)",
-      any(c["licence"] is None for c in adv["loras"]), adv)
+      any(c["licence"] is None for c in plain["loras"]), plain)
 
 print()
 print("an unknown picture family returns an empty list with a plain sentence, no HF call for it")

@@ -13,7 +13,7 @@
       "caps": ["image"],
       "note": "a ComfyUI instance on this machine"
 
-      ,"_downloads_comment": "Optional, per lane, OFF unless you add \"downloads\" below -- a fresh config downloads nothing. It opts THIS lane in to downloading style LoRAs from the \"Browse styles\" catalog: \"downloads\": {\"loras_dir\": \"/absolute/path/to/ComfyUI/models/loras\", \"max_bytes\": 4294967296}. loras_dir must be an absolute path on the machine running this app; max_bytes is optional (default 4 GiB)."
+      ,"_downloads_comment": "Optional, per lane, OFF unless you add \"downloads\" below -- a fresh config downloads nothing; without it, \"Get it\" just prints the exact `hf download ... --local-dir <ComfyUI>/models/loras/<folder>` command to run on the ComfyUI machine yourself. To turn it on: \"downloads\": {\"loras_dir\": \"/absolute/path/to/ComfyUI/models/loras\", \"max_bytes\": 4294967296}. Same machine (the common case): point loras_dir straight at ComfyUI's own models/loras folder and \"Get it\" downloads into the right family subfolder. Different machines: loras_dir must be a folder this app can WRITE and ComfyUI can READ -- a network share mounted on both, however you choose to share it. Either way it's an absolute path; max_bytes is optional (default 4 GiB). ComfyUI only re-lists a folder when it rescans, so a pack that just landed may need a lane refresh before it shows up as a model."
     }
   ]
 }

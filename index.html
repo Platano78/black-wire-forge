@@ -761,6 +761,8 @@
   .credit-row:last-child{border-bottom:none}
   .credit-row .name{font-weight:600}
   .credit-row .attribution{color:var(--text-mid); font-size:13px}
+  .lora-preview{display:block; max-width:200px; max-height:110px; object-fit:cover;
+    border-radius:4px; margin:4px 0}
   #shareBody p{margin-bottom:10px; font-size:13px; color:var(--text-mid)}
   #shareActions{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px}
   .fixture-badge{font-family:var(--mono); font-size:10px; color:var(--accent); border:1px dashed var(--accent);
@@ -1020,9 +1022,6 @@
     <button class="close-x" type="button" data-close="lorasDialog" aria-label="Close">&times;</button>
   </div>
   <div class="dialog-body">
-    <label style="display:flex; align-items:center; gap:6px">
-      <input type="checkbox" id="lorasAdvanced"> Advanced (show packs marked not for all audiences)
-    </label>
     <p id="lorasMsg" role="status"></p>
     <div id="lorasBody"></div>
   </div>
@@ -4193,9 +4192,10 @@ async function renderDownloadStatus(lane){
     if(b) b.onclick = () => postJSON('/api/lora/download/cancel', {lane});
   }
 }
-async function loraGetIt(lane, downloadsOn, repo, file){
+async function loraGetIt(lane, downloadsOn, family, repo, file, folder){
   if(!downloadsOn){
-    const cmd = 'hf download ' + repo + ' ' + file + ' --local-dir <ComfyUI>/models/loras';
+    const dir = '<ComfyUI>/models/loras' + (folder ? '/' + folder : '');
+    const cmd = 'hf download ' + repo + ' ' + file + ' --local-dir ' + dir;
     // The message shows the command regardless; the clipboard write is a
     // best-effort convenience that must never block or delay it (a denied
     // or slow permission prompt must not hang "Get it").
@@ -4204,28 +4204,51 @@ async function loraGetIt(lane, downloadsOn, repo, file){
       .then(() => { $('#lorasMsg').textContent += ' (copied)'; }, () => {});
     return;
   }
-  const r = await postJSON('/api/lora/download', {lane, repo, file});
+  const r = await postJSON('/api/lora/download', {lane, family, repo, file});
   if(!r.ok){ $('#lorasMsg').textContent = r.error || 'Could not start the download.'; return; }
   if(LORAS_POLL) clearInterval(LORAS_POLL);
   LORAS_POLL = setInterval(() => renderDownloadStatus(lane), 1500);
   renderDownloadStatus(lane);
 }
+function loraCardHTML(pack, family, folder){
+  const lic = pack.licence ? esc(pack.licence) : 'licence unknown';
+  // Owner ruling 2026-09-28: no hiding, no "Advanced" filter -- every pack
+  // is listed; an NSFW one carries a plain badge, same weight as the
+  // licence stamp, instead of being hidden behind a toggle.
+  const nsfwBadge = pack.nsfw ? ' <span class="muted">· NSFW</span>' : '';
+  const preview = pack.preview ? '<img class="lora-preview" src="' + esc(pack.preview) + '" alt="" loading="lazy">' : '';
+  const trig = pack.trigger_words ? '<div class="hint">Trigger: ' + esc(pack.trigger_words) + '</div>' : '';
+  const strength = pack.strength != null ? '<div class="hint">Recommended strength: ' + esc(pack.strength) + '</div>' : '';
+  const files = (pack.files || []).map(f =>
+    '<div class="ledger-row"><span>' + esc(f.filename) + ' (' + humanBytes(f.size) + ')</span>'
+    + '<span class="leader"></span>'
+    + '<button type="button" class="btn" data-get-repo="' + esc(pack.id) + '" data-get-file="' + esc(f.filename)
+    + '" data-get-family="' + esc(family || '') + '" data-get-folder="' + esc(folder || '') + '">Get it</button></div>'
+  ).join('');
+  return '<div class="credit-row">' + preview
+    + '<div class="name">' + esc(pack.name || pack.id) + ' <span class="muted">by ' + esc(pack.author || '?') + ' · ' + lic + '</span>' + nsfwBadge + '</div>'
+    + '<div class="attribution">' + esc(pack.description || 'No description on the model card.') + '</div>'
+    + trig + strength
+    + '<div class="attribution">' + pack.downloads + ' downloads · ' + pack.likes + ' likes</div>' + files + '</div>';
+}
 let LORAS_REQ = 0;
-async function openLoraDrawer(){
+let LORAS_FAMILY = null;
+async function openLoraDrawer(keepFamily){
   const lane = STATE.activeLane;
   const dlg = $('#lorasDialog');
   if(!lane){ $('#lorasMsg').textContent = 'Pick a machine first.'; dlg.showModal(); return; }
+  if(!keepFamily) LORAS_FAMILY = null;
   const laneInfo = STATE.lanes.find(l => l.id === lane) || {};
-  $('#lorasAdvanced').onchange = () => openLoraDrawer();
-  const advanced = $('#lorasAdvanced').checked ? 1 : 0;
   $('#lorasBody').innerHTML = '<p class="muted">Loading…</p>';
   dlg.showModal();
-  // The Advanced toggle can fire a second request before the first answers;
-  // a stale reply must never overwrite what the LATEST toggle state asked for.
+  // A tab click can fire a second request before the first answers; a
+  // stale reply must never overwrite what the LATEST request asked for.
   const myReq = ++LORAS_REQ;
   let r;
   try {
-    r = await getJSON('/api/catalog/loras?lane=' + encodeURIComponent(lane) + '&advanced=' + advanced);
+    r = await getJSON('/api/catalog/loras?lane=' + encodeURIComponent(lane)
+      + '&cap=' + encodeURIComponent(STATE.cap || '')
+      + (LORAS_FAMILY ? '&family=' + encodeURIComponent(LORAS_FAMILY) : ''));
   } catch(e){
     if(myReq !== LORAS_REQ) return;
     $('#lorasBody').innerHTML = '<p class="muted">' + esc(String(e.message || e)) + '</p>';
@@ -4233,21 +4256,24 @@ async function openLoraDrawer(){
   }
   if(myReq !== LORAS_REQ) return;
   if(!r.ok){ $('#lorasBody').innerHTML = '<p class="muted">' + esc(r.error || '') + '</p>'; return; }
-  if(r.note){ $('#lorasBody').innerHTML = '<p class="muted">' + esc(r.note) + '</p>'; return; }
-  if(!r.loras || !r.loras.length){ $('#lorasBody').innerHTML = '<p class="muted">Nothing found.</p>'; return; }
-  $('#lorasBody').innerHTML = r.loras.map(pack => {
-    const lic = pack.licence ? esc(pack.licence) : 'licence unknown';
-    const files = (pack.files || []).map(f =>
-      '<div class="ledger-row"><span>' + esc(f.filename) + ' (' + humanBytes(f.size) + ')</span>'
-      + '<span class="leader"></span>'
-      + '<button type="button" class="btn" data-get-repo="' + esc(pack.id) + '" data-get-file="' + esc(f.filename) + '">Get it</button></div>'
-    ).join('');
-    return '<div class="credit-row"><div class="name">' + esc(pack.id) + ' <span class="muted">· ' + lic + '</span></div>'
-      + '<div class="attribution">' + pack.downloads + ' downloads · ' + pack.likes + ' likes'
-      + (pack.nsfw ? ' · not for all audiences' : '') + '</div>' + files + '</div>';
-  }).join('');
+  const families = r.families || [];
+  LORAS_FAMILY = r.family || LORAS_FAMILY;
+  const folder = r.folder || '';
+  const tabsHTML = families.length > 1
+    ? '<div class="history-toggle" id="lorasFamilyTabs" role="tablist">' + families.map(f =>
+        '<button type="button" data-family="' + esc(f.id) + '" data-folder="' + esc(f.folder || '') + '"'
+        + ' aria-pressed="' + (f.id === LORAS_FAMILY ? 'true' : 'false') + '">' + esc(f.label) + '</button>').join('')
+      + '</div>'
+    : '';
+  if(r.note){ $('#lorasBody').innerHTML = tabsHTML + '<p class="muted">' + esc(r.note) + '</p>'; }
+  else if(!r.loras || !r.loras.length){ $('#lorasBody').innerHTML = tabsHTML + '<p class="muted">Nothing found.</p>'; }
+  else { $('#lorasBody').innerHTML = tabsHTML + r.loras.map(pack => loraCardHTML(pack, LORAS_FAMILY, folder)).join(''); }
+  $$('#lorasBody [data-family]').forEach(b => {
+    b.onclick = () => { LORAS_FAMILY = b.dataset.family; openLoraDrawer(true); };
+  });
   $$('#lorasBody [data-get-repo]').forEach(b => {
-    b.onclick = () => loraGetIt(lane, laneInfo.downloads, b.dataset.getRepo, b.dataset.getFile);
+    b.onclick = () => loraGetIt(lane, laneInfo.downloads, b.dataset.getFamily, b.dataset.getRepo,
+                                b.dataset.getFile, b.dataset.getFolder);
   });
   renderDownloadStatus(lane);
 }
