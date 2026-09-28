@@ -603,13 +603,25 @@ def _resolved_family(lane, family_id):
 
 def _families_for_lane(m):
     """Every style family whose role model this lane has discovered and
-    whose match rule that model's filename satisfies -- the families
-    "present" on this lane, in style_families() order. This core names no
-    model itself -- it only asks each pack's OWN declaration."""
+    whose match rule's POSITIVE terms (any/all) that model's filename
+    satisfies -- the families "present" on this lane, in style_families()
+    order. Deliberately ignores the match rule's own "none" list here: that
+    exclusion exists to keep speed/distillation LoRA files out of the
+    "Browse styles" catalog, not to judge the base model itself -- a
+    legitimately-named distilled/speed-tuned BASE CHECKPOINT is not a LoRA
+    and must still count as present (live-rig defect 2026-09-28: two real
+    families vanished from a real lane's catalog because their own base
+    model filenames tripped their own "none" list). This core names no
+    model itself -- it only asks each pack's OWN declaration, minus the
+    one field it must never apply here."""
     out = []
     for sc in style_families():
         name = (m.get(sc["role"]) or "").lower()
-        if name and _rule_matches([name], sc.get("match") or {}):
+        if not name:
+            continue
+        rule = sc.get("match") or {}
+        positive_only = {k: v for k, v in rule.items() if k in ("any", "all")}
+        if _rule_matches([name], positive_only):
             out.append(sc)
     return out
 
@@ -685,13 +697,18 @@ def _first_prose_sentence(readme_text):
     """LORA-2B: the model card's first real prose sentence. Front-matter,
     headings, badges, images and HTML are skipped; consecutive prose lines
     are joined into one paragraph first (a card that hard-wraps its first
-    paragraph across several lines must not truncate mid-sentence). None
+    paragraph across several lines must not truncate mid-sentence). A
+    trigger/activation/instance-prompt line is skipped too (live-rig
+    defect 2026-09-28: H3 Realism's description came out as "Trigger word:
+    r34l1sm" -- that line feeds trigger_words, via _extract_trigger_words'
+    own _TRIGGER_LINE_RE below, reused here so the two stay in step; the
+    NEXT real prose sentence after it is what description wants). None
     when the card has no prose line at all."""
     body, _fm = _strip_front_matter(readme_text)
     paragraph = []
     for raw_line in body.splitlines() + [""]:
         line = raw_line.strip()
-        if not line or (line[:1] in (">", "|")) or _is_noise_line(line):
+        if not line or (line[:1] in (">", "|")) or _is_noise_line(line) or _TRIGGER_LINE_RE.search(line):
             if paragraph:
                 text = _strip_markdown_inline(" ".join(paragraph))
                 paragraph = []

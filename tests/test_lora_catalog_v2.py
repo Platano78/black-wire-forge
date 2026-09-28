@@ -96,6 +96,33 @@ d5 = srv._first_prose_sentence(readme("absolute_preview"))
 check("a short, ordinary first paragraph is returned as-is",
       d5 == "A calm studio-lit portrait style, tuned for soft skin tones and warm rim light.", d5)
 
+def _old_first_prose_sentence(readme_text):
+    """The PRE-FIX _first_prose_sentence (verbatim: no trigger-line skip) --
+    used ONLY here to demonstrate RED."""
+    body, _fm = srv._strip_front_matter(readme_text)
+    paragraph = []
+    for raw_line in body.splitlines() + [""]:
+        line = raw_line.strip()
+        if not line or (line[:1] in (">", "|")) or srv._is_noise_line(line):
+            if paragraph:
+                text = srv._strip_markdown_inline(" ".join(paragraph))
+                paragraph = []
+                if text:
+                    return srv._sentence_from(text)
+            continue
+        paragraph.append(line)
+    return None
+
+
+red_d6 = _old_first_prose_sentence(readme("trigger_before_description"))
+check("RED: the pre-fix extractor returned the 'Trigger word:' line itself as the description "
+      "(the live H3 Realism defect)", red_d6 == "Trigger word: r34l1sm", red_d6)
+
+d6 = srv._first_prose_sentence(readme("trigger_before_description"))
+check("GREEN: live-rig defect (2026-09-28) -- a 'Trigger word:' line is skipped, not returned as "
+      "the description; the real next prose sentence is",
+      d6 == "A photorealistic portrait style LoRA for MiniMax-H3, tuned for skin texture and studio light.", d6)
+
 print()
 print("Trigger words / recommended strength -- 'look for \"trigger word(s)\"/\"activation\" lines'")
 check("a backtick-quoted trigger word wins over the surrounding sentence",
@@ -241,6 +268,46 @@ try:
           _raises_valueerror(lambda: srv._lora_download_target(lane, None, "owner/pack", "s.safetensors")))
 finally:
     engines.style_catalogs = _real_style_catalogs
+
+
+print()
+print("Live-rig defect (2026-09-28): family PRESENCE must use the match rule's POSITIVE terms only, "
+      "never its \"none\" exclusion list, against REAL engine packs + REAL lane role filenames")
+# Taken verbatim from the live rig lane (`curl -s http://<rig>:3998/api/lanes`, "rig" -> "files"),
+# 2026-09-28 -- every one of the 6 families' own base-model filename, including the two that
+# tripped the bug: ltx_transformer names a DISTILLED base checkpoint ("distill" in the filename)
+# and ace_unet names a TURBO base checkpoint ("turbo" in the filename); both are excluded by their
+# own family's "none" list, which exists to keep speed/distillation LoRA ADD-ONS out of the
+# "Browse styles" catalog -- never meant to apply to the base model itself.
+REAL_RIG_FILES = {
+    "ace_unet": "ace_step_1.5/acestep_v1.5_turbo.safetensors",
+    "music3_unet": "minimax_music3/minimax_music3_dit_int8_convrot.safetensors",
+    "yue2_ckpt": "yue2_3b_int8_convrot.safetensors",
+    "ltx_transformer": "ltx-2.5-22b-distilled-transformer-nvfp4.safetensors",
+    "h3_unet_fl2va": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+    "qwen_unet": "qwen_image_2.1_nvfp4.safetensors",
+}
+EXPECTED_REAL_FAMILY_IDS = {"ace_step15", "music3", "yue2", "ltx25", "minimax_h3", "qwen_image"}
+
+
+def _old_families_for_lane(m):
+    """The PRE-FIX _families_for_lane (verbatim: applies the WHOLE match
+    rule, "none" included) -- used ONLY here to demonstrate RED."""
+    out = []
+    for sc in engines.style_catalogs():
+        name = (m.get(sc["role"]) or "").lower()
+        if name and srv._rule_matches([name], sc.get("match") or {}):
+            out.append(sc)
+    return out
+
+
+red_present = {sc["id"] for sc in _old_families_for_lane(REAL_RIG_FILES)}
+check("RED: the pre-fix presence check drops ltx25 and ace_step15 (real distilled/turbo base models)",
+      red_present == EXPECTED_REAL_FAMILY_IDS - {"ltx25", "ace_step15"}, red_present)
+
+green_present = {sc["id"] for sc in srv._families_for_lane(REAL_RIG_FILES)}
+check("GREEN: the real _families_for_lane finds all six real families present on the real rig lane",
+      green_present == EXPECTED_REAL_FAMILY_IDS, green_present)
 
 print()
 print(("FAILED: %d" % len(FAILED)) if FAILED else "ALL PASS")
