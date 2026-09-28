@@ -71,6 +71,25 @@ behind) rather than guess at a file whose keys don't fit the expected shape. Whe
 off for a lane, the printed `hf download` command gets a second line saying the pack needs
 converting by hand first.
 
+### Remove deleting the file, not just the History entry
+
+Off by default: Remove only ever drops BWF's own History record — the picture/clip stays on the
+lane's own disk, same as always (AGENTS.md's "this app never deletes your files"). Three setups,
+opt-in per lane via `outputs.dir` in `config.json` (same shape as `downloads.loras_dir` above):
+
+- **Not set at all (the default).** Remove behaves exactly as before; its tooltip says the file
+  stays where the lane saved it.
+- **BWF and that ComfyUI on the same machine.** Point `outputs.dir` at that ComfyUI's own
+  `output/` folder. Remove now also deletes the job's own output file(s) there, and its confirm
+  text says so.
+- **BWF and that ComfyUI on different machines.** `outputs.dir` must be a folder BWF can WRITE
+  that IS that ComfyUI instance's real output folder — a network share mounted on both, however
+  you choose to set that up (same constraint as `downloads.loras_dir`'s different-machines case).
+
+Either way, Remove refuses to delete a file a Cutting Room sequence still uses (the same refusal
+Remove already gives for the History entry itself), and never deletes anything outside that one
+configured folder.
+
 ## LTX-2.5 (`engines/ltx.py`) — video
 
 Licence: **LTX-2.x Community License** ([official text](https://raw.githubusercontent.com/Lightricks/LTX-2/main/LICENSE-2_x)), confirmed live 2026-09-24. Section 2.1: *"Entities with annual

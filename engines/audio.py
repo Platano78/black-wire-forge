@@ -1469,6 +1469,9 @@ ENGINE = {
         "song": "ace_unet", "music": "music3_unet", "sfx": "sao_ckpt",
         "yue2": "yue2_ckpt", "cover": "yue2_ckpt",
     },
+    # UX-2 #9: YuE2's own generator nodes report step progress under these
+    # class_types, not KSampler -- each counts as one sampling stage.
+    "stage_classes": ["YuE2GenerateMusic", "YuE2GenerateABC"],
     "cap_from": ["song", "music", "sfx", "yue2", "cover"],
     "provides": {
         "song": ["ace_unet", "ace_clip1", "ace_clip2", "ace_vae"],

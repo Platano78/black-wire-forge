@@ -19,6 +19,12 @@ falsy — is ignored. The dict has exactly these keys:
   provides  dict  ability_name -> list[role_name]
                        an ability is satisfied iff EVERY listed role
                        resolved to a model in the models dict
+  stage_classes  optional list[str]  ComfyUI class_types (beyond the
+                       default KSampler family, see stage_class_types())
+                       whose `progress` websocket events count as one
+                       sampling STAGE for UX-2 #9's percent -- e.g. YuE2's
+                       own generator nodes report progress under their own
+                       class_type, not KSampler's.
   words     dict  role_name -> str
                        plain-English label used in "missing X" messages
   graphs    dict  mode_name -> callable(args, models) -> graph_dict
@@ -346,6 +352,25 @@ def _discover():
 def packs():
     """All discovered ENGINE dicts, sorted by id."""
     return _discover()
+
+
+# UX-2 #9: the ComfyUI node class_types that report step-by-step `progress`
+# websocket events for an ordinary denoise loop. A pack whose generator node
+# reports progress under a DIFFERENT class_type (e.g. YuE2's own generator
+# nodes) declares them in its own ENGINE["stage_classes"] list instead of
+# server.py naming a pack-specific class_type -- extendable by packs, kept in
+# this one place per the orchestrator's ruling.
+_DEFAULT_STAGE_CLASSES = {"KSampler", "KSamplerAdvanced", "SamplerCustom", "SamplerCustomAdvanced"}
+
+
+def stage_class_types():
+    """Every class_type that counts as one sampling STAGE for UX-2 #9's
+    progress percentage: the default denoise-loop node types plus whatever
+    each pack's ENGINE["stage_classes"] adds (YuE2GenerateMusic/ABC, etc)."""
+    out = set(_DEFAULT_STAGE_CLASSES)
+    for pack in _discover():
+        out.update(pack.get("stage_classes") or ())
+    return out
 
 
 def role_pool():

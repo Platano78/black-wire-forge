@@ -141,10 +141,15 @@ def strip_volatile(obj):
     """A fresh job id/prompt_id/timestamp is inherent to every successful
     dispatch -- "byte-identical" can only mean identical MODULO that
     bookkeeping (test_refs.py's api_chain gate never creates a job, so it
-    never hit this)."""
+    never hit this). UX-2 #9 also adds new, deterministic-at-dispatch job
+    keys (stage_nodes/stages_seen/progress_state/progress_pct) that the OLD
+    server (compared via `git show HEAD:server.py`) never wrote at all --
+    stripped here for the same reason as the timestamps: a NEW field is not
+    a behaviour DIFFERENCE in what this test actually checks."""
     if isinstance(obj, dict):
         return {k: strip_volatile(v) for k, v in obj.items()
-                if k not in ("id", "prompt_id", "created", "started", "updated", "finished")}
+                if k not in ("id", "prompt_id", "created", "started", "updated", "finished",
+                             "stage_nodes", "stages_seen", "progress_state", "progress_pct")}
     if isinstance(obj, list):
         return [strip_volatile(v) for v in obj]
     return obj

@@ -563,5 +563,30 @@ check("image sorts before video", order_map["image"] < order_map["video"], str(o
 check("video sorts before audio", order_map["video"] < order_map["audio"], str(order_map))
 
 print()
+print("UX-2 #3: estimate_range is (min, max, n) over the SAME 72h/5-sample window as estimate_seconds, "
+      "but with no 3-job floor")
+srv.JOBS.clear()
+check("RED: 0 finished jobs -> (None, None, 0)", srv.estimate_range(LANE_ID, CAP, MODE, QID) == (None, None, 0))
+add_job(30.0)
+got = srv.estimate_range(LANE_ID, CAP, MODE, QID)
+check("GREEN: 1 finished job -> (30.0, 30.0, 1) -- a range shows at n==1, unlike the median's 3-job floor",
+      got == (30.0, 30.0, 1), str(got))
+add_job(10.0); add_job(50.0)
+got = srv.estimate_range(LANE_ID, CAP, MODE, QID)
+check("GREEN: 3 finished jobs -> (min, max, 3)", got == (10.0, 50.0, 3), str(got))
+add_job(999.0, status="queued")
+got = srv.estimate_range(LANE_ID, CAP, MODE, QID)
+check("a queued job is excluded, same as estimate_seconds", got == (10.0, 50.0, 3), str(got))
+srv.JOBS.clear()
+now = time.time()
+add_job(1200.0, finished=now - 10 * DAY)  # stale, must not count
+add_job(20.0, finished=now - 1 * 3600)
+add_job(24.0, finished=now - 2 * 3600)
+got = srv.estimate_range(LANE_ID, CAP, MODE, QID)
+check("GREEN: stale (>72h) jobs excluded, same windowing as estimate_seconds",
+      got == (20.0, 24.0, 2), str(got))
+srv.JOBS.clear()
+
+print()
 print(("FAILED: %d" % len(FAILED)) if FAILED else "ALL PASS")
 sys.exit(1 if FAILED else 0)

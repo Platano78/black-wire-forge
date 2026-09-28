@@ -143,6 +143,12 @@ try:
         page.goto(url + "#room=video", wait_until="networkidle")
         page.wait_for_function("() => STATE.lanes.some(l => l.id === 't' && l.up)", timeout=15000)
         page.wait_for_function("() => !document.querySelector('#browseStylesBtn').hidden", timeout=15000)
+        # UX-2 #1: the engine chip's popover can be sitting open (it opens
+        # on its own while the picked engine still reads as unavailable,
+        # e.g. this suite's minimal one-candidate-per-role fixture during
+        # the first discovery pass) and now overlays the panel instead of
+        # pushing it down the way the old <details> summary did.
+        page.evaluate("() => { if(typeof setEngineChipOpen === 'function') setEngineChipOpen(false); }")
 
         page.click("#browseStylesBtn")
         page.wait_for_function("() => document.querySelector('#lorasDialog').open", timeout=5000)

@@ -251,20 +251,24 @@
   #laneNote{font-size:12px; color:var(--text-mid); max-width:72ch}
   #laneNote:empty{display:none}
   #roomForm{display:flex; flex-direction:column; gap:12px}
-  #roomHeading{font-size:18px}
-  #roomBlurb{font-size:12px; color:var(--text-mid); margin:2px 0 0; max-width:72ch}
+  #roomHeadingRow{position:relative; display:flex; align-items:center; flex-wrap:wrap; gap:8px 10px}
+  #roomHeading{font-size:18px; margin:0}
+  #roomBlurb{font-size:12px; color:var(--text-mid); margin:2px 0 0; max-width:72ch; flex-basis:100%}
   #roomPlainNote{font-size:13px; color:var(--text-mid); margin:0; max-width:72ch}
-  /* The engine picker is one summary line (the picked engine) that opens
-     to the full rows, so the guide and the prompt box stay in view on entry.
-     It opens on its own when the picked engine cannot run here. */
-  #enginePickerDetails > summary{cursor:pointer; font-size:12px; text-transform:uppercase; letter-spacing:.04em;
-    color:var(--text-mid); min-height:36px; display:flex; align-items:center; flex-wrap:wrap; gap:0 4px; user-select:none;
-    border-top:1px solid var(--divider)}
-  #enginePickerDetails > summary::-webkit-details-marker{display:none}
-  #enginePickerDetails > summary::before{content:'▸'; color:var(--accent)}
-  #enginePickerDetails[open] > summary::before{content:'▾'}
-  #enginePickerCurrent{color:var(--text-hi); text-transform:none; font-size:13px}
-  #enginePickerDetails .engine-picker{margin-top:6px}
+  /* UX-2 #1: the current engine as an always-visible chip beside the room
+     heading, not a low-weight <details> summary. A 2+-engine room's chip
+     is a button that opens the (unchanged) radio list as a popover right
+     under it; a single-engine room's chip has no caret and no popover
+     (see renderEnginePickerSummary). */
+  #engineChipBtn{cursor:pointer; font-size:13px; color:var(--text-hi); background:var(--surface3);
+    border:1px solid var(--divider); border-radius:999px; padding:4px 10px; display:inline-flex;
+    align-items:center; gap:5px; user-select:none}
+  #engineChipBtn[disabled]{cursor:default}
+  #engineChipCaret{color:var(--accent); font-size:10px}
+  #enginePickerWrap{position:relative}
+  #enginePicker.engine-picker{position:absolute; top:100%; left:0; z-index:5; margin-top:4px;
+    background:var(--surface2); border:1px solid var(--divider); border-radius:8px; padding:8px;
+    min-width:260px; box-shadow:0 4px 16px rgba(0,0,0,.3)}
   #promptHint{font-size:11px; color:var(--text-mid); margin:4px 0 0; max-width:72ch}
   #promptHint:empty,#primaryFields:empty{display:none}
   #helperWriteCaption{font-size:11px; color:var(--text-mid); margin:4px 0 0; max-width:72ch}
@@ -287,6 +291,17 @@
   .erow-runs{font-size:12px; color:var(--text-mid)}
   .erow-meta{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:4px}
   .erow-estimate{font-family:var(--mono); font-size:12px; color:var(--text-mid)}
+  /* UX-2 #9: one shared progress-bar widget, reused for a running job
+     (History row + Monitor) and a LoRA download (bytes/total) -- same
+     component, per the orchestrator's ruling. */
+  .progress-bar{position:relative; height:6px; border-radius:3px; background:var(--surface3);
+    overflow:hidden; margin-top:4px}
+  .progress-fill{position:absolute; top:0; bottom:0; left:0; width:0; background:var(--accent);
+    transition:width .3s ease}
+  .progress-bar.indeterminate .progress-fill{width:40%; left:-40%;
+    animation:progress-indeterminate 1.3s ease-in-out infinite}
+  @keyframes progress-indeterminate{0%{left:-40%} 100%{left:100%}}
+  .progress-label{font-family:var(--mono); font-size:11px; color:var(--text-mid); margin-top:2px}
   label.field-label{display:block; font-size:12px; font-family:var(--mono); letter-spacing:.03em;
     text-transform:uppercase; color:var(--text-mid); margin-bottom:4px}
   .field-row{margin-bottom:10px; min-height:36px}
@@ -801,8 +816,21 @@
   <section id="monitor" aria-label="Monitor"></section>
 
   <section id="inspector" aria-label="Recipe inspector">
-    <div>
+    <div id="roomHeadingRow">
       <h2 id="roomHeading"></h2>
+      <!-- UX-2 #1: the current engine as a small always-visible chip beside
+           the room heading ("Music - Background music v"), not a low-weight
+           <details> summary sandwiched between TRY THIS and the prompt box
+           (audit B1). A room with only one engine shows the chip with no
+           caret/popover (item 1's "single-engine rooms: the chip shows the
+           engine, no v"); the radio list itself (#enginePicker) is
+           unchanged, just re-homed as this chip's popover. -->
+      <div id="enginePickerWrap" hidden>
+        <button type="button" id="engineChipBtn" aria-haspopup="true" aria-expanded="false" aria-controls="enginePicker">
+          <span id="enginePickerCurrent"></span><span id="engineChipCaret" aria-hidden="true">&#9662;</span>
+        </button>
+        <div class="engine-picker" id="enginePicker" role="radiogroup" aria-label="Engine" hidden></div>
+      </div>
       <p id="roomBlurb"></p>
       <!-- LORA-1 Build B: only shown when the current mode has a "pool_select"
            style field (renderModeFields toggles this). -->
@@ -835,17 +863,9 @@
       <div class="field-group-title">Try this</div>
       <div id="tryThisRow" role="group" aria-label="Try this"></div>
     </div>
-    <!-- Engine picker: the room's modes as a radio list. Absent when the
-         room has one mode (the room name is then the only heading). -->
-    <div id="enginePickerWrap" hidden>
-      <details id="enginePickerDetails">
-        <summary><span id="enginePickerCount"></span> <span id="enginePickerTitle">engines</span>:
-          <span id="enginePickerCurrent"></span></summary>
-        <div class="engine-picker" id="enginePicker" role="radiogroup" aria-labelledby="enginePickerTitle"></div>
-      </details>
-    </div>
-    <!-- The prompt box is the anchor: right under the engine picker, its
-         writing actions under it, and the room's guide right under those. -->
+    <!-- The prompt box is the anchor: right under the engine picker (now a
+         chip beside the room heading, above), its writing actions under it,
+         and the room's guide right under those. -->
     <div id="promptWrap">
       <label class="field-label" for="promptBox" id="promptLabel">Prompt</label>
       <textarea id="promptBox"></textarea>
@@ -863,6 +883,15 @@
            only writes the box it sits under (the YuE2 case: the whole topic
            went into Style because nothing said the writer also fills Lyrics). -->
       <p class="hint muted" id="helperWriteCaption" hidden></p>
+    </div>
+    <!-- UX-2 #2: any other PRIMARY field in the prompt's own "Content" group
+         (today, only Lyrics -- song/music/yue2/cover) sits directly under
+         the prompt box, before Quality/Sound -- not hard-coded to those mode
+         names: renderForm() picks it out of the pack's own field group/order
+         data (engines/audio.py etc), so a future pack with the same shape
+         gets the same placement for free. Hidden when a mode has none. -->
+    <div id="contentFieldsWrap" hidden>
+      <div id="contentFields"></div>
     </div>
     <!-- Room guide: shown in any room whose rooms.json entry names a guide --
          the room's one voice. Sits here, right under the prompt box and its
@@ -952,6 +981,14 @@
         <button type="button" class="btn" id="makeFixBtn">Fix it</button>
         <button type="button" class="btn" id="makeAnywayBtn">Make anyway</button>
       </div>
+    </div>
+    <!-- UX-2 #6: a same-tab double-press of Make (audit A6 -- two identical
+         400-word jobs 3 days ago). Client-side only (the orchestrator's
+         ruling: the server stays authoritative for SAFETY, not for this) --
+         second click always proceeds. -->
+    <div id="makeDupeNotice" hidden role="alert">
+      <p>That's the same as the one still rendering — make another anyway?</p>
+      <button type="button" class="btn" id="makeDupeAnywayBtn">Make another</button>
     </div>
     <button class="btn btn-primary" id="makeBtn" type="button">Make</button>
     </div>
@@ -1060,6 +1097,31 @@ function humanSeconds(sec){
   const m = sec/60;
   return (m < 10 ? Math.round(m*2)/2 : Math.round(m)) + ' min';
 }
+/* UX-2 #9/prior-art borrow #6: one progress-bar widget, reused for a
+   running job's stage/percent (History row + Monitor) and a LoRA
+   download's bytes/total (renderDownloadStatus). `percent` null means
+   indeterminate (no step data / bytes yet -- "Loading models..."). */
+function progressBarHTML(percent, label, extra){
+  const known = percent != null;
+  const pct = known ? Math.max(0, Math.min(100, percent)) : null;
+  return '<div class="progress-bar' + (known ? '' : ' indeterminate') + '"' + (extra || '') + '>'
+    + '<div class="progress-fill"' + (known ? (' style="width:' + pct.toFixed(0) + '%"') : '') + '></div></div>'
+    + (label ? '<div class="progress-label">' + esc(label) + '</div>' : '');
+}
+/* The "Rendering * stage 1 of 2 * 45%" / "Loading models..." / "Finishing..."
+   text for a job's server-derived `progress` (job_progress_view, server.py). */
+function jobProgressLabel(p){
+  if(!p) return null;
+  if(p.state === 'loading') return 'Loading models…';
+  if(p.state === 'finishing') return 'Finishing…';
+  const pct = p.percent == null ? 0 : Math.round(p.percent);
+  return 'Rendering · stage ' + p.stage + ' of ' + p.stages + ' · ' + pct + '%'
+    + (p.elapsed != null ? ' · ' + humanSeconds(p.elapsed) + ' elapsed' : '');
+}
+function jobProgressPercent(p){
+  if(!p || p.state === 'loading') return null;   // indeterminate while loading
+  return p.percent;
+}
 function ago(ts){
   const d = Date.now()/1000 - ts;
   if(d < 60) return 'just now';
@@ -1145,6 +1207,12 @@ function laneUp(laneId){
   const l = STATE.lanes.find(x => x.id === laneId);
   if(!l) return true;
   return laneKindOf(l) === 'process' ? true : l.up;
+}
+// UX-2 #5: whether this job's lane opted in to Remove-also-deletes-the-file
+// (config.json "outputs", exposed as /api/lanes' "deletes_files").
+function laneDeletesFiles(laneId){
+  const l = STATE.lanes.find(x => x.id === laneId);
+  return !!(l && l.deletes_files);
 }
 // Write-only-on-change innerHTML (U1): the 2s poll re-renders every region,
 // and rebuilding nodes the user is hovering/clicking/playing destroys them
@@ -1300,13 +1368,21 @@ function renderBin(){
     const thumb = (!running && resultOutput(j))
       ? thumbHTML(j, resultOutput(j))
       : '<span class="num muted">' + (running ? '–' : '?') + '</span>';
+    // UX-2 #9: a percentage + stage label, not the raw step counter (the
+    // owner's brother: "step 4523/7500" doesn't read as progress). Raw
+    // step/total stays reachable in the bar's own tooltip. A lane that
+    // stopped answering is still CANNOT TELL -- that is a claim the page
+    // cannot make, same as before.
     let stepLabel = '';
+    let progressBarHtml = '';
     if(running){
-      // A lane that stopped answering is not "step N / M" -- that is a
-      // claim the page cannot make. Same CANNOT TELL as the slot tile.
-      stepLabel = laneUp(j.lane)
-        ? (j.total ? ('step ' + (j.step||0) + ' / ' + j.total) : '--')
-        : 'CANNOT TELL';
+      if(!laneUp(j.lane)){
+        stepLabel = 'CANNOT TELL';
+      } else {
+        const label = jobProgressLabel(j.progress) || 'Loading models…';
+        const tip = ' title="raw: step ' + (j.step||0) + ' / ' + (j.total||0) + '"';
+        progressBarHtml = progressBarHTML(jobProgressPercent(j.progress), label, tip);
+      }
     }
     // A1: the title clamps to 2 lines in CSS (.bin-title); the full text
     // still reaches a hover as the element's own title attribute, so a
@@ -1318,16 +1394,20 @@ function renderBin(){
     // and its own two-click arm exactly, so the armed label here always
     // agrees with the Monitor's.
     const armedThis = !!(STATE.forgetArmed && STATE.forgetArmed.jobId === j.id);
-    const removeLabel = armedThis ? 'Click again to remove' : 'Remove from History';
+    // UX-2 #5: the confirm text says so, opt-in per lane, off by default
+    // (the tooltip's "stays where the lane saved it" only when it's true).
+    const removeLabel = armedThis ? 'Click again to remove'
+      : ('Remove from History' + (laneDeletesFiles(j.lane) ? ' and delete the file' : ''));
     const removeBtn = running ? '' : ('<button type="button" class="bin-remove" data-job-remove="' + esc(j.id)
       + '" aria-label="' + esc(removeLabel) + '" title="' + esc(removeLabel) + '">&times;</button>');
     return '<tr data-job="' + esc(j.id) + '" class="' + (running ? 'ghost' : '') + '"'
       + ' aria-selected="' + (STATE.selectedJobId === j.id ? 'true' : 'false') + '">'
       + '<td><div class="bin-row-main"><div class="bin-thumb">' + thumb + '</div>'
       + '<div class="bin-row-text"><div class="bin-title" title="' + esc(titleText) + '">' + esc(titleText) + '</div>'
-      + '<div class="bin-meta">' + esc(j.lane_name || '') + ' · '
-      + (running ? esc(stepLabel) : esc(ago(j.created)))
-      + '</div></div>' + removeBtn + '</div></td>'
+      + '<div class="bin-meta">' + esc(j.lane_name || '')
+      + (running ? (stepLabel ? ' · ' + esc(stepLabel) : '') : ' · ' + esc(ago(j.created)))
+      + '</div>' + (running && progressBarHtml ? progressBarHtml : '')
+      + '</div>' + removeBtn + '</div></td>'
       + '</tr>';
   }).join('');
   if(setHTML(body, html)){
@@ -1418,6 +1498,13 @@ function monitorEmptyHTML(room){
   }
   const ms = roomModes(room);
   let html = '<div class="monitor-empty"><p>' + esc(room.empty || 'Set it up on the right and press Make.') + '</p>';
+  // UX-2 #4: only for the picked mode, and only when it actually has both
+  // boxes (audit B5 -- the YuE2 job that ran with no words because nothing
+  // said Style and Lyrics were two different fields).
+  const curMode = ms.find(x => x.cap === STATE.cap && x.mode === STATE.mode);
+  if(curMode && hasStyleAndLyricsBoxes(curMode.info)){
+    html += '<p>Style is the sound; Lyrics are the words sung — leave Lyrics empty for an instrumental.</p>';
+  }
   if(ms.length >= 2){
     html += '<p class="guide-title">Which one?</p><ul class="guide-list">'
       + ms.map(x => '<li><b>' + esc(x.info.label) + '</b>'
@@ -1464,10 +1551,16 @@ function renderMonitor(){
   // and only the machine's own answer will say. The Stop button goes with
   // it -- a dead machine cannot be asked.
   const laneDown = running && !laneUp(job.lane);
+  // UX-2 #9: the same progress bar/label as the History row, here in the
+  // Monitor -- "where the user is actually looking while it runs" (the
+  // orchestrator's ruling on scope). A dead lane still gets no percentage:
+  // CANNOT TELL is a claim the page can make; a step count isn't.
   let media = laneDown
     ? '<p class="muted">CANNOT TELL — ' + esc((job.lane_name || job.lane) || laneWord(job.lane))
       + ' stopped answering. This render may be lost; it updates when the machine answers.</p>'
-    : '<p class="muted">Still working. It will appear here when done.</p>';
+    : '<p class="muted">Still working. It will appear here when done.</p>'
+      + progressBarHTML(jobProgressPercent(job.progress), jobProgressLabel(job.progress) || 'Loading models…',
+                         ' title="raw: step ' + (job.step||0) + ' / ' + (job.total||0) + '"');
   if(shown){
     const u = viewURL(job.lane, shown, false);
     if(shown.media === 'video') media = '<video src="' + u + '" controls></video>';
@@ -1491,8 +1584,12 @@ function renderMonitor(){
     // (where the user is actually looking while it runs) gets the same
     // honesty, never a guessed percentage. A lane that stopped answering is
     // no step count at all: no chip, so the CANNOT TELL line is unchallenged.
+    // The bar above already carries the honest percentage; this chip is
+    // the raw counter kept reachable, same spirit as the bar's own tooltip.
     ['step', running && !laneDown ? (job.total ? (job.step || 0) + ' / ' + job.total : '--') : null],
-    ['seed', job.seed], ['time', job.elapsed != null ? job.elapsed + ' s' : null],
+    ['seed', job.seed],
+    ['time', running && !laneDown ? (job.progress && job.progress.elapsed != null ? job.progress.elapsed + ' s elapsed' : null)
+      : (job.elapsed != null ? job.elapsed + ' s' : null)],
   ].filter(([, v]) => v != null && v !== '');
   const provenance = chips.map(([k, v]) =>
     '<span class="chip">' + esc(k) + ': ' + esc(v) + '</span>').join('')
@@ -1509,8 +1606,11 @@ function renderMonitor(){
   // "delete" would actually search for. The docstring's honesty (the file
   // stays on the lane's disk) moves to a tooltip instead of being dropped.
   const forgetLabel = STATE.forgetArmed ? 'Click again to remove' : 'Remove';
+  // UX-2 #5: opt-in per lane -- the honest sentence flips with it, never
+  // both at once.
   const forgetTitle = STATE.forgetArmed ? 'Click again to remove'
-    : 'Removes it from History. The file itself stays where the lane saved it.';
+    : (laneDeletesFiles(job.lane) ? 'Removes it from History and deletes the file this lane made.'
+       : 'Removes it from History. The file itself stays where the lane saved it.');
   // C3.3 §7 item 6: a sequence open + a finished picture on screen offers
   // "Add to the reference room" -- never for a video/audio/other result,
   // and never before the render finished.
@@ -1939,39 +2039,73 @@ function miniLicenceStampHTML(licence){
     return '<span class="licence-stamp mini noncommercial">' + esc(licence.name) + '</span>';
   return '<span class="licence-stamp mini" title="' + esc(licence.name) + '">conditions apply</span>';
 }
+// UX-2 #3: "1-3 min" from the recent sample's spread, not a single point
+// figure that reads as a promise -- server.py's estimate_range (same 72h/5
+// window as the median). n==0 -> nothing; n==1 -> "about N"; n>=2 -> a
+// range; either way, "the first run after a restart is slower" follows.
+function estimateRangeText(range){
+  if(!range) return null;
+  const [lo, hi, n] = range;
+  if(!n) return null;
+  const body = (n === 1 || lo === hi) ? ('about ' + humanSeconds(lo)) : (humanSeconds(lo) + '–' + humanSeconds(hi));
+  return body + ' on ' + activeLaneName() + ' · the first run after a restart is slower';
+}
 function defaultEstimate(mode){
-  // The mode's DEFAULT quality tier -- the same honest median the ladder
-  // shows, or "--" when there isn't one yet. Never guessed.
+  // The mode's DEFAULT quality tier's recent-jobs range, or "--" when there
+  // isn't one yet. Never guessed.
   const q = (mode.quality || []).find(t => t.default) || (mode.quality || [])[0];
-  const est = q ? q.estimate_s : null;
-  return est == null ? '--' : 'about ' + humanSeconds(est) + ' on ' + activeLaneName();
+  const text = q ? estimateRangeText(q.estimate_range) : null;
+  return text || '--';
 }
 let PICKER_KEY = '';
 function pickerKey(ms){
   return JSON.stringify([STATE.room, STATE.cap, STATE.mode, activeLaneName(),
     ms.map(x => [x.info.available, x.info.missing, x.info.note, defaultEstimate(x.info), x.info.licence])]);
 }
-// The closed picker's one line: the picked engine and how many there are.
-// A picked engine this machine cannot run opens the picker, so its "needs"
-// line and the other engines are never hidden behind the summary.
-function renderEnginePickerSummary(ms){
+// UX-2 #1: the chip's own open/closed state, kept outside renderEnginePicker
+// so a poll's rebuild (guarded by PICKER_KEY below) doesn't silently close a
+// popover the user has open.
+let ENGINE_CHIP_OPEN = false;
+function setEngineChipOpen(open){
+  ENGINE_CHIP_OPEN = open && $('#engineChipBtn').getAttribute('aria-haspopup') === 'true';
+  $('#enginePicker').hidden = !ENGINE_CHIP_OPEN;
+  $('#engineChipBtn').setAttribute('aria-expanded', String(ENGINE_CHIP_OPEN));
+}
+// The chip's one line: "<room> - <picked engine>", no caret/popover for a
+// single-engine room (audit B1 -- was one small muted <details> summary
+// sandwiched between TRY THIS and the prompt box).
+function renderEnginePickerSummary(ms, room){
   const cur = ms.find(x => x.cap === STATE.cap && x.mode === STATE.mode);
-  $('#enginePickerCurrent').textContent = cur ? cur.info.label : '';
-  $('#enginePickerCount').textContent = String(ms.length);
-  if(cur && cur.info.available === false) $('#enginePickerDetails').open = true;
+  const label = (room && room.name ? room.name + ' · ' : '') + (cur ? cur.info.label : '');
+  $('#enginePickerCurrent').textContent = label;
+  const multi = ms.length >= 2;
+  $('#engineChipCaret').hidden = !multi;
+  const btn = $('#engineChipBtn');
+  if(multi){
+    btn.removeAttribute('disabled');
+    btn.setAttribute('aria-haspopup', 'true');
+  } else {
+    btn.setAttribute('disabled', '');
+    btn.setAttribute('aria-haspopup', 'false');
+    setEngineChipOpen(false);
+  }
+  // A picked engine this machine cannot run opens the popover on its own,
+  // so its "needs" line and the other engines are never hidden.
+  if(multi && cur && cur.info.available === false) setEngineChipOpen(true);
 }
 function renderEnginePicker(force){
   const room = currentRoom();
   const ms = roomModes(room);
   const wrap = $('#enginePickerWrap');
-  if(isCutting(room) || ms.length < 2){
+  if(isCutting(room) || !ms.length){
     wrap.hidden = true;
     $('#enginePicker').innerHTML = '';
     PICKER_KEY = '';
     return;
   }
   wrap.hidden = false;
-  renderEnginePickerSummary(ms);
+  renderEnginePickerSummary(ms, room);
+  if(ms.length < 2){ $('#enginePicker').innerHTML = ''; PICKER_KEY = ''; return; }
   const key = pickerKey(ms);
   if(!force && key === PICKER_KEY) return;  // polls must not steal a focused radio
   PICKER_KEY = key;
@@ -2014,7 +2148,8 @@ function renderEnginePicker(force){
     STATE.cap = r.dataset.cap;
     STATE.mode = r.dataset.mode;
     saveRoomEngine(STATE.room, STATE.cap, STATE.mode);   // B2: remembered on the next room entry
-    renderEnginePickerSummary(roomModes(currentRoom()));
+    setEngineChipOpen(false);   // the pick is made; close the popover
+    renderEnginePickerSummary(roomModes(currentRoom()), currentRoom());
     const mk = (modeInfo(r.dataset.cap, r.dataset.mode) || {}).lane_kind || 'comfy';
     const home = laneForKind(mk);
     const cur = STATE.lanes.find(l => l.id === STATE.activeLane);
@@ -2135,6 +2270,20 @@ async function selectRoom(id, opts){
 
 function fieldsFor(mode){ return (mode && mode.fields) || []; }
 function tierOf(f){ return f.tier === 'primary' ? 'primary' : 'advanced'; }
+// UX-2 #4: does this mode have BOTH a Style-like prompt box and a second,
+// PRIMARY textarea sharing its "Content" group (the same signal renderForm
+// uses to place Lyrics under the prompt, item 2) -- never a hard-coded mode
+// name, so any future pack with the same shape (style + words) gets the
+// same explanation for free.
+function hasStyleAndLyricsBoxes(info){
+  const fields = fieldsFor(info);
+  const promptLike = fields.filter(f => f.type === 'text' || f.type === 'textarea')
+    .slice().sort((a, b) => (a.order||0) - (b.order||0))[0];
+  if(!promptLike) return false;
+  const group = promptLike.group || '';
+  return fields.some(f => f !== promptLike && f.type === 'textarea'
+    && (f.group||'') === group && tierOf(f) === 'primary');
+}
 
 function evalEnabled(f, values){
   if(!f.enabled_when) return true;
@@ -2203,13 +2352,21 @@ function fieldRowHTML(f, values, carry){
 }
 
 function groupedHTML(fields, values, carry){
+  // UX-2 fix: GROUP order comes from first appearance in the pack's own
+  // declared field list (so "Content" -- declared first -- always leads);
+  // `order` is only a WITHIN-group ranking (every pack restarts it at 1
+  // per group). Sorting the whole array by `order` before bucketing (the
+  // old code) interleaved groups whenever two groups both had an order:1
+  // field -- e.g. Sound's bpm:1 sorted ahead of Content's lyrics:2, so
+  // Sound rendered first even though Content was declared first.
   const groups = [];
   const seen = {};
-  fields.slice().sort((a, b) => (a.order||0) - (b.order||0)).forEach(f => {
+  fields.forEach(f => {
     const g = f.group || '';
     if(!(g in seen)){ seen[g] = {name: g, fields: []}; groups.push(seen[g]); }
     seen[g].fields.push(f);
   });
+  groups.forEach(g => g.fields.sort((a, b) => (a.order||0) - (b.order||0)));
   return groups.map(g =>
     (g.name ? '<div class="field-group-title">' + esc(g.name) + '</div>' : '')
     + g.fields.map(f => fieldRowHTML(f, values, carry)).join('')).join('');
@@ -2294,7 +2451,6 @@ function renderQualityLadder(mode){
   if(!SELECTED_QUALITY || !quality.some(q => q.id === SELECTED_QUALITY)){
     SELECTED_QUALITY = (quality.find(q => q.default) || quality[0]).id;
   }
-  const laneName = (STATE.lanes.find(l => l.id === STATE.activeLane) || {}).name || 'this machine';
   $('#qualityLadder').innerHTML = quality.map(q => {
     const off = q.available === false;
     return '<button type="button" data-quality="' + esc(q.id) + '"'
@@ -2304,10 +2460,11 @@ function renderQualityLadder(mode){
   $$('#qualityLadder button').forEach(b => b.onclick = () => selectQualityTier(b.dataset.quality));
   const sel = quality.find(q => q.id === SELECTED_QUALITY);
   if(sel){
-    const est = sel.estimate_s === undefined ? null : sel.estimate_s;
+    // UX-2 #3: a range from the recent jobs, not a single point estimate.
+    const rangeText = estimateRangeText(sel.estimate_range);
     $('#qualityWhy').innerHTML = esc(sel.why || '')
       + (sel.available === false && sel.unavailable_reason ? '. ' + esc(sel.unavailable_reason) : '')
-      + ' <span class="estimate num">(' + (est == null ? '--' : ('about ' + esc(humanSeconds(est)) + ' on ' + esc(laneName))) + ')</span>';
+      + ' <span class="estimate num">(' + esc(rangeText || '--') + ')</span>';
   } else {
     $('#qualityWhy').textContent = '';
   }
@@ -2468,7 +2625,17 @@ async function renderModeFields(){
   // just with no file input to choose one from.
   const jackFields = fields.filter(f => f.type === 'video');
   const ledgerFields = uploadFields.concat(jackFields);
-  const rest = fields.filter(f => f !== promptField && !ledgerFields.includes(f));
+  // UX-2 #2: a PRIMARY field sharing the prompt field's own "Content" group
+  // (today, only Lyrics) is the writer's other target, not a setting -- it
+  // sits with the prompt, not with Quality/Sound. Data-driven off the
+  // pack's own group/tier, never a mode-name check (a future pack with the
+  // same shape gets the same placement for free).
+  const promptGroup = promptField ? (promptField.group || '') : null;
+  const contentFields = promptField
+    ? fields.filter(f => f !== promptField && !ledgerFields.includes(f)
+        && (f.group || '') === promptGroup && tierOf(f) === 'primary')
+    : [];
+  const rest = fields.filter(f => f !== promptField && !ledgerFields.includes(f) && !contentFields.includes(f));
 
   // A mode with no prompt whose writer writes for another mode (a 3D model's
   // source picture) keeps the box as the guide's TOPIC box: not a field.
@@ -2508,6 +2675,10 @@ async function renderModeFields(){
     delete promptBox.dataset.fieldTier;
     $('#promptHint').textContent = '';
   }
+  // UX-2 #2: Style, then Lyrics (or whatever a future pack's own Content
+  // group adds) sits right under the prompt box, above Quality/Sound.
+  $('#contentFieldsWrap').hidden = !contentFields.length;
+  $('#contentFields').innerHTML = contentFields.length ? groupedHTML(contentFields, values, carry) : '';
   renderHelperBar();
   guideSkillClear();
   makeConfirmHide();
@@ -2841,6 +3012,16 @@ $('#helperWriteBtn').onclick = () => guideSkillRun(undefined, false);
 $('#slotWriteBtn').onclick = () => guideSkillRun(undefined, false, true);
 $('#helperDescribeBtn').onclick = () => guideSkillRun(undefined, true);
 $('#helperCancelBtn').onclick = () => { if(GUIDE_ABORT) GUIDE_ABORT.abort(); };
+// UX-2 #1: the chip toggles its popover; a click outside it, or Escape,
+// closes it -- the same "click elsewhere closes it" a native <details>
+// gave for free, kept here since the popover is no longer a <details>.
+$('#engineChipBtn').onclick = () => setEngineChipOpen(!ENGINE_CHIP_OPEN);
+document.addEventListener('click', (e) => {
+  if(ENGINE_CHIP_OPEN && !$('#enginePickerWrap').contains(e.target)) setEngineChipOpen(false);
+});
+document.addEventListener('keydown', (e) => {
+  if(e.key === 'Escape' && ENGINE_CHIP_OPEN) setEngineChipOpen(false);
+});
 
 /* ---------------------------------------------------------------------
    Room guide (guides/<id>/): GET /api/guide + POST /api/guide/chat. The
@@ -2880,11 +3061,13 @@ function guideHistLoad(key){
                                         && typeof m.content === 'string') : [];
   } catch(e){ return []; }
 }
-function guideHistSave(key, hist){
+function guideHistSave(key, hist, opts){
   const trimmed = hist.length ? hist.slice(-GUIDE_HIST_MAX) : [];
   const ok = guideStoreSet(key, trimmed.length ? JSON.stringify(trimmed) : null);
   if(!ok) guideShowError('This browser would not save the conversation, so it will be gone after a reload.');
-  guideHistPush(key, trimmed);
+  // UX-2 #8: {push:false} from guideHistSync -- what we just wrote IS the
+  // server's own state (or newer), so pushing it back is a no-op at best.
+  if(!opts || opts.push !== false) guideHistPush(key, trimmed, guideHistGenGet(key));
 }
 // B2: localStorage stays the immediate, synchronous cache (unchanged above);
 // the server copy is a debounced, best-effort push -- a reload/device switch
@@ -2893,11 +3076,21 @@ function guideHistSave(key, hist){
 // it (below) instead of losing it -- Clear conversation is a real, shorter
 // history that must reach the server before a stale, longer one can win.
 const GUIDE_HIST_PUSH_TIMERS = {};
-function guideHistPush(key, hist){
+function guideHistPush(key, hist, generation){
   clearTimeout(GUIDE_HIST_PUSH_TIMERS[key] && GUIDE_HIST_PUSH_TIMERS[key].timer);
-  GUIDE_HIST_PUSH_TIMERS[key] = {hist: hist, timer: setTimeout(() => {
+  const gen = generation == null ? guideHistGenGet(key) : generation;
+  GUIDE_HIST_PUSH_TIMERS[key] = {hist: hist, generation: gen, timer: setTimeout(() => {
     delete GUIDE_HIST_PUSH_TIMERS[key];
-    postJSON('/api/guide/history', {key: key, history: hist}).catch(() => {});
+    // UX-2 #8: "generation" declares which server state this save was
+    // built from -- refused (409) if the server has since moved past it
+    // (a clear), rather than silently overwriting that clear.
+    postJSON('/api/guide/history', {key: key, history: hist, generation: gen}).then(r => {
+      if(r && r.ok === false && r.generation != null){
+        guideHistGenSet(key, r.generation);
+        guideHistSave(key, r.history || [], {push: false});
+        if(GUIDE && guideHistKey() === key) renderGuideLog();
+      }
+    }).catch(() => {});
   }, 400)};
 }
 window.addEventListener('pagehide', () => {
@@ -2906,19 +3099,33 @@ window.addEventListener('pagehide', () => {
     clearTimeout(pending.timer);
     try{
       navigator.sendBeacon('/api/guide/history',
-        new Blob([JSON.stringify({key: key, history: pending.hist})], {type: 'application/json'}));
+        new Blob([JSON.stringify({key: key, history: pending.hist, generation: pending.generation})],
+                 {type: 'application/json'}));
     } catch(e){ /* no sendBeacon: the next guideHistSync still has localStorage to fall back on */ }
   }
 });
-// B2: on room/sequence entry, the server's copy wins ONLY when it is longer
-// than what is already local -- a conversation only ever grows by turns, so
-// more turns means it came from a later save (another device, or a reload
-// that raced this fetch). The local turn count is read again right here,
-// not the count from when this fetch started: a save that happened while
-// this was in flight (e.g. answering a write's next question right after a
-// reload) must never be clobbered by a now-stale server snapshot. A shorter
-// or equal server copy is left alone and pushed up instead, so nothing
-// already said is ever lost either way.
+// UX-2 #8: the generation this tab last knew for `key` (bumped only by a
+// CLEAR -- see guide_history_clear on server.py). Read alongside the local
+// turns so guideHistSync below can tell "the server has more turns because
+// someone kept talking" apart from "the server was CLEARED and knows it" --
+// the old rule (server wins only when longer) got these backwards: a
+// clear's 0 turns never looked "longer" than a device's stale, longer
+// local copy, so that stale copy silently got pushed back up and undid the
+// clear (audit-shaped bug behind ruling #8, "a clear wins everywhere").
+function guideHistGenGet(key){
+  const v = guideStoreGet(key + '.gen');
+  const n = v == null ? 0 : parseInt(v, 10);
+  return Number.isFinite(n) ? n : 0;
+}
+function guideHistGenSet(key, gen){ guideStoreSet(key + '.gen', String(gen)); }
+// B2/UX-2 #8: on room/sequence entry (and after every save/clear), reconcile
+// with the server. A NEWER server generation (a clear happened, here or on
+// another device) always wins outright, regardless of turn counts -- that is
+// the whole fix. At the SAME generation, the longer copy wins (a
+// conversation only ever grows by turns within one generation), same as
+// before; the shorter/equal one is pushed up instead, so nothing already
+// said is lost. A LOCAL generation ahead of the server's (this device
+// cleared while offline) pushes local up to catch the server's record up.
 let GUIDE_HIST_SYNCED_KEY = null;
 async function guideHistSync(key){
   if(!key || key === GUIDE_HIST_SYNCED_KEY) return;
@@ -2928,9 +3135,34 @@ async function guideHistSync(key){
   catch(e){ return; }   // unreachable: keep localStorage as the source, no error shown
   if(!r || r.ok === false || !Array.isArray(r.history)) return;
   const local = guideHistLoad(key);
-  if(r.history.length > local.length) guideHistSave(key, r.history);
-  else if(local.length) guideHistPush(key, local);
+  const localGen = guideHistGenGet(key);
+  const serverGen = r.generation || 0;
+  if(serverGen > localGen){
+    guideHistGenSet(key, serverGen);
+    guideHistSave(key, r.history, {push: false});   // adopt the clear/newer state; nothing to push back
+  } else if(serverGen === localGen && r.history.length > local.length){
+    guideHistSave(key, r.history, {push: false});
+  } else if(local.length){
+    guideHistPush(key, local, localGen);
+  }
   if(GUIDE && guideHistKey() === key) renderGuideLog();
+}
+// UX-2 #8: "Clear conversation" -- a REAL server-recorded clear (a
+// generation bump), not just an empty array that a stale save could later
+// overwrite the emptiness of. Best-effort: if the request never lands (the
+// server unreachable), the local clear still holds for this tab; the next
+// successful guideHistSync reconciles it once the server is reachable
+// again (its generation will still be behind this tab's bumped one, so
+// this tab's empty history wins that reconciliation too).
+async function guideHistClear(key){
+  guideHistSave(key, [], {push: false});
+  try{
+    const r = await postJSON('/api/guide/history/clear', {key: key});
+    if(r && r.ok) guideHistGenSet(key, r.generation);
+    else guideHistGenSet(key, guideHistGenGet(key) + 1);   // still record SOME newer generation locally
+  } catch(e){
+    guideHistGenSet(key, guideHistGenGet(key) + 1);
+  }
 }
 function guideShowError(text){
   $('#guideError').textContent = text || '';
@@ -3314,7 +3546,7 @@ $('#guideSendBtn').onclick = guideSend;
 $('#guideCancelBtn').onclick = () => { if(GUIDE_ABORT) GUIDE_ABORT.abort(); };
 $('#guideClearBtn').onclick = () => {
   if(GUIDE_ABORT) GUIDE_ABORT.abort();
-  guideHistSave(guideHistKey(), []);
+  guideHistClear(guideHistKey());   // UX-2 #8: a real server-recorded clear
   guideSkillClear();
   guideShowError('');
   if(GUIDE && GUIDE.guide) renderGuideLog();
@@ -3945,6 +4177,7 @@ let MAKE_CONFIRM_RETRY = null;
 function makeConfirmHide(){
   MAKE_CONFIRM_RETRY = null;
   $('#makeConfirm').hidden = true;
+  $('#makeDupeNotice').hidden = true;   // UX-2 #6: same reset points as the other Make-time notice
 }
 function makeConfirmShow(problems, retry){
   const ul = $('#makeConfirmList');
@@ -3956,6 +4189,7 @@ function makeConfirmShow(problems, retry){
   $('#makeConfirm').scrollIntoView({block: 'nearest'});
 }
 $('#makeAnywayBtn').onclick = () => { const retry = MAKE_CONFIRM_RETRY; makeConfirmHide(); if(retry) retry(); };
+$('#makeDupeAnywayBtn').onclick = () => { $('#makeDupeNotice').hidden = true; handleMake(true); };
 $('#slotDeleteBtn').onclick = () => {
   const slot = currentSlot(); if(!slot) return;
   if(!(slot.takes || []).length){ removeSlot(slot.id); return; }
@@ -4065,6 +4299,11 @@ async function handleSlotMake(slot, confirm, shapeOk){
     $('#makeBtn').disabled = false;
   }
 }
+// UX-2 #6: the last successfully-submitted Make's request signature + job
+// id, so a same-tab double-press against a still queued/running job is
+// caught before the network round trip.
+let LAST_MAKE_SIG = null;
+let LAST_MAKE_JOB_ID = null;
 async function handleMake(confirm){
   makeConfirmHide();
   const mode = currentMode();
@@ -4106,6 +4345,18 @@ async function handleMake(confirm){
   // does, so testing the box sent a stale prompt on every cutout/upscale.
   if(!$('#promptWrap').hidden && $('#promptBox').dataset.fieldId) body.prompt = $('#promptBox').value;
   if(SELECTED_QUALITY) body.quality = SELECTED_QUALITY;
+  // UX-2 #6: "identical" = the same normalised request body (lane, mode,
+  // every field value) as the one still queued/running -- there is no
+  // client-editable "seed" field today (server.py picks it), so nothing
+  // needs excluding to honour the ruling's "a random seed ignored": a
+  // fixed body already IS seed-ignored, since seed was never in it.
+  const dupeSig = JSON.stringify(body);
+  if(confirm !== true && LAST_MAKE_SIG === dupeSig
+     && STATE.jobs.some(j => j.id === LAST_MAKE_JOB_ID && (j.status === 'queued' || j.status === 'running'))){
+    $('#makeDupeNotice').hidden = false;
+    $('#makeDupeNotice').scrollIntoView({block: 'nearest'});
+    return;
+  }
   if(confirm === true) body.confirm = true;
   $('#makeBtn').disabled = true;
   msgInspector('Sending it over...', '');
@@ -4115,6 +4366,7 @@ async function handleMake(confirm){
     if(!r.ok){ msgInspector(r.error || 'That did not go through.', 'err'); return; }
     msgInspector('On its way.', 'ok');
     if(r.job){
+      LAST_MAKE_SIG = dupeSig; LAST_MAKE_JOB_ID = r.job.id;   // UX-2 #6
       STATE.jobs = [r.job, ...STATE.jobs.filter(j => j.id !== r.job.id)];
       STATE.selectedJobId = r.job.id;
       STATE.pendingJobId = r.job.id;
@@ -4185,21 +4437,33 @@ async function renderDownloadStatus(lane){
     clearInterval(LORAS_POLL);
     LORAS_POLL = null;
   } else {
-    $('#lorasMsg').innerHTML = 'Getting ' + esc(d.file) + ': ' + humanBytes(d.bytes)
-      + (d.total ? ' of ' + humanBytes(d.total) : '')
-      + ' <button type="button" class="btn" id="lorasCancelBtn">Cancel</button>';
+    // Prior-art borrow #6 (SwarmUI/InvokeAI download queue): the SAME
+    // progress-bar widget as a running job's stage/percent -- one
+    // component, not two different progress UIs.
+    const pct = d.total ? (d.bytes / d.total) * 100 : null;
+    const label = 'Getting ' + d.file + ': ' + humanBytes(d.bytes) + (d.total ? ' of ' + humanBytes(d.total) : '');
+    $('#lorasMsg').innerHTML = progressBarHTML(pct, label)
+      + '<button type="button" class="btn" id="lorasCancelBtn">Cancel</button>';
     const b = $('#lorasCancelBtn');
     if(b) b.onclick = () => postJSON('/api/lora/download/cancel', {lane});
   }
 }
-async function loraGetIt(lane, downloadsOn, family, repo, file, folder, convert){
+// UX-2 #10: "won't work as a style" -- one plain sentence, said before the
+// download actually starts, for a catalog entry the server flagged as
+// workflow-only (its repo/file matches the family's OWN exclusion words --
+// the SAME "none" terms the style picker already uses, never a hard-coded
+// per-pack name here).
+const WORKFLOW_ONLY_WARNING = 'This is a workflow pack (IC-LoRA / upscaler / speed), not a style '
+  + '-- it needs its own ComfyUI workflow and won’t do anything as a style LoRA. ';
+async function loraGetIt(lane, downloadsOn, family, repo, file, folder, convert, workflowOnly){
+  const prefix = workflowOnly ? WORKFLOW_ONLY_WARNING : '';
   if(!downloadsOn){
     const dir = '<ComfyUI>/models/loras' + (folder ? '/' + folder : '');
     const cmd = 'hf download ' + repo + ' ' + file + ' --local-dir ' + dir;
     // The message shows the command regardless; the clipboard write is a
     // best-effort convenience that must never block or delay it (a denied
     // or slow permission prompt must not hang "Get it").
-    let msg = 'Downloads are off for this lane. Run on the ComfyUI machine: ' + cmd;
+    let msg = prefix + 'Downloads are off for this lane. Run on the ComfyUI machine: ' + cmd;
     // LORA-2E #1: this family's engine needs its LoRA files converted
     // before ComfyUI can load them -- the automatic conversion only runs
     // on the download-worker path, so a manual copy needs telling.
@@ -4210,8 +4474,9 @@ async function loraGetIt(lane, downloadsOn, family, repo, file, folder, convert)
       .then(() => { $('#lorasMsg').textContent += ' (copied)'; }, () => {});
     return;
   }
+  if(prefix) $('#lorasMsg').textContent = prefix + 'Getting it anyway…';
   const r = await postJSON('/api/lora/download', {lane, family, repo, file});
-  if(!r.ok){ $('#lorasMsg').textContent = r.error || 'Could not start the download.'; return; }
+  if(!r.ok){ $('#lorasMsg').textContent = prefix + (r.error || 'Could not start the download.'); return; }
   if(LORAS_POLL) clearInterval(LORAS_POLL);
   LORAS_POLL = setInterval(() => renderDownloadStatus(lane), 1500);
   renderDownloadStatus(lane);
@@ -4222,18 +4487,29 @@ function loraCardHTML(pack, family, folder, convert){
   // is listed; an NSFW one carries a plain badge, same weight as the
   // licence stamp, instead of being hidden behind a toggle.
   const nsfwBadge = pack.nsfw ? ' <span class="muted">· NSFW</span>' : '';
+  // UX-2 #10: server-computed (api_catalog_loras) against the family's own
+  // exclusion words -- kept in the list (owner: everything lives together),
+  // just marked.
+  const workflowBadge = pack.workflow_only
+    ? ' <span class="muted" title="' + esc(WORKFLOW_ONLY_WARNING) + '">· Needs its own workflow — won’t work as a style</span>' : '';
   const preview = pack.preview ? '<img class="lora-preview" src="' + esc(pack.preview) + '" alt="" loading="lazy">' : '';
   const trig = pack.trigger_words ? '<div class="hint">Trigger: ' + esc(pack.trigger_words) + '</div>' : '';
   const strength = pack.strength != null ? '<div class="hint">Recommended strength: ' + esc(pack.strength) + '</div>' : '';
   const files = (pack.files || []).map(f =>
     '<div class="ledger-row"><span>' + esc(f.filename) + ' (' + humanBytes(f.size) + ')</span>'
     + '<span class="leader"></span>'
-    + '<button type="button" class="btn" data-get-repo="' + esc(pack.id) + '" data-get-file="' + esc(f.filename)
-    + '" data-get-family="' + esc(family || '') + '" data-get-folder="' + esc(folder || '')
-    + '" data-get-convert="' + (convert ? '1' : '') + '">Get it</button></div>'
+    // UX-2 #11: "Installed" (matched by filename against this lane's own
+    // discovered LoRA pool -- see api_catalog_loras) replaces Get it; no
+    // size compare (ComfyUI's dropdown gives no byte size, see server.py).
+    + (f.installed ? '<span class="muted">Installed</span>'
+       : ('<button type="button" class="btn" data-get-repo="' + esc(pack.id) + '" data-get-file="' + esc(f.filename)
+          + '" data-get-family="' + esc(family || '') + '" data-get-folder="' + esc(folder || '')
+          + '" data-get-convert="' + (convert ? '1' : '') + '" data-get-workflow-only="' + (pack.workflow_only ? '1' : '')
+          + '">Get it</button>'))
+    + '</div>'
   ).join('');
   return '<div class="credit-row">' + preview
-    + '<div class="name">' + esc(pack.name || pack.id) + ' <span class="muted">by ' + esc(pack.author || '?') + ' · ' + lic + '</span>' + nsfwBadge + '</div>'
+    + '<div class="name">' + esc(pack.name || pack.id) + ' <span class="muted">by ' + esc(pack.author || '?') + ' · ' + lic + '</span>' + nsfwBadge + workflowBadge + '</div>'
     + '<div class="attribution">' + esc(pack.description || 'No description on the model card.') + '</div>'
     + trig + strength
     + '<div class="attribution">' + pack.downloads + ' downloads · ' + pack.likes + ' likes</div>' + files + '</div>';
@@ -4283,7 +4559,8 @@ async function openLoraDrawer(keepFamily){
   });
   $$('#lorasBody [data-get-repo]').forEach(b => {
     b.onclick = () => loraGetIt(lane, laneInfo.downloads, b.dataset.getFamily, b.dataset.getRepo,
-                                b.dataset.getFile, b.dataset.getFolder, b.dataset.getConvert === '1');
+                                b.dataset.getFile, b.dataset.getFolder, b.dataset.getConvert === '1',
+                                b.dataset.getWorkflowOnly === '1');
   });
   renderDownloadStatus(lane);
 }

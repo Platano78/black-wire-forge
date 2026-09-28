@@ -43,9 +43,12 @@ TURN2 = {"role": "assistant", "content": "PROMPT: ...", "w": "abc123", "done": [
 
 print("round-trip: a plain-room key (no sequence)")
 b, code = srv.guide_history_get(VIDEO_KEY)
-check("nothing stored yet: an empty history, not an error", (b, code) == ({"ok": True, "history": []}, 200), (b, code))
+check("nothing stored yet: an empty history, not an error",
+      # UX-2 #8: GET now also carries "generation" (0 for a brand-new key).
+      (b, code) == ({"ok": True, "history": [], "generation": 0}, 200), (b, code))
 b, code = srv.guide_history_set({"key": VIDEO_KEY, "history": [TURN1, TURN2]})
-check("saved ok", (b, code) == ({"ok": True}, 200), (b, code))
+# UX-2 #8: SET now also echoes "generation" (0: no client-declared generation, no clear yet).
+check("saved ok", (b, code) == ({"ok": True, "generation": 0}, 200), (b, code))
 b, code = srv.guide_history_get(VIDEO_KEY)
 check("read back exactly, including the done marker on the turn that has one",
       code == 200 and b["history"] == [TURN1, TURN2], b)
@@ -114,6 +117,50 @@ srv.guide_history_set({"key": VIDEO_KEY, "history": [DONE_TURN]})
 b, code = srv.guide_history_get(VIDEO_KEY)
 check("the done marker survives a round trip exactly (a stale/cleared marker is what lets an action re-fire)",
       code == 200 and b["history"] == [DONE_TURN], b)
+
+print()
+print("UX-2 #8: a clear wins everywhere -- the two-device case")
+CLEAR_KEY = "bwf.guide.hist.video"
+# Two devices, A and B, both start from the same synced state.
+b, code = srv.guide_history_set({"key": CLEAR_KEY, "history": [TURN1]})
+check("setup: device A and B both start from generation 0", (b, code) == ({"ok": True, "generation": 0}, 200), (b, code))
+a_get, _ = srv.guide_history_get(CLEAR_KEY)
+b_get, _ = srv.guide_history_get(CLEAR_KEY)
+check("both devices fetched generation 0", a_get["generation"] == 0 and b_get["generation"] == 0)
+# Device A clears the conversation.
+clear_resp, clear_code = srv.guide_history_clear({"key": CLEAR_KEY})
+check("A's clear succeeds and bumps the generation", (clear_resp, clear_code) == ({"ok": True, "generation": 1}, 200),
+      (clear_resp, clear_code))
+after_clear, _ = srv.guide_history_get(CLEAR_KEY)
+check("the server's history is empty right after the clear",
+      after_clear == {"ok": True, "history": [], "generation": 1}, after_clear)
+# Device B, offline during the clear, still has a LONGER local copy built
+# from generation 0 and tries to save it -- this must NOT resurrect the
+# cleared conversation.
+b_stale_hist = [TURN1, TURN2, {"role": "user", "content": "one more from B, before it synced the clear"}]
+save_resp, save_code = srv.guide_history_set({"key": CLEAR_KEY, "history": b_stale_hist, "generation": 0})
+check("B's stale save (generation 0, now behind) is REFUSED (409), not silently overwritten",
+      save_code == 409 and save_resp["ok"] is False, (save_resp, save_code))
+check("the refusal hands B the CURRENT (cleared) state to adopt",
+      save_resp.get("history") == [] and save_resp.get("generation") == 1, save_resp)
+still_after, _ = srv.guide_history_get(CLEAR_KEY)
+check("the clear is UNDISTURBED: B's longer copy never reached the stored file",
+      still_after == {"ok": True, "history": [], "generation": 1}, still_after)
+# B adopts the clear (generation 1) and saves fresh turns from there -- this must succeed.
+b_fresh, _ = srv.guide_history_set({"key": CLEAR_KEY, "history": [TURN1], "generation": 1})
+check("B saving AFTER adopting the new generation succeeds normally", b_fresh == {"ok": True, "generation": 1}, b_fresh)
+# A client that never sends "generation" at all (older code, or a caller
+# that doesn't care) keeps working exactly as before -- no CAS enforced.
+no_gen_resp, no_gen_code = srv.guide_history_set({"key": CLEAR_KEY, "history": b_stale_hist})
+check("a save with NO \"generation\" field is back-compat: always accepted, same as pre-#8 behaviour",
+      no_gen_code == 200, (no_gen_resp, no_gen_code))
+
+print()
+print("UX-2 #8: /api/guide/history/clear key-sanitising, same refusal shape as GET/POST above")
+for bad in ("bwf.guide.hist." + "../../../etc/passwd", "bwf.guide.hist.notaroom", "", None, 123):
+    b, code = srv.guide_history_clear({"key": bad})
+    check("clear refuses %r" % (bad,), code == 400 and b["ok"] is False, b)
+check("a malformed clear body (not an object) is refused, not a 500", srv.guide_history_clear("not an object")[1] == 400)
 
 print("\nFAILED: %d" % len(FAILED) + (" checks: " + ", ".join(FAILED) if FAILED else ""))
 sys.exit(1 if FAILED else 0)

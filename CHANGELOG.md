@@ -6,6 +6,30 @@ All notable changes to Black Wire Forge are recorded here.
 
 ### Added
 
+- UX flow pass (owner rulings, 2026-09-28): the picked engine is now a chip beside the room
+  heading ("Music · Background music ▾"), always visible (no caret/popover for a single-engine
+  room); Style and Lyrics (or any pack's own Content-group pair) sit directly under the prompt
+  box, before Quality/Sound; a sound room's empty state explains what Style vs Lyrics are;
+  time estimates show a range from the recent jobs ("1–3 min · the first run after a restart is
+  slower") instead of one point figure; a same-tab double press of Make shows an inline "That's
+  the same as the one still rendering — make another anyway?" notice instead of silently queuing
+  a duplicate; a running job's History row and Monitor show a percentage and stage ("Rendering ·
+  stage 1 of 2 · 45%") plus elapsed time, computed from the graph's own sampling-stage nodes, not
+  a raw step counter; clearing a guide conversation is now recorded on the server (a generation
+  counter), so a device with a longer, stale local copy adopts the clear instead of silently
+  reviving it; the style browser badges a workflow-only pack (IC-LoRA/upscaler/speed, matched by
+  the family's own exclusion words) as "Needs its own workflow — won't work as a style", and a
+  catalog entry already on the lane's disk shows "Installed" instead of Get it. Remove can now
+  also delete the lane's own output file, opt-in per lane (`"outputs": {"dir": "..."}` in
+  config.json, same shape as LoRA downloads) and off by default.
+
+### Fixed
+
+- Field GROUPS (Content/Sound/Quality/...) were sorted by their per-group `order` number
+  globally across the whole form, so a later group whose first field happened to carry a lower
+  `order` (e.g. Sound's bpm:1) rendered before an earlier-declared group (Content's lyrics:2) --
+  the underlying mechanism behind "the YuE2 job ran with no lyrics".
+
 - Style packs (LoRAs) for the Picture room (t2i, edit) and Pixel Art: pick up to two style LoRAs
   already installed on the lane, each with its own strength (0-1.5), chained after the model
   loader; picking none leaves the render graph byte-for-byte the same as before. A "Browse

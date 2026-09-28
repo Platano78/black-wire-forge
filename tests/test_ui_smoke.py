@@ -206,7 +206,9 @@ def tab(page, rid):
 
 # The engine picker is a one-line summary until opened (P2c); open it before
 # touching its radios.
-OPEN_PICKER = "() => { const d = document.querySelector('#enginePickerDetails'); if(d) d.open = true; }"
+# UX-2 #1: the picker is a chip + popover now, not a <details> -- opened via
+# the page's own setEngineChipOpen(), the same call the chip's click uses.
+OPEN_PICKER = "() => { if(typeof setEngineChipOpen === 'function') setEngineChipOpen(true); }"
 
 def pick_mode(page, mode):
     """Check the room's engine radio for `mode`; False when the lane cannot
@@ -281,6 +283,11 @@ try:
                     continue
                 mk = m.get("lane_kind") or "comfy"
                 if len(modes) >= 2:
+                    # UX-2 #1: re-open per mode -- a previous mode's Try
+                    # this click (below) closes the popover so it doesn't
+                    # overlay the panel, and it no longer stays open on its
+                    # own the way the old <details> summary did.
+                    page.evaluate(OPEN_PICKER)
                     radio = page.query_selector('#enginePicker input[data-cap="%s"][data-mode="%s"]' % (mm["cap"], mm["mode"]))
                     if not radio:
                         check("room %r: engine row for %s/%s" % (rid, mm["cap"], mm["mode"]), False)
@@ -445,6 +452,13 @@ try:
                     check("room=%r %s/%s: Try this button for its first example exists"
                           % (rid, mm["cap"], mm["mode"]), btn is not None)
                     if btn:
+                        # UX-2 #1: the engine popover (opened above by
+                        # OPEN_PICKER, or still open because THIS mode was
+                        # already the picked one so radio.check() fired no
+                        # change event) now overlays the panel instead of
+                        # pushing it down like the old <details> did --
+                        # close it before clicking anything below it.
+                        page.evaluate("() => { if(typeof setEngineChipOpen === 'function') setEngineChipOpen(false); }")
                         before = len(GENERATED)
                         btn.click()
                         page.wait_for_timeout(200)

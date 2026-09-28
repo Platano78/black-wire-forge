@@ -221,7 +221,8 @@ def show_fix_job(page, url):
 
 def pick(page, mode):
     """Pick an engine: the picker is one summary line until opened (P2c)."""
-    page.evaluate("() => { document.querySelector('#enginePickerDetails').open = true; }")
+    # UX-2 #1: the picker is a chip + popover now, not a <details>.
+    page.evaluate("() => { if(typeof setEngineChipOpen === 'function') setEngineChipOpen(true); }")
     page.check('#enginePicker input[data-mode="%s"]' % mode)
 
 def shot(page, name):

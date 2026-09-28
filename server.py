@@ -204,6 +204,19 @@ def load_config():
             if mb is not None and (not isinstance(mb, int) or isinstance(mb, bool) or mb <= 0):
                 die("lanes[%d] (%s): \"downloads\".\"max_bytes\" must be a positive whole "
                     "number of bytes if present." % (i, lane["id"]))
+        # UX-2 #5: "Remove also deletes the file" is OPT-IN PER LANE, same
+        # shape as "downloads" above -- absent by default, so a fresh
+        # config deletes nothing (AGENTS.md's "this app never deletes your
+        # files" stays the default; this is the one deliberate exception,
+        # and only once the owner points it at the lane's own output dir).
+        outs = lane.get("outputs")
+        if outs is not None:
+            if not isinstance(outs, dict) or not outs.get("dir"):
+                die("lanes[%d] (%s): \"outputs\" must be an object with at least "
+                    "\"dir\" (an absolute path) if present." % (i, lane["id"]))
+            if not os.path.isabs(outs["dir"]):
+                die("lanes[%d] (%s): \"outputs\".\"dir\" must be an absolute path."
+                    % (i, lane["id"]))
 
     # "models" is OPTIONAL. Model filenames are discovered from each lane at
     # runtime; anything named here simply overrides what was found. Only the
@@ -1847,6 +1860,45 @@ def ws_listener(lane):
         backoff = min(backoff * 1.6, 30.0)
 
 
+def _pct_clamp(pct):
+    return max(0.0, min(100.0, pct))
+
+
+def _stage_percent(n_stages, finished_stages, step, total):
+    """UX-2 #9's percent math, a pure function so it is unit-testable without
+    a live ws: (finished_stages + current step/total) / n_stages, clamped
+    0-100. `n_stages` is the graph's own sampling-stage node count (>=1);
+    `finished_stages` is how many of those nodes have already reported and
+    been superseded by a later one (never counting the CURRENT node as
+    finished)."""
+    n_stages = max(1, n_stages)
+    frac = _pct_clamp((step / total) * 100.0) / 100.0 if total else 0.0
+    return _pct_clamp((finished_stages + frac) / n_stages * 100.0)
+
+
+def job_progress_view(job):
+    """UX-2 #9: the derived {state, stage, stages, percent, elapsed} for a
+    queued/running job -- None once it's done/error/interrupted (History and
+    Monitor fall back to their existing finished-state rendering then). The
+    raw step/total counters stay on the job dict untouched, for the tooltip."""
+    status = job.get("status")
+    if status not in ("queued", "running"):
+        return None
+    stage_nodes = job.get("stage_nodes")
+    n_stages = max(1, len(stage_nodes)) if stage_nodes is not None else 1
+    seen = job.get("stages_seen") or []
+    if status == "queued":
+        state, stage_index = "loading", 0
+    else:
+        state = job.get("progress_state") or "loading"
+        stage_index = min(len(seen), n_stages) if stage_nodes is not None else (0 if state == "loading" else 1)
+    percent = job.get("progress_pct")
+    started = job.get("started")
+    elapsed = round(time.time() - started, 1) if started else None
+    return {"state": state, "stage": stage_index, "stages": n_stages,
+            "percent": round(percent, 1) if percent is not None else 0.0, "elapsed": elapsed}
+
+
 def handle_ws_message(lane, msg):
     mtype = msg.get("type")
     data = msg.get("data") or {}
@@ -1862,12 +1914,52 @@ def handle_ws_message(lane, msg):
             return
         if mtype == "progress":
             job["status"] = "running"
-            job["step"] = int(data.get("value") or 0)
-            job["total"] = int(data.get("max") or 0) or job.get("total") or 0
+            step = int(data.get("value") or 0)
+            total = int(data.get("max") or 0) or job.get("total") or 0
+            job["step"] = step
+            job["total"] = total
+            node = data.get("node")
+            stage_nodes = job.get("stage_nodes")
+            if stage_nodes is None:
+                # UX-2 #9: a job whose record predates the stage_nodes field
+                # (loaded from jobs.json, or a process/legacy job) -- fall
+                # back to the original single-stage step/total percent.
+                pct = _pct_clamp((step / total) * 100.0) if total else None
+                if pct is not None:
+                    job["progress_pct"] = max(pct, job.get("progress_pct") or 0.0)
+                job["progress_state"] = "sampling"
+            elif node in stage_nodes:
+                seen = job.setdefault("stages_seen", [])
+                if node not in seen:
+                    seen.append(node)
+                pct = _stage_percent(len(stage_nodes), len(seen) - 1, step, total)
+                job["progress_pct"] = max(pct, job.get("progress_pct") or 0.0)
+                job["progress_state"] = "sampling"
             job["updated"] = time.time()
         elif mtype == "executing":
             job["status"] = "running"
-            job["node"] = data.get("node")
+            node = data.get("node")
+            job["node"] = node
+            stage_nodes = job.get("stage_nodes")
+            seen = job.get("stages_seen") or []
+            if stage_nodes:
+                if not seen:
+                    job["progress_state"] = "loading"
+                elif node not in stage_nodes:
+                    # A non-stage node is running (decode/save/upscale/a
+                    # second encode...). "Finishing..." is only correct once
+                    # the LAST stage has started -- a node BETWEEN stage 1
+                    # and stage 2 of a multi-stage graph (e.g. a latent
+                    # upscale) is not finishing, it's still sampling, and
+                    # must not flip to Finishing then back to sampling when
+                    # stage 2 starts. Either way the floor is every fully-
+                    # seen stage counting as done, via the SAME pure
+                    # _stage_percent math progress uses (never a second,
+                    # slightly different formula) so the bar never steps
+                    # backward.
+                    floor_pct = _stage_percent(len(stage_nodes), len(seen), 0, 0)
+                    job["progress_pct"] = max(job.get("progress_pct") or 0.0, floor_pct)
+                    job["progress_state"] = "finishing" if len(seen) >= len(stage_nodes) else "sampling"
             job["updated"] = time.time()
         elif mtype == "execution_error":
             job["status"] = "error"
@@ -3214,6 +3306,34 @@ def collect_outputs(hist_entry):
     return outs
 
 
+def lane_output_path(lane, output):
+    """UX-2 #5: resolve one job["outputs"] entry (subfolder+filename) to a
+    real path under this LANE's own configured `outputs.dir`, or raise
+    ValueError with a plain sentence -- same shape as local_output_path()'s
+    containment rule (basename the filename, realpath both sides, refuse
+    anything that lands outside, which also catches a symlink escape).
+    None (not ValueError) when the lane has no outputs.dir configured at
+    all -- that is the normal, off-by-default case, not a refusal.
+    """
+    outs = lane.get("outputs")
+    if not isinstance(outs, dict) or not outs.get("dir"):
+        return None
+    filename = os.path.basename(output.get("filename") or "")
+    if not filename or filename in (".", ".."):
+        raise ValueError("that output filename is not allowed")
+    subfolder = output.get("subfolder") or ""
+    # A subfolder is ComfyUI's own (e.g. a job-id-shaped folder name), never
+    # a path a caller can steer: forbid a separator or ".." outright rather
+    # than trust realpath alone to catch every shape of escape.
+    if os.sep in subfolder or (os.altsep and os.altsep in subfolder) or ".." in subfolder.split(os.sep):
+        raise ValueError("that output path is not allowed")
+    base = os.path.realpath(outs["dir"])
+    path = os.path.realpath(os.path.join(base, subfolder, filename))
+    if path != base and not path.startswith(base + os.sep):
+        raise ValueError("that output path is not allowed")
+    return path
+
+
 def local_output_path(job_id, filename):
     """Resolve a `post` step's own output to a real path inside
     LOCAL_OUTPUTS_DIR, or raise ValueError with a plain sentence. The ONE
@@ -3682,6 +3802,26 @@ def estimate_seconds(lane_id, cap, mode, quality_id):
     return vals[mid] if n % 2 else round((vals[mid - 1] + vals[mid]) / 2, 1)
 
 
+def estimate_range(lane_id, cap, mode, quality_id):
+    """UX-2 #3: sibling of estimate_seconds, same (lane, mode, quality) filter
+    and the same 72h / ESTIMATE_SAMPLE_MAX(5) window -- but returns
+    (min, max, n) instead of a median, and with no 3-job floor: a range
+    reads honestly at n==1 too ("about N"), unlike the median which needs 3
+    to mean anything. estimate_seconds itself is UNCHANGED for its existing
+    callers (owner ruling B)."""
+    cutoff = time.time() - ESTIMATE_WINDOW_S
+    with JOBS_LOCK:
+        recent = sorted((j for j in JOBS.values()
+                          if j.get("lane") == lane_id and j.get("kind") == cap and j.get("mode") == mode
+                          and j.get("quality") == quality_id and j.get("status") == "done" and "elapsed" in j
+                          and (j.get("finished") or 0) >= cutoff),
+                         key=lambda j: j.get("finished") or 0, reverse=True)[:ESTIMATE_SAMPLE_MAX]
+        vals = sorted(j["elapsed"] for j in recent)
+    if not vals:
+        return (None, None, 0)
+    return (vals[0], vals[-1], len(vals))
+
+
 def dispatch(lane, graph, kind, mode, meta):
     ok, notes = free_colliding_lanes(lane)
     if not ok:
@@ -3700,11 +3840,20 @@ def dispatch(lane, graph, kind, mode, meta):
                 "detail": detail_txt, "notes": notes}
 
     jid = uuid.uuid4().hex[:12]
+    # UX-2 #9: the graph's own sampling-stage nodes (KSampler and friends,
+    # plus whatever each pack's ENGINE["stage_classes"] adds), fixed at
+    # dispatch time from the exact graph just queued -- never guessed from
+    # the mode name, so a mode with two samplers (an upscale pass) counts
+    # two stages without server.py knowing why.
+    stage_classes = engines.stage_class_types()
+    stage_nodes = [nid for nid, node in graph.items()
+                   if isinstance(node, dict) and node.get("class_type") in stage_classes]
     job = {
         "id": jid, "lane": lane["id"], "lane_name": lane["name"], "prompt_id": res["prompt_id"],
         "kind": kind, "mode": mode, "status": "queued", "step": 0, "total": meta.get("steps", 0),
         "created": time.time(), "started": time.time(), "updated": time.time(),
         "outputs": [], "notes": notes,
+        "stage_nodes": stage_nodes, "stages_seen": [], "progress_state": "loading", "progress_pct": 0.0,
     }
     job.update(meta)
     job["licence"] = engines.licence_for(kind, mode)   # R6
@@ -4168,26 +4317,35 @@ def _guide_hist_path(key):
 
 
 def _guide_hist_read(key):
-    """Caller holds GUIDE_HIST_LOCK. [] when nothing is stored yet, or the
-    file is damaged -- never guessed at; an empty history is the same safe
-    fallback a blocked-localStorage browser already sees today."""
+    """Caller holds GUIDE_HIST_LOCK. -> (generation, history). (0, []) when
+    nothing is stored yet, or the file is damaged -- never guessed at; an
+    empty history is the same safe fallback a blocked-localStorage browser
+    already sees today. UX-2 #8: the stored shape grew a "generation"
+    counter alongside the turns (bumped only by a CLEAR, never by an
+    ordinary save) -- a file saved before this field carries no "generation"
+    key at all, so that case reads as generation 0, same as brand new."""
     path = _guide_hist_path(key)
     if not os.path.exists(path):
-        return []
+        return 0, []
     try:
         with open(path) as f:
-            hist = json.load(f)
+            stored = json.load(f)
     except ValueError:
-        return []
-    return hist if isinstance(hist, list) else []
+        return 0, []
+    if isinstance(stored, list):          # pre-UX-2 #8 file: bare turns list
+        return 0, stored
+    if isinstance(stored, dict) and isinstance(stored.get("turns"), list):
+        gen = stored.get("generation")
+        return (gen if isinstance(gen, int) and not isinstance(gen, bool) else 0), stored["turns"]
+    return 0, []
 
 
-def _guide_hist_write(key, hist):
+def _guide_hist_write(key, generation, hist):
     """Caller holds GUIDE_HIST_LOCK. Per-writer tmp name, fsync, then os.replace."""
     path = _guide_hist_path(key)
     tmp = "%s.%d.tmp" % (path, threading.get_ident())
     with open(tmp, "w") as f:
-        json.dump(hist, f)
+        json.dump({"generation": generation, "turns": hist}, f)
         f.flush()
         os.fsync(f.fileno())
     os.replace(tmp, path)
@@ -4215,19 +4373,28 @@ def _guide_hist_trim(hist):
 
 
 def guide_history_get(key):
-    """GET /api/guide/history?key=<key> -> ({ok, history}, code)."""
+    """GET /api/guide/history?key=<key> -> ({ok, history, generation}, code)."""
     if _guide_hist_key_parts(key) is None:
         return {"ok": False, "error": "That is not a guide history key."}, 400
     with GUIDE_HIST_LOCK:
-        hist = _guide_hist_read(key)
-    return {"ok": True, "history": hist}, 200
+        gen, hist = _guide_hist_read(key)
+    return {"ok": True, "history": hist, "generation": gen}, 200
 
 
 def guide_history_set(p):
-    """POST /api/guide/history {key, history} -> ({ok}, code). Replaces the
-    stored array wholesale -- the client already computes the full trimmed
-    array before every guideHistSave() call, so a whole-array replace matches
-    its own logic exactly."""
+    """POST /api/guide/history {key, history, generation} -> ({ok}, code).
+    Replaces the stored array wholesale -- the client already computes the
+    full trimmed array before every guideHistSave() call, so a whole-array
+    replace matches its own logic exactly.
+
+    UX-2 #8 (a clear wins everywhere): "generation" is optional, for
+    back-compat with anything still sending the pre-#8 shape -- omitted, this
+    behaves exactly as before. A client that DOES send it is declaring which
+    generation its local copy was built from; if that is older than what the
+    server now has (another device cleared this conversation since), the
+    save is refused (409) and the CURRENT server state comes back in the
+    body so the caller can adopt the clear instead of re-uploading its
+    stale, longer copy over it."""
     if not isinstance(p, dict):
         return {"ok": False, "error": "Send a JSON object."}, 400
     key = p.get("key")
@@ -4236,10 +4403,33 @@ def guide_history_set(p):
     hist = p.get("history")
     if not isinstance(hist, list) or not all(_guide_hist_turn_ok(t) for t in hist):
         return {"ok": False, "error": "\"history\" must be a list of {\"role\", \"content\", ...} turns."}, 400
+    client_gen = p.get("generation")
     hist = _guide_hist_trim(hist)
     with GUIDE_HIST_LOCK:
-        _guide_hist_write(key, hist)
-    return {"ok": True}, 200
+        server_gen, server_hist = _guide_hist_read(key)
+        if isinstance(client_gen, int) and not isinstance(client_gen, bool) and client_gen < server_gen:
+            return {"ok": False, "error": "This conversation was cleared elsewhere. Adopting that clear.",
+                    "history": server_hist, "generation": server_gen}, 409
+        _guide_hist_write(key, server_gen, hist)
+    return {"ok": True, "generation": server_gen}, 200
+
+
+def guide_history_clear(p):
+    """POST /api/guide/history/clear {key} -> ({ok, generation}, code). UX-2
+    #8: THE clear action -- empties the stored turns and bumps the
+    generation counter, so any device whose local copy predates this call
+    (even a longer one) loses the CAS race in guide_history_set above and
+    must adopt this clear on its next save."""
+    if not isinstance(p, dict):
+        return {"ok": False, "error": "Send a JSON object."}, 400
+    key = p.get("key")
+    if _guide_hist_key_parts(key) is None:
+        return {"ok": False, "error": "That is not a guide history key."}, 400
+    with GUIDE_HIST_LOCK:
+        gen, _hist = _guide_hist_read(key)
+        gen += 1
+        _guide_hist_write(key, gen, [])
+    return {"ok": True, "generation": gen}, 200
 
 
 def _ctx_int(v):
@@ -6893,6 +7083,11 @@ class Handler(BaseHTTPRequestHandler):
                 # page can use to build a path itself, only to know whether
                 # to offer the "Get it" button or the copy-paste command.
                 "downloads": bool(isinstance(l.get("downloads"), dict) and l["downloads"].get("loras_dir")),
+                # UX-2 #5: whether this lane opted in to Remove-also-deletes
+                # (config.json "outputs"), same never-a-path-to-the-page
+                # shape as "downloads" above -- just enough for the confirm
+                # text to say "...and delete the file".
+                "deletes_files": bool(isinstance(l.get("outputs"), dict) and l["outputs"].get("dir")),
                 "up": bool(st.get("up")), "err": st.get("err", ""),
                 "device": st.get("device", ""),
                 "vram_free": st.get("vram_free", 0), "vram_total": st.get("vram_total", 0),
@@ -6973,7 +7168,9 @@ class Handler(BaseHTTPRequestHandler):
                     "quality": [
                         dict(tier,
                              available=bool(able.get(tier["requires"])) if tier.get("requires") else True,
-                             estimate_s=estimate_seconds(lane["id"], cap, mode, tier["id"]) if lane else None)
+                             estimate_s=estimate_seconds(lane["id"], cap, mode, tier["id"]) if lane else None,
+                             # UX-2 #3: (min, max, n) alongside the unchanged median.
+                             estimate_range=list(estimate_range(lane["id"], cap, mode, tier["id"])) if lane else None)
                         for tier in engines.quality(cap, mode)
                     ],
                     # Rooms slice: "when to pick this one" (pack-declared, or
@@ -7046,7 +7243,34 @@ class Handler(BaseHTTPRequestHandler):
             catalog = catalog_for(family["hf_base"])
         except Exception as e:
             return {"ok": False, "error": "Could not reach Hugging Face: %s" % e}, 502
-        return {"ok": True, "loras": catalog, "families": families_meta,
+        # UX-2 #10/#11: per-entry flags, computed fresh against THIS lane and
+        # family (never cached alongside the shared HF listing above, which
+        # is keyed only by hf_base and has no lane or family of its own).
+        none_words = [w.lower() for w in ((family.get("match") or {}).get("none") or [])]
+        with DISCOVERY_LOCK:
+            installed_names = {n.lower() for n in (DISCOVERY.get(lane["id"], {}).get("pools", {}).get("lora") or [])}
+        badged = []
+        for entry in catalog:
+            # #10: this repo/file matches the family's OWN "none" exclusion
+            # words (the same ones the style picker already uses to keep
+            # speed/IC-LoRA/upscaler files out of the local dropdown) -- the
+            # live catalog still LISTS it (owner: everything lives together,
+            # marked), just badged as not a style.
+            haystack = (entry.get("id") or "").lower() + " " + " ".join(
+                (f.get("filename") or "").lower() for f in entry.get("files") or [])
+            needs_workflow = bool(none_words) and any(w in haystack for w in none_words)
+            # #11: "Installed" -- matched by FILENAME against this lane's own
+            # discovered "lora" pool (ComfyUI's /object_info dropdown, the
+            # only channel this app has into what's on the lane's disk).
+            # Size is NOT compared: ComfyUI's dropdown gives filenames only,
+            # no byte sizes -- there is no second channel to read one from
+            # without inventing filesystem access this app deliberately
+            # doesn't have (AGENTS.md; also true of a .metadata.json/.txt
+            # sidecar -- skipped for the same reason, not invented here).
+            files = [dict(f, installed=(f.get("filename") or "").lower() in installed_names)
+                     for f in entry.get("files") or []]
+            badged.append(dict(entry, files=files, workflow_only=needs_workflow))
+        return {"ok": True, "loras": badged, "families": families_meta,
                 "family": family["id"], "folder": family.get("folder") or ""}, 200
 
     def api_lora_download_status(self, q):
@@ -7108,6 +7332,12 @@ class Handler(BaseHTTPRequestHandler):
         with JOBS_LOCK:
             ids = list(JOB_ORDER)[-limit:][::-1]
             jobs = [dict(JOBS[i]) for i in ids if i in JOBS]
+        # UX-2 #9: derived progress for every queued/running job, computed
+        # fresh per poll (not stored) so it always reflects "now" for elapsed.
+        for j in jobs:
+            pv = job_progress_view(j)
+            if pv is not None:
+                j["progress"] = pv
         with LOG_LOCK:
             logs = list(LOG)[:60]
         return {"jobs": jobs, "log": logs, "now": time.time()}
@@ -7253,6 +7483,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(*guide_revise(self.read_json()))
             if u.path == "/api/guide/history":
                 return self.send_json(*guide_history_set(self.read_json()))
+            if u.path == "/api/guide/history/clear":
+                return self.send_json(*guide_history_clear(self.read_json()))
             if u.path == "/api/lora/download":
                 return self.send_json(*self.api_lora_download_start(self.read_json()))
             if u.path == "/api/lora/download/cancel":
@@ -7400,8 +7632,11 @@ class Handler(BaseHTTPRequestHandler):
 
 
     def api_forget(self):
-        """Remove a finished result from the gallery. This drops OUR record of the job only:
-        the picture or clip stays on the lane's own disk. This app never deletes your files."""
+        """Remove a finished result from the gallery. This drops OUR record of the job; the
+        picture or clip stays on the lane's own disk UNLESS that lane opted in to deleting it
+        too (config.json "outputs", UX-2 #5 -- off by default, so a fresh config still deletes
+        nothing, matching AGENTS.md's "this app never deletes your files" for every lane that
+        hasn't explicitly turned it on)."""
         p = self.read_json()
         jid = p.get("job_id")
         # SEQ_LOCK across the check AND the pop, so no sequence can start
@@ -7416,10 +7651,35 @@ class Handler(BaseHTTPRequestHandler):
             used = seq_job_use(jid)
             if used:
                 return self.send_json({"ok": False, "error": used}, 409)
+            # UX-2 #5: opt-in per lane (lane_output_path returns None when
+            # the lane has no "outputs" configured -- the default, and the
+            # existing "this app never deletes your files" behaviour). The
+            # sequence-in-use refusal above already ran, so nothing left
+            # here is still needed by a Cutting Room sequence. A file that
+            # is already gone, or that fails the containment check, is
+            # skipped rather than failing the whole Remove -- the History
+            # entry still comes out either way.
+            lane = LANE_BY_ID.get(j.get("lane"))
+            deleted_files = False
+            if lane is not None:
+                for o in j.get("outputs") or []:
+                    if o.get("type", "output") != "output":
+                        continue
+                    try:
+                        path = lane_output_path(lane, o)
+                    except ValueError:
+                        continue
+                    if not path:
+                        continue
+                    try:
+                        os.remove(path)
+                        deleted_files = True
+                    except OSError:
+                        pass
             with JOBS_LOCK:
                 JOBS.pop(jid, None)
         save_jobs()
-        return self.send_json({"ok": True})
+        return self.send_json({"ok": True, "deleted_files": deleted_files})
 
 
 def main():
