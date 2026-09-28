@@ -9,14 +9,22 @@ All notable changes to Black Wire Forge are recorded here.
 - Style packs (LoRAs) for the Picture room (t2i, edit) and Pixel Art: pick up to two style LoRAs
   already installed on the lane, each with its own strength (0-1.5), chained after the model
   loader; picking none leaves the render graph byte-for-byte the same as before. A "Browse
-  styles" drawer lists matching LoRAs for the lane's picture model from the Hugging Face Hub's
-  public API, with downloads, licence ("licence unknown" when the card states none) and file
-  size; NSFW-tagged packs are hidden unless the drawer's "Advanced" toggle is on. Downloading a
-  file is opt-in per lane (`"downloads": {"loras_dir": "..."}` in config.json) and off by
-  default; without it, "Get it" prints the exact `hf download` command to run on the ComfyUI
+  styles" drawer lists matching LoRAs from the Hugging Face Hub's public API, one card per repo
+  with a readable name/author, its model card's own first-sentence description (falling back to
+  "No description on the model card."), trigger words and a recommended strength when the card
+  states them, a preview image when the card's front matter has one on huggingface.co, licence
+  ("licence unknown" when the card states none) and file size; every pack is listed, an
+  NSFW-tagged one carrying a plain "NSFW" badge rather than being hidden. On a lane whose room
+  offers more than one style family (e.g. a video room's two engines), the drawer shows a tab
+  per family and downloads land under that family's own subfolder
+  (`<loras_dir>/<family>/<file>`), so its filename doesn't have to name the model for the lane
+  to find it. Downloading a file is opt-in per lane (`"downloads": {"loras_dir": "..."}` in
+  config.json) and off by default; without it, "Get it" prints the exact
+  `hf download ... --local-dir <ComfyUI>/models/loras/<folder>` command to run on the ComfyUI
   machine instead. A download is validated server-side end to end (only a Hub URL built from a
-  catalog id, a bare `.safetensors` filename that cannot leave the lane's LoRA folder, a size
-  cap, one at a time per lane, cancellable) before any byte reaches disk.
+  catalog id, a bare `.safetensors` filename and a declared family folder that cannot leave the
+  lane's LoRA folder, a size cap, one at a time per lane, cancellable) before any byte reaches
+  disk.
 
 - "Write this shot" and "Help me write this" now see a shot's own starting or face picture --
   the LTX shot writer (its starting picture), the H3 fl2va shot writer (its starting picture),

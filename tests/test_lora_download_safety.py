@@ -38,7 +38,7 @@ for lane in (LANE_OFF, LANE_ON):
 
 print("a lane without \"downloads\" is refused (403's plain-sentence text, from the download endpoint)")
 try:
-    srv._lora_download_target(LANE_OFF, "owner/pack", "style.safetensors")
+    srv._lora_download_target(LANE_OFF, None, "owner/pack", "style.safetensors")
     check("raised", False)
 except ValueError as e:
     check("names the lane and says downloads are off", "Off lane" in str(e) and "off" in str(e).lower(), str(e))
@@ -47,13 +47,13 @@ print()
 print("every rule in Build C, against the opted-in lane")
 def refused(repo, filename):
     try:
-        srv._lora_download_target(LANE_ON, repo, filename)
+        srv._lora_download_target(LANE_ON, None, repo, filename)
         return None
     except ValueError:
         return True
 
 check("a valid repo+file from the catalog is ACCEPTED (returns url/dest/max_bytes)",
-      srv._lora_download_target(LANE_ON, "owner/pack", "style.safetensors")[1]
+      srv._lora_download_target(LANE_ON, None, "owner/pack", "style.safetensors")[1]
       == os.path.join(LORAS_DIR, "style.safetensors"))
 check("path traversal in the filename is refused", refused("owner/pack", "../x.safetensors") is True)
 check("a non-.safetensors file is refused", refused("owner/pack", "style.bin") is True)
@@ -64,7 +64,7 @@ check("a malformed repo id (no slash) is refused", refused("not-a-repo-id", "sty
 check("a repo id with a path segment is refused", refused("owner/pack/../evil", "style.safetensors") is True)
 check("a leading-dot filename is refused", refused("owner/pack", ".style.safetensors") is True)
 
-url, dest, max_bytes = srv._lora_download_target(LANE_ON, "owner/pack", "style.safetensors")
+url, dest, max_bytes = srv._lora_download_target(LANE_ON, None, "owner/pack", "style.safetensors")
 check("the URL is built server-side against the real HF host, from the catalog id/file only",
       url == "https://huggingface.co/owner/pack/resolve/main/style.safetensors", url)
 check("the target stays inside loras_dir", os.path.dirname(dest) == os.path.abspath(LORAS_DIR))

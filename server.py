@@ -533,9 +533,17 @@ def http_post_multipart(url, fields, files, timeout=180.0):
 # DOWNLOAD url below is never affected -- it always resolves against the
 # real huggingface.co host, per Build C's own rule.
 HF_API = os.environ.get("BWF_TEST_HF_API") or "https://huggingface.co/api/models"
+# LORA-2B: the README-fetching web host (raw model-card text, never the
+# download itself -- that always resolves against the real huggingface.co,
+# per Build C's own rule above _allowed_download_host).
+HF_WEB = os.environ.get("BWF_TEST_HF_WEB") or "https://huggingface.co"
 CATALOG_CACHE_SECONDS = 600
 CATALOG_LOCK = threading.Lock()
 CATALOG_CACHE = {}   # base_id -> (fetched_at, [entry, ...])
+README_CACHE_SECONDS = 600
+README_MAX_BYTES = 256 * 1024
+README_LOCK = threading.Lock()
+README_CACHE = {}   # repo_id -> (fetched_at, {description, trigger_words, strength, preview})
 _NSFW_RE = re.compile(r"nsfw|nude", re.IGNORECASE)
 DOWNLOAD_DEFAULT_MAX_BYTES = 4 * 1024 ** 3
 DOWNLOAD_LOCK = threading.Lock()
@@ -543,17 +551,262 @@ DOWNLOADS = {}        # lane_id -> {"repo","file","bytes","total","done","ok","e
 REPO_ID_RE = re.compile(r"^[\w.-]+/[\w.-]+$")
 
 
-def _hf_base_for_lane(m):
-    """The HF base-model id for whatever picture family this lane's
-    discovered models belong to, or None (Build B: "unknown family ->
-    empty list"). Asks each pack's OWN "style_catalog" declaration
-    (engines.style_catalogs()) which role and match rule identify it --
-    this core names no model itself, engine-independence ratchet included."""
-    for sc in engines.style_catalogs():
-        name = (m.get(sc["role"]) or "").lower()
-        if _rule_matches([name], sc.get("match") or {}):
-            return sc["hf_base"]
+def _style_family_adapter(sc):
+    """Adapt one pack's "style_catalog" declaration to the v2 per-family
+    shape LORA-2B needs (id/label/cap/modes/folder), so this module keeps
+    working both before and after slice A lands the v2 shape (spec: "a
+    tiny adapter ... accepts BOTH the old and the v2 shape"). The base
+    commit's shape (still what the one picture pack declares) carries only
+    role/match/hf_base -- give it a stable single-family id and an empty
+    folder, which keeps today's flat <loras_dir>/<file> layout unchanged."""
+    if "id" in sc:
+        return sc
+    out = dict(sc)
+    out.setdefault("id", "default")
+    out.setdefault("label", sc.get("hf_base", "Styles"))
+    out.setdefault("cap", "image")
+    out.setdefault("modes", [])
+    out.setdefault("folder", "")
+    return out
+
+
+# Test-only override (never read outside this, same pattern as BWF_TEST_HF_API
+# above): a JSON list of already-v2-shaped families, for a browser-driven UI
+# suite to exercise multiple families/tabs against a REAL server subprocess
+# (which can't be monkeypatched in-process) without waiting on slice A's real
+# engine packs.
+_TEST_STYLE_FAMILIES = os.environ.get("BWF_TEST_STYLE_FAMILIES")
+
+
+def style_families():
+    """engines.style_catalogs(), normalised to the v2 per-family shape --
+    call this everywhere in server.py instead of engines.style_catalogs()
+    directly, so the old/new-shape adapter above is applied exactly once."""
+    if _TEST_STYLE_FAMILIES:
+        return json.loads(_TEST_STYLE_FAMILIES)
+    return [_style_family_adapter(sc) for sc in engines.style_catalogs()]
+
+
+def _family_by_id(family_id):
+    """One declared style family by id, or None -- used to refuse a family
+    id that isn't declared at all (LORA-2B: "a folder id not in
+    style_catalogs is refused")."""
+    if not family_id:
+        return None
+    for sc in style_families():
+        if sc["id"] == family_id:
+            return sc
     return None
+
+
+def _families_for_lane(m):
+    """Every style family whose role model this lane has discovered and
+    whose match rule that model's filename satisfies -- the families
+    "present" on this lane, in style_families() order. This core names no
+    model itself -- it only asks each pack's OWN declaration."""
+    out = []
+    for sc in style_families():
+        name = (m.get(sc["role"]) or "").lower()
+        if name and _rule_matches([name], sc.get("match") or {}):
+            out.append(sc)
+    return out
+
+
+def _readable_pack_name(repo_id):
+    """A repo id's name-half turned into a readable name: '-'/'_' to
+    spaces, Title Case for a plain-lowercase word (a word that already
+    carries a capital -- an acronym, a CamelCase term -- is left exactly
+    as the card wrote it, so 'XL' never becomes 'Xl')."""
+    slug = repo_id.split("/", 1)[1] if "/" in repo_id else repo_id
+    words = [w for w in re.split(r"[-_]+", slug) if w]
+    return " ".join(w if any(c.isupper() for c in w) else w.capitalize() for w in words) or slug
+
+
+def _pack_author(repo_id):
+    return repo_id.split("/", 1)[0] if "/" in repo_id else ""
+
+
+# ---------------------------------------------------------------------------
+# LORA-2B: a tolerant, regex-only reading of a model card's README.md --
+# never a real markdown/YAML parser (neither ships with the stdlib, and this
+# app runs with no required third-party packages -- see requirements.txt).
+# Every extractor below fails soft: a card that doesn't match its pattern
+# yields None, never an exception that could take the whole catalog list
+# down with it (LORA-2B spec: "failures -> fallback text, never an error for
+# the whole list").
+# ---------------------------------------------------------------------------
+
+_FRONT_MATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
+_MD_HEADING_RE = re.compile(r"^#{1,6}\s")
+_MD_IMAGE_RE = re.compile(r"^!\[")
+_MD_HTML_RE = re.compile(r"^<")
+_MD_LINK_ONLY_RE = re.compile(r"^\[[^\]]*\]\([^)]*\)\.?$")
+_MD_BADGE_RE = re.compile(r"shields\.io|badge\.fury|img\.shields", re.IGNORECASE)
+_MD_RULE_RE = re.compile(r"^[-*_]{3,}$")
+_MD_LINK_INLINE_RE = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+_MD_EMPHASIS_RE = re.compile(r"(\*\*\*|\*\*|\*|___|__|_|`)")
+
+
+def _strip_front_matter(text):
+    """(body, front_matter_yaml_text) -- front_matter_yaml_text is "" when
+    the README has none."""
+    m = _FRONT_MATTER_RE.match(text or "")
+    return (text[m.end():], m.group(1)) if m else (text or "", "")
+
+
+def _strip_markdown_inline(line):
+    line = _MD_LINK_INLINE_RE.sub(r"\1", line)
+    line = _MD_EMPHASIS_RE.sub("", line)
+    return line.strip()
+
+
+def _is_noise_line(line):
+    """A line that is never itself prose -- a heading, an image, raw HTML,
+    a link-only line, a badge, or a markdown rule. NOT a blockquote/table
+    line: real cards put trigger words and specs inside those."""
+    return bool(_MD_HEADING_RE.match(line) or _MD_IMAGE_RE.match(line) or _MD_HTML_RE.match(line)
+                or _MD_LINK_ONLY_RE.match(line) or _MD_BADGE_RE.search(line) or _MD_RULE_RE.match(line))
+
+
+def _sentence_from(text):
+    """The first sentence in `text` (a joined paragraph), capped at 160
+    chars and cut at a word boundary with an ellipsis."""
+    m = re.search(r".+?[.!?](?=\s|$)", text)
+    sentence = m.group(0) if m else text
+    if len(sentence) > 160:
+        cut = sentence[:160].rsplit(" ", 1)[0].rstrip(".,;:- ")
+        sentence = (cut or sentence[:160]) + "…"
+    return sentence
+
+
+def _first_prose_sentence(readme_text):
+    """LORA-2B: the model card's first real prose sentence. Front-matter,
+    headings, badges, images and HTML are skipped; consecutive prose lines
+    are joined into one paragraph first (a card that hard-wraps its first
+    paragraph across several lines must not truncate mid-sentence). None
+    when the card has no prose line at all."""
+    body, _fm = _strip_front_matter(readme_text)
+    paragraph = []
+    for raw_line in body.splitlines() + [""]:
+        line = raw_line.strip()
+        if not line or (line[:1] in (">", "|")) or _is_noise_line(line):
+            if paragraph:
+                text = _strip_markdown_inline(" ".join(paragraph))
+                paragraph = []
+                if text:
+                    return _sentence_from(text)
+            continue
+        paragraph.append(line)
+    return None
+
+
+_TRIGGER_LINE_RE = re.compile(r"trigger\s*word|activation", re.IGNORECASE)
+_TRIGGER_LABEL_RE = re.compile(r"trigger\s*words?\s*:?|activation\s*(word|text|prompt)s?\s*:?",
+                               re.IGNORECASE)
+
+
+def _extract_trigger_words(readme_text):
+    """LORA-2B: a short trigger-word/activation line, kept short. A
+    backtick-quoted term (how most cards actually write it) wins over the
+    whole sentence around it."""
+    body, _fm = _strip_front_matter(readme_text)
+    for raw_line in body.splitlines():
+        line = raw_line.strip()
+        if not line or _MD_HEADING_RE.match(line) or not _TRIGGER_LINE_RE.search(line):
+            continue
+        backticked = re.findall(r"`([^`]{1,60})`", line)
+        if backticked:
+            return ", ".join(dict.fromkeys(backticked))[:160]
+        text = line.lstrip(">*- ")
+        text = text.split(":", 1)[1] if ":" in text else text
+        text = _strip_markdown_inline(text)
+        text = _TRIGGER_LABEL_RE.sub("", text, count=1).strip(" -:>*")
+        if text:
+            return text[:160]
+    return None
+
+
+_STRENGTH_RE = re.compile(r"strength[^0-9]{0,12}(\d(?:\.\d+)?)", re.IGNORECASE)
+
+
+def _extract_strength(readme_text):
+    body, _fm = _strip_front_matter(readme_text)
+    m = _STRENGTH_RE.search(body)
+    if not m:
+        return None
+    try:
+        return float(m.group(1))
+    except ValueError:
+        return None
+
+
+_WIDGET_SECTION_RE = re.compile(r"^widget\s*:\s*$")
+_URL_LINE_RE = re.compile(r"^-?\s*url\s*:\s*(\S+)\s*$")
+
+
+def _extract_preview_image(readme_text, repo_id):
+    """A preview image URL, ONLY when the front matter names one under a
+    "widget: / output: / url:" block, hosted on huggingface.co (LORA-2B
+    spec: "skip otherwise" -- never a guess, never a body-text image)."""
+    _body, fm = _strip_front_matter(readme_text)
+    if not fm:
+        return None
+    in_widget = False
+    for raw_line in fm.splitlines():
+        stripped = raw_line.strip()
+        if _WIDGET_SECTION_RE.match(stripped):
+            in_widget = True
+            continue
+        if not in_widget:
+            continue
+        if not raw_line[:1].isspace() and raw_line[:1] != "-":
+            in_widget = False   # back to column 0: the widget block ended
+            continue
+        m = _URL_LINE_RE.match(stripped)
+        if m:
+            return _resolve_preview_url(m.group(1).strip("'\""), repo_id)
+    return None
+
+
+def _resolve_preview_url(url, repo_id):
+    if url.startswith("http://") or url.startswith("https://"):
+        full = url
+    else:
+        full = "https://huggingface.co/%s/resolve/main/%s" % (repo_id, url.lstrip("/"))
+    u = urllib.parse.urlparse(full)
+    if u.scheme != "https" or not _allowed_download_host(u.hostname):
+        return None
+    return full
+
+
+def _fetch_readme_text(repo_id):
+    req = urllib.request.Request("%s/%s/raw/main/README.md" % (HF_WEB, repo_id))
+    with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as r:
+        return r.read(README_MAX_BYTES).decode("utf-8", "replace")
+
+
+def _readme_extras(repo_id):
+    """Cached (10 min, same window as the catalog) description/trigger/
+    strength/preview for one repo's README. A fetch failure never fails
+    the whole catalog list -- every field just falls back to None/the
+    caller's own fallback text."""
+    now = time.time()
+    with README_LOCK:
+        cached = README_CACHE.get(repo_id)
+    if cached and now - cached[0] < README_CACHE_SECONDS:
+        return cached[1]
+    extras = {"description": None, "trigger_words": None, "strength": None, "preview": None}
+    try:
+        text = _fetch_readme_text(repo_id)
+        extras["description"] = _first_prose_sentence(text)
+        extras["trigger_words"] = _extract_trigger_words(text)
+        extras["strength"] = _extract_strength(text)
+        extras["preview"] = _extract_preview_image(text, repo_id)
+    except Exception:
+        pass
+    with README_LOCK:
+        README_CACHE[repo_id] = (now, extras)
+    return extras
 
 
 def _build_catalog(base_id):
@@ -577,9 +830,14 @@ def _build_catalog(base_id):
         files = [{"filename": s["rfilename"], "size": s.get("size")}
                  for s in (detail.get("siblings") or [])
                  if isinstance(s.get("rfilename"), str) and s["rfilename"].endswith(".safetensors")]
-        out.append({"id": repo_id, "downloads": item.get("downloads", 0),
-                    "likes": item.get("likes", 0), "licence": licence,
-                    "nsfw": nsfw, "files": files})
+        card_summary = (detail.get("cardData") or {}).get("summary") or item.get("description")
+        extras = _readme_extras(repo_id)
+        out.append({"id": repo_id, "name": _readable_pack_name(repo_id), "author": _pack_author(repo_id),
+                    "downloads": item.get("downloads", 0), "likes": item.get("likes", 0), "licence": licence,
+                    "nsfw": nsfw, "files": files,
+                    "description": extras["description"] or card_summary or "No description on the model card.",
+                    "trigger_words": extras["trigger_words"], "strength": extras["strength"],
+                    "preview": extras["preview"]})
     return out
 
 
@@ -606,18 +864,29 @@ class DownloadsOff(ValueError):
     pass
 
 
-def _lora_download_target(lane, repo, filename):
-    """Build C: every download-safety rule in one place. Returns (url, dest,
-    max_bytes) or raises ValueError (DownloadsOff for the opt-in check) with
-    the plain sentence to refuse with."""
+def _lora_download_target(lane, family_id, repo, filename):
+    """Build C (+ LORA-2B's per-family folder): every download-safety rule
+    in one place. Returns (url, dest, max_bytes) or raises ValueError
+    (DownloadsOff for the opt-in check) with the plain sentence to refuse
+    with. `family_id` may be None/absent when exactly one style family is
+    present on this lane (keeps the pre-LORA-2B single-family call shape
+    working with no family named)."""
     dl = lane.get("downloads")
     if not isinstance(dl, dict) or not dl.get("loras_dir"):
         raise DownloadsOff("Downloads are off for %s. Set \"downloads\" on this lane in "
                            "config.json to turn them on." % lane["name"])
     if not isinstance(repo, str) or not REPO_ID_RE.match(repo):
         raise ValueError("That is not a valid Hugging Face repo id.")
+    if not family_id:
+        present = _families_for_lane(models_for(lane))
+        if len(present) == 1:
+            family_id = present[0]["id"]
+    family = _family_by_id(family_id)
+    if family is None:
+        raise ValueError("Name a style family to download from (Browse styles again and "
+                          "pick \"Get it\" from the list).")
     try:
-        catalog = catalog_for(_hf_base_for_lane(models_for(lane)) or "")
+        catalog = catalog_for(family["hf_base"])
     except Exception:
         catalog = []
     entry = next((c for c in catalog if c["id"] == repo), None)
@@ -630,8 +899,15 @@ def _lora_download_target(lane, repo, filename):
     if not any(f["filename"] == filename for f in entry["files"]):
         raise ValueError("That file is not listed for %s in the catalog." % repo)
     loras_dir = os.path.abspath(dl["loras_dir"])
-    dest = os.path.abspath(os.path.join(loras_dir, filename))
-    if os.path.dirname(dest) != loras_dir:
+    folder = family.get("folder") or ""
+    target_dir = os.path.abspath(os.path.join(loras_dir, folder)) if folder else loras_dir
+    # commonpath refuses "../" (or any other) escape from loras_dir via the
+    # family's own folder, the same way the dest-vs-target_dir check below
+    # refuses one via the filename.
+    if os.path.commonpath([target_dir, loras_dir]) != loras_dir:
+        raise ValueError("That style family's folder would land outside the lane's LoRA folder.")
+    dest = os.path.abspath(os.path.join(target_dir, filename))
+    if os.path.dirname(dest) != target_dir:
         raise ValueError("That filename would land outside the lane's LoRA folder.")
     if os.path.exists(dest):
         raise ValueError("%s already has a file named %s." % (lane["name"], filename))
@@ -6547,21 +6823,40 @@ class Handler(BaseHTTPRequestHandler):
 
 
     def api_catalog_loras(self, q):
+        """LORA-2B: multi-family catalog. `family` is optional -- omitted,
+        this defaults to the families present on the lane (optionally
+        narrowed by `cap`, the room's cap), picking the first one so a
+        single-family lane (today's only shape) still gets its catalog in
+        one call; `families` always lists what's present, so the page can
+        build tabs when there's more than one.
+
+        Owner ruling 2026-09-28: no hiding, no "Advanced" filter -- every
+        pack is listed, each carrying its own "nsfw" field so the page can
+        badge it. `advanced` is accepted and ignored (harmless for an old
+        caller); it no longer changes the response."""
         lane = LANE_BY_ID.get((q.get("lane") or [""])[0])
         if not lane:
             return {"ok": False, "error": "Pick a lane first."}, 400
-        advanced = (q.get("advanced") or ["0"])[0] == "1"
-        base_id = _hf_base_for_lane(models_for(lane))
-        if not base_id:
-            return {"ok": True, "loras": [], "note":
-                    "This lane's picture model isn't one this app has a style catalog for yet."}, 200
+        cap = (q.get("cap") or [""])[0] or None
+        requested = (q.get("family") or [""])[0] or None
+        present = _families_for_lane(models_for(lane))
+        if cap:
+            present = [f for f in present if f.get("cap") == cap]
+        families_meta = [{"id": f["id"], "label": f.get("label", f["id"]), "cap": f.get("cap"),
+                          "folder": f.get("folder") or ""} for f in present]
+        if requested:
+            family = next((f for f in present if f["id"] == requested), None)
+        else:
+            family = present[0] if present else None
+        if family is None:
+            return {"ok": True, "loras": [], "families": families_meta, "family": None, "folder": "",
+                    "note": "This lane's models aren't ones this app has a style catalog for yet."}, 200
         try:
-            catalog = catalog_for(base_id)
+            catalog = catalog_for(family["hf_base"])
         except Exception as e:
             return {"ok": False, "error": "Could not reach Hugging Face: %s" % e}, 502
-        if not advanced:
-            catalog = [c for c in catalog if not c["nsfw"]]
-        return {"ok": True, "loras": catalog, "base_id": base_id}, 200
+        return {"ok": True, "loras": catalog, "families": families_meta,
+                "family": family["id"], "folder": family.get("folder") or ""}, 200
 
     def api_lora_download_status(self, q):
         lane = LANE_BY_ID.get((q.get("lane") or [""])[0])
@@ -6588,7 +6883,7 @@ class Handler(BaseHTTPRequestHandler):
                                      "total": None, "done": False, "ok": False, "error": "",
                                      "cancel": False}
         try:
-            url, dest, max_bytes = _lora_download_target(lane, p.get("repo"), p.get("file"))
+            url, dest, max_bytes = _lora_download_target(lane, p.get("family"), p.get("repo"), p.get("file"))
         except DownloadsOff as e:
             with DOWNLOAD_LOCK:
                 DOWNLOADS.pop(lane["id"], None)

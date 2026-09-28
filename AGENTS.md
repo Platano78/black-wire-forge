@@ -295,11 +295,16 @@ also names the custom-node package (with its repo URL) behind every non-core nod
 uses, and says which classes ship in core ComfyUI already. Tell the user the file size and
 licence and get an explicit yes before recommending any download (see "Rules for the agent").
 
-**Style LoRAs (the Picture room's "Browse styles" catalog) are off by default, same rule.** A
-lane downloads nothing until its config.json entry sets `"downloads": {"loras_dir": "..."}` —
-absent, "Get it" only prints the `hf download` command to run yourself. On, it still shows the
-file's size and licence ("licence unknown" when the Hub card states none) before you pick it;
-NSFW-tagged packs stay hidden behind the drawer's own "Advanced" toggle.
+**Style LoRAs (the "Browse styles" catalog, every room with a style field) are off by default,
+same rule.** A lane downloads nothing until its config.json entry sets
+`"downloads": {"loras_dir": "..."}` — absent, "Get it" only prints the `hf download ... --local-dir
+<ComfyUI>/models/loras/<folder>` command to run yourself. On, it still shows the file's size and
+licence ("licence unknown" when the Hub card states none) before you pick it; an NSFW-tagged pack
+stays listed with a plain "NSFW" badge, never hidden. Same machine: point `loras_dir` at ComfyUI's
+own `models/loras`. Different machines: `loras_dir` must be a folder this app can write and ComfyUI
+can read (a network share mounted on both — how you share it is your call). Either way, ComfyUI
+only picks up a new file on its next rescan; refresh the lane if a just-downloaded pack isn't
+listed yet.
 
 ## Where to read further
 
