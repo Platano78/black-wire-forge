@@ -7248,7 +7248,13 @@ class Handler(BaseHTTPRequestHandler):
         # is keyed only by hf_base and has no lane or family of its own).
         none_words = [w.lower() for w in ((family.get("match") or {}).get("none") or [])]
         with DISCOVERY_LOCK:
-            installed_names = {n.lower() for n in (DISCOVERY.get(lane["id"], {}).get("pools", {}).get("lora") or [])}
+            # ComfyUI's lora pool lists names WITH their subfolder
+            # ('a_family/x.safetensors', 'library/a_family/x.safetensors'),
+            # and on Windows hosts possibly with backslashes -- catalog
+            # filenames stay bare, so match on the pool entry's BASENAME
+            # (split on both '/' and '\\'), not the whole pool string.
+            installed_names = {re.split(r"[/\\]", n)[-1].lower()
+                                for n in (DISCOVERY.get(lane["id"], {}).get("pools", {}).get("lora") or [])}
         badged = []
         for entry in catalog:
             # #10: this repo/file matches the family's OWN "none" exclusion
@@ -7267,7 +7273,7 @@ class Handler(BaseHTTPRequestHandler):
             # without inventing filesystem access this app deliberately
             # doesn't have (AGENTS.md; also true of a .metadata.json/.txt
             # sidecar -- skipped for the same reason, not invented here).
-            files = [dict(f, installed=(f.get("filename") or "").lower() in installed_names)
+            files = [dict(f, installed=re.split(r"[/\\]", (f.get("filename") or "").lower())[-1] in installed_names)
                      for f in entry.get("files") or []]
             badged.append(dict(entry, files=files, workflow_only=needs_workflow))
         return {"ok": True, "loras": badged, "families": families_meta,

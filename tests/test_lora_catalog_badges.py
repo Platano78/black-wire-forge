@@ -96,5 +96,53 @@ check("nothing is workflow_only when the family declares no \"none\" list",
       all(e["workflow_only"] is False for e in payload2["loras"]), payload2["loras"])
 
 print()
+print("UX-2 #11 regression: pool entries carry a subfolder (real ComfyUI shape) -- basename match")
+HF_BASE3 = "Test/Base-Model-3"
+CATALOG3 = [
+    {"id": "someone/vh5tape", "name": "VH5 Tape", "author": "someone", "downloads": 10,
+     "likes": 0, "licence": "mit", "nsfw": False,
+     "files": [{"filename": "vh5tape-comfyui.safetensors", "size": 111}],
+     "description": "a style whose pool entry carries a '/' subfolder", "trigger_words": None,
+     "strength": None, "preview": None},
+    {"id": "someone/ypack", "name": "Y Pack", "author": "someone", "downloads": 5,
+     "likes": 0, "licence": "mit", "nsfw": False,
+     "files": [{"filename": "y.safetensors", "size": 222}],
+     "description": "a style whose pool entry carries a Windows '\\' subfolder", "trigger_words": None,
+     "strength": None, "preview": None},
+]
+srv.CATALOG_CACHE[HF_BASE3] = (time.time(), CATALOG3)
+
+FAMILY3 = {"id": "testfam3", "label": "Test Family 3", "cap": "image", "modes": ["t2i"], "role": "test_unet3",
+           "match": {"any": ["test-base3"], "none": []},
+           "hf_base": HF_BASE3, "folder": "test_family3"}
+srv._TEST_STYLE_FAMILIES = __import__("json").dumps([FAMILY3])
+
+LANE3 = {"id": "badge-lane-subfolder", "name": "Subfolder lane", "caps": ["image"]}
+srv.LANE_BY_ID[LANE3["id"]] = LANE3
+with srv.DISCOVERY_LOCK:
+    # Real live-rig shape (owner-verified 2026-09-28): ComfyUI's lora pool
+    # lists names WITH their subfolder ('minimax_h3/x.safetensors',
+    # 'library/minimax_h3/x.safetensors'), and on Windows hosts possibly
+    # with backslashes -- catalog filenames stay bare, so matching must be
+    # on the pool entry's BASENAME, not the whole string.
+    srv.DISCOVERY[LANE3["id"]] = {
+        "models": {"test_unet3": "test-base3_v1.safetensors"},
+        "pools": {"lora": [
+            "minimax_h3/vh5tape-comfyui.safetensors",
+            "library/minimax_h3/vh5tape-comfyui.safetensors",
+            "a\\b\\y.safetensors",
+        ]},
+        "checked": 1.0, "err": "",
+    }
+
+payload3, code3 = srv.Handler.api_catalog_loras(obj, {"lane": [LANE3["id"]]})
+check("200 OK for the subfolder-pool lane", code3 == 200 and payload3["family"] == "testfam3", payload3)
+by_id3 = {e["id"]: e for e in payload3["loras"]}
+check("a file whose pool entry carries a '/' subfolder is still marked installed",
+      by_id3["someone/vh5tape"]["files"][0]["installed"] is True, by_id3["someone/vh5tape"]["files"])
+check("a file whose pool entry carries a Windows '\\' subfolder is still marked installed",
+      by_id3["someone/ypack"]["files"][0]["installed"] is True, by_id3["someone/ypack"]["files"])
+
+print()
 print(("FAILED: %d" % len(FAILED)) if FAILED else "ALL PASS")
 sys.exit(1 if FAILED else 0)

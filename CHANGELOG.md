@@ -25,6 +25,11 @@ All notable changes to Black Wire Forge are recorded here.
 
 ### Fixed
 
+- UX-2 #11's "Installed" badge never showed: ComfyUI's lora pool lists names WITH their
+  subfolder (`minimax_h3/x.safetensors`, possibly backslash-separated on Windows hosts), but
+  catalog filenames are bare, so nothing ever matched -- now compared by basename, split on
+  both `/` and `\`.
+
 - Field GROUPS (Content/Sound/Quality/...) were sorted by their per-group `order` number
   globally across the whole form, so a later group whose first field happened to carry a lower
   `order` (e.g. Sound's bpm:1) rendered before an earlier-declared group (Content's lyrics:2) --

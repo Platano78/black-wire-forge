@@ -250,7 +250,9 @@ def music_graph(p, m):
         vocal model behave like an ambience generator. The vendor documents
         Music3 as a five-minute song model with expressive vocals.
     seconds : float
-        Duration in seconds. Default 30.0 (model's coherent span).
+        Duration in seconds. Falls back to 30.0 (an instrumental ambient bed) when
+        omitted entirely; the UI's own default tier renders at 150.0, the length
+        measured to end a full sung song cleanly.
     seed : int or None
         Random seed. If None, a fresh seed is chosen.
     master : bool
@@ -1639,7 +1641,8 @@ ENGINE = {
             {"id": "seconds", "label": "Duration (seconds)", "type": "number",
              "default": 30.0, "tier": "primary", "group": "Sound", "order": 1,
              "units": "seconds", "range": [5, 300], "ui_range": [15, 60],
-             "hint": "30s is the model's coherent span."},
+             "hint": "150s suits a full song with a Structured Caption; about 30s suits "
+                     "an instrumental ambient bed."},
         ] + STYLE_FIELDS_MUSIC3,
         "sfx": [
             {"id": "prompt", "label": "Sound", "type": "text",
