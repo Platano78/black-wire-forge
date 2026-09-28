@@ -921,6 +921,16 @@ ENGINE = {
     # applied here to the resolved "role" filename instead. Declared here so
     # server.py (engine-agnostic by design) never names "qwen" itself; see
     # engines.style_catalogs().
-    "style_catalog": {"role": "qwen_unet", "match": {"any": ["qwen_image", "qwen-image"]},
-                      "hf_base": "Qwen/Qwen-Image-2.1"},
+    # LORA-2A CONTRACT v2 (engines.style_catalogs()): upgraded from the single
+    # "style_catalog" dict above (kept working for any pack that hasn't
+    # migrated, via the accessor's own legacy conversion). "none" excludes
+    # the speed/distillation LoRAs every other family's real pool also
+    # carries (e.g. H3's turbo files) so they never show up as a "style".
+    "style_catalogs": [
+        {"id": "qwen_image", "label": "Qwen-Image", "cap": "image",
+         "modes": ["t2i", "edit", "pixelart"], "role": "qwen_unet",
+         "match": {"any": ["qwen_image", "qwen-image"],
+                   "none": ["turbo", "lightning", "acc", "distill", "upscal", "msr", "reference", "ic-lora", "ic_lora", "control", "ingredients"]},
+         "hf_base": "Qwen/Qwen-Image-2.1", "folder": "qwen_image"},
+    ],
 }

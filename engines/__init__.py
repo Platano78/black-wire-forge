@@ -591,15 +591,37 @@ def modes_for(cap):
 
 
 def style_catalogs():
-    """Each pack's "style_catalog" declaration (LORA-1 Build B), or [] --
-    role name, the pool-match rule, and the Hugging Face base-model id to
-    query for that pack's family. server.py stays engine-agnostic by asking
-    THIS, never naming a model itself."""
+    """Every pack's style-family declarations (LORA-2A CONTRACT v2), flattened
+    across packs -- each entry:
+
+      {"id": "<family id>", "label": "<human name>", "cap": "<cap>",
+       "modes": [<mode ids>], "role": "<the model role that identifies the
+       family>", "match": {"any": [<words>], "none": [<words>]},
+       "hf_base": "<HF base model id>", "folder": "<download subfolder>"}
+
+    server.py (B) consumes exactly this shape and stays engine-agnostic by
+    asking THIS, never naming a model itself. A pack declares a LIST of these
+    under "style_catalogs"; the pre-v2 form -- a single "style_catalog" dict
+    with only role/match/hf_base -- is still read and converted here (id and
+    "folder" default to the pack's own id, "label" to the pack's id
+    title-cased, "cap" to the pack's cap, "modes" to every mode the pack
+    provides) so an unmigrated pack keeps working."""
     out = []
     for pack in _discover():
-        sc = pack.get("style_catalog")
-        if sc:
+        for sc in pack.get("style_catalogs") or []:
             out.append(sc)
+        legacy = pack.get("style_catalog")
+        if legacy:
+            out.append({
+                "id": pack["id"].replace("-", "_"),
+                "label": pack["id"].replace("-", " ").replace("_", " ").title(),
+                "cap": pack["cap"],
+                "modes": list(pack.get("graphs", {})),
+                "role": legacy["role"],
+                "match": legacy["match"],
+                "hf_base": legacy["hf_base"],
+                "folder": pack["id"].replace("-", "_"),
+            })
     return out
 
 

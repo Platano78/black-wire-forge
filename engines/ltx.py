@@ -35,6 +35,56 @@ def _random_seed() -> int:
     return random.randint(0, 2**32 - 1)
 
 
+# LORA-2A: same up-to-two-LoraLoaderModelOnly chain as Build A's Qwen pack
+# (engines/qwen_image.py apply_style_loras). Reserved node ids "396"/"397"
+# (unused elsewhere in this pack). Chained once, right off the UNet loader
+# ("384"), before ANY model-patching node -- LTXVDualCFGGuider (stage 1 "388",
+# stage 2 "391") and LTXVContextWindows ("394") all read the chain's output,
+# so a two-stage render or a windowed one gets the style in every stage from
+# one chain. With no style chosen this returns model_ref unchanged, so the
+# graph stays byte-identical to today.
+def apply_style_loras(g, p, model_ref):
+    for i, (name_key, strength_key) in enumerate(
+            (("style_1", "style_1_strength"), ("style_2", "style_2_strength")), start=1):
+        name = p.get(name_key)
+        if not name:
+            continue
+        nid = str(395 + i)  # "396", "397"
+        strength = float(p.get(strength_key) or 1.0)
+        g[nid] = {"class_type": "LoraLoaderModelOnly",
+                  "inputs": {"model": model_ref, "lora_name": name, "strength_model": strength}}
+        model_ref = [nid, 0]
+    return model_ref
+
+
+# Declared once, shared by ltx/ltx_loop/talking below -- discovery rule:
+# filename contains one of the LTX-2.5 name tokens, case-insensitive,
+# excluding speed/reference LoRAs the same pool carries (see
+# ENGINE["style_catalogs"]).
+STYLE_FIELDS = [
+    {"id": "style_1", "label": "Style", "type": "pool_select", "pool": "lora",
+     "match": {"any": ["ltx25", "ltx-2.5", "ltx2.5", "ltx_2.5", "ltx2"],
+               "none": ["turbo", "lightning", "acc", "distill", "upscal", "msr", "reference", "ic-lora", "ic_lora", "control", "ingredients"]}, "default": "",
+     "tier": "advanced", "group": "Style", "order": 20,
+     "hint": "A style pack installed on this lane, if any. \"None\" changes nothing."},
+    {"id": "style_1_strength", "label": "Style strength", "type": "number", "default": 1.0,
+     "tier": "advanced", "group": "Style", "order": 21,
+     "units": "strength", "range": [0, 1.5], "ui_range": [0, 1.5],
+     "enabled_when": {"field": "style_1", "truthy": True},
+     "disabled_reason": "Only used when a Style pack is chosen."},
+    {"id": "style_2", "label": "Style 2", "type": "pool_select", "pool": "lora",
+     "match": {"any": ["ltx25", "ltx-2.5", "ltx2.5", "ltx_2.5", "ltx2"],
+               "none": ["turbo", "lightning", "acc", "distill", "upscal", "msr", "reference", "ic-lora", "ic_lora", "control", "ingredients"]}, "default": "",
+     "tier": "advanced", "group": "Style", "order": 22,
+     "hint": "A second style pack, stacked on top of the first."},
+    {"id": "style_2_strength", "label": "Style 2 strength", "type": "number", "default": 1.0,
+     "tier": "advanced", "group": "Style", "order": 23,
+     "units": "strength", "range": [0, 1.5], "ui_range": [0, 1.5],
+     "enabled_when": {"field": "style_2", "truthy": True},
+     "disabled_reason": "Only used when a second Style pack is chosen."},
+]
+
+
 # -- talking-head prompt, copied verbatim from forge_video.py:1645-1666 ----
 def talking_head_prompt(line: str, look: str = "") -> str:
     """Compose the LTX prompt for one talking-head piece.
@@ -180,6 +230,9 @@ def _ltx_graph(p, m, filename_prefix):
             "inputs": {"clip_name": m["ltx_clip"], "type": "ltxv"},
             "class_type": "CLIPLoader",
         },
+    }
+    style_model = apply_style_loras(g, p, ["384", 0])
+    g.update({
         # -- conditioning --
         "364": {
             "inputs": {"text": prompt, "clip": ["387", 0]},
@@ -211,7 +264,7 @@ def _ltx_graph(p, m, filename_prefix):
         "339": {"inputs": {"noise_seed": seed}, "class_type": "RandomNoise"},
         "388": {
             "inputs": {
-                "model": ["384", 0],
+                "model": style_model,
                 "positive": ["365", 0],
                 "negative": ["365", 1],
                 "video_cfg": 1.0,
@@ -237,7 +290,7 @@ def _ltx_graph(p, m, filename_prefix):
             },
             "class_type": "SamplerCustomAdvanced",
         },
-    }
+    })
 
     if audio:
         g["386"] = {"inputs": {"vae_name": m["ltx_vae_audio"]}, "class_type": "VAELoader"}
@@ -368,7 +421,7 @@ def _ltx_graph(p, m, filename_prefix):
         g["338"] = {"inputs": {"noise_seed": seed}, "class_type": "RandomNoise"}
         g["391"] = {
             "inputs": {
-                "model": ["384", 0],
+                "model": style_model,
                 "positive": ["365", 0],
                 "negative": ["365", 1],
                 "video_cfg": 1.0,
@@ -438,7 +491,7 @@ def _ltx_graph(p, m, filename_prefix):
         # Both guiders take the wrapped model; nothing else in the graph moves.
         g["394"] = {
             "inputs": {
-                "model": ["384", 0],
+                "model": style_model,
                 "context_length": context_length,
                 "context_overlap": context_overlap,
                 "context_schedule": context_schedule,
@@ -554,13 +607,16 @@ def _ltx_loop_graph(p, m):
     if seed is None:
         seed = _random_seed()
 
-    return {
+    g = {
         "384": unet_loader(m["ltx_transformer"]),
         "385": {"inputs": {"vae_name": m["ltx_vae_video"]}, "class_type": "VAELoader"},
         "387": {
             "inputs": {"clip_name": m["ltx_clip"], "type": "ltxv"},
             "class_type": "CLIPLoader",
         },
+    }
+    style_model = apply_style_loras(g, p, ["384", 0])
+    g.update({
         "364": {"inputs": {"text": prompt, "clip": ["387", 0]}, "class_type": "CLIPTextEncode"},
         "373": {"inputs": {"text": negative, "clip": ["387", 0]}, "class_type": "CLIPTextEncode"},
         "365": {
@@ -581,7 +637,7 @@ def _ltx_loop_graph(p, m):
         # core CFGGuider at 1.0 -- the distilled checkpoint's trained setting
         "390": {
             "inputs": {
-                "model": ["384", 0],
+                "model": style_model,
                 "positive": ["365", 0],
                 "negative": ["365", 1],
                 "cfg": 1.0,
@@ -590,7 +646,7 @@ def _ltx_loop_graph(p, m):
         },
         "500": {
             "inputs": {
-                "model": ["384", 0],
+                "model": style_model,
                 "vae": ["385", 0],
                 "noise": ["339", 0],
                 "sampler": ["352", 0],
@@ -633,7 +689,8 @@ def _ltx_loop_graph(p, m):
             },
             "class_type": "SaveVideo",
         },
-    }
+    })
+    return g
 
 
 def ltx_loop_graph(p, m):
@@ -1196,7 +1253,7 @@ ENGINE = {
              "enabled_when": {"field": "context_length", "truthy": True},
              "disabled_reason": "Only used when a window size is set (and only on a looped schedule).",
              "hint": "Closes the take so the last frame leads back into the first."},
-        ],
+        ] + STYLE_FIELDS,
         "ltx_loop": [
             {"id": "prompt", "label": "Prompt", "type": "textarea",
              "tier": "primary", "group": "Content", "order": 1,
@@ -1232,7 +1289,7 @@ ENGINE = {
             {"id": "fps", "label": "Frame rate", "type": "int", "default": 24,
              "tier": "advanced", "group": "Length", "order": 2,
              "units": "fps", "range": [1, 60], "ui_range": [12, 30]},
-        ],
+        ] + STYLE_FIELDS,
         "talking": [
             {"id": "face", "label": "Face picture", "type": "image",
              "tier": "primary", "group": "Content", "order": 1,
@@ -1267,7 +1324,7 @@ ENGINE = {
             {"id": "fps", "label": "Frame rate", "type": "int", "default": 24,
              "tier": "advanced", "group": "Length", "order": 2,
              "units": "fps", "range": [1, 60], "ui_range": [12, 30]},
-        ],
+        ] + STYLE_FIELDS,
     },
     # R4: named parameter sets, same discipline as the other packs -- notes
     # cite real measurements, not a guess.
@@ -1360,4 +1417,12 @@ ENGINE = {
         "attribution": "LTX-2.5 by Lightricks",
         "url": "https://github.com/Lightricks/LTX-2/blob/main/LICENSE-2_x",
     },
+    # LORA-2A CONTRACT v2 (engines.style_catalogs()).
+    "style_catalogs": [
+        {"id": "ltx25", "label": "LTX-2.5", "cap": "video",
+         "modes": ["ltx", "ltx_loop", "talking"], "role": "ltx_transformer",
+         "match": {"any": ["ltx25", "ltx-2.5", "ltx2.5", "ltx_2.5", "ltx2"],
+                   "none": ["turbo", "lightning", "acc", "distill", "upscal", "msr", "reference", "ic-lora", "ic_lora", "control", "ingredients"]},
+         "hf_base": "Lightricks/LTX-2.5", "folder": "ltx25"},
+    ],
 }
