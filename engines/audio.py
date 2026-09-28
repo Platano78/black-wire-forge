@@ -141,12 +141,15 @@ def _master_kwargs(p):
 
 # LORA-2A: same up-to-two-LoraLoaderModelOnly chain as Build A's Qwen pack
 # (engines/qwen_image.py apply_style_loras) and the video packs above.
-# Reserved node ids "200"/"201" (unused by any of song/music/yue2/cover's
-# own node ids). Chained right after the model loader (song's UNETLoader
-# "104", music's UNETLoader "1", yue2/cover's CheckpointLoaderSimple "15"/
-# "47") and BEFORE any model-patching node (song's ModelSamplingAuraFlow
-# "78" is the only one of the four). With no style chosen this returns
-# model_ref unchanged, so every graph stays byte-identical to today.
+# Reserved node ids "200"/"201" (unused by any of song/music's own node
+# ids). Chained right after the model loader (song's UNETLoader "104",
+# music's UNETLoader "1") and BEFORE any model-patching node (song's
+# ModelSamplingAuraFlow "78" is the only one of the two). With no style
+# chosen this returns model_ref unchanged, so every graph stays
+# byte-identical to today. yue2/cover do NOT use this -- see
+# apply_style_loras_clip below (render proof: LoraLoaderModelOnly only
+# patches MODEL, leaving YuE2's CLIP-encoded text_encoders.* weights
+# unloaded).
 def apply_style_loras(g, p, model_ref):
     for i, (name_key, strength_key) in enumerate(
             (("style_1", "style_1_strength"), ("style_2", "style_2_strength")), start=1):
@@ -159,6 +162,32 @@ def apply_style_loras(g, p, model_ref):
                   "inputs": {"model": model_ref, "lora_name": name, "strength_model": strength}}
         model_ref = [nid, 0]
     return model_ref
+
+
+# LORA-2A fix (render proof, coordinator ruling): YuE2's CheckpointLoaderSimple
+# supplies both MODEL and CLIP, and YuE2GenerateMusic/YuE2GenerateABC encode the
+# style/lyrics text through that CLIP -- LoraLoaderModelOnly only patches MODEL,
+# so a YuE2 style LoRA's text_encoders.* keys never loaded (112 model keys
+# patched, 336 text_encoders.* keys "not loaded", live render proof). Stock
+# LoraLoader (model + clip in, both patched out) fixes this: chained after the
+# checkpoint loader, reserved ids "200"/"201" (same reservation as
+# apply_style_loras -- disjoint use, yue2/cover never call both), feeding BOTH
+# the CLIP consumer (YuE2GenerateMusic/YuE2GenerateABC) and the MODEL consumer
+# (KSampler). With no style chosen this returns both refs unchanged.
+def apply_style_loras_clip(g, p, model_ref, clip_ref):
+    for i, (name_key, strength_key) in enumerate(
+            (("style_1", "style_1_strength"), ("style_2", "style_2_strength")), start=1):
+        name = p.get(name_key)
+        if not name:
+            continue
+        nid = str(199 + i)  # "200", "201"
+        strength = float(p.get(strength_key) or 1.0)
+        g[nid] = {"class_type": "LoraLoader",
+                  "inputs": {"model": model_ref, "clip": clip_ref, "lora_name": name,
+                             "strength_model": strength, "strength_clip": strength}}
+        model_ref = [nid, 0]
+        clip_ref = [nid, 1]
+    return model_ref, clip_ref
 
 
 # One field-list shape, reused per family with its own match rule (point 3):
@@ -190,13 +219,11 @@ def _style_fields(match_any):
 
 STYLE_FIELDS_ACE = _style_fields(["ace_step15", "ace-step-1.5", "acestep"])
 STYLE_FIELDS_MUSIC3 = _style_fields(["music3", "minimax_music3", "minimax-music"])
-# YuE2's checkpoint loads via CheckpointLoaderSimple; its MODEL output is a
-# plain ComfyUI MODEL object like any other, so the same generic
-# LoraLoaderModelOnly node patches it -- verified by inspection of
-# yue2_graph/cover_graph below (the "model" input feeds straight into
-# KSampler, with no custom model-patching node in between, same shape as
-# music_graph). No live-rig LoRA file for this family was available to
-# render against; the wiring is the same mechanism qwen/H3/LTX already use.
+# YuE2's checkpoint loads via CheckpointLoaderSimple, which supplies MODEL AND
+# CLIP -- yue2_graph/cover_graph encode style/lyrics text through that CLIP, so
+# a YuE2 style LoRA needs BOTH patched (stock LoraLoader, not
+# LoraLoaderModelOnly). Confirmed by a live render proof: LoraLoaderModelOnly
+# alone left 336 text_encoders.* keys "not loaded". See apply_style_loras_clip.
 STYLE_FIELDS_YUE2 = _style_fields(["yue2"])
 
 
@@ -689,12 +716,14 @@ def yue2_graph(p, m):
             "class_type": "PreviewAny",
         },
     }
-    graph["8"]["inputs"]["model"] = apply_style_loras(graph, p, graph["8"]["inputs"]["model"])
+    style_model, style_clip = apply_style_loras_clip(graph, p, graph["8"]["inputs"]["model"], graph["25"]["inputs"]["clip"])
+    graph["8"]["inputs"]["model"] = style_model
+    graph["25"]["inputs"]["clip"] = style_clip
 
     if plan:
         graph["24"] = {
             "inputs": {
-                "clip": ["15", 1],
+                "clip": style_clip,
                 "style": style,
                 "lyrics": lyrics,
                 "seed": seed,
@@ -835,7 +864,9 @@ def cover_graph(p, m):
             "class_type": "PreviewAny",
         },
     }
-    graph["51"]["inputs"]["model"] = apply_style_loras(graph, p, graph["51"]["inputs"]["model"])
+    style_model, style_clip = apply_style_loras_clip(graph, p, graph["51"]["inputs"]["model"], graph["48"]["inputs"]["clip"])
+    graph["51"]["inputs"]["model"] = style_model
+    graph["48"]["inputs"]["clip"] = style_clip
     ref = attach_mastering(graph, ["53", 0], **_master_kwargs(p))
     graph["58"]["inputs"] = audio_save_inputs("blackwire/COVER", ref, audio_format, audio_quality)
     return graph
