@@ -139,6 +139,94 @@ def _master_kwargs(p):
     )
 
 
+# LORA-2A: same up-to-two-LoraLoaderModelOnly chain as Build A's Qwen pack
+# (engines/qwen_image.py apply_style_loras) and the video packs above.
+# Reserved node ids "200"/"201" (unused by any of song/music's own node
+# ids). Chained right after the model loader (song's UNETLoader "104",
+# music's UNETLoader "1") and BEFORE any model-patching node (song's
+# ModelSamplingAuraFlow "78" is the only one of the two). With no style
+# chosen this returns model_ref unchanged, so every graph stays
+# byte-identical to today. yue2/cover do NOT use this -- see
+# apply_style_loras_clip below (render proof: LoraLoaderModelOnly only
+# patches MODEL, leaving YuE2's CLIP-encoded text_encoders.* weights
+# unloaded).
+def apply_style_loras(g, p, model_ref):
+    for i, (name_key, strength_key) in enumerate(
+            (("style_1", "style_1_strength"), ("style_2", "style_2_strength")), start=1):
+        name = p.get(name_key)
+        if not name:
+            continue
+        nid = str(199 + i)  # "200", "201"
+        strength = float(p.get(strength_key) or 1.0)
+        g[nid] = {"class_type": "LoraLoaderModelOnly",
+                  "inputs": {"model": model_ref, "lora_name": name, "strength_model": strength}}
+        model_ref = [nid, 0]
+    return model_ref
+
+
+# LORA-2A fix (render proof, coordinator ruling): YuE2's CheckpointLoaderSimple
+# supplies both MODEL and CLIP, and YuE2GenerateMusic/YuE2GenerateABC encode the
+# style/lyrics text through that CLIP -- LoraLoaderModelOnly only patches MODEL,
+# so a YuE2 style LoRA's text_encoders.* keys never loaded (112 model keys
+# patched, 336 text_encoders.* keys "not loaded", live render proof). Stock
+# LoraLoader (model + clip in, both patched out) fixes this: chained after the
+# checkpoint loader, reserved ids "200"/"201" (same reservation as
+# apply_style_loras -- disjoint use, yue2/cover never call both), feeding BOTH
+# the CLIP consumer (YuE2GenerateMusic/YuE2GenerateABC) and the MODEL consumer
+# (KSampler). With no style chosen this returns both refs unchanged.
+def apply_style_loras_clip(g, p, model_ref, clip_ref):
+    for i, (name_key, strength_key) in enumerate(
+            (("style_1", "style_1_strength"), ("style_2", "style_2_strength")), start=1):
+        name = p.get(name_key)
+        if not name:
+            continue
+        nid = str(199 + i)  # "200", "201"
+        strength = float(p.get(strength_key) or 1.0)
+        g[nid] = {"class_type": "LoraLoader",
+                  "inputs": {"model": model_ref, "clip": clip_ref, "lora_name": name,
+                             "strength_model": strength, "strength_clip": strength}}
+        model_ref = [nid, 0]
+        clip_ref = [nid, 1]
+    return model_ref, clip_ref
+
+
+# One field-list shape, reused per family with its own match rule (point 3):
+# a file in the lane's "lora" pool belongs to a family by a folder/name
+# token, excluding the speed/distillation LoRAs the same pool may carry.
+def _style_fields(match_any):
+    match = {"any": match_any, "none": ["turbo", "lightning", "acc", "distill", "upscal", "msr", "reference", "ic-lora", "ic_lora", "control", "ingredients"]}
+    return [
+        {"id": "style_1", "label": "Style", "type": "pool_select", "pool": "lora",
+         "match": dict(match), "default": "",
+         "tier": "advanced", "group": "Style", "order": 20,
+         "hint": "A style pack installed on this lane, if any. \"None\" changes nothing."},
+        {"id": "style_1_strength", "label": "Style strength", "type": "number", "default": 1.0,
+         "tier": "advanced", "group": "Style", "order": 21,
+         "units": "strength", "range": [0, 1.5], "ui_range": [0, 1.5],
+         "enabled_when": {"field": "style_1", "truthy": True},
+         "disabled_reason": "Only used when a Style pack is chosen."},
+        {"id": "style_2", "label": "Style 2", "type": "pool_select", "pool": "lora",
+         "match": dict(match), "default": "",
+         "tier": "advanced", "group": "Style", "order": 22,
+         "hint": "A second style pack, stacked on top of the first."},
+        {"id": "style_2_strength", "label": "Style 2 strength", "type": "number", "default": 1.0,
+         "tier": "advanced", "group": "Style", "order": 23,
+         "units": "strength", "range": [0, 1.5], "ui_range": [0, 1.5],
+         "enabled_when": {"field": "style_2", "truthy": True},
+         "disabled_reason": "Only used when a second Style pack is chosen."},
+    ]
+
+
+STYLE_FIELDS_ACE = _style_fields(["ace_step15", "ace-step-1.5", "acestep"])
+STYLE_FIELDS_MUSIC3 = _style_fields(["music3", "minimax_music3", "minimax-music"])
+# YuE2's checkpoint loads via CheckpointLoaderSimple, which supplies MODEL AND
+# CLIP -- yue2_graph/cover_graph encode style/lyrics text through that CLIP, so
+# a YuE2 style LoRA needs BOTH patched (stock LoraLoader, not
+# LoraLoaderModelOnly). Confirmed by a live render proof: LoraLoaderModelOnly
+# alone left 336 text_encoders.* keys "not loaded". See apply_style_loras_clip.
+STYLE_FIELDS_YUE2 = _style_fields(["yue2"])
+
+
 # ── music (MiniMax-Music3) ─────────────────────────────────────────────────
 # Source: build_music, graph_builders.py:261-378.
 
@@ -249,6 +337,7 @@ def music_graph(p, m):
             "class_type": "SaveAudioAdvanced",
         },
     }
+    graph["7"]["inputs"]["model"] = apply_style_loras(graph, p, graph["7"]["inputs"]["model"])
     ref = attach_mastering(graph, ["8", 0], **_master_kwargs(p))
     graph["9"]["inputs"] = audio_save_inputs("blackwire/MUSIC", ref, audio_format, audio_quality)
     return graph
@@ -462,6 +551,9 @@ def song_graph(p, m):
             },
             "class_type": "ModelSamplingAuraFlow",
         },
+    }
+    graph["78"]["inputs"]["model"] = apply_style_loras(graph, p, graph["78"]["inputs"]["model"])
+    graph.update({
         "3": {
             "inputs": {
                 "model": ["78", 0],
@@ -489,7 +581,7 @@ def song_graph(p, m):
                                        audio_format, audio_quality),
             "class_type": "SaveAudioAdvanced",
         },
-    }
+    })
     ref = attach_mastering(graph, ["18", 0], **_master_kwargs(p))
     graph["107"]["inputs"] = audio_save_inputs("blackwire/SONG", ref, audio_format, audio_quality)
     return graph
@@ -624,11 +716,14 @@ def yue2_graph(p, m):
             "class_type": "PreviewAny",
         },
     }
+    style_model, style_clip = apply_style_loras_clip(graph, p, graph["8"]["inputs"]["model"], graph["25"]["inputs"]["clip"])
+    graph["8"]["inputs"]["model"] = style_model
+    graph["25"]["inputs"]["clip"] = style_clip
 
     if plan:
         graph["24"] = {
             "inputs": {
-                "clip": ["15", 1],
+                "clip": style_clip,
                 "style": style,
                 "lyrics": lyrics,
                 "seed": seed,
@@ -769,6 +864,9 @@ def cover_graph(p, m):
             "class_type": "PreviewAny",
         },
     }
+    style_model, style_clip = apply_style_loras_clip(graph, p, graph["51"]["inputs"]["model"], graph["48"]["inputs"]["clip"])
+    graph["51"]["inputs"]["model"] = style_model
+    graph["48"]["inputs"]["clip"] = style_clip
     ref = attach_mastering(graph, ["53", 0], **_master_kwargs(p))
     graph["58"]["inputs"] = audio_save_inputs("blackwire/COVER", ref, audio_format, audio_quality)
     return graph
@@ -1362,7 +1460,7 @@ ENGINE = {
              "options": ["2", "3", "4", "6"], "tier": "advanced", "group": "Sound", "order": 4},
             {"id": "language", "label": "Lyrics language", "type": "text", "default": "en",
              "tier": "advanced", "group": "Sound", "order": 5},
-        ],
+        ] + STYLE_FIELDS_ACE,
         "music": [
             {"id": "caption", "label": "Description", "type": "textarea",
              "tier": "primary", "group": "Content", "order": 1,
@@ -1376,7 +1474,7 @@ ENGINE = {
              "default": 30.0, "tier": "primary", "group": "Sound", "order": 1,
              "units": "seconds", "range": [5, 300], "ui_range": [15, 60],
              "hint": "30s is the model's coherent span."},
-        ],
+        ] + STYLE_FIELDS_MUSIC3,
         "sfx": [
             {"id": "prompt", "label": "Sound", "type": "text",
              "tier": "primary", "group": "Content", "order": 1},
@@ -1410,7 +1508,7 @@ ENGINE = {
                                  "and ignores this."},
             {"id": "plan", "label": "Plan the melody first (slower, more coherent)",
              "type": "checkbox", "default": True, "tier": "primary", "group": "Sound", "order": 3},
-        ],
+        ] + STYLE_FIELDS_YUE2,
         "cover": [
             {"id": "source_audio_name", "label": "Source track", "type": "audio",
              "tier": "primary", "group": "Content", "order": 1},
@@ -1423,7 +1521,7 @@ ENGINE = {
              "options": ["melody", "full"], "tier": "primary", "group": "Sound", "order": 1,
              "hint": "\"melody\" keeps the source's tune while changing the arrangement; "
                      "\"full\" also imposes the source's harmony."},
-        ],
+        ] + STYLE_FIELDS_YUE2,
     },
     # R3: named parameter sets, the Krita/Fooocus pole -- a preset absorbs
     # complexity, the visible form shows only the per-generation delta. Each
@@ -1663,5 +1761,25 @@ ENGINE = {
             "attribution": "YuE2-3B — non-commercial use only",
             "modes": ["yue2", "cover"],
         },
+    ],
+    # LORA-2A CONTRACT v2 (engines.style_catalogs()) -- one entry per family
+    # this pack owns (song's ACE-Step, music's Music3, yue2/cover's YuE2).
+    # sfx (Stable Audio Open) is not in scope (LORA-2A spec).
+    "style_catalogs": [
+        {"id": "ace_step15", "label": "ACE-Step 1.5", "cap": "audio", "modes": ["song"],
+         "role": "ace_unet",
+         "match": {"any": ["ace_step15", "ace-step-1.5", "acestep"],
+                   "none": ["turbo", "lightning", "acc", "distill", "upscal", "msr", "reference", "ic-lora", "ic_lora", "control", "ingredients"]},
+         "hf_base": "ACE-Step/Ace-Step1.5", "folder": "ace_step15"},
+        {"id": "music3", "label": "MiniMax-Music3", "cap": "audio", "modes": ["music"],
+         "role": "music3_unet",
+         "match": {"any": ["music3", "minimax_music3", "minimax-music"],
+                   "none": ["turbo", "lightning", "acc", "distill", "upscal", "msr", "reference", "ic-lora", "ic_lora", "control", "ingredients"]},
+         "hf_base": "MiniMaxAI/MiniMax-Music3", "folder": "music3"},
+        {"id": "yue2", "label": "YuE2", "cap": "audio", "modes": ["yue2", "cover"],
+         "role": "yue2_ckpt",
+         "match": {"any": ["yue2"],
+                   "none": ["turbo", "lightning", "acc", "distill", "upscal", "msr", "reference", "ic-lora", "ic_lora", "control", "ingredients"]},
+         "hf_base": "m-a-p/YuE2-3B", "folder": "yue2"},
     ],
 }

@@ -30,6 +30,13 @@ All notable changes to Black Wire Forge are recorded here.
   the server, per room or per open sequence, so it survives a reload on another device, a
   blocked-storage browser, or clearing site data. The browser's own copy is still the fast,
   immediate cache; the server copy is a best-effort background sync, last write wins.
+- Style packs (LoRAs) extended to every video and music engine: LTX-2.5 (all three modes,
+  chained once and shared across two-stage/windowed sampling), MiniMax-H3 (fl2va, ref2v,
+  continue -- chained after the turbo speed LoRA when one is on), ACE-Step 1.5 and MiniMax-Music3
+  song/music modes, and YuE2 (yue2, cover). Same up-to-two-styles/strength shape as the Picture
+  room; picking none leaves every graph byte-for-byte the same as before. The "Browse styles"
+  catalog contract (`engines.style_catalogs()`) now carries a family per engine (id, label, cap,
+  modes, the pool-match rule, and the Hugging Face base-model id) instead of one Qwen-only entry.
 
 ### Fixed
 

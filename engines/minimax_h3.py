@@ -24,6 +24,55 @@ def _describe(models):
     return "MiniMax-H3" + (" (%s)" % q if q else "")
 
 
+# LORA-2A: the same up-to-two-LoraLoaderModelOnly chain Build A's Qwen pack
+# uses (engines/qwen_image.py apply_style_loras), reserved node ids "230"/
+# "231" (unused elsewhere in this pack's graphs). Chained onto the model wire
+# AFTER the turbo speed LoRA when one is on (fl2va/continue chain turbo at
+# node "7" first) or straight off the UNet loader otherwise, and BEFORE the
+# BasicGuider/BasicScheduler nodes that read it next -- there is no other
+# model-patching node in these graphs. With no style chosen this returns
+# model_ref unchanged, so the graph stays byte-identical to today.
+def apply_style_loras(g, p, model_ref):
+    for i, (name_key, strength_key) in enumerate(
+            (("style_1", "style_1_strength"), ("style_2", "style_2_strength")), start=1):
+        name = p.get(name_key)
+        if not name:
+            continue
+        nid = str(229 + i)  # "230", "231"
+        strength = float(p.get(strength_key) or 1.0)
+        g[nid] = {"class_type": "LoraLoaderModelOnly",
+                  "inputs": {"model": model_ref, "lora_name": name, "strength_model": strength}}
+        model_ref = [nid, 0]
+    return model_ref
+
+
+# Declared once, shared by fl2va/continue/ref2v below -- discovery rule:
+# filename contains minimax_h3/minimax-h3, case-insensitive, excluding the
+# speed/turbo LoRAs the same pool carries (see ENGINE["style_catalogs"]).
+STYLE_FIELDS = [
+    {"id": "style_1", "label": "Style", "type": "pool_select", "pool": "lora",
+     "match": {"any": ["minimax_h3", "minimax-h3"],
+               "none": ["turbo", "lightning", "acc", "distill", "upscal", "msr", "reference", "ic-lora", "ic_lora", "control", "ingredients"]}, "default": "",
+     "tier": "advanced", "group": "Style", "order": 20,
+     "hint": "A style pack installed on this lane, if any. \"None\" changes nothing."},
+    {"id": "style_1_strength", "label": "Style strength", "type": "number", "default": 1.0,
+     "tier": "advanced", "group": "Style", "order": 21,
+     "units": "strength", "range": [0, 1.5], "ui_range": [0, 1.5],
+     "enabled_when": {"field": "style_1", "truthy": True},
+     "disabled_reason": "Only used when a Style pack is chosen."},
+    {"id": "style_2", "label": "Style 2", "type": "pool_select", "pool": "lora",
+     "match": {"any": ["minimax_h3", "minimax-h3"],
+               "none": ["turbo", "lightning", "acc", "distill", "upscal", "msr", "reference", "ic-lora", "ic_lora", "control", "ingredients"]}, "default": "",
+     "tier": "advanced", "group": "Style", "order": 22,
+     "hint": "A second style pack, stacked on top of the first."},
+    {"id": "style_2_strength", "label": "Style 2 strength", "type": "number", "default": 1.0,
+     "tier": "advanced", "group": "Style", "order": 23,
+     "units": "strength", "range": [0, 1.5], "ui_range": [0, 1.5],
+     "enabled_when": {"field": "style_2", "truthy": True},
+     "disabled_reason": "Only used when a second Style pack is chosen."},
+]
+
+
 def h3_fl2va_graph(p, m):
     """The 'cheers' recipe: fl2va unet + the H3 text encoder + MiniMaxH3ImageToVideo,
     res_multistep/simple, 20 steps, no LoRA. first_frame/last_frame optional, and
@@ -57,6 +106,9 @@ def h3_fl2va_graph(p, m):
             "model": ["6", 0], "lora_name": m["h3_turbo_lora"], "strength_model": 1.0}}
         g["16"]["inputs"]["model"] = ["7", 0]
         g["9"]["inputs"]["model"] = ["7", 0]
+    model_out = apply_style_loras(g, p, g["16"]["inputs"]["model"])
+    g["16"]["inputs"]["model"] = model_out
+    g["9"]["inputs"]["model"] = model_out
     if p.get("first_frame"):
         g["200"] = {"class_type": "LoadImage", "inputs": {"image": p["first_frame"]}}
         g["104"]["inputs"]["first_frame"] = ["200", 0]
@@ -111,6 +163,9 @@ def h3_continue_graph(p, m):
             "model": ["6", 0], "lora_name": m["h3_turbo_lora"], "strength_model": 1.0}}
         g["16"]["inputs"]["model"] = ["7", 0]
         g["9"]["inputs"]["model"] = ["7", 0]
+    model_out = apply_style_loras(g, p, g["16"]["inputs"]["model"])
+    g["16"]["inputs"]["model"] = model_out
+    g["9"]["inputs"]["model"] = model_out
     if p.get("prev_video"):
         g["220"] = {"class_type": "LoadVideo", "inputs": {"file": p["prev_video"]}}
         g["221"] = {"class_type": "GetVideoComponents", "inputs": {"video": ["220", 0]}}
@@ -156,6 +211,9 @@ def h3_ref2va_graph(p, m):
         "184": {"class_type": "SaveVideo", "inputs": {
             "filename_prefix": "blackwire/REF", "format": "auto", "codec": "auto", "video": ["182", 0]}},
     }
+    model_out = apply_style_loras(g, p, g["167"]["inputs"]["model"])
+    g["167"]["inputs"]["model"] = model_out
+    g["168"]["inputs"]["model"] = model_out
     for i, name in enumerate((p.get("ref_images") or [])[:9]):
         nid = str(400 + i)
         g[nid] = {"class_type": "LoadImage", "inputs": {"image": name}}
@@ -622,7 +680,7 @@ ENGINE = {
             {"id": "encoder", "label": "Text encoder override", "type": "text",
              "tier": "advanced", "group": "Quality", "order": 3,
              "hint": "Leave blank to use the default."},
-        ],
+        ] + STYLE_FIELDS,
         # C3.4b K5: same base recipe as fl2va, but the "video" field is a
         # jack (server.py's slot_jacks/_op_patch), not an upload -- its
         # value only ever arrives already patched in from the shot before
@@ -660,7 +718,7 @@ ENGINE = {
             {"id": "encoder", "label": "Text encoder override", "type": "text",
              "tier": "advanced", "group": "Quality", "order": 3,
              "hint": "Leave blank to use the default."},
-        ],
+        ] + STYLE_FIELDS,
         "ref2v": [
             {"id": "prompt", "label": "Prompt", "type": "textarea",
              "tier": "primary", "group": "Content", "order": 1},
@@ -701,7 +759,7 @@ ENGINE = {
             {"id": "encoder", "label": "Text encoder override", "type": "text",
              "tier": "advanced", "group": "Quality", "order": 4,
              "hint": "Leave blank to use the default."},
-        ],
+        ] + STYLE_FIELDS,
     },
     # R3: named parameter sets, same discipline as engines/audio.py's presets
     # -- notes cite real measurements, not a guess.
@@ -861,4 +919,12 @@ ENGINE = {
         "note": "Open weights are licensed outside the EU, UK, South Korea and the USA; "
                 "elsewhere MiniMax asks you to apply (platform.minimax.io/h3-license).",
     },
+    # LORA-2A CONTRACT v2 (engines.style_catalogs()).
+    "style_catalogs": [
+        {"id": "minimax_h3", "label": "MiniMax-H3", "cap": "video",
+         "modes": ["fl2va", "ref2v", "continue"], "role": "h3_unet_fl2va",
+         "match": {"any": ["minimax_h3", "minimax-h3"],
+                   "none": ["turbo", "lightning", "acc", "distill", "upscal", "msr", "reference", "ic-lora", "ic_lora", "control", "ingredients"]},
+         "hf_base": "MiniMaxAI/MiniMax-H3", "folder": "minimax_h3"},
+    ],
 }
