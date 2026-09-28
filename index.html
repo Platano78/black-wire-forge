@@ -167,7 +167,7 @@
     outline:1px solid var(--accent); outline-offset:-1px}
   #binTable{width:100%; border-collapse:collapse}
   #binTable tbody tr{
-    border-bottom:1px solid var(--divider); cursor:pointer; height:52px;
+    border-bottom:1px solid var(--divider); cursor:pointer; min-height:52px;
   }
   #binTable tbody tr:hover,#binTable tbody tr[aria-selected="true"]{background:var(--panel)}
   #binTable td{padding:6px 10px; vertical-align:middle; font-size:13px}
@@ -175,7 +175,27 @@
     display:flex;align-items:center;justify-content:center;overflow:hidden;flex:none}
   .bin-thumb img,.bin-thumb video{width:100%;height:100%;object-fit:cover}
   .bin-row-main{display:flex; align-items:center; gap:8px}
+  .bin-row-text{min-width:0; flex:1}
+  /* A1: a Structured Caption can be 250-450 words -- without this a single
+     History row wraps into 15-20 lines and pushes every other row far down.
+     The full text still reaches a hover/long-press via the title attribute. */
+  .bin-title{
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+    overflow:hidden;
+  }
   .bin-meta{color:var(--text-mid); font-size:11px; font-family:var(--mono)}
+  /* item 1: a delete control where a first-time user actually looks for one.
+     Hidden until hover/focus at wider widths (the row already has a click
+     handler that opens the Monitor's own "Remove"); always on at phone
+     width, where hover doesn't exist. */
+  .bin-remove{
+    flex:none; margin-left:auto; background:transparent; border:none; color:var(--text-mid);
+    font-size:18px; line-height:1; padding:4px 8px; cursor:pointer; opacity:0;
+  }
+  .bin-remove:hover{color:var(--text-hi)}
+  #binTable tbody tr:hover .bin-remove, #binTable tbody tr:focus-within .bin-remove,
+  .bin-remove:focus{opacity:1}
+  @media (max-width:600px){ .bin-remove{opacity:1} }
   .ghost{
     border:1px dashed var(--accent); background:rgba(255,92,0,.06); animation:tungsten 2.2s ease-in-out infinite;
   }
@@ -247,6 +267,7 @@
   #enginePickerDetails .engine-picker{margin-top:6px}
   #promptHint{font-size:11px; color:var(--text-mid); margin:4px 0 0; max-width:72ch}
   #promptHint:empty,#primaryFields:empty{display:none}
+  #helperWriteCaption{font-size:11px; color:var(--text-mid); margin:4px 0 0; max-width:72ch}
   /* Engine picker -- ONE arrangement at every width (from the approved
      mockup): label full-width on its own line, reason below, then a meta
      line (estimate + mini licence stamp, or the missing words for a
@@ -689,6 +710,20 @@
   #cutTitleText{width:100%; min-height:32px; margin:0 0 6px; background:var(--surface3);
     border:1px solid var(--divider); color:var(--text-hi); padding:4px 8px}
 
+  /* A7: at <=600px the tab row must scroll (or wrap) with every tab
+     reachable, and never sit under the Cutting Room button. The base rule's
+     position:sticky pins that button at the strip's right edge even before
+     the row is scrolled, so it visually overlaps whatever tab happens to sit
+     there instead of the rest of the row scrolling underneath it cleanly --
+     falling back to static keeps it in-flow as the row's own last,
+     scrollable item, reachable exactly like every other tab. */
+  @media (max-width:600px){
+    .room-spacer{display:none}
+    .room-cutting{
+      position:static; order:99; margin:6px 0; border-left:1px solid var(--divider);
+    }
+  }
+
   /* ---- phone (<=480px) ---- */
   @media (max-width:480px){
     #toolbar{padding:8px 12px; row-gap:8px}
@@ -697,14 +732,6 @@
     #machineModules{order:3; flex:1 1 100%}
     .machine{min-width:0; flex:1 1 0}
 
-    .room-spacer{display:none}
-    /* Pinned at the strip's right end while the rest scrolls under it --
-       sticky/right/z-index and the own background now live in the base rule
-       (applies at every width); this just reorders it last and marks where
-       the scrolling tabs end. */
-    .room-cutting{
-      order:99; margin:6px 0; border-left:1px solid var(--divider);
-    }
     #layout{display:flex; flex-direction:column}
     #layout > section{flex:0 0 auto}
     #monitor{order:1}
@@ -826,6 +853,11 @@
         <span id="helperSpinner" hidden role="status"></span>
         <button type="button" class="btn" id="helperCancelBtn" hidden>Cancel</button>
       </div>
+      <!-- B3 (mechanical part): which fields the writer actually fills for
+           the current mode, so "Help me write this" doesn't look like it
+           only writes the box it sits under (the YuE2 case: the whole topic
+           went into Style because nothing said the writer also fills Lyrics). -->
+      <p class="hint muted" id="helperWriteCaption" hidden></p>
     </div>
     <!-- Room guide: shown in any room whose rooms.json entry names a guide --
          the room's one voice. Sits here, right under the prompt box and its
@@ -1074,7 +1106,10 @@ const STATE = {
   seqRenaming: null,   // {id, where: 'row'|'open'} while a sequence's name is being edited
   seqDeleteArmed: null,   // {id, until}: Delete's click-again-to-confirm window
   slotDeleteArmed: null,  // {id, until}: Delete this shot's click-again-to-confirm window
-  freshSlotId: null       // id of a slot that hasn't been touched yet
+  freshSlotId: null,      // id of a slot that hasn't been touched yet
+  editedFields: new Set() // field ids the user has typed/chosen into since the last engine
+                          // switch (A5) -- set by real input/change events only, never by a
+                          // recipe or quality tier applying its own value programmatically
 };
 
 /* ---------------------------------------------------------------------
@@ -1255,13 +1290,26 @@ function renderBin(){
         ? (j.total ? ('step ' + (j.step||0) + ' / ' + j.total) : '--')
         : 'CANNOT TELL';
     }
+    // A1: the title clamps to 2 lines in CSS (.bin-title); the full text
+    // still reaches a hover as the element's own title attribute, so a
+    // 400-word caption never turns one row into a 20-line one.
+    const titleText = j.prompt || j.title || j.kind;
+    // item 1: a small remove control on the row itself -- the ONLY place a
+    // first-time user actually looks for "delete". Only for a finished job
+    // (queued/running jobs still refuse server-side); reuses forgetJob(job)
+    // and its own two-click arm exactly, so the armed label here always
+    // agrees with the Monitor's.
+    const armedThis = !!(STATE.forgetArmed && STATE.forgetArmed.jobId === j.id);
+    const removeLabel = armedThis ? 'Click again to remove' : 'Remove from History';
+    const removeBtn = running ? '' : ('<button type="button" class="bin-remove" data-job-remove="' + esc(j.id)
+      + '" aria-label="' + esc(removeLabel) + '" title="' + esc(removeLabel) + '">&times;</button>');
     return '<tr data-job="' + esc(j.id) + '" class="' + (running ? 'ghost' : '') + '"'
       + ' aria-selected="' + (STATE.selectedJobId === j.id ? 'true' : 'false') + '">'
       + '<td><div class="bin-row-main"><div class="bin-thumb">' + thumb + '</div>'
-      + '<div><div>' + esc(j.prompt || j.title || j.kind) + '</div>'
+      + '<div class="bin-row-text"><div class="bin-title" title="' + esc(titleText) + '">' + esc(titleText) + '</div>'
       + '<div class="bin-meta">' + esc(j.lane_name || '') + ' · '
       + (running ? esc(stepLabel) : esc(ago(j.created)))
-      + '</div></div></div></td>'
+      + '</div></div>' + removeBtn + '</div></td>'
       + '</tr>';
   }).join('');
   if(setHTML(body, html)){
@@ -1275,6 +1323,11 @@ function renderBin(){
       renderBin();
       renderMonitor();
       renderHelperBar();   // a picture picked from History may enable Describe this picture
+    });
+    $$('#binBody .bin-remove').forEach(btn => btn.onclick = (e) => {
+      e.stopPropagation();   // never also select the row
+      const job = STATE.jobs.find(j => j.id === btn.dataset.jobRemove);
+      if(job) forgetJob(job);
     });
   }
 }
@@ -1434,7 +1487,12 @@ function renderMonitor(){
   if(STATE.forgetArmed && (STATE.forgetArmed.jobId !== job.id || Date.now() >= STATE.forgetArmed.until)){
     STATE.forgetArmed = null;
   }
-  const forgetLabel = STATE.forgetArmed ? 'Click again to remove from History' : 'Forget';
+  // item 1: "Forget" -> "Remove" -- a word a first-time user scanning for
+  // "delete" would actually search for. The docstring's honesty (the file
+  // stays on the lane's disk) moves to a tooltip instead of being dropped.
+  const forgetLabel = STATE.forgetArmed ? 'Click again to remove' : 'Remove';
+  const forgetTitle = STATE.forgetArmed ? 'Click again to remove'
+    : 'Removes it from History. The file itself stays where the lane saved it.';
   // C3.3 §7 item 6: a sequence open + a finished picture on screen offers
   // "Add to the reference room" -- never for a video/audio/other result,
   // and never before the render finished.
@@ -1448,7 +1506,8 @@ function renderMonitor(){
     + '<button class="btn" id="useAgainBtn" type="button">Use again</button>'
     + (!cutting && canEditResult(job) ? '<button class="btn" id="editResultBtn" type="button">Edit this result</button>' : '')
     + (running && !laneDown ? '<button class="btn" id="stopBtn" type="button">Stop</button>' : '')
-    + (finished ? '<button class="btn" id="forgetBtn" type="button">' + forgetLabel + '</button>' : '')
+    + (finished ? '<button class="btn" id="forgetBtn" type="button" title="' + esc(forgetTitle) + '">'
+        + forgetLabel + '</button>' : '')
     + (!cutting && canRevise(job) ? '<button class="btn" id="notRightBtn" type="button">Not right? Tell the guide</button>' : '')
     + (canStart ? '<button class="btn" id="useAsStartBtn" type="button">Use as starting picture</button>' : '')
     + (canAddRef ? '<span id="addRefWrap"><select id="addRefRole"><option value="set">set</option>'
@@ -1586,10 +1645,12 @@ async function forgetJob(job){
   if(!armed){
     STATE.forgetArmed = {jobId: job.id, until: Date.now() + 4000};
     renderMonitor();
+    renderBin();   // the row's own remove button (item 1) shows the same armed label
     FORGET_ARM_TIMER = setTimeout(() => {
       if(STATE.forgetArmed && STATE.forgetArmed.jobId === job.id && Date.now() >= STATE.forgetArmed.until){
         STATE.forgetArmed = null;
         if(STATE.selectedJobId === job.id) renderMonitor();
+        renderBin();
       }
     }, 4000);
     return;
@@ -1597,13 +1658,15 @@ async function forgetJob(job){
   STATE.forgetArmed = null;
   try{
     const r = await postJSON('/api/forget', {job_id: job.id});
-    if(!r.ok){ msgInspector(r.error || 'Could not remove that.', 'err'); renderMonitor(); return; }
+    if(!r.ok){ msgInspector(r.error || 'Could not remove that.', 'err'); renderMonitor(); renderBin(); return; }
     if(STATE.selectedJobId === job.id) STATE.selectedJobId = null;
     pollJobs();
     renderMonitor();
+    renderBin();
   } catch(e){
     msgInspector(String(e.message || e), 'err');
     renderMonitor();
+    renderBin();
   }
 }
 
@@ -1920,8 +1983,16 @@ function renderEnginePicker(force){
   $$('#enginePicker input[type=radio]').forEach(r => r.onchange = async () => {
     // The native radio already shows the pick -- no rebuild, so arrow-key
     // navigation through the group keeps its focus.
+    // A5: carry the OLD mode's values for whatever the user actually edited,
+    // read while the old form is still on screen, so a shared field id
+    // (e.g. "lyrics" across song/music/yue2) keeps a hand-typed value
+    // instead of resetting to the new mode's default. Fields never edited
+    // still take the new mode's own default, exactly as before.
+    SWITCH_CARRY = {values: currentValues(), fields: new Set(STATE.editedFields)};
+    STATE.editedFields = new Set();
     STATE.cap = r.dataset.cap;
     STATE.mode = r.dataset.mode;
+    saveRoomEngine(STATE.room, STATE.cap, STATE.mode);   // B2: remembered on the next room entry
     renderEnginePickerSummary(roomModes(currentRoom()));
     const mk = (modeInfo(r.dataset.cap, r.dataset.mode) || {}).lane_kind || 'comfy';
     const home = laneForKind(mk);
@@ -1945,6 +2016,24 @@ function renderEnginePicker(force){
     PICKER_KEY = pickerKey(ms);
     renderModeFields();
   });
+}
+
+// B2: the last engine picked in a room, per room id -- storage may be
+// blocked (private window, quota), so every read/write is its own try/catch
+// and a failure just means "nothing remembered", never a thrown error.
+function roomEngineKey(roomId){ return 'bwf.room.engine.' + roomId; }
+function saveRoomEngine(roomId, cap, mode){
+  if(!roomId || !cap || !mode) return;
+  try{ localStorage.setItem(roomEngineKey(roomId), JSON.stringify({cap: cap, mode: mode})); }
+  catch(e){ /* storage off: nothing remembered, current pick still works */ }
+}
+function loadRoomEngine(roomId){
+  try{
+    const raw = localStorage.getItem(roomEngineKey(roomId));
+    if(!raw) return null;
+    const v = JSON.parse(raw);
+    return (v && v.cap && v.mode) ? v : null;
+  } catch(e){ return null; }
 }
 
 async function selectRoom(id, opts){
@@ -1979,11 +2068,15 @@ async function selectRoom(id, opts){
     }
   }
   if(changed || opts.force || tryMatch){
-    // Default engine: the example's own mode if a try id matched, else the
-    // first AVAILABLE mode, else the first.
+    // Default engine: the example's own mode if a try id matched; else the
+    // last engine picked in THIS room (B2), when it still exists here and
+    // the lane can still offer it; else the first AVAILABLE mode, else the
+    // first. A try= example always wins over the remembered pick.
     const ms = roomModes(room);
+    const last = tryMatch ? null : loadRoomEngine(room.id);
+    const lastMatch = last && ms.find(x => x.cap === last.cap && x.mode === last.mode && x.info.available);
     const pick = tryMatch ? {cap: tryMatch.cap, mode: tryMatch.mode}
-      : (ms.find(x => x.info.available) || ms[0] || null);
+      : lastMatch || (ms.find(x => x.info.available) || ms[0] || null);
     STATE.cap = pick ? pick.cap : null;
     STATE.mode = pick ? pick.mode : null;
     const sel = STATE.jobs.find(j => j.id === STATE.selectedJobId);
@@ -2039,9 +2132,12 @@ function currentValues(){
   return out;
 }
 
-function fieldControlHTML(f){
+// A5: set once by an engine switch (see renderEnginePicker's radio onchange),
+// consumed once at the top of the next renderModeFields() call.
+let SWITCH_CARRY = null;
+function fieldControlHTML(f, carry){
   const id = 'f_' + f.id;
-  const val = f.default;
+  const val = (carry && carry.fields.has(f.id) && f.id in carry.values) ? carry.values[f.id] : f.default;
   if(f.type === 'textarea'){
     return '<textarea id="' + id + '" data-field-id="' + esc(f.id) + '" data-field-tier="' + tierOf(f) + '">'
       + esc(val) + '</textarea>';
@@ -2066,7 +2162,7 @@ function fieldControlHTML(f){
     + ' value="' + esc(val) + '">';
 }
 
-function fieldRowHTML(f, values){
+function fieldRowHTML(f, values, carry){
   const enabled = evalEnabled(f, values || {});
   // Some packs already fold the unit into the label text itself (e.g.
   // "Duration (seconds)"); do not print it twice.
@@ -2075,14 +2171,14 @@ function fieldRowHTML(f, values){
   const isCheckbox = f.type === 'checkbox';
   return '<div class="field-row' + (isCheckbox ? ' checkbox-row' : '') + '" data-disabled="' + (!enabled) + '">'
     + (isCheckbox
-        ? (fieldControlHTML(f) + '<label class="field-label" style="margin:0" for="f_' + esc(f.id) + '">' + esc(f.label) + '</label>')
-        : ('<label class="field-label" for="f_' + esc(f.id) + '">' + esc(f.label) + unit + '</label>' + fieldControlHTML(f)))
+        ? (fieldControlHTML(f, carry) + '<label class="field-label" style="margin:0" for="f_' + esc(f.id) + '">' + esc(f.label) + '</label>')
+        : ('<label class="field-label" for="f_' + esc(f.id) + '">' + esc(f.label) + unit + '</label>' + fieldControlHTML(f, carry)))
     + (f.hint ? '<p class="hint">' + esc(f.hint) + '</p>' : '')
     + (!enabled && f.disabled_reason ? '<p class="hint">' + esc(f.disabled_reason) + '</p>' : '')
     + '</div>';
 }
 
-function groupedHTML(fields, values){
+function groupedHTML(fields, values, carry){
   const groups = [];
   const seen = {};
   fields.slice().sort((a, b) => (a.order||0) - (b.order||0)).forEach(f => {
@@ -2092,7 +2188,7 @@ function groupedHTML(fields, values){
   });
   return groups.map(g =>
     (g.name ? '<div class="field-group-title">' + esc(g.name) + '</div>' : '')
-    + g.fields.map(f => fieldRowHTML(f, values)).join('')).join('');
+    + g.fields.map(f => fieldRowHTML(f, values, carry)).join('')).join('');
 }
 
 async function ensureLedgerUploads(){
@@ -2298,6 +2394,11 @@ async function renderModeFields(){
   const mode = currentMode();
   const fields = fieldsFor(mode);
   const values = currentValues();
+  // A5: consumed once, set only by an actual engine switch (renderEnginePicker's
+  // radio onchange) -- every other caller of renderModeFields() (Try this, a
+  // carried-over result, a poll) leaves this null, so it changes nothing there.
+  const carry = SWITCH_CARRY;
+  SWITCH_CARRY = null;
 
   renderLaneNote(mode);
 
@@ -2350,7 +2451,13 @@ async function renderModeFields(){
   const topicWriter = !promptField && mode && mode.writer && mode.writer.target && STATE.helperOn
     ? mode.writer : null;
   $('#promptWrap').hidden = !promptField && !topicWriter;
-  $('#promptLabel').textContent = topicWriter ? 'No picture yet? Say what it should be' : 'Prompt';
+  // A4: the box's real field label (e.g. "Style / genre") instead of the
+  // constant "Prompt", so a mode whose prompt box is really a style/tags
+  // field (song, yue2, cover) says so, not "Prompt" with a separate Lyrics
+  // field several groups further down. Falls back to "Prompt" only when the
+  // field itself carries no label.
+  $('#promptLabel').textContent = topicWriter ? 'No picture yet? Say what it should be'
+    : (promptField ? (promptField.label || 'Prompt') : 'Prompt');
   const promptBox = $('#promptBox');
   if(topicWriter){
     promptBox.value = '';
@@ -2360,7 +2467,10 @@ async function renderModeFields(){
     $('#promptHint').textContent = 'The guide writes the words for a picture in the '
       + (topicWriter.target.room_name || 'other') + ' room.';
   } else if(promptField){
-    promptBox.value = promptField.default || '';
+    // A5: a hand-typed prompt box (e.g. song's "tags") carries over when the
+    // new mode reuses its field id and it was edited, same rule as any other field.
+    promptBox.value = (carry && carry.fields.has(promptField.id) && promptField.id in carry.values)
+      ? carry.values[promptField.id] : (promptField.default || '');
     promptBox.placeholder = promptField.label || '';
     promptBox.dataset.fieldId = promptField.id;
     promptBox.dataset.fieldTier = tierOf(promptField);
@@ -2426,8 +2536,8 @@ async function renderModeFields(){
 
   const primary = rest.filter(f => tierOf(f) === 'primary');
   const advanced = rest.filter(f => tierOf(f) === 'advanced');
-  $('#primaryFields').innerHTML = groupedHTML(primary, values);
-  $('#advancedFields').innerHTML = groupedHTML(advanced, values);
+  $('#primaryFields').innerHTML = groupedHTML(primary, values, carry);
+  $('#advancedFields').innerHTML = groupedHTML(advanced, values, carry);
   // The count states EVERY advanced-tier field, including an advanced-tier
   // upload (e.g. fl2va's "last_frame") that renders in the ingredient ledger
   // rather than in this disclosure -- "Everything else" promises a total,
@@ -2440,10 +2550,13 @@ async function renderModeFields(){
   // the lookups found nothing and a recipe's numbers never reached its fields.
   if(presets.length) applyPreset(); else applyTierValues();
 
-  // re-evaluate enabled_when whenever any field changes
+  // re-evaluate enabled_when whenever any field changes; A5: a real input/change
+  // event (never a recipe or quality tier setting .value programmatically) marks
+  // the field as user-edited, so the NEXT engine switch carries it over.
   $$('#inspector [data-field-id]').forEach(el => {
-    el.addEventListener('input', () => refreshEnabled(fields));
-    el.addEventListener('change', () => refreshEnabled(fields));
+    const mark = () => STATE.editedFields.add(el.dataset.fieldId);
+    el.addEventListener('input', () => { mark(); refreshEnabled(fields); });
+    el.addEventListener('change', () => { mark(); refreshEnabled(fields); });
   });
 }
 
@@ -2660,17 +2773,36 @@ function slotWriteNeighbours(beat){
   if(keep.length) out.keep = keep.join('; ').slice(0, 500);
   return out;
 }
+// B3 (mechanical part): the writer's own "fills" (field ids, from
+// _writer_payload) mapped to their labels -- the target mode's fields when
+// the writer writes for another mode, else the current mode's own.
+function writerFillLabels(mode){
+  const w = mode && mode.writer;
+  const fills = (w && w.fills) || [];
+  if(!fills.length) return [];
+  const targetFields = w.target ? fieldsFor(modeInfo(w.target.cap, w.target.mode)) : fieldsFor(mode);
+  return fills.map(id => {
+    const f = targetFields.find(x => x.id === id);
+    return f ? (f.label || id) : id;
+  });
+}
 function renderHelperBar(){
   const room = currentRoom(), mode = currentMode();
   const g = GUIDE && GUIDE.guide && room && GUIDE_ROOM === room.id ? GUIDE.guide : null;
   const cutting = isCutting(room);
   const show = !!(g && GUIDE.helper && mode && !$('#promptWrap').hidden && (!cutting || slotWriteBeat()));
   $('#helperBar').hidden = !show;
-  if(!show) return;
+  if(!show){ $('#helperWriteCaption').hidden = true; return; }
   $('#helperCue').textContent = '→ ' + g.name;
   $('#helperWriteBtn').hidden = cutting;
   $('#slotWriteBtn').hidden = !cutting;
   $('#helperDescribeBtn').hidden = cutting || !currentImageSource() || !$('#promptBox').dataset.fieldId;   // a topic box describes nothing
+  // B3: "Writes: <field labels>" under Help me write this, so the button
+  // doesn't look like it only fills the box it sits under (the YuE2 case:
+  // nothing said the writer also fills Lyrics, further down the form).
+  const fillLabels = cutting ? [] : writerFillLabels(mode);
+  $('#helperWriteCaption').textContent = fillLabels.length ? 'Writes: ' + fillLabels.join(', ') : '';
+  $('#helperWriteCaption').hidden = !fillLabels.length;
 }
 $('#helperWriteBtn').onclick = () => guideSkillRun(undefined, false);
 $('#slotWriteBtn').onclick = () => guideSkillRun(undefined, false, true);

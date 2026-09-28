@@ -1064,7 +1064,7 @@ ENGINE = {
     "mode_notes": {
         "ltx": "starts from words or a picture; holds one take to about 41 seconds when windowed",  # source: our internal component notes, engines/ltx.py:878 (preset note)
         "ltx_loop": "the longest length by default, picture only",  # source: engines/ltx.py:884 (preset note), engines/ltx.py:675 (video-only comment)
-        "talking": "about a minute once warm on this hardware",  # source: engines/ltx.py:891 (talking preset note)
+        "talking": "the setting this pack is tuned for",  # source: engines/ltx.py:891 (talking preset note); A2: no hardware/time claim -- the live estimate already shows time
     },
     # L5: how a prompt must be written for each mode, drawn only from this
     # pack's own field hints -- never a new claim.
@@ -1283,8 +1283,7 @@ ENGINE = {
         ],
         "talking": [
             {"id": "measured-cost", "label": "Measured render time", "note":
-             "768x512 at 97 frames is the only setting measured on this hardware: "
-             "about a minute once the model is warm, longer on a cold first load.",
+             "768x512 at 97 frames is the setting this pack is tuned for.",
              "values": {"width": 768, "height": 512, "length": 97}},
         ],
     },
@@ -1297,7 +1296,7 @@ ENGINE = {
     "quality": {
         "ltx": [
             {"id": "standard", "label": "Standard", "default": True,
-             "why": "the only setting measured on this hardware: about a minute once warm",
+             "why": "the setting this pack is tuned for",
              "values": {"width": 768, "height": 512, "length": 97}},
         ],
         # No separate measurement exists for the looping mode specifically --
@@ -1309,7 +1308,7 @@ ENGINE = {
         ],
         "talking": [
             {"id": "standard", "label": "Standard", "default": True,
-             "why": "the only setting measured on this hardware: about a minute once warm",
+             "why": "the setting this pack is tuned for",
              "values": {"width": 768, "height": 512, "length": 97}},
         ],
     },

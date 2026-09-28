@@ -2917,14 +2917,32 @@ def apply_quality(p, cap, mode, able):
     return p, "Unknown quality setting %r." % qid
 
 
+ESTIMATE_WINDOW_S = 72 * 3600
+ESTIMATE_SAMPLE_MAX = 5
+
+
 def estimate_seconds(lane_id, cap, mode, quality_id):
-    """R5: MEDIAN elapsed seconds of this lane's finished jobs with this
-    exact (mode, quality tier). None with fewer than 3 -- never extrapolated
-    from a different tier or a different lane."""
+    """R5/A3: MEDIAN elapsed seconds of this lane's finished jobs with this
+    exact (mode, quality tier), windowed to the most recent ESTIMATE_SAMPLE_MAX
+    (5) of them that finished within the last ESTIMATE_WINDOW_S (72h) -- never
+    extrapolated from a different tier or a different lane. None with fewer
+    than 3 in that window.
+
+    An earlier, all-time version took the median of EVERY finished job ever
+    recorded, with no time window: a single slow cold-start job (a model's
+    first load into VRAM) stayed baked into the number indefinitely, and a
+    runtime change that made a mode faster could not lower it until enough
+    new jobs had piled up to outvote the old ones. Windowing to the last 72h
+    (and only the 5 most recent within it) lets the number actually expire.
+    """
+    cutoff = time.time() - ESTIMATE_WINDOW_S
     with JOBS_LOCK:
-        vals = sorted(j["elapsed"] for j in JOBS.values()
-                      if j.get("lane") == lane_id and j.get("kind") == cap and j.get("mode") == mode
-                      and j.get("quality") == quality_id and j.get("status") == "done" and "elapsed" in j)
+        recent = sorted((j for j in JOBS.values()
+                          if j.get("lane") == lane_id and j.get("kind") == cap and j.get("mode") == mode
+                          and j.get("quality") == quality_id and j.get("status") == "done" and "elapsed" in j
+                          and (j.get("finished") or 0) >= cutoff),
+                         key=lambda j: j.get("finished") or 0, reverse=True)[:ESTIMATE_SAMPLE_MAX]
+        vals = sorted(j["elapsed"] for j in recent)
     if len(vals) < 3:
         return None
     n, mid = len(vals), len(vals) // 2
@@ -3924,7 +3942,10 @@ def _skill_answers(answers):
 def _writer_payload(cap, mode):
     """/api/engines' view of a mode's writer, or None: its label, and where
     its words land when that is another mode, the placeholder for a mode
-    with no prompt box, and the picture field it writes about."""
+    with no prompt box, the picture field it writes about, and -- B3 -- the
+    field ids it actually fills (from its own "keys" line-name -> field-id
+    map, deduped, in the order those lines are declared), so the page can
+    say "Writes: <labels>" under Help me write this."""
     w = engines.writer(cap, mode)
     if not w:
         return None
@@ -3935,6 +3956,8 @@ def _writer_payload(cap, mode):
     for k in ("topic_label", "pictures"):
         if w.get(k):
             out[k] = w[k]
+    if w.get("keys"):
+        out["fills"] = list(dict.fromkeys(w["keys"].values()))
     return out
 
 

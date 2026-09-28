@@ -22,6 +22,35 @@ All notable changes to Black Wire Forge are recorded here.
   "Text encoder override" field still picks either. A lane with one encoder is unchanged.
 - A job is labelled with the engine it actually runs. Every Sound job said "ACE-Step 1.5" (and
   every H3 video "LTX-2.5"), because the label was the lane's first engine, not the job's.
+- Each finished History row now has its own small "Remove from History" button (hover or
+  keyboard focus reveals it; always on at phone width), so removing a bad result no longer
+  requires selecting the row first and finding the Monitor's own button, which was renamed
+  "Forget" -> "Remove" for the same reason ("I cannot delete anything I have generated from the
+  interface" -- the control existed, but two steps and one unlikely word away). Both use the
+  same two-click confirm; the file itself still stays where the lane saved it.
+- A History row's title no longer wraps a 250-450 word caption into 15-20 lines and pushes
+  every other row far down the list. It clamps to two lines; the full text still reaches a
+  hover, in the row's own title attribute.
+- The label above the prompt box now names the field it is really bound to (e.g. "Style /
+  genre" for a song, instead of the constant "Prompt"), and "Help me write this" now says which
+  fields it fills for the current mode (e.g. "Writes: Style / genre, Lyrics"), so a mode whose
+  writer also fills a field further down the form -- Lyrics, for YuE2 -- doesn't look like it
+  only writes the box it sits under.
+- Switching engines inside a room now resets every field to the new engine's own default, except
+  a field you actually typed or chose since the last switch -- which now survives one switch
+  instead of silently resetting to blank when the new mode happens to reuse the same field id.
+  The room also remembers the last engine you picked and restores it the next time you open that
+  room (or reload), instead of always defaulting back to the first one.
+- The room tab row now scrolls properly at phone width instead of the Cutting Room button
+  floating on top of whatever tab happened to be underneath it; every tab is reachable by
+  scrolling to it.
+- Time estimates now expire. They used to be the all-time median of every finished job, so one
+  slow first-load job (or a runtime change that made a mode faster) could stay baked into the
+  number indefinitely -- Music3 was showing "about 12 min" from three-day-old jobs long after
+  it had settled to 1-3 minutes. Estimates now use only the 5 most recent finished jobs from the
+  last 72 hours, and a few hardcoded "measured on this hardware" times in the Video (LTX) pack's
+  own text (which could contradict the live number right next to them) were rewritten to
+  describe the setting instead of a time or a piece of hardware.
 
 ## v1.1.0 — 2026-09-25
 

@@ -173,5 +173,22 @@ check("GREEN: the golden case's own args (no context_length set) still build wit
       safe_built)
 
 print()
+print("A2: no user-facing 'this hardware' time claim survives in this pack's mode_notes/examples/quality")
+# The docstring comment at engines/ltx.py:659 is explicitly allowed to keep
+# "measured on this hardware" (an internal note about a frame-count choice,
+# never rendered to a user) -- this check only walks the pack's own
+# USER-FACING strings: mode_notes, examples' "note", and quality tiers' "why".
+pack = engines._owner("video", "ltx")
+user_facing_strings = []
+user_facing_strings.extend((pack.get("mode_notes") or {}).values())
+for exs in (pack.get("examples") or {}).values():
+    user_facing_strings.extend(ex.get("note", "") for ex in exs)
+for tiers in (pack.get("quality") or {}).values():
+    user_facing_strings.extend(t.get("why", "") for t in tiers)
+offenders = [s for s in user_facing_strings if "this hardware" in s or "this rig" in s]
+check("no user-facing string in mode_notes/examples/quality names 'this hardware' or 'this rig'",
+      not offenders, str(offenders))
+
+print()
 print(("FAILED: %d" % len(FAILED)) if FAILED else "ALL PASS")
 sys.exit(1 if FAILED else 0)

@@ -36,8 +36,12 @@ try:
     print("engines payload")
     modes = {(c, m["id"]): m for c, v in srv.Handler.engines_payload(srv.Handler.__new__(srv.Handler), {"lane": ["t"]}).items()
              if c not in ("rooms", "helper") for m in v["modes"]}
-    check("t2i, edit: writers and edit_in", modes[("image", "t2i")]["writer"] == {"label": "Picture prompt writer"}
-          and modes[("image", "edit")]["writer"] == {"label": "Edit writer", "pictures": "ref_images"}
+    # B3 (item 4): the writer payload now also carries "fills" (the field ids
+    # it writes), so these check the specific keys this test cares about
+    # rather than exact dict equality against the whole payload.
+    t2i_w, edit_w = modes[("image", "t2i")]["writer"], modes[("image", "edit")]["writer"]
+    check("t2i, edit: writers and edit_in", t2i_w.get("label") == "Picture prompt writer"
+          and edit_w.get("label") == "Edit writer" and edit_w.get("pictures") == "ref_images"
           and modes[("image", "t2i")]["edit_in"] == modes[("image", "edit")]["edit_in"] == "edit")
     mw = modes[("3d", "mesh")]["writer"]
     check("mesh: its writer's target room and topic label", mw["target"]["room"] == "picture"

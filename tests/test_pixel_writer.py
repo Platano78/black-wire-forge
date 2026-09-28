@@ -170,7 +170,8 @@ check("pixelart: post = {words: 'the pixel step'}", modes["pixelart"].get("post"
       modes["pixelart"].get("post"))
 check("t2i, edit, cutout, upscale: post is None",
       all(modes[m].get("post") is None for m in ("t2i", "edit", "cutout", "upscale") if m in modes))
-check("pixelart: the writer is the sprite writer", modes["pixelart"].get("writer") == {"label": "Sprite writer"})
+check("pixelart: the writer is the sprite writer",
+      (modes["pixelart"].get("writer") or {}).get("label") == "Sprite writer")
 
 print("a sequence harvests the result, not the render before it")
 if "pxjob1" not in srv.JOBS:

@@ -16,6 +16,7 @@ import json
 import os
 import re
 import sys
+import time
 import types
 
 sys.dont_write_bytecode = True  # see test_audio_golden.py's comment on stale .pyc
@@ -302,10 +303,11 @@ LANE_ID, CAP, MODE, QID = "estimate-lane", "image", "t2i", "standard"
 srv.JOBS.clear()
 
 
-def add_job(elapsed, status="done"):
+def add_job(elapsed, status="done", finished=None):
     jid = "j%d" % len(srv.JOBS)
     srv.JOBS[jid] = {"lane": LANE_ID, "kind": CAP, "mode": MODE, "quality": QID,
-                     "status": status, "elapsed": elapsed}
+                     "status": status, "elapsed": elapsed,
+                     "finished": time.time() if finished is None else finished}
 
 
 check("RED: 0 finished jobs -> None", srv.estimate_seconds(LANE_ID, CAP, MODE, QID) is None)
@@ -320,6 +322,40 @@ check("a queued job (not done) is excluded from the median", got == 20.0, str(go
 add_job(40.0)
 got = srv.estimate_seconds(LANE_ID, CAP, MODE, QID)
 check("even count -> average of the two middle values", got == 25.0, str(got))
+srv.JOBS.clear()
+
+print()
+print("A3: the estimate expires -- windowed to the last 72h, and only the 5 most recent within it")
+now = time.time()
+DAY = 86400.0
+# Three jobs older than 72h, all with a slow (cold-start-shaped) elapsed
+# time: a lifetime median would keep these baked in forever, even after a
+# runtime change made the mode fast. Windowed, they must not count at all.
+add_job(1200.0, finished=now - 4 * DAY)
+add_job(1100.0, finished=now - 5 * DAY)
+add_job(1000.0, finished=now - 10 * DAY)
+check("RED: only stale (>72h) jobs exist -> None, not a lifetime median of the slow ones",
+      srv.estimate_seconds(LANE_ID, CAP, MODE, QID) is None)
+# Three fresh, fast jobs inside the window: now there's a real (recent) median.
+add_job(30.0, finished=now - 1 * 3600)
+add_job(32.0, finished=now - 2 * 3600)
+add_job(28.0, finished=now - 3 * 3600)
+got = srv.estimate_seconds(LANE_ID, CAP, MODE, QID)
+check("GREEN: the stale jobs are excluded; the median comes from the 3 fresh ones only",
+      got == 30.0, str(got))
+# Two more fresh jobs push the fresh count to 5 -- still exactly the 5 most
+# recent within the window, still excluding the 3 stale ones from above.
+add_job(29.0, finished=now - 4 * 3600)
+add_job(31.0, finished=now - 5 * 3600)
+got = srv.estimate_seconds(LANE_ID, CAP, MODE, QID)
+check("5 fresh jobs in the window -> their own median (still no stale jobs mixed in)",
+      got == 30.0, str(got))
+# A 6th, even fresher job must push the OLDEST of the 5 (finished 5h ago,
+# elapsed 31.0) out of the sample -- "the most recent 5", not just any 5.
+add_job(1000.0, finished=now - 0.5 * 3600)
+got = srv.estimate_seconds(LANE_ID, CAP, MODE, QID)
+check("a 6th fresh job evicts the oldest of the 5 from the sample (recency, not just count)",
+      got == 30.0, str(got))
 srv.JOBS.clear()
 
 print()

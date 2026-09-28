@@ -477,6 +477,18 @@ try:
                                   % (mm["cap"], mm["mode"], ex["needs"]),
                                   ("Needs a %s first" % ex["needs"]) in row_text, repr(row_text))
 
+        # B2: the loop above just picked every mode in every room in turn
+        # (that's the point of it) -- each pick is now remembered per room
+        # (item 6), which would otherwise make every "the default engine is
+        # X" check below depend on iteration order instead of testing the
+        # real default. Clear it here, once, so the rest of this file sees
+        # the same clean slate it always did; B2's OWN test further down
+        # re-populates and checks it deliberately.
+        page.evaluate("""() => {
+          try { Object.keys(localStorage).filter(k => k.startsWith('bwf.room.engine.'))
+            .forEach(k => localStorage.removeItem(k)); } catch(e) {}
+        }""")
+
         print()
         print("the 'runs on' routing line is muted, not the error colour")
         colors = page.evaluate("""() => {
@@ -592,6 +604,51 @@ try:
               page.eval_on_selector_all('#inspector [data-tier-locked]', 'e=>e.length') == 0)
         page.click('#qualityLadder [data-quality="standard"]')
         page.wait_for_timeout(150)
+
+        print()
+        print("A4: the prompt box's label names its real field, not the constant 'Prompt'")
+        label = page.eval_on_selector("#promptLabel", "el => el.textContent")
+        check("A4: song's prompt label is the field's own label ('Style / genre'), not 'Prompt'",
+              label == "Style / genre", repr(label))
+
+        print()
+        print("A5: a hand-typed field carries over ONE engine switch when the new mode reuses its "
+              "id; with no further edit, the NEXT switch takes that mode's own default")
+        page.fill('#inspector [data-field-id="lyrics"]', "[Verse]\nhand-typed lyrics for A5")
+        page.wait_for_timeout(100)
+        if not pick_mode(page, "music"):
+            check("music unavailable on this lane: no A5 carry-over to test", False)
+        else:
+            got = page.input_value('#inspector [data-field-id="lyrics"]')
+            check("A5: lyrics (hand-typed on song, id shared with music) survives the switch",
+                  got == "[Verse]\nhand-typed lyrics for A5", repr(got))
+            pick_mode(page, "song")
+            page.wait_for_timeout(200)
+            reset = page.input_value('#inspector [data-field-id="lyrics"]')
+            check("A5: switching again with no NEW edit takes the next mode's own default ('')",
+                  reset == "", repr(reset))
+
+        print()
+        print("B2: the last engine picked in a room is remembered on the next room entry")
+        if not pick_mode(page, "yue2"):
+            check("yue2 unavailable on this lane: no B2 remembered-engine flow to test", False)
+        else:
+            page.click(tab(page, "cutting"))
+            page.wait_for_timeout(150)
+            page.click(tab(page, "music"))
+            page.wait_for_timeout(300)
+            checked = page.eval_on_selector('#enginePicker input:checked', "el => el && el.dataset.mode")
+            check("B2: room re-entry restores the last picked engine (yue2), not the first available",
+                  checked == "yue2", repr(checked))
+            page.reload(wait_until="networkidle")
+            page.wait_for_timeout(1500)
+            hash_after = page.evaluate("location.hash")
+            check("B2: reload lands back on Music (URL carried #room=music)",
+                  hash_after == "#room=music", hash_after)
+            checked2 = page.eval_on_selector('#enginePicker input:checked', "el => el && el.dataset.mode")
+            check("B2: a reload also restores the remembered engine, not just an in-page room hop",
+                  checked2 == "yue2", repr(checked2))
+            pick_mode(page, "song")   # leave Music on its usual default for the rest of this file
 
         print()
         print("a cutout Make carries no prompt key (the stale-promptBox bug)")
@@ -758,6 +815,60 @@ try:
         page.unroute("**/api/jobs*")
 
         print()
+        print("item 1: a remove control on the History row itself; A1: a long title clamps to 2 lines")
+        long_title = "word " * 400   # a 250-450 word Structured Caption, per audit A1
+        fixture4 = {"jobs": [
+            {"id": "fx-remove-me", "lane": lane, "lane_name": "Fixture", "kind": "audio", "mode": "song",
+             "status": "done", "step": 10, "total": 10, "created": now - 30,
+             "outputs": [{"filename": "y.wav", "subfolder": "", "type": "output", "media": "audio"}],
+             "prompt": long_title},
+            {"id": "fx-running-2", "lane": lane, "lane_name": "Fixture", "kind": "audio", "mode": "song",
+             "status": "running", "step": 1, "total": 10, "created": now - 1, "outputs": [], "prompt": "still going"},
+        ], "log": [], "now": now}
+        page.route("**/api/jobs*", lambda r, q: r.fulfill(status=200, content_type="application/json",
+                                                           body=json.dumps(fixture4)))
+        page.wait_for_timeout(2600)
+        page.click(tab(page, "music"))
+        page.wait_for_timeout(200)
+
+        row_title_attr = page.eval_on_selector('#binBody tr[data-job="fx-remove-me"] .bin-title',
+                                                "el => el.getAttribute('title')")
+        check("A1: the row's title attribute carries the FULL caption (hover still reaches it)",
+              row_title_attr == long_title, repr((row_title_attr or "")[:80]))
+        clamp = page.eval_on_selector('#binBody tr[data-job="fx-remove-me"] .bin-title',
+                                       "el => getComputedStyle(el).webkitLineClamp")
+        check("A1: the title's CSS clamps it to 2 lines", clamp == "2", repr(clamp))
+        row_h = page.eval_on_selector('#binBody tr[data-job="fx-remove-me"]',
+                                       "el => el.getBoundingClientRect().height")
+        check("A1: a 400-word caption does not blow the row out to 15-20 lines tall",
+              row_h is not None and row_h < 150, repr(row_h))
+
+        check("item 1: a finished row has its own remove button",
+              page.is_visible('#binBody tr[data-job="fx-remove-me"] .bin-remove'))
+        check("item 1: a running row has no remove button (the server refuses queued/running anyway)",
+              page.query_selector('#binBody tr[data-job="fx-running-2"] .bin-remove') is None)
+        remove_forget_calls = []
+        def fake_forget2(route, request):
+            remove_forget_calls.append(json.loads(request.post_data or "{}"))
+            route.fulfill(status=200, content_type="application/json", body='{"ok": true}')
+        page.route("**/api/forget", fake_forget2)
+        before_selected = page.evaluate("STATE.selectedJobId")
+        page.click('#binBody tr[data-job="fx-remove-me"] .bin-remove')
+        page.wait_for_timeout(200)
+        check("item 1: clicking Remove does NOT also select the row (stopPropagation)",
+              page.evaluate("STATE.selectedJobId") == before_selected, page.evaluate("STATE.selectedJobId"))
+        armed_label = page.get_attribute('#binBody tr[data-job="fx-remove-me"] .bin-remove', 'aria-label')
+        check("item 1: first click arms it (no call yet); the row's own label says 'click again'",
+              len(remove_forget_calls) == 0 and armed_label == "Click again to remove", repr(armed_label))
+        page.click('#binBody tr[data-job="fx-remove-me"] .bin-remove')
+        page.wait_for_timeout(200)
+        check("item 1: the second click calls /api/forget with the row's own job id",
+              len(remove_forget_calls) == 1 and remove_forget_calls[0].get("job_id") == "fx-remove-me",
+              repr(remove_forget_calls))
+        page.unroute("**/api/forget")
+        page.unroute("**/api/jobs*")
+
+        print()
         print("/help: 200, its title, its Help button target, live sections, zero console errors")
         with urllib.request.urlopen(URL + "help", timeout=5) as hr:
             check("GET /help returns 200", hr.status == 200)
@@ -876,7 +987,7 @@ try:
 
         print()
         print("N1: the room strip never pushes the page sideways; Cutting Room stays reachable")
-        for w, h in [(1440, 900), (1024, 768), (768, 1024), (390, 844)]:
+        for w, h in [(1440, 900), (1024, 768), (768, 1024), (600, 844), (390, 844)]:
             vp_page = browser.new_page(viewport={"width": w, "height": h})
             guard(vp_page)
             vp_page.goto(URL, wait_until="networkidle", timeout=30000)
@@ -886,9 +997,42 @@ try:
                   scroll_width <= w, "scrollWidth=%d innerWidth=%d" % (scroll_width, w))
             cutting_box = vp_page.eval_on_selector(
                 ".room-cutting", "el => { const r = el.getBoundingClientRect(); return {left: r.left, right: r.right}; }")
-            check("N1 %dx%d: Cutting Room button fully inside [0, innerWidth]" % (w, h),
-                  cutting_box is not None and cutting_box["left"] >= 0 and cutting_box["right"] <= w,
-                  str(cutting_box))
+            if w > 600:
+                # Above A7's breakpoint the button stays sticky (base rule):
+                # visible without scrolling, at every width tested here.
+                check("N1 %dx%d: Cutting Room button fully inside [0, innerWidth]" % (w, h),
+                      cutting_box is not None and cutting_box["left"] >= 0 and cutting_box["right"] <= w,
+                      str(cutting_box))
+            if w <= 600:
+                # A7: the tab row must scroll (or wrap) independently of the
+                # Cutting Room button -- it must never sit ON TOP of a tab
+                # (position:sticky pinning it at the visible right edge
+                # before the row is scrolled does exactly that). Checked at
+                # the row's INITIAL (unscrolled) position -- scrolling first
+                # would hide the exact overlap this exists to catch.
+                overlaps = vp_page.evaluate("""() => {
+                  const c = document.querySelector('.room-cutting').getBoundingClientRect();
+                  return Array.from(document.querySelectorAll('.room-tab:not(.room-cutting)')).filter(e => {
+                    const r = e.getBoundingClientRect();
+                    return !(r.right <= c.left || r.left >= c.right || r.bottom <= c.top || r.top >= c.bottom);
+                  }).map(e => e.textContent.trim());
+                }""")
+                check("A7 %dx%d: no room tab sits under the Cutting Room button" % (w, h),
+                      overlaps == [], repr(overlaps))
+                # At <=600px the button is a normal (static) last item in the
+                # scrollable row instead of sticky -- reachable by scrolling
+                # there, not necessarily visible on arrival.
+                vp_page.eval_on_selector("#roomStrip", "el => { el.scrollLeft = el.scrollWidth; }")
+                vp_page.wait_for_timeout(100)
+                scrolled_box = vp_page.eval_on_selector(
+                    ".room-cutting", "el => { const r = el.getBoundingClientRect(); return {left: r.left, right: r.right}; }")
+                check("N1 %dx%d: Cutting Room button reachable by scrolling the row to its end" % (w, h),
+                      scrolled_box is not None and scrolled_box["left"] >= 0 and scrolled_box["right"] <= w,
+                      str(scrolled_box))
+                strip = vp_page.eval_on_selector(
+                    "#roomStrip", "el => ({scrollWidth: el.scrollWidth, clientWidth: el.clientWidth})")
+                check("A7 %dx%d: every tab is reachable (the strip scrolls at least as far as its content)"
+                      % (w, h), strip["scrollWidth"] >= strip["clientWidth"], repr(strip))
             vp_page.close()
 
         print()

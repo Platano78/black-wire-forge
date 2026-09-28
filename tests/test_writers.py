@@ -146,7 +146,13 @@ check("contract: modes without a writer return None", engines.writer("image", "c
 code, body = http("/api/engines?lane=t")
 check("contract: /api/engines answers 200", code == 200)
 song = next(m for m in body["audio"]["modes"] if m["id"] == "song")
-check("contract: /api/engines reports the song writer's label", song["writer"] == {"label": "Song writer"})
+check("contract: /api/engines reports the song writer's label", song["writer"]["label"] == "Song writer")
+# B3 (mechanical part): the writer's payload names the field ids it fills,
+# in the order its own "keys" line-names are declared, deduped -- the page
+# uses this to say "Writes: <labels>" under Help me write this.
+check("B3: song writer's payload carries 'fills', deduped, in keys' declared order",
+      song["writer"].get("fills") == ["tags", "bpm", "keyscale", "duration", "timesignature", "language", "lyrics"],
+      song["writer"].get("fills"))
 WRITERS = {("audio", "song"): "Song writer", ("image", "pixelart"): "Sprite writer",   # P2, P3a
            ("audio", "music"): "Background music writer", ("audio", "yue2"): "Planned song writer",   # P3b
            ("audio", "cover"): "Cover arranger", ("audio", "sfx"): "Sound effect writer",
