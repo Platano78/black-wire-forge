@@ -509,7 +509,7 @@ ENGINE = {
         "qwen_vae": ("vae", {"all": ["qwen_image", "vae"], "none": ["minimax"], "prefer": ["2.1"]}),
     },
     "primary": {"t2i": "qwen_unet", "edit": "qwen_unet"},
-    # R3-1: mode-specific abilities, not the cap name itself. Before this,
+    # mode-specific abilities, not the cap name itself. Before this,
     # the ability was literally "image" (== the cap), which was harmless
     # while qwen-image was the sole owner of cap "image" -- once a second
     # pack (cleanup) shares it via cap_from OR, that shared key meant
@@ -753,8 +753,8 @@ ENGINE = {
             {"id": "default", "label": "Default", "note":
              "Balanced guidance (APG + FreSca), Guidance strength 3. Holds exposure "
              "where plain guidance darkens pictures at this strength. Costs about "
-             "3x the time of Guidance strength 1 (76s vs 26s at 1024^2 on the "
-             "5080), and it can add props the prompt didn't ask for (an umbrella "
+             "3x the time of Guidance strength 1 (76s vs 26s at 1024^2), and "
+             "it can add props the prompt didn't ask for (an umbrella "
              "appeared in 4 of 6 test renders). Measured 2026-09-23.",
              "values": {"width": 1328, "height": 1328, "steps": 20, "cfg": 3.0,
                         "sampler": "seeds_2", "scheduler": "sgm_uniform", "guidance_style": "Balanced"}},

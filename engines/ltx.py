@@ -142,8 +142,8 @@ def _ltx_graph(p, m, filename_prefix):
         raise ValueError(
             "end_image (FLF2V morph) is incompatible with two_stage: (a) stage 2's "
             "LTXVImgToVideoInplace (node 349) re-stamps the start image, reintroducing "
-            "the duplicated-subject defect this mode fixes; (b) measured on this rig, "
-            "1024x576 two_stage times out (>360s, peak 15883 MiB) while single-stage "
+            "the duplicated-subject defect this mode fixes; (b) measured at "
+            "1024x576, two_stage times out (>360s, peak 15883 MiB) while single-stage "
             "completes in 163.7s. Pass two_stage=False.")
     if audio and length > 993:
         raise ValueError(
@@ -748,7 +748,9 @@ def stated_frames(text, fps=LTX_FPS):
 def talking_derive(values, request):
     """The Talking Head length. The brain never writes it (a small brain
     counts words unreliably): a length the user stated in the request or an
-    answer wins, else the sizing formula on the written line."""
+    answer wins; else a Length the user already set in the form (not the
+    field's own default) is left alone; else the sizing formula on the
+    written line."""
     fps = values.get("fps") or LTX_FPS
     req = request or {}
     text = " ".join([req.get("topic") or "", req.get("answer") or ""]
@@ -756,6 +758,9 @@ def talking_derive(values, request):
     stated = stated_frames(text, fps)
     if stated is not None and 9 <= stated <= 993:
         return {"length": stated}
+    current = values.get("length")
+    if isinstance(current, int) and current != TALKING_MIN_FRAMES:
+        return {}
     words = spoken_words(values.get("line"))
     return {"length": talking_frames(words, fps)} if words else {}
 

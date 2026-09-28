@@ -1871,12 +1871,23 @@ function renderRoomStrip(){
       + '" aria-pressed="false">[ ] ' + esc(cutting.name) + '</button>' : '');
   refreshRoomStrip();
 }
+// Same availability rule the engine picker uses: a mode that belongs on
+// another KIND of lane is not "not for this" -- it runs on that lane
+// (picking it moves the active lane there). Only a kind with no machine at
+// all counts as off. `ms` is roomModes(room); true iff EVERY mode in it is off.
+function roomModesAllOff(ms){
+  const curLane = STATE.lanes.find(l => l.id === STATE.activeLane);
+  return ms.every(x => {
+    const m = x.info, mk = m.lane_kind || 'comfy';
+    if(curLane && laneKindOf(curLane) !== mk) return !laneForKind(mk);
+    return m.available === false;
+  });
+}
 function refreshRoomStrip(){
   // In place (never a re-render) so a focused tab keeps focus across polls.
   const busy = new Set(STATE.jobs
     .filter(j => j.status === 'queued' || j.status === 'running').map(jobRoom).filter(Boolean));
   const lane = activeLaneName();
-  const curLane = STATE.lanes.find(l => l.id === STATE.activeLane);
   $$('#roomStrip [data-room-id]').forEach(b => {
     const room = roomById(b.dataset.roomId);
     if(!room) return;
@@ -1884,15 +1895,7 @@ function refreshRoomStrip(){
     if(isCutting(room)) return;
     const ms = roomModes(room);
     const nothing = ms.length === 0;
-    // Same availability rule the engine picker uses: a mode that belongs
-    // on another KIND of lane is not "not for this" -- it runs on that
-    // lane (picking it moves the active lane there). Only a kind with no
-    // machine at all counts as off.
-    const allOff = !nothing && ms.every(x => {
-      const m = x.info, mk = m.lane_kind || 'comfy';
-      if(curLane && laneKindOf(curLane) !== mk) return !laneForKind(mk);
-      return m.available === false;
-    });
+    const allOff = !nothing && roomModesAllOff(ms);
     let cls = '', state = '', title = '';
     if(busy.has(room.id)){ cls = 'dot-working'; state = 'working'; title = 'Something is being made here'; }
     else if(allOff){ cls = 'dot-not-for-this'; state = 'not available here'; }
@@ -2790,7 +2793,13 @@ function renderHelperBar(){
   const room = currentRoom(), mode = currentMode();
   const g = GUIDE && GUIDE.guide && room && GUIDE_ROOM === room.id ? GUIDE.guide : null;
   const cutting = isCutting(room);
-  const show = !!(g && GUIDE.helper && mode && !$('#promptWrap').hidden && (!cutting || slotWriteBeat()));
+  // UX-1: never offer to write in a room with nothing to write into --
+  // the room's own "nothing installed" / "no machine reachable" note
+  // (#roomPlainNote, set by selectRoom before this runs) already covers
+  // that case, so the offer just steps aside rather than duplicating it.
+  const roomModesHere = room ? roomModes(room) : [];
+  const roomReady = cutting || (roomModesHere.length > 0 && !roomModesAllOff(roomModesHere));
+  const show = !!(g && GUIDE.helper && mode && roomReady && !$('#promptWrap').hidden && (!cutting || slotWriteBeat()));
   $('#helperBar').hidden = !show;
   if(!show){ $('#helperWriteCaption').hidden = true; return; }
   $('#helperCue').textContent = '→ ' + g.name;
@@ -4514,13 +4523,19 @@ async function addSlot(lane){
   if(!mode){ msgSeq('No installed engine makes a ' + lane + ' shot yet.', 'err'); return; }
   const values = lane === 'picture' ? canvasShapedValues(mode)
                : lane === 'sound' ? cutLengthValues(mode) : {};
-  const before = (STATE.seq.slots || []).length;
   const r = await seqOp('add_slot', {lane: lane, cap: cap, mode: mode.id, values: values});
   if(!r) return;
   renderTimeline();
-  const added = r.slots.filter(s => s.lane === lane);
-  const newSlot = added[added.length - 1];
-  if(newSlot && r.slots.length > before){
+  // UX-1: the server names the slot it just made (added_slot_id) rather
+  // than this guessing which one by diffing against what it had before --
+  // add_slot shares SEQ_OP_CHAIN with every other sequence op, so a remove
+  // queued just ahead of it (the previous step's delete, still in flight
+  // when this op was sent) can free the very id this add then reuses
+  // (server.py's ids are the smallest unused number), and a client-side
+  // "which id is new" guess reads that reused id as not-new -- so the slot
+  // was never marked "fresh" and so never dropped on leaving the room.
+  const newSlot = r.added_slot_id ? r.slots.find(s => s.id === r.added_slot_id) : null;
+  if(newSlot){
     STATE.freshSlotId = newSlot.id;   // set first: the tile shows as selected mid-select
     await selectSlot(newSlot.id);
     if(Object.keys(values).length){

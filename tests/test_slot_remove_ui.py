@@ -111,7 +111,16 @@ def add_video_slot(page):
     """Click '+ generate here' on the video track; return the new slot's id.
     The new slot is the pressed tile once it appears -- but a previously
     selected tile is pressed too, so the pressed id must be NEW to this click,
-    not whatever was pressed a moment ago. None if no new slot appeared."""
+    not whatever was pressed a moment ago. None if no new slot appeared.
+
+    Waits on STATE.freshSlotId, not just the pressed DOM attribute: ids are
+    reused (server.py hands out the smallest free number), so a tile for an
+    UNRELATED earlier slot that happened to render identically (a stale
+    setHTML "no visible change" skip) can already show pressed for the same
+    reused id before addSlot()'s own response comes back and actually sets
+    STATE.freshSlotId -- the flag dropFreshSlot acts on, and the one that
+    actually matters here. Waiting on the DOM alone raced ahead of it.
+    """
     try:
         before = set(slot_ids())
     except Exception:
@@ -119,7 +128,11 @@ def add_video_slot(page):
     click(page, '#tlTrackVideo [data-add-lane="video"]')
     def fresh():
         p = pressed_slot(page)
-        return p if p is not None and p not in before else None
+        if p is None or p in before:
+            return None
+        if page.evaluate("STATE.freshSlotId") != p:
+            return None
+        return p
     wait_for(lambda: fresh() is not None, 10)
     return fresh()
 

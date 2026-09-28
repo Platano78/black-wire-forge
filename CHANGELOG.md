@@ -6,6 +6,16 @@ All notable changes to Black Wire Forge are recorded here.
 
 ### Fixed
 
+- The Talking Head Line writer no longer overwrites a Length you set yourself in the form. It
+  used to derive Length from the written line's word count on every write, even when the current
+  form already carried a Length you had changed by hand. It now leaves Length alone once it
+  differs from the field's own default (97 frames), and still derives it from the line when
+  Length is at that default or the form's current values aren't available to it.
+- The Picture guide (and every room guide) no longer offers "Help me write this" in a room with
+  no available engine. The offer now checks the room has at least one installed, reachable mode
+  before showing; a room with none keeps showing its existing "nothing installed" / "no machine
+  reachable" note instead.
+
 - Video (LTX) and YuE2 no longer depend on one particular build of their model. LTX used to
   find its video model only if the filename said `gguf`, and always loaded it with the GGUF
   loader; YuE2 refused the `int8` checkpoint. Both now use whichever build you have: LTX picks

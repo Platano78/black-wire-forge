@@ -103,6 +103,14 @@ check("derive: a stated length wins over the line",
       ltx.talking_derive({"line": "Hi.", "fps": 24}, dict(DRAFT, topic="a 10 second clip saying hi")) == {"length": 241})
 check("derive: a length the user answered wins", ltx.talking_derive({"line": "Hi.", "fps": 24}, dict(
     DRAFT, answers=[{"q": "How long should the clip be?", "a": "8 seconds"}])) == {"length": 193})
+# UX-1: a Length the user set in the form (not the field's own 97-frame
+# default) must not be silently overwritten by the line's derived length.
+check("derive: a Length the user set in the form is left alone",
+      ltx.talking_derive({"line": "Hey there, welcome back, I saved your spot right here.",
+                          "fps": 24, "length": 241}, DRAFT) == {})
+check("derive: a Length still at the field's own default is derived as before",
+      ltx.talking_derive({"line": "Hey there, welcome back, I saved your spot right here.",
+                          "fps": 24, "length": 97}, DRAFT) == {"length": 129})
 
 print("check: Talking Head")
 LINE10 = "Hey there, welcome back, I saved your spot right here."

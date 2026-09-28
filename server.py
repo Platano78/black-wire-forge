@@ -1733,6 +1733,12 @@ def _op_add_slot(seq, p):
         seq["slots"].insert(at, slot)
     else:
         raise ValueError("at must be a position from 0 to %d." % len(seq["slots"]))
+    # UX-1: freed ids are reused (max(used)+1 over whatever is LEFT after an
+    # op queued just ahead of this one on the client's own op chain already
+    # landed), so a client that finds "the new one" by diffing ids against
+    # what it had before can land on the very id an in-flight remove just
+    # freed and this add reused -- name it directly instead.
+    return {"added_slot_id": slot["id"]}
 
 
 def _op_update_slot(seq, p):
@@ -4505,7 +4511,7 @@ def _generate_legacy(p, lane, m, able, kind, mode, qmode, prompt, seed, steps):
         if "image" not in lane["caps"]:
             return {"ok": False, "error": "%s is not set up as a picture lane. %s"
                                    % (lane["name"], suggest_lanes("image"))}, 400
-        # R3-1: the picture generator's ability is now MODE-specific
+        # the picture generator's ability is now MODE-specific
         # (t2i/edit), not the cap name "image" itself -- a lane whose
         # only "image"-cap files belong to a tool pack (cleanup) must
         # not report Picture as available and then die on a KeyError.
