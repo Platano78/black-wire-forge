@@ -2,6 +2,17 @@
 
 All notable changes to Black Wire Forge are recorded here.
 
+## Unreleased
+
+### Fixed
+
+- Video (LTX) and YuE2 no longer depend on one particular build of their model. LTX used to
+  find its video model only if the filename said `gguf`, and always loaded it with the GGUF
+  loader; YuE2 refused the `int8` checkpoint. Both now use whichever build you have: LTX picks
+  `UNETLoader` or `UnetLoaderGGUF` from the file type, and YuE2 takes the bf16 or int8
+  checkpoint. A lane holding only a native LTX build, or only the int8 YuE2 file, now shows
+  those modes as available instead of missing.
+
 ## v1.1.0 — 2026-09-25
 
 ### Added

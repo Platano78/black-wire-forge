@@ -172,6 +172,31 @@ try:
         check("abilities()['%s'] is True with all cleanup/3D models present" % mode,
               able_tools.get(mode) is True)
 
+    print()
+    print("format-agnostic: whichever single build a lane has is the one found (no card assumed)")
+    from engines import ltx as ltx_pack
+    ltx_rule = m.ROLE_RULES["ltx_transformer"]
+    for fname, node in (("ltx-2.5-22b-distilled-transformer-nvfp4.safetensors", "UNETLoader"),
+                        ("ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors", "UNETLoader"),
+                        ("ltx25/ltx-2.5-22b-distilled-transformer-bf16-Q5_K_M.gguf", "UnetLoaderGGUF")):
+        for small in (True, False):
+            got = m.pick_model([fname, "wan2.2_ti2v_5B_fp16.safetensors"], ltx_rule, small)
+            check("ltx_transformer finds %s (small_card=%s)" % (fname, small), got == fname, "got %r" % (got,))
+        lm = {"ltx_transformer": fname, "ltx_clip": "c", "ltx_vae_video": "v", "ltx_vae_audio": "a",
+              "ltx_upscaler": "u"}
+        for gname, g in (("ltx", ltx_pack.ltx_graph({"prompt": "p", "seed": 1}, lm)),
+                         ("ltx_loop", ltx_pack.ltx_loop_graph({"prompt": "p", "seed": 1}, lm))):
+            check("%s graph loads %s through %s" % (gname, fname, node), g["384"]["class_type"] == node,
+                  "got %r" % (g["384"],))
+    check("ltx_transformer prefers the distilled build the graphs are tuned for",
+          m.pick_model(["ltx-2.5-22b-dev-transformer-comfy-int8-convrot.safetensors",
+                        "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors"], ltx_rule, False)
+          == "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors")
+    for fname in ("yue2_3b_bf16.safetensors", "yue2_3b_int8_convrot.safetensors"):
+        for small in (True, False):
+            got = m.pick_model([fname], m.ROLE_RULES["yue2_ckpt"], small)
+            check("yue2_ckpt finds %s alone (small_card=%s)" % (fname, small), got == fname, "got %r" % (got,))
+
 finally:
     m.http_get_json = _orig_http
 

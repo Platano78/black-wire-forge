@@ -54,7 +54,7 @@ LTX-2.5 by Lightricks.
 
 | Role | Source (HF repo · file) | HF size | Verified size | Match | ComfyUI folder | Discovery match |
 |---|---|---|---|---|---|---|
-| `ltx_transformer` | `ruygar/LTX-2.5-Comfy-GGUF` · `ltx-2.5-22b-distilled-transformer-bf16-Q5_K_M.gguf` | 14,831,573,088 | 14,831,573,088 | yes | `models/unet` (`UnetLoaderGGUF`) | PASS — contains `ltx`, `gguf` |
+| `ltx_transformer` | `ruygar/LTX-2.5-Comfy-GGUF` · `ltx-2.5-22b-distilled-transformer-bf16-Q5_K_M.gguf` | 14,831,573,088 | 14,831,573,088 | yes | `models/unet` (`UnetLoaderGGUF`) | PASS — contains `ltx` (prefers `distilled`) |
 | `ltx_clip` | `comfyicu/LTX-2.5` · `text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors` | 15,372,971,786 | 15,372,971,786 | yes | `models/text_encoders` (`CLIPLoader`) | PASS — contains `ltx` |
 | `ltx_vae_video` | `comfyicu/LTX-2.5` · `vae/ltx-2.5-video-vae-bf16.safetensors` | 1,472,223,346 | 1,472,223,346 | yes | `models/vae` (`VAELoader`) | PASS — contains `ltx`, `video`, not `audio` |
 | `ltx_vae_audio` | `comfyicu/LTX-2.5` · `vae/ltx-2.5-audio-vae-bf16.safetensors` | 364,866,540 | 364,866,540 | yes | `models/vae` (`VAELoader`) | PASS — contains `ltx`, `audio` |
@@ -66,6 +66,10 @@ LTX-2.5 by Lightricks.
 into a folder named `latent_upscaler` is invisible to that node.
 
 Verified working source: `ltx_transformer` (`ruygar/LTX-2.5-Comfy-GGUF`) matches as recommended.
+It is not the only build that works: any LTX-2.5 *distilled* transformer does. `Lightricks/LTX-2.5`
+also has native safetensors builds (`int8_convrot`, and `nvfp4`, which needs a GPU with FP4
+support). Keep the one your card runs; the pack loads it with `UNETLoader` or `UnetLoaderGGUF`
+by file type.
 The other four roles come from `comfyicu/LTX-2.5`, not `Lightricks/LTX-2.5` directly —
 Lightricks' `text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors` is
 **2,412 bytes smaller** (15,372,969,374) than the verified working copy and is therefore a
@@ -201,12 +205,12 @@ Licence: **CC BY-NC 4.0** (non-commercial). Attribution: YuE2-3B by the m-a-p pr
 
 | Role | Source (HF repo · file) | HF size | Verified size | Match | ComfyUI folder | Discovery match |
 |---|---|---|---|---|---|---|
-| `yue2_ckpt` | `Comfy-Org/YuE2` · `checkpoints/yue2_3b_bf16.safetensors` | 7,799,983,228 | 7,799,983,228 | yes | `models/checkpoints` (`CheckpointLoaderSimple`) | PASS — contains `yue2`, not `int8` |
+| `yue2_ckpt` | `Comfy-Org/YuE2` · `checkpoints/yue2_3b_bf16.safetensors` | 7,799,983,228 | 7,799,983,228 | yes | `models/checkpoints` (`CheckpointLoaderSimple`) | PASS — contains `yue2` |
 | `yue2_audio_encoder` | `Comfy-Org/YuE2` · `audio_encoders/sheetsage2_bf16.safetensors` | 1,386,868,122 | 1,386,868,122 | yes | `models/audio_encoders` (`AudioEncoderLoader`) | PASS — contains `sheetsage2` |
 
-Both filenames are byte-identical to a working install's copy — no rename needed. An
-`int8_convrot` build of the checkpoint (3.96 GB) is also in `Comfy-Org/YuE2` for tighter VRAM,
-but is not the one verified here.
+Both filenames are byte-identical to a working install's copy — no rename needed. The
+`int8_convrot` build of the checkpoint (3.96 GB, same repo) also works and needs less VRAM;
+discovery uses whichever one the lane has. Whether it is faster depends on your ComfyUI runtime.
 
 ⚠ `yue2_audio_encoder` is a SheetSage2 checkpoint, and **SheetSage2 (`m-a-p/SheetSage2`)
 has its own licence: CC BY-NC 4.0**, the same non-commercial licence as YuE2-3B. So cover mode

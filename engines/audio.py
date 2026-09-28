@@ -539,15 +539,11 @@ def yue2_graph(p, m):
         Insert the MiniMax mastering chain (EQ + compressor) before save.
         Off by default. See `attach_mastering`.
 
-    The checkpoint role (m["yue2_ckpt"]) resolves to the BF16 build, not the
-    int8 repackage, on measured evidence (2026-09-16, rig 5080, identical
-    prompt + seed): int8 sampled ~21-22.5 tok/s / KSampler 2.62 it/s / peak
-    7,728 MiB / RTF 1.917; bf16 sampled ~111-122 tok/s / KSampler 5.84 it/s /
-    peak 9,860 MiB / RTF 0.521 (n=3). The int8 build is ~3.7x SLOWER, because
-    ComfyUI logs `manual cast: torch.bfloat16` for it — the weights are
-    stored int8 but dequantized per operation, with no native int8 matmul on
-    this path. It buys 2.1 GB of VRAM we do not need on a 16 GB card and
-    charges 3.7x in time for it, so the role rule excludes it.
+    The checkpoint role (m["yue2_ckpt"]) takes whichever YuE2 build the lane
+    has (bf16 or int8); with both present, discovery's small-card ranking
+    decides. Speed depends on the runtime, not the file: an int8 build is only
+    fast where ComfyUI has a native int8 path for the card (it logs
+    `manual cast` when it is dequantizing per operation instead).
     """
     style = p["style"]
     lyrics = p.get("lyrics", "")
@@ -1162,7 +1158,7 @@ ENGINE = {
         "music3_vae": ("vae", {"all": ["minimax_music3"]}),
         "sao_ckpt": ("checkpoint", {"all": ["stable-audio-open"]}),
         "sao_clip": ("clip", {"all": ["stable-audio-open"]}),
-        "yue2_ckpt": ("checkpoint", {"all": ["yue2"], "none": ["int8"]}),
+        "yue2_ckpt": ("checkpoint", {"all": ["yue2"]}),
         "yue2_audio_encoder": ("audio_encoder", {"all": ["sheetsage2"]}),
     },
     "primary": {

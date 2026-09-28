@@ -23,6 +23,8 @@ import math
 import random
 import re
 
+from . import unet_loader
+
 # -- constants, copied verbatim from graph_builders.py:1120-1129 -----------
 LTX25_STAGE1_SIGMAS = "1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0"
 LTX25_STAGE2_SIGMAS = "0.85, 0.7250, 0.4219, 0.0"
@@ -168,10 +170,7 @@ def _ltx_graph(p, m, filename_prefix):
 
     g = {
         # -- loaders --
-        "384": {
-            "inputs": {"unet_name": m["ltx_transformer"]},
-            "class_type": "UnetLoaderGGUF",
-        },
+        "384": unet_loader(m["ltx_transformer"]),
         "385": {
             "inputs": {"vae_name": m["ltx_vae_video"]},
             "class_type": "VAELoader",
@@ -556,7 +555,7 @@ def _ltx_loop_graph(p, m):
         seed = _random_seed()
 
     return {
-        "384": {"inputs": {"unet_name": m["ltx_transformer"]}, "class_type": "UnetLoaderGGUF"},
+        "384": unet_loader(m["ltx_transformer"]),
         "385": {"inputs": {"vae_name": m["ltx_vae_video"]}, "class_type": "VAELoader"},
         "387": {
             "inputs": {"clip_name": m["ltx_clip"], "type": "ltxv"},
@@ -1022,7 +1021,9 @@ ENGINE = {
     # than depend on which one wins.
     "cap_order": 2,
     "roles": {
-        "ltx_transformer": ("unet", {"all": ["ltx", "gguf"]}),
+        # Any LTX-2.5 build the lane has -- GGUF or native safetensors, whatever the card runs;
+        # unet_loader() picks the node from the file type. The graphs use the distilled sigmas.
+        "ltx_transformer": ("unet", {"all": ["ltx"], "prefer": ["distilled"]}),
         "ltx_clip": ("clip", {"all": ["ltx"]}),
         "ltx_vae_video": ("vae", {"all": ["ltx"], "none": ["audio"], "prefer": ["video"]}),
         "ltx_vae_audio": ("vae", {"all": ["ltx", "audio"]}),
