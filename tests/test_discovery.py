@@ -202,6 +202,15 @@ try:
         clips = [n["inputs"].get("clip_name") for n in g.values() if n.get("class_type") == "CLIPLoader"]
         check("H3 %s with both encoders takes the one any card runs (int8)" % gname,
               clips == ["qwen3vl_32b_minimax_h3_int8_convrot.safetensors"], str(clips))
+    import engines as eng
+    lane_all = {"ace_unet": "a", "music3_unet": "m", "sao_ckpt": "s", "yue2_ckpt": "y",
+                "ltx_transformer": "l", "h3_unet_fl2va": "h", "h3_unet_ref2va": "r"}
+    for cap, mode, want in (("audio", "song", "ACE-Step 1.5"), ("audio", "music", "MiniMax-Music3"),
+                            ("audio", "yue2", "YuE2-3B"), ("audio", "cover", "YuE2-3B"),
+                            ("video", "ltx", "LTX-2.5"), ("video", "fl2va", "MiniMax-H3")):
+        got = eng.describe_mode(lane_all, cap, mode)
+        check("a %s/%s job is labelled with its own engine (%s), not the lane headline" % (cap, mode, want),
+              got == want, "got %r" % (got,))
     for fname in ("yue2_3b_bf16.safetensors", "yue2_3b_int8_convrot.safetensors"):
         for small in (True, False):
             got = m.pick_model([fname], m.ROLE_RULES["yue2_ckpt"], small)

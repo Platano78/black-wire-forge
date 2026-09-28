@@ -20,6 +20,8 @@ All notable changes to Black Wire Forge are recorded here.
 - MiniMax-H3 no longer reaches for the nvfp4 text encoder first. With both encoder files on a lane
   it now uses the int8 one, which any card can run (nvfp4 needs a GPU with FP4 support); the
   "Text encoder override" field still picks either. A lane with one encoder is unchanged.
+- A job is labelled with the engine it actually runs. Every Sound job said "ACE-Step 1.5" (and
+  every H3 video "LTX-2.5"), because the label was the lane's first engine, not the job's.
 
 ## v1.1.0 — 2026-09-25
 

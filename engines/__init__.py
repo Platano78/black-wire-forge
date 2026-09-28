@@ -523,6 +523,29 @@ def describe(models, cap):
     return ""
 
 
+def describe_mode(models, cap, mode):
+    """Label for one job: the owning pack's describe() for the model this mode
+    actually loads (its primary role), else for the pack's models; "" if the
+    owning pack names nothing. Unlike describe(cap) -- a lane HEADLINE, first
+    pack first engine -- this never names another engine: a YuE2 job was
+    labelled "ACE-Step 1.5" because ACE is the audio headline."""
+    role = primary_role(cap, mode)
+    for pack in _discover():
+        if pack["cap"] != cap or mode not in pack["graphs"]:
+            continue
+        for ms in (({role: models.get(role)} if role else None), models):
+            if not ms:
+                continue
+            try:
+                text = pack["describe"](ms)
+            except Exception:
+                text = pack["id"]
+            if text:
+                return text
+        return ""
+    return describe(models, cap)
+
+
 def legacy_dispatch(cap, mode):
     """Whether server.py's own hand-tuned image/video logic (cfg defaults,
     frame-grid snapping, turbo derivation) must handle this (cap, mode),

@@ -4866,7 +4866,7 @@ def _dispatch_generic(lane, m, able, p, kind, mode):
         return dispatch_process(lane, graph, kind, mode, meta, args), 200
     role = engines.primary_role(kind, mode)
     meta = {"prompt": prompt_text, "seed": seed, "steps": 0,
-            "model": engines.describe(m, kind), "model_file": m.get(role, ""),
+            "model": engines.describe_mode(m, kind, mode), "model_file": m.get(role, ""),
             "args": {k: v for k, v in args.items() if k != "seed"}, "quality": p.get("quality")}
     if not prompt_text and upload_title:
         meta["title"] = upload_title
