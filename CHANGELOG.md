@@ -17,6 +17,9 @@ All notable changes to Black Wire Forge are recorded here.
   music. The music writer now sizes the length to its words (about 7 seconds a sung line, about 3 a
   rapped one), and the check before a render names a length that leaves more than a minute after the
   last line, or cuts the words off, with a length that fits.
+- MiniMax-H3 no longer reaches for the nvfp4 text encoder first. With both encoder files on a lane
+  it now uses the int8 one, which any card can run (nvfp4 needs a GPU with FP4 support); the
+  "Text encoder override" field still picks either. A lane with one encoder is unchanged.
 
 ## v1.1.0 — 2026-09-25
 

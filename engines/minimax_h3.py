@@ -10,6 +10,9 @@ but the contract's ``provides`` can only list roles that must ALL resolve,
 so this pack lists h3_clip_nvfp4 (the role server.py's own missing_for
 treats as "the H3 text encoder" in the golden rig). A rig with only the int8
 clip would report fl2va/ref2v missing here, whereas server.py would not.
+Both roles match any H3 encoder file, so a lane with one encoder uses it for
+both. With both present the graphs take the int8 one, which runs on any card;
+the nvfp4 build needs a GPU with FP4 support. The "encoder" field overrides.
 """
 import re
 
@@ -22,10 +25,10 @@ def _describe(models):
 
 
 def h3_fl2va_graph(p, m):
-    """The 'cheers' recipe: fl2va unet + NVFP4 AWQ encoder + MiniMaxH3ImageToVideo,
+    """The 'cheers' recipe: fl2va unet + the H3 text encoder + MiniMaxH3ImageToVideo,
     res_multistep/simple, 20 steps, no LoRA. first_frame/last_frame optional, and
     with neither wired it is pure text-to-video (which is what cheers was)."""
-    clip = p.get("encoder") or m.get("h3_clip_nvfp4") or m["h3_clip_int8"]
+    clip = p.get("encoder") or m.get("h3_clip_int8") or m["h3_clip_nvfp4"]
     g = {
         "6": unet_loader(m["h3_unet_fl2va"]),
         "13": {"class_type": "CLIPLoader", "inputs": {"clip_name": clip, "type": "minimax", "device": "default"}},
@@ -80,7 +83,7 @@ def h3_continue_graph(p, m):
     what actually refuses a shot whose jack is plugged but unresolvable; a
     shot with no cable at all (e.g. the first of a chain) just renders
     without the Motion-Context wiring, plain text-to-video."""
-    clip = p.get("encoder") or m.get("h3_clip_nvfp4") or m["h3_clip_int8"]
+    clip = p.get("encoder") or m.get("h3_clip_int8") or m["h3_clip_nvfp4"]
     g = {
         "6": unet_loader(m["h3_unet_fl2va"]),
         "13": {"class_type": "CLIPLoader", "inputs": {"clip_name": clip, "type": "minimax", "device": "default"}},

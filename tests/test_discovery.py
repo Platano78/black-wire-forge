@@ -192,6 +192,16 @@ try:
           m.pick_model(["ltx-2.5-22b-dev-transformer-comfy-int8-convrot.safetensors",
                         "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors"], ltx_rule, False)
           == "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors")
+    from engines import minimax_h3 as h3_pack
+    both = {"h3_unet_fl2va": "h3.safetensors", "h3_unet_ref2va": "h3r.safetensors", "h3_vae_video": "v",
+            "h3_vae_audio": "a", "h3_clip_nvfp4": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+            "h3_clip_int8": "qwen3vl_32b_minimax_h3_int8_convrot.safetensors"}
+    for gname, fn in (("fl2va", h3_pack.h3_fl2va_graph), ("ref2va", h3_pack.h3_ref2va_graph)):
+        g = fn({"prompt": "p", "seed": 1, "width": 864, "height": 480, "length": 97, "steps": 8,
+                "first_frame": None, "last_frame": None, "reference_images": ["r.png"]}, both)
+        clips = [n["inputs"].get("clip_name") for n in g.values() if n.get("class_type") == "CLIPLoader"]
+        check("H3 %s with both encoders takes the one any card runs (int8)" % gname,
+              clips == ["qwen3vl_32b_minimax_h3_int8_convrot.safetensors"], str(clips))
     for fname in ("yue2_3b_bf16.safetensors", "yue2_3b_int8_convrot.safetensors"):
         for small in (True, False):
             got = m.pick_model([fname], m.ROLE_RULES["yue2_ckpt"], small)
