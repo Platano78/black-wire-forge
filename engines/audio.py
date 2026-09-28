@@ -15,6 +15,7 @@ byte difference, matching the other packs' convention).
 import os
 import random
 import re
+import struct
 
 # --- audio output format -----------------------------------------------------
 # SaveAudioAdvanced's `format` is a COMFY_DYNAMICCOMBO_V3: picking a key brings
@@ -1284,6 +1285,168 @@ def sfx_check(values, request):
             "voice saying something, use the Talking Head room; for a song, the Music room." % ", ".join(found)]
 
 
+# ── Music3 LoRA conversion (LORA-2E #1) ──
+# ComfyUI's native MiniMaxMusic3 port fuses Q/K/V into one `to_qkv` Linear
+# (`comfy/ldm/minimax_music/dit.py`); every Music3 LoRA on the Hub is
+# diffusers/PEFT-named with separate to_q/to_k/to_v/to_out.0 projections.
+# `to_out` is a straight rename; q/k/v is an EXACT merge (block-diagonal B,
+# row-concat A) into the fused key -- see report-D.md "Music3 exact QKV
+# merge" for the row-order and no-arithmetic proof this mirrors. Pure
+# stdlib: block_diag/concat here are BYTE placement, not floating-point
+# arithmetic, so this needs no numpy (or torch) even though the tensors are
+# bf16/fp16/fp32 -- each element is moved as opaque bytes.
+_SAFETENSORS_DTYPE_SIZE = {
+    "F64": 8, "F32": 4, "F16": 2, "BF16": 2,
+    "I64": 8, "I32": 4, "I16": 2, "I8": 1, "U8": 1, "BOOL": 1,
+}
+
+_MUSIC3_SRC_KEY_RE = re.compile(
+    r"^transformer\.transformer_blocks\.(\d+)\.attn\.(to_q|to_k|to_v|to_out\.0)\."
+    r"(lora_A\.weight|lora_B\.weight|alpha)$"
+)
+_MUSIC3_DST_PREFIX = "diffusion_model.diffusion_transformer.transformer.layers.%d.self_attn."
+_MUSIC3_SUFFIX = {"lora_A.weight": "lora_A", "lora_B.weight": "lora_B", "alpha": "alpha"}
+
+
+def _tensor_rows(tensor):
+    """(rows, cols, row_bytes, elemsize) for a 2D safetensors tensor dict --
+    raises ValueError (refuse, don't guess) if it isn't 2D, its dtype isn't
+    recognised, or its byte length doesn't match its declared shape."""
+    shape = tensor.get("shape")
+    dtype = tensor.get("dtype")
+    data = tensor.get("data") or b""
+    if not (isinstance(shape, list) and len(shape) == 2):
+        raise ValueError("expected a 2D tensor, got shape %r" % (shape,))
+    elemsize = _SAFETENSORS_DTYPE_SIZE.get(dtype)
+    if elemsize is None:
+        raise ValueError("unsupported dtype %r" % (dtype,))
+    rows, cols = shape
+    row_bytes = cols * elemsize
+    if len(data) != rows * row_bytes:
+        raise ValueError("tensor data size does not match its declared shape %r" % (shape,))
+    return rows, cols, row_bytes, elemsize
+
+
+def _concat_rows(tensors):
+    """Row-major byte concatenation along dim0 of same-dtype, same-column
+    2D tensors -- exact, no arithmetic (A_f = concat_rows(Aq, Ak, Av))."""
+    dtype = tensors[0]["dtype"]
+    cols = tensors[0]["shape"][1] if len(tensors[0].get("shape") or []) == 2 else None
+    total_rows = 0
+    data = bytearray()
+    for t in tensors:
+        rows, tcols, _row_bytes, _esz = _tensor_rows(t)
+        if t["dtype"] != dtype or tcols != cols:
+            raise ValueError("mismatched dtype/columns across q/k/v projections")
+        total_rows += rows
+        data += t["data"]
+    return {"dtype": dtype, "shape": [total_rows, cols], "data": bytes(data)}
+
+
+def _block_diag_rows(tensors):
+    """Row-major block-diagonal placement of same-dtype 2D tensors -- exact,
+    no arithmetic (B_f = block_diag(Bq, Bk, Bv)); every off-diagonal cell is
+    zero bytes, so cross-projection terms are zero by construction."""
+    dtype = tensors[0]["dtype"]
+    elemsize = _SAFETENSORS_DTYPE_SIZE.get(dtype)
+    shapes = []
+    for t in tensors:
+        rows, cols, row_bytes, esz = _tensor_rows(t)
+        if t["dtype"] != dtype:
+            raise ValueError("mismatched dtype across q/k/v projections")
+        shapes.append((rows, cols, row_bytes))
+    total_rows = sum(r for r, _, _ in shapes)
+    total_cols = sum(c for _, c, _ in shapes)
+    total_row_bytes = total_cols * elemsize
+    out = bytearray(total_rows * total_row_bytes)
+    row_off = 0
+    col_off = 0
+    for t, (rows, cols, row_bytes) in zip(tensors, shapes):
+        src = t["data"]
+        col_byte_off = col_off * elemsize
+        for r in range(rows):
+            dst_start = (row_off + r) * total_row_bytes + col_byte_off
+            out[dst_start:dst_start + row_bytes] = src[r * row_bytes:(r + 1) * row_bytes]
+        row_off += rows
+        col_off += cols
+    return {"dtype": dtype, "shape": [total_rows, total_cols], "data": bytes(out)}
+
+
+def _alpha_value(tensor):
+    """A scalar alpha tensor's float value -- expects a 4-byte F32 tensor
+    (the shape real LoRA alpha keys use); anything else refuses."""
+    if tensor.get("dtype") != "F32" or len(tensor.get("data") or b"") != 4:
+        raise ValueError("unsupported alpha tensor shape/dtype")
+    return struct.unpack("<f", tensor["data"])[0]
+
+
+def _alpha_tensor(value, like):
+    """A scalar F32 tensor for `value`, same shape as `like` -- alpha_f =
+    3*alpha per LORA-2E #1's per-projection scale rule (the fused rank is
+    3r, so alpha/r is preserved only if alpha itself is tripled)."""
+    return {"dtype": "F32", "shape": list(like["shape"]), "data": struct.pack("<f", value)}
+
+
+def _convert_music3_lora(tensors):
+    """LORA-2E #1: convert a diffusers/PEFT-named Music3 LoRA (separate
+    to_q/to_k/to_v/to_out.0 projections) into ComfyUI's fused-to_qkv key
+    shape -- an EXACT mathematical merge (block-diagonal B, row-concat A),
+    not an approximation; see report-D.md "Music3 exact QKV merge". Refuses
+    (raises ValueError, plain sentence) rather than guess when a key or
+    shape doesn't fit the expected pattern -- the caller keeps the original
+    file untouched on any refusal. No `.alpha` keys -> the merge needs no
+    scale correction (calculate_weight() falls back to alpha=1.0 either
+    way); `.alpha` keys present -> alpha_f = 3*alpha, per projection. Adversarial review
+    2026-09-28: an empty file, or one with no key matching the Music3 pattern at all, is
+    refused outright rather than silently "converting" to a useless zero-tensor file."""
+    if not any(_MUSIC3_SRC_KEY_RE.match(key) for key in tensors):
+        raise ValueError("This file has no Music3 LoRA weights to convert.")
+    blocks = {}
+    for key, tensor in tensors.items():
+        m = _MUSIC3_SRC_KEY_RE.match(key)
+        if not m:
+            raise ValueError("unexpected key %r for a Music3 LoRA" % key)
+        idx = int(m.group(1))
+        proj = m.group(2)
+        suffix = _MUSIC3_SUFFIX[m.group(3)]
+        blocks.setdefault(idx, {}).setdefault(proj, {})[suffix] = tensor
+    out = {}
+    file_has_alpha = None
+    for idx in sorted(blocks):
+        block = blocks[idx]
+        for proj in ("to_q", "to_k", "to_v", "to_out.0"):
+            if proj not in block or "lora_A" not in block[proj] or "lora_B" not in block[proj]:
+                raise ValueError("block %d is missing %s's lora_A/lora_B pair" % (idx, proj))
+        dst_prefix = _MUSIC3_DST_PREFIX % idx
+        # to_out: a straight rename (path rewrite + drop the diffusers ".0"
+        # Sequential index) -- shapes already match a real to_out Linear.
+        out[dst_prefix + "to_out.lora_A.weight"] = block["to_out.0"]["lora_A"]
+        out[dst_prefix + "to_out.lora_B.weight"] = block["to_out.0"]["lora_B"]
+        if "alpha" in block["to_out.0"]:
+            out[dst_prefix + "to_out.alpha"] = block["to_out.0"]["alpha"]
+        # to_qkv: q/k/v are three separate low-rank adapters against a target
+        # model with ONE fused Linear -- an exact merge, not a rename. Row
+        # order matches ComfyUI's own `q, k, v = self.to_qkv(x).chunk(3, dim=-1)`.
+        a_f = _concat_rows([block["to_q"]["lora_A"], block["to_k"]["lora_A"], block["to_v"]["lora_A"]])
+        b_f = _block_diag_rows([block["to_q"]["lora_B"], block["to_k"]["lora_B"], block["to_v"]["lora_B"]])
+        out[dst_prefix + "to_qkv.lora_A.weight"] = a_f
+        out[dst_prefix + "to_qkv.lora_B.weight"] = b_f
+        alphas = [block[p].get("alpha") for p in ("to_q", "to_k", "to_v")]
+        has_alpha = [a is not None for a in alphas]
+        if any(has_alpha) and not all(has_alpha):
+            raise ValueError("block %d mixes alpha and no-alpha q/k/v keys" % idx)
+        if all(has_alpha):
+            values = [_alpha_value(a) for a in alphas]
+            if any(v != values[0] for v in values[1:]):
+                raise ValueError("block %d's q/k/v alpha values differ" % idx)
+            out[dst_prefix + "to_qkv.alpha"] = _alpha_tensor(values[0] * 3.0, alphas[0])
+        if file_has_alpha is None:
+            file_has_alpha = all(has_alpha)
+        elif file_has_alpha != all(has_alpha):
+            raise ValueError("alpha keys are present for some blocks but not others")
+    return out
+
+
 ENGINE = {
     "id": "audio",
     "cap": "audio",
@@ -1775,11 +1938,22 @@ ENGINE = {
          "role": "music3_unet",
          "match": {"any": ["music3", "minimax_music3", "minimax-music"],
                    "none": ["turbo", "lightning", "acc", "distill", "upscal", "msr", "reference", "ic-lora", "ic_lora", "control", "ingredients"]},
-         "hf_base": "MiniMaxAI/MiniMax-Music3", "folder": "music3"},
+         "hf_base": "MiniMaxAI/MiniMax-Music3", "folder": "music3",
+         # LORA-2E #1: every Music3 LoRA on the Hub needs the q/k/v->to_qkv
+         # merge below before ComfyUI's fused attention can load it. Names a
+         # converter the download worker runs after a verified download --
+         # server.py knows nothing about Music3 itself, only this string.
+         "convert": "music3_fused_qkv"},
         {"id": "yue2", "label": "YuE2", "cap": "audio", "modes": ["yue2", "cover"],
          "role": "yue2_ckpt",
          "match": {"any": ["yue2"],
                    "none": ["turbo", "lightning", "acc", "distill", "upscal", "msr", "reference", "ic-lora", "ic_lora", "control", "ingredients"]},
          "hf_base": "m-a-p/YuE2-3B", "folder": "yue2"},
     ],
+    # LORA-2E #1: the converters this pack's style_catalogs "convert" values
+    # name -- engines.lora_converter() looks a name up across every pack, so
+    # server.py's download worker never names Music3 (or any model) itself.
+    "lora_converters": {
+        "music3_fused_qkv": _convert_music3_lora,
+    },
 }

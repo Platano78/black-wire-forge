@@ -62,6 +62,15 @@ refresh the lane if a just-downloaded pack doesn't show up as a model yet. Witho
 at all, "Get it" just prints the `hf download ... --local-dir <ComfyUI>/models/loras/<folder>`
 command to run yourself.
 
+**MiniMax-Music3 packs are converted after download.** Every Music3 LoRA on the Hub is trained
+against separate q/k/v attention projections, but the engine's own attention is one fused
+`to_qkv` matrix, so a downloaded file needs an exact key-and-shape merge (block-diagonal B,
+row-concat A — see `engines/audio.py`'s `_convert_music3_lora`) before it applies fully; the app
+runs this automatically once downloads land, and refuses (plain sentence, nothing partial left
+behind) rather than guess at a file whose keys don't fit the expected shape. When downloads are
+off for a lane, the printed `hf download` command gets a second line saying the pack needs
+converting by hand first.
+
 ## LTX-2.5 (`engines/ltx.py`) — video
 
 Licence: **LTX-2.x Community License** ([official text](https://raw.githubusercontent.com/Lightricks/LTX-2/main/LICENSE-2_x)), confirmed live 2026-09-24. Section 2.1: *"Entities with annual

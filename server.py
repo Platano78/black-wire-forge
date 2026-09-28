@@ -587,16 +587,18 @@ def style_families():
     return [_style_family_adapter(sc) for sc in engines.style_catalogs()]
 
 
-def _family_by_id(family_id):
-    """One declared style family by id, or None -- used to refuse a family
-    id that isn't declared at all (LORA-2B: "a folder id not in
-    style_catalogs is refused")."""
+def _resolved_family(lane, family_id):
+    """The style family for `family_id` on this lane -- refusing one that
+    is declared but not PRESENT here (LORA-2E #2: its model must actually
+    be discovered on `lane`, not merely declared somewhere in the catalog;
+    LORA-2B's older "declared at all" check let a family from a DIFFERENT
+    lane's models through). `family_id` empty defaults to the lane's only
+    present family, same as before. Returns the family dict, or None when
+    nothing can be resolved."""
+    present = _families_for_lane(models_for(lane))
     if not family_id:
-        return None
-    for sc in style_families():
-        if sc["id"] == family_id:
-            return sc
-    return None
+        return present[0] if len(present) == 1 else None
+    return next((f for f in present if f["id"] == family_id), None)
 
 
 def _families_for_lane(m):
@@ -700,16 +702,36 @@ def _first_prose_sentence(readme_text):
     return None
 
 
-_TRIGGER_LINE_RE = re.compile(r"trigger\s*word|activation", re.IGNORECASE)
-_TRIGGER_LABEL_RE = re.compile(r"trigger\s*words?\s*:?|activation\s*(word|text|prompt)s?\s*:?",
-                               re.IGNORECASE)
+# LORA-2E #3: widened past "trigger word"/"activation" alone -- also
+# "trigger prompt", a bare "trigger:" label, "activation word/text/prompt/
+# TOKEN(s)", and "instance prompt" (the DreamBooth/PEFT term for the same
+# thing). "trigger\s*:" needs trigger immediately followed by the colon (no
+# word in between) so it only catches the bare label, not "trigger word:"
+# (already matched by the first alternative).
+_TRIGGER_LINE_RE = re.compile(
+    r"trigger\s*word|trigger\s*prompt|trigger\s*:|activation|instance\s*prompt", re.IGNORECASE)
+_TRIGGER_LABEL_RE = re.compile(
+    r"trigger\s*words?\s*:?|trigger\s*prompts?\s*:?|trigger\s*:?|"
+    r"activation\s*(word|text|prompt|token)s?\s*:?|instance\s*prompts?\s*:?",
+    re.IGNORECASE)
+# The README front-matter's own `instance_prompt:` key (DreamBooth/PEFT
+# convention) -- checked ahead of the body scan since it's the most
+# structured, unambiguous source when the card sets it.
+_INSTANCE_PROMPT_FM_RE = re.compile(r"^instance_prompt\s*:\s*(.*)$", re.IGNORECASE | re.MULTILINE)
 
 
 def _extract_trigger_words(readme_text):
-    """LORA-2B: a short trigger-word/activation line, kept short. A
-    backtick-quoted term (how most cards actually write it) wins over the
-    whole sentence around it."""
-    body, _fm = _strip_front_matter(readme_text)
+    """LORA-2B (+ LORA-2E #3 widening): a short trigger-word/activation
+    line, kept short. A backtick-quoted term (how most cards actually write
+    it) wins over the whole sentence around it. The front-matter
+    `instance_prompt:` key, when set to a real value (not null/empty), wins
+    over the body scan entirely."""
+    body, fm = _strip_front_matter(readme_text)
+    fm_match = _INSTANCE_PROMPT_FM_RE.search(fm or "")
+    if fm_match:
+        value = fm_match.group(1).strip().strip("'\"")
+        if value and value.lower() not in ("null", "none", "~"):
+            return value[:160]
     for raw_line in body.splitlines():
         line = raw_line.strip()
         if not line or _MD_HEADING_RE.match(line) or not _TRIGGER_LINE_RE.search(line):
@@ -864,6 +886,139 @@ class DownloadsOff(ValueError):
     pass
 
 
+# Adversarial review 2026-09-28: the generic reader now validates data_offsets
+# itself (non-negative, start<=end<=data section length, no overlap between
+# tensors) and cross-checks byte length against shape*dtype-size -- so it
+# needs a dtype-size table of its own (a safetensors FORMAT fact, the same
+# one engines/audio.py's own table names; not engine-specific, so this stays
+# in the engine-agnostic core rather than importing a pack's table).
+_SAFETENSORS_DTYPE_SIZE = {
+    "F64": 8, "F32": 4, "F16": 2, "BF16": 2,
+    "I64": 8, "I32": 4, "I16": 2, "I8": 1, "U8": 1, "BOOL": 1,
+}
+_SAFETENSORS_MAX_HEADER_BYTES = 64 * 1024 * 1024   # sanity cap, independent of the download size cap
+
+
+def _read_safetensors_file(path):
+    """Read a safetensors file into an ordered dict of
+    {key: {"dtype": str, "shape": list[int], "data": bytes}} -- stdlib
+    only, no safetensors/torch dependency (LORA-2E #1: "no new heavy
+    dependency"). Raises ValueError on anything that doesn't parse as a
+    valid safetensors header/body, including a malformed/malicious
+    data_offsets pair (negative, reversed, past the file, or overlapping
+    another tensor's bytes) or a byte length that doesn't match its own
+    declared shape/dtype -- never a partial or wrong-region read."""
+    with open(path, "rb") as f:
+        header_len_bytes = f.read(8)
+        if len(header_len_bytes) != 8:
+            raise ValueError("Not a valid safetensors file (short header).")
+        header_len = struct.unpack("<Q", header_len_bytes)[0]
+        if header_len > _SAFETENSORS_MAX_HEADER_BYTES:
+            raise ValueError("Not a valid safetensors file (header too large: %d bytes)." % header_len)
+        header_json = f.read(header_len)
+        if len(header_json) != header_len:
+            raise ValueError("Not a valid safetensors file (truncated header).")
+        try:
+            header = json.loads(header_json)
+        except (ValueError, UnicodeDecodeError):
+            raise ValueError("Not a valid safetensors file (bad header JSON).")
+        header.pop("__metadata__", None)
+        data_start = 8 + header_len
+        data_len = os.fstat(f.fileno()).st_size - data_start
+        entries = _validate_safetensors_entries(header, data_len)
+        tensors = {}
+        for start, end, key, shape, dtype in entries:
+            f.seek(data_start + start)
+            data = f.read(end - start)
+            if len(data) != end - start:
+                raise ValueError("Not a valid safetensors file (truncated tensor %r)." % key)
+            tensors[key] = {"dtype": dtype, "shape": shape, "data": data}
+    return tensors
+
+
+def _is_plain_int(x):
+    return isinstance(x, int) and not isinstance(x, bool)
+
+
+def _validate_safetensors_entries(header, data_len):
+    """Every tensor entry in a parsed safetensors `header`, validated and
+    returned as [(start, end, key, shape, dtype), ...] -- refuses (plain
+    ValueError) a non-integer/negative/reversed/out-of-file data_offsets
+    pair, an unrecognised dtype, a byte length that doesn't match
+    shape*dtype-size, or two tensors whose byte ranges overlap."""
+    entries = []
+    for key, info in header.items():
+        shape = info.get("shape") if isinstance(info, dict) else None
+        offsets = info.get("data_offsets") if isinstance(info, dict) else None
+        dtype = info.get("dtype") if isinstance(info, dict) else None
+        if not (isinstance(shape, list) and all(_is_plain_int(d) and d >= 0 for d in shape)
+                and isinstance(offsets, list) and len(offsets) == 2
+                and all(_is_plain_int(o) for o in offsets)):
+            raise ValueError("Not a valid safetensors file (bad tensor entry %r)." % key)
+        start, end = offsets
+        if start < 0 or end < 0 or start > end:
+            raise ValueError("Not a valid safetensors file (invalid data_offsets for %r)." % key)
+        if end > data_len:
+            raise ValueError("Not a valid safetensors file (data_offsets for %r reach past the file)." % key)
+        elemsize = _SAFETENSORS_DTYPE_SIZE.get(dtype)
+        if elemsize is None:
+            raise ValueError("Not a valid safetensors file (unsupported dtype %r for %r)." % (dtype, key))
+        expect_len = elemsize
+        for d in shape:
+            expect_len *= d
+        if end - start != expect_len:
+            raise ValueError("Not a valid safetensors file (%r's byte length doesn't match its shape/dtype)." % key)
+        entries.append((start, end, key, shape, dtype))
+    max_end_so_far = -1
+    for start, end, key, _shape, _dtype in sorted(entries, key=lambda e: (e[0], e[1])):
+        if start < max_end_so_far:
+            raise ValueError("Not a valid safetensors file (%r overlaps another tensor's bytes)." % key)
+        max_end_so_far = max(max_end_so_far, end)
+    return entries
+
+
+def _write_safetensors_file(path, tensors):
+    """Write `tensors` ({key: {"dtype","shape","data"}}) as a safetensors
+    file, the same on-disk shape _read_safetensors_file() reads back --
+    stdlib only. Builds the whole file in memory first, so a caller writing
+    to a temp path never leaves a half-written file behind on failure."""
+    header = {}
+    offset = 0
+    buffers = []
+    for key, t in tensors.items():
+        n = len(t["data"])
+        header[key] = {"dtype": t["dtype"], "shape": list(t["shape"]), "data_offsets": [offset, offset + n]}
+        offset += n
+        buffers.append(t["data"])
+    header_bytes = json.dumps(header).encode("utf-8")
+    # Real safetensors files pad the header with trailing spaces to an
+    # 8-byte boundary so the data section starts aligned; not every reader
+    # requires it, but this does it too so a converted file looks ordinary.
+    header_bytes += b" " * ((-len(header_bytes)) % 8)
+    with open(path, "wb") as f:
+        f.write(struct.pack("<Q", len(header_bytes)))
+        f.write(header_bytes)
+        for b in buffers:
+            f.write(b)
+
+
+def _convert_lora_file(convert_name, src_path, dest_path):
+    """LORA-2E #1: run the pack-declared conversion `convert_name` against
+    a just-downloaded LoRA file, writing the result to `dest_path` (never
+    `src_path` itself -- the caller swaps it in only once this returns
+    without raising). The core here knows nothing about what `convert_name`
+    does or which model it is for -- it only asks engines.lora_converter()
+    for the function a pack registered under that name, and raises
+    ValueError (the original file stays untouched) if none is registered
+    or the conversion itself refuses."""
+    convert = engines.lora_converter(convert_name)
+    if convert is None:
+        raise ValueError("No LoRA converter named %r is registered." % convert_name)
+    tensors = _read_safetensors_file(src_path)
+    converted = convert(tensors)
+    _write_safetensors_file(dest_path, converted)
+
+
 def _lora_download_target(lane, family_id, repo, filename):
     """Build C (+ LORA-2B's per-family folder): every download-safety rule
     in one place. Returns (url, dest, max_bytes) or raises ValueError
@@ -877,11 +1032,7 @@ def _lora_download_target(lane, family_id, repo, filename):
                            "config.json to turn them on." % lane["name"])
     if not isinstance(repo, str) or not REPO_ID_RE.match(repo):
         raise ValueError("That is not a valid Hugging Face repo id.")
-    if not family_id:
-        present = _families_for_lane(models_for(lane))
-        if len(present) == 1:
-            family_id = present[0]["id"]
-    family = _family_by_id(family_id)
+    family = _resolved_family(lane, family_id)
     if family is None:
         raise ValueError("Name a style family to download from (Browse styles again and "
                           "pick \"Get it\" from the list).")
@@ -942,7 +1093,7 @@ class _PinnedRedirectHandler(urllib.request.HTTPRedirectHandler):
 _DOWNLOAD_OPENER = urllib.request.build_opener(_PinnedRedirectHandler)
 
 
-def _run_lora_download(lane, url, dest, max_bytes, repo, filename):
+def _run_lora_download(lane, url, dest, max_bytes, repo, filename, convert_name=None):
     state = {"repo": repo, "file": filename, "bytes": 0, "total": None,
              "done": False, "ok": False, "error": "", "cancel": False}
     with DOWNLOAD_LOCK:
@@ -975,6 +1126,25 @@ def _run_lora_download(lane, url, dest, max_bytes, repo, filename):
                     f.write(chunk)
                     state["bytes"] = got
         os.replace(part, dest)
+        if convert_name:
+            # LORA-2E #1: the pack declared a conversion for this family --
+            # run it now, on the just-verified download, before it's ever
+            # listed. A conversion failure fails the WHOLE download (clear
+            # sentence, no partials left behind) rather than leaving an
+            # unconverted file a picker would list as if it just worked.
+            tmp = dest + ".converting"
+            try:
+                _convert_lora_file(convert_name, dest, tmp)
+                os.replace(tmp, dest)
+            except Exception as e:
+                for p in (tmp, dest):
+                    try:
+                        if os.path.exists(p):
+                            os.remove(p)
+                    except OSError:
+                        pass
+                raise ValueError("Downloaded, but could not convert %s for this engine: %s"
+                                 % (filename, e))
         state["ok"] = True
         discover_lane(lane)   # Build B: so the picker lists it right away
     except OSError as e:
@@ -6842,8 +7012,12 @@ class Handler(BaseHTTPRequestHandler):
         present = _families_for_lane(models_for(lane))
         if cap:
             present = [f for f in present if f.get("cap") == cap]
+        # "convert" is a bool, not the pack's converter name -- the page
+        # only needs to know a converted file needs one, never what it is
+        # or which model it's for (LORA-2E #1: stays engine-agnostic).
         families_meta = [{"id": f["id"], "label": f.get("label", f["id"]), "cap": f.get("cap"),
-                          "folder": f.get("folder") or ""} for f in present]
+                          "folder": f.get("folder") or "", "convert": bool(f.get("convert"))}
+                         for f in present]
         if requested:
             family = next((f for f in present if f["id"] == requested), None)
         else:
@@ -6892,8 +7066,13 @@ class Handler(BaseHTTPRequestHandler):
             with DOWNLOAD_LOCK:
                 DOWNLOADS.pop(lane["id"], None)
             return {"ok": False, "error": str(e)}, 400
+        # LORA-2E #1: the SAME family _lora_download_target just resolved,
+        # named only by its declared "convert" string -- never re-derives
+        # anything download-safety already checked.
+        convert_name = (_resolved_family(lane, p.get("family")) or {}).get("convert")
         threading.Thread(target=_run_lora_download,
                          args=(lane, url, dest, max_bytes, p.get("repo"), p.get("file")),
+                         kwargs={"convert_name": convert_name},
                          daemon=True).start()
         return {"ok": True}, 200
 

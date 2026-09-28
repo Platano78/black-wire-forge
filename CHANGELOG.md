@@ -45,6 +45,18 @@ All notable changes to Black Wire Forge are recorded here.
   room; picking none leaves every graph byte-for-byte the same as before. The "Browse styles"
   catalog contract (`engines.style_catalogs()`) now carries a family per engine (id, label, cap,
   modes, the pool-match rule, and the Hugging Face base-model id) instead of one Qwen-only entry.
+- MiniMax-Music3 LoRAs downloaded through "Browse styles" are now converted automatically after
+  the download, before they're ever listed: every Music3 LoRA on the Hub is trained against
+  separate q/k/v attention projections, but the engine's attention is one fused matrix, so a
+  file downloaded as-is silently applied only a quarter of its intended effect (its `to_out`
+  quarter). The conversion is an exact merge (no approximation, no new heavy dependency), and a
+  file it can't convert is refused with a plain sentence rather than guessed at; a conversion
+  failure fails the whole download, leaving nothing partial behind. A lane with downloads off
+  still shows the copy-paste `hf download` command, now with a second line when the pack needs
+  converting. "Browse styles" also refuses a family that's declared somewhere in the catalog but
+  not actually present on the lane you're downloading to, and reads a few more forms of trigger
+  word from a model card ("Trigger Prompt", a bare "Trigger:" label, "activation token(s)", and
+  the README front matter's own `instance_prompt:` field).
 
 ### Fixed
 

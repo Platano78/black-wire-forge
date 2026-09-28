@@ -625,6 +625,22 @@ def style_catalogs():
     return out
 
 
+def lora_converter(name):
+    """LORA-2E #1: the callable a pack declared under "lora_converters" for
+    `name` (a style_catalogs entry's "convert" value), or None when no pack
+    declares one under that name. server.py's download worker calls THIS,
+    never a pack's converter function directly, so it stays engine-agnostic
+    -- it knows only the string a family declared, not what the function
+    does or which model it's for."""
+    if not name:
+        return None
+    for pack in _discover():
+        conv = (pack.get("lora_converters") or {}).get(name)
+        if conv:
+            return conv
+    return None
+
+
 def licences():
     """Each pack's licence entries, each with an added 'engine' key = pack id.
 

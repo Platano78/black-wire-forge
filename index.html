@@ -4192,14 +4192,20 @@ async function renderDownloadStatus(lane){
     if(b) b.onclick = () => postJSON('/api/lora/download/cancel', {lane});
   }
 }
-async function loraGetIt(lane, downloadsOn, family, repo, file, folder){
+async function loraGetIt(lane, downloadsOn, family, repo, file, folder, convert){
   if(!downloadsOn){
     const dir = '<ComfyUI>/models/loras' + (folder ? '/' + folder : '');
     const cmd = 'hf download ' + repo + ' ' + file + ' --local-dir ' + dir;
     // The message shows the command regardless; the clipboard write is a
     // best-effort convenience that must never block or delay it (a denied
     // or slow permission prompt must not hang "Get it").
-    $('#lorasMsg').textContent = 'Downloads are off for this lane. Run on the ComfyUI machine: ' + cmd;
+    let msg = 'Downloads are off for this lane. Run on the ComfyUI machine: ' + cmd;
+    // LORA-2E #1: this family's engine needs its LoRA files converted
+    // before ComfyUI can load them -- the automatic conversion only runs
+    // on the download-worker path, so a manual copy needs telling.
+    if(convert) msg += ' This pack needs converting for this engine before ComfyUI can load it -- '
+      + 'turn downloads on for this lane so it converts automatically, or convert it yourself.';
+    $('#lorasMsg').textContent = msg;
     if(navigator.clipboard) navigator.clipboard.writeText(cmd)
       .then(() => { $('#lorasMsg').textContent += ' (copied)'; }, () => {});
     return;
@@ -4210,7 +4216,7 @@ async function loraGetIt(lane, downloadsOn, family, repo, file, folder){
   LORAS_POLL = setInterval(() => renderDownloadStatus(lane), 1500);
   renderDownloadStatus(lane);
 }
-function loraCardHTML(pack, family, folder){
+function loraCardHTML(pack, family, folder, convert){
   const lic = pack.licence ? esc(pack.licence) : 'licence unknown';
   // Owner ruling 2026-09-28: no hiding, no "Advanced" filter -- every pack
   // is listed; an NSFW one carries a plain badge, same weight as the
@@ -4223,7 +4229,8 @@ function loraCardHTML(pack, family, folder){
     '<div class="ledger-row"><span>' + esc(f.filename) + ' (' + humanBytes(f.size) + ')</span>'
     + '<span class="leader"></span>'
     + '<button type="button" class="btn" data-get-repo="' + esc(pack.id) + '" data-get-file="' + esc(f.filename)
-    + '" data-get-family="' + esc(family || '') + '" data-get-folder="' + esc(folder || '') + '">Get it</button></div>'
+    + '" data-get-family="' + esc(family || '') + '" data-get-folder="' + esc(folder || '')
+    + '" data-get-convert="' + (convert ? '1' : '') + '">Get it</button></div>'
   ).join('');
   return '<div class="credit-row">' + preview
     + '<div class="name">' + esc(pack.name || pack.id) + ' <span class="muted">by ' + esc(pack.author || '?') + ' · ' + lic + '</span>' + nsfwBadge + '</div>'
@@ -4233,6 +4240,7 @@ function loraCardHTML(pack, family, folder){
 }
 let LORAS_REQ = 0;
 let LORAS_FAMILY = null;
+let LORAS_CONVERT = {};   // family id -> whether it declares a LoRA convert step (LORA-2E #1)
 async function openLoraDrawer(keepFamily){
   const lane = STATE.activeLane;
   const dlg = $('#lorasDialog');
@@ -4259,6 +4267,8 @@ async function openLoraDrawer(keepFamily){
   const families = r.families || [];
   LORAS_FAMILY = r.family || LORAS_FAMILY;
   const folder = r.folder || '';
+  LORAS_CONVERT = {};
+  families.forEach(f => { LORAS_CONVERT[f.id] = !!f.convert; });
   const tabsHTML = families.length > 1
     ? '<div class="history-toggle" id="lorasFamilyTabs" role="tablist">' + families.map(f =>
         '<button type="button" data-family="' + esc(f.id) + '" data-folder="' + esc(f.folder || '') + '"'
@@ -4267,13 +4277,13 @@ async function openLoraDrawer(keepFamily){
     : '';
   if(r.note){ $('#lorasBody').innerHTML = tabsHTML + '<p class="muted">' + esc(r.note) + '</p>'; }
   else if(!r.loras || !r.loras.length){ $('#lorasBody').innerHTML = tabsHTML + '<p class="muted">Nothing found.</p>'; }
-  else { $('#lorasBody').innerHTML = tabsHTML + r.loras.map(pack => loraCardHTML(pack, LORAS_FAMILY, folder)).join(''); }
+  else { $('#lorasBody').innerHTML = tabsHTML + r.loras.map(pack => loraCardHTML(pack, LORAS_FAMILY, folder, LORAS_CONVERT[LORAS_FAMILY])).join(''); }
   $$('#lorasBody [data-family]').forEach(b => {
     b.onclick = () => { LORAS_FAMILY = b.dataset.family; openLoraDrawer(true); };
   });
   $$('#lorasBody [data-get-repo]').forEach(b => {
     b.onclick = () => loraGetIt(lane, laneInfo.downloads, b.dataset.getFamily, b.dataset.getRepo,
-                                b.dataset.getFile, b.dataset.getFolder);
+                                b.dataset.getFile, b.dataset.getFolder, b.dataset.getConvert === '1');
   });
   renderDownloadStatus(lane);
 }

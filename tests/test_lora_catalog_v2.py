@@ -102,6 +102,16 @@ check("a backtick-quoted trigger word wins over the surrounding sentence",
       srv._extract_trigger_words(readme("widget_preview")) == "Super Realism")
 check("no trigger-word/activation line -> None",
       srv._extract_trigger_words(readme("prose_after_images")) is None)
+check("LORA-2E #3: a 'Trigger Prompt:' line (no backticks) is recognised",
+      srv._extract_trigger_words(readme("trigger_prompt")) == "cyberpunk neon portrait")
+check("LORA-2E #3: the front-matter instance_prompt: key wins outright, no body scan needed",
+      srv._extract_trigger_words("---\ninstance_prompt: sks_style_token\n---\n\nSome prose here.\n")
+      == "sks_style_token")
+check("LORA-2E #3: instance_prompt: null in front matter falls through to a body trigger line",
+      srv._extract_trigger_words("---\ninstance_prompt: null\n---\n\nActivation token: fallback token\n")
+      == "fallback token")
+check("LORA-2E #3: a bare 'Trigger:' label (no \"word\") is recognised",
+      srv._extract_trigger_words("Some intro text.\n\nTrigger: neon, chrome, rain\n") == "neon, chrome, rain")
 check("a plain 'Recommended strength: 0.8' line",
       srv._extract_strength(readme("absolute_preview")) == 0.8)
 check("'Keep the LoRA strength at 1.0.' (a real card's own phrasing)",
@@ -211,6 +221,14 @@ try:
 
     check("a file not listed for that repo in that family's catalog is still refused",
           _raises_valueerror(lambda: srv._lora_download_target(lane, "qwen_image", "owner/pack", "nope.safetensors")))
+
+    # LORA-2E #2: a family DECLARED in style_catalogs (ltx25) but whose
+    # model is NOT discovered on THIS lane -- tightened past LORA-2B's
+    # "declared anywhere" check to "present on this lane" (_families_for_lane).
+    engines.style_catalogs = lambda: FIXTURE_FAMILIES[:2]   # qwen_image + ltx25
+    check("a family declared in style_catalogs but not present on this lane is refused, not just any declared id",
+          _raises_valueerror(lambda: srv._lora_download_target(lane, "ltx25", "owner/pack", "s.safetensors")))
+    engines.style_catalogs = lambda: [FIXTURE_FAMILIES[0]]
 
     url2, dest2, _ = srv._lora_download_target(lane, None, "owner/pack", "s.safetensors")
     check("family omitted + exactly one family present -> defaults to it (pre-LORA-2B call shape kept working)",

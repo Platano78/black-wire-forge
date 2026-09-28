@@ -53,8 +53,10 @@ def refused(repo, filename):
         return True
 
 check("a valid repo+file from the catalog is ACCEPTED (returns url/dest/max_bytes)",
+      # LORA-2B: lands under the resolved family's OWN subfolder (qwen_image here,
+      # the real style_catalogs entry's "folder"), not flat under loras_dir.
       srv._lora_download_target(LANE_ON, None, "owner/pack", "style.safetensors")[1]
-      == os.path.join(LORAS_DIR, "style.safetensors"))
+      == os.path.join(LORAS_DIR, "qwen_image", "style.safetensors"))
 check("path traversal in the filename is refused", refused("owner/pack", "../x.safetensors") is True)
 check("a non-.safetensors file is refused", refused("owner/pack", "style.bin") is True)
 check("an id not from the catalog is refused", refused("someone/else", "style.safetensors") is True)
@@ -67,9 +69,11 @@ check("a leading-dot filename is refused", refused("owner/pack", ".style.safeten
 url, dest, max_bytes = srv._lora_download_target(LANE_ON, None, "owner/pack", "style.safetensors")
 check("the URL is built server-side against the real HF host, from the catalog id/file only",
       url == "https://huggingface.co/owner/pack/resolve/main/style.safetensors", url)
-check("the target stays inside loras_dir", os.path.dirname(dest) == os.path.abspath(LORAS_DIR))
+check("the target stays inside loras_dir",
+      os.path.commonpath([dest, os.path.abspath(LORAS_DIR)]) == os.path.abspath(LORAS_DIR))
 check("default max_bytes is 4 GiB", max_bytes == 4 * 1024 ** 3, max_bytes)
 
+os.makedirs(os.path.dirname(dest), exist_ok=True)   # LORA-2B: the family subfolder, real downloads make this via _run_lora_download
 with open(dest, "wb") as f:
     f.write(b"already here")
 check("refuses when the destination file already exists", refused("owner/pack", "style.safetensors") is True)
