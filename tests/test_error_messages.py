@@ -188,7 +188,10 @@ RESERVED_FIELD_IDS = {"mode"}
 
 
 def full_body(cap, mode, fields):
-    body = {"lane": "t", "kind": cap, "mode": mode}
+    # confirm: the writer checks' pre-render confirmation (v1.1.0, e.g. "lyrics but no voice")
+    # would otherwise answer first; this file tests field validation, and those checks have
+    # their own suites (test_sound_writers.py and the other *_writers tests).
+    body = {"lane": "t", "kind": cap, "mode": mode, "confirm": True}
     for f in fields:
         if f["id"] in RESERVED_FIELD_IDS:
             continue
