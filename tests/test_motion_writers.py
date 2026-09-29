@@ -276,7 +276,7 @@ check("200 with line, look and the derived length", code == 200 and b.get("field
     "line": PIRATE, "look": "dim lantern light, close-up", "length": ltx.talking_frames(ltx.spoken_words(PIRATE))}, b)
 check("14 words -> 177 frames, no problems, no retry", b.get("fields", {}).get("length") == 177
       and b.get("problems") == [] and b.get("retried") is False, b)
-check("the writer's own prompt was sent", BRAIN["asked"][0][0]["content"] == ltx.TALKING_WRITER_PROMPT)
+check("the writer's own prompt was sent", BRAIN["asked"][0][0]["content"] == ltx.TALKING_WRITER_PROMPT + "\n\n" + srv.GUIDE_SKILL_SAY_RULE)
 b, code = skill("talking", "talking", "a 10 second clip of her saying hello",
                 ["LENGTH: 241\nLOOK: soft light\nLINE: Hello there."])
 check("a length the user stated is kept, not derived", code == 200 and b["fields"]["length"] == 241, b)

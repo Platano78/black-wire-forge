@@ -871,6 +871,8 @@ def parse_writer_reply(w, text):
     """Parse a writer's line-delimited reply ->
     {"question": str, "options": [..]} when it asks (options may be []),
     {"missing": str} when a writer with `pictures` says one is missing,
+    {"say": str} when the writer just talks (FB-2: a SAY line before any
+    field; its text runs on over the following lines up to the next key),
     else {"values": {field id: raw text}, "note": str}. A non-blank QUESTION
     line before the multiline key wins; an OPTIONS line anywhere after it
     gives the choices. The multiline key's value runs to the end (a NOTE line
@@ -918,6 +920,14 @@ def parse_writer_reply(w, text):
             continue
         if head == "MISSING" and w.get("pictures") and not started and value and value.upper() != none:
             return {"missing": value}
+        if head == "SAY" and "SAY" not in keys and not started and value and value.upper() != none:
+            said = [value]
+            for more in all_lines[i + 1:]:
+                h2, _ = _writer_line(more)
+                if h2 in keys or h2 in ("NOTE", "QUESTION", "OPTIONS", "MISSING"):
+                    break
+                said.append(more)
+            return {"say": "\n".join(said).strip()}
         if head == "QUESTION" and not started and value and value.upper() != none:
             options = next((_writer_options(v, none) for h, v in map(_writer_line, all_lines[i + 1:])
                             if h == "OPTIONS"), [])

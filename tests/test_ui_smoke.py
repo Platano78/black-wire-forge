@@ -210,6 +210,10 @@ def tab(page, rid):
 # the page's own setEngineChipOpen(), the same call the chip's click uses.
 OPEN_PICKER = "() => { if(typeof setEngineChipOpen === 'function') setEngineChipOpen(true); }"
 
+# FB-2: with a helper, a writer mode's prompt box and its content fields sit
+# under "What the guide filled in", closed while empty; open it to type by hand.
+OPEN_FILLED = "() => { const d = document.querySelector('#guideFilled'); if(d && !d.hidden) d.open = true; }"
+
 def pick_mode(page, mode):
     """Check the room's engine radio for `mode`; False when the lane cannot
     offer it (radio disabled) -- the calling block then FAILS, because on
@@ -628,6 +632,7 @@ try:
         print()
         print("A5: a hand-typed field carries over ONE engine switch when the new mode reuses its "
               "id; with no further edit, the NEXT switch takes that mode's own default")
+        page.evaluate(OPEN_FILLED)
         page.fill('#inspector [data-field-id="lyrics"]', "[Verse]\nhand-typed lyrics for A5")
         page.wait_for_timeout(100)
         if not pick_mode(page, "music"):
@@ -671,6 +676,7 @@ try:
         if not pick_mode(page, "t2i"):
             check("t2i unavailable on this lane: no prompt to go stale", False)
         else:
+            page.evaluate(OPEN_FILLED)
             page.fill("#promptBox", "a red kite over the sea")
             page.click(tab(page, "cleanup"))
             page.wait_for_timeout(200)
@@ -935,30 +941,30 @@ try:
         asleep_page.close()
 
         print()
-        print("L5 (P2c): Help me write this goes to the room's guide -- its answer, Use these, nothing sent to /api/generate")
+        print("L5 (P2c, FB-2): the guide's box is the write -- the draft fills the prompt, nothing sent to /api/generate")
         helper_page = browser.new_page(viewport={"width": 1440, "height": 900})
         guard(helper_page)
         helper_page.goto(URL, wait_until="networkidle", timeout=30000)
         helper_page.wait_for_timeout(1500)
         helper_page.click(tab(helper_page, "picture"))
         helper_page.wait_for_timeout(200)
-        check("L5: Help me write this is visible with a helper configured",
-              helper_page.is_visible("#helperWriteBtn"))
+        check("L5: with a helper configured, the guide's box asks for the picture (Send is the write)",
+              helper_page.is_visible("#guideInput") and not helper_page.is_visible("#helperWriteBtn")
+              and helper_page.get_attribute("#guideInput", "placeholder") == "Tell the Picture room what you want")
         before = len(HELPER_REQUESTS)
-        helper_page.fill("#promptBox", "a kite")
-        helper_page.click("#helperWriteBtn")
-        helper_page.wait_for_selector("#guideSkillUse", timeout=15000)
+        genbefore = len(GENERATED)
+        helper_page.fill("#guideInput", "a kite")
+        helper_page.press("#guideInput", "Enter")
+        helper_page.wait_for_function("k => document.querySelector('#promptBox').value === k",
+                                      arg=FakeHelperHandler.KITE, timeout=15000)
         check("L5: the fake helper received exactly one request", len(HELPER_REQUESTS) == before + 1)
-        check("L5: the guide panel shows the guide's answer",
-              "a red kite over the sea" in helper_page.inner_text("#guidePanel #guideSkill"),
-              helper_page.inner_text("#guideSkill"))
+        check("L5: the guide says what it filled",
+              "I filled in Prompt" in helper_page.inner_text("#guidePanel #guideLog"),
+              helper_page.inner_text("#guideLog"))
         helper_screenshot = os.path.join(tempfile.gettempdir(), "bwf_l5_screenshot-picture-helper.png")
         helper_page.screenshot(path=helper_screenshot)
         print("  (screenshot saved to %s)" % helper_screenshot)
-        genbefore = len(GENERATED)
-        helper_page.click("#guideSkillUse")
-        helper_page.wait_for_timeout(200)
-        check("L5: Use these replaces the prompt",
+        check("L5: the draft replaced the prompt with no click",
               helper_page.input_value("#promptBox") == FakeHelperHandler.KITE,
               helper_page.input_value("#promptBox"))
         check("L5: nothing was ever sent to /api/generate", len(GENERATED) == genbefore)

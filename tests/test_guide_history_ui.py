@@ -41,7 +41,8 @@ try:
         page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
 
         print("round trip: a sent message reaches the server's own history file")
-        ps.HELPER_STATE["replies"][:] = ["Describe a picture and press Make."]
+        # FB-2: t2i is a writer mode, so the box goes to its writer; SAY is the writer just talking.
+        ps.HELPER_STATE["replies"][:] = ["SAY: Describe a picture and press Make."]
         page.goto(URL + "#room=picture", wait_until="networkidle")
         page.fill("#guideInput", "hello there")
         page.press("#guideInput", "Enter")
@@ -60,7 +61,7 @@ try:
         page.wait_for_function("document.querySelectorAll('#guideLog .guide-msg').length >= 3", timeout=15000)
         check("the earlier conversation still shows, from localStorage",
               "hello there" in log_text(page), log_text(page))
-        ps.HELPER_STATE["replies"][:] = ["Noted."]
+        ps.HELPER_STATE["replies"][:] = ["SAY: Noted."]
         page.fill("#guideInput", "still works offline")
         page.press("#guideInput", "Enter")
         page.wait_for_function("document.querySelectorAll('#guideLog .guide-msg').length >= 4", timeout=15000)

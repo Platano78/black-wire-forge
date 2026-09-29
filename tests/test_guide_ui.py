@@ -3,7 +3,10 @@ Room (P1), every other room's guide, and the room context a generator room
 sends with each turn (P1b/P1c); the song writer skill and the Make-time confirm (P2);
 "Not right? Tell the guide" on a finished picture (P2b); one voice (P2c): "Help
 me write this" / "Describe this picture" by the prompt box go to the room's
-guide and answer in its panel, which sits at the top of the form.
+guide and answer in its panel, which sits at the top of the form. FB-2: in a
+writer mode the guide's box IS the write -- Send posts /api/guide/skill and the
+draft fills "What the guide filled in" with no click (tests/test_fb2_ui.py is
+the dedicated gate); these sections are re-pointed to that flow.
 
 Drives the real page in a real browser (Playwright) against its own
 server.py subprocesses (scratch config + scratch data, random free ports),
@@ -225,6 +228,17 @@ def pick(page, mode):
     page.evaluate("() => { if(typeof setEngineChipOpen === 'function') setEngineChipOpen(true); }")
     page.check('#enginePicker input[data-mode="%s"]' % mode)
 
+OPEN_FILLED = "() => { const d = document.querySelector('#guideFilled'); if(d && !d.hidden) d.open = true; }"
+
+def write(page, text):
+    """FB-2: a writer mode's one box -- type the request and press Enter."""
+    page.fill("#guideInput", text)
+    page.press("#guideInput", "Enter")
+
+def wait_value(page, sel, value):
+    page.wait_for_function("([s, v]) => document.querySelector(s) && document.querySelector(s).value === v",
+                           arg=[sel, value], timeout=15000)
+
 def shot(page, name):
     if SHOTS:
         os.makedirs(SHOTS, exist_ok=True)
@@ -344,21 +358,27 @@ try:
               text_of(page, "#guideSizeNote"))
         page.close()
 
-        print("Music: the Sound Room Guide, with the room's mode and primary fields sent as context")
+        print("Music: the Sound Room Guide, with the room's mode and primary fields sent as context (FB-2: to the writer)")
+        SKILL_CTX = []
         page = browser.new_page(viewport={"width": 1280, "height": 800})
         page.on("request", record_chat)
+        page.on("request", lambda req: SKILL_CTX.append(json.loads(req.post_data or "{}"))
+                if req.url.endswith("/api/guide/skill") and req.method == "POST" else None)
         enter_room(page, url_brain, "music")
         check("music: the panel is visible", page.is_visible("#guidePanel"))
         check("music: greeting shown first", guide_msgs(page)[:1] == [GUIDE_META["sound"]["greeting"]], guide_msgs(page))
         check("music: size note", text_of(page, "#guideSizeNote") == size_note("sound"), text_of(page, "#guideSizeNote"))
         mode = page.evaluate("STATE.mode")
         check("music: A song with words is the selected mode", mode == "song", mode)
+        page.evaluate(OPEN_FILLED)
         page.fill("#promptBox", "warm pop, clear female vocals, singing")
         page.fill("#f_duration", "150")
         del CHAT_BODIES[:]
-        HELPER.update(reply="Sung, then.", finish="stop")
-        send(page, "a song about the last ferry home", 3)
-        body = CHAT_BODIES[-1] if CHAT_BODIES else {}
+        HELPER.update(reply="QUESTION: Sung, or instrumental?", finish="stop")
+        send(page, "a song about the last ferry home", 2)
+        page.wait_for_selector("#guideSkillRestart", timeout=15000)
+        check("music: the turn went to the writer, not the chat", CHAT_BODIES == [] and len(SKILL_CTX) == 1, CHAT_BODIES)
+        body = SKILL_CTX[-1] if SKILL_CTX else {}
         ctx = body.get("context") or {}
         check("music: the turn carries the selected mode", ctx.get("mode") == "song", body)
         check("music: and the primary field values, numbers as numbers",
@@ -366,7 +386,7 @@ try:
               and (ctx.get("fields") or {}).get("duration") == 150, ctx)
         sent = HELPER["requests"][-1]["messages"][-1]["content"] if HELPER["requests"] else ""
         check("music: the helper sees the context line, with real labels",
-              sent.startswith('[Current room: Music · mode: A song with words (song) · Style / genre: '
+              sent.startswith('[Current room: Music · Style / genre: '
                               '"warm pop, clear female vocals, singing"') and "Duration (seconds): 150" in sent, sent)
         check("music: the log shows the user's own words, not the context line",
               guide_msgs(page)[1] == "a song about the last ferry home", guide_msgs(page))
@@ -377,67 +397,64 @@ try:
         SKILL_BODIES = []
         GEN_BODIES = []
         # ---------------- P2: the song writer skill + the Make-time confirm ----------------
-        print("Music, song: Help me write this -> the guide's song writer skill")
+        print("Music, song: the guide's box -> the guide's song writer skill, filled in with no click (FB-2)")
         page = browser.new_page(viewport={"width": 1280, "height": 800})
         page.on("request", lambda req: (SKILL_BODIES.append(json.loads(req.post_data or "{}")) if req.url.endswith("/api/guide/skill") and req.method == "POST" else None, GEN_BODIES.append(json.loads(req.post_data or "{}")) if req.url.endswith("/api/generate") and req.method == "POST" else None))
         enter_room(page, url_brain, "music")
-        check("skill: Help me write this shows for a mode with a writer", page.is_visible("#helperWriteBtn"))
+        check("skill: a writer mode offers no Help me write this -- Send is the write", not page.is_visible("#helperWriteBtn"))
         check("skill: the guide panel has no Write button of its own", page.query_selector("#guideWriteBtn") is None)
-        check("skill: the button says it goes to the guide", text_of(page, "#helperCue") == "→ " + GUIDE_META["sound"]["name"],
-              text_of(page, "#helperCue"))
-        page.fill("#promptBox", "a song about the sea")
+        check("skill: the box says it goes to the room", page.get_attribute("#guideInput", "placeholder")
+              == "Tell the Music room what you want", page.get_attribute("#guideInput", "placeholder"))
         shot(page, "skill-write-button-1280x800")
         HELPER["reply"] = GOOD
-        page.click("#helperWriteBtn")
-        page.wait_for_selector("#guideSkillUse", timeout=15000)
-        check("skill: the reply is in the guide panel, in the guide's voice", page.eval_on_selector(
-            "#guideSkill", "e => !!e.closest('#guidePanel')") and text_of(page, "#guideSkill .guide-who").lower() == GUIDE_META["sound"]["name"].lower()
-              and "Here is what I wrote." in text_of(page, "#guideSkill"))
-        check("skill: the preview names the fields", "Style / genre" in text_of(page, "#guideSkill") and "warm pop, clear female vocals" in text_of(page, "#guideSkill"))
-        check("skill: lyrics in a monospaced block", page.eval_on_selector("#guideSkill pre", "e => getComputedStyle(e).fontFamily").lower().find("mono") >= 0)
+        write(page, "a song about the sea")
+        wait_value(page, "#promptBox", "warm pop, clear female vocals")
+        check("skill: the reply is the guide's own line in its panel, no card (R10)", not page.is_visible("#guideSkill")
+              and page.eval_on_selector_all("#guideLog .guide-msg", "els => els[els.length - 1].classList.contains('from-guide')")
+              and guide_msgs(page)[-1].startswith("I filled in Style / genre")
+              and page.is_visible("#guideDraftBar #guideSkillRestart"), guide_msgs(page)[-1:])
+        check("skill: the fields are the preview -- no read-only copy", page.query_selector("#guideSkill dl") is None
+              and page.query_selector("#guideSkill pre") is None)
         check("skill: the request carried the room context", bool(SKILL_BODIES) and SKILL_BODIES[-1].get("mode") == "song" and SKILL_BODIES[-1].get("topic") == "a song about the sea" and (SKILL_BODIES[-1].get("context") or {}).get("mode") == "song", SKILL_BODIES[-1:])
         check("skill: no 'what the brain was asked' disclosure -- the user sees only the guide's voice",
               page.query_selector("#guideSkillSent") is None)
         shot(page, "skill-preview-1280x800")
-        page.click("#guideSkillUse")
-        check("skill: Use these fills the style", page.input_value("#promptBox") == "warm pop, clear female vocals", page.input_value("#promptBox"))
-        check("skill: Use these fills the lyrics", page.input_value("#f_lyrics").startswith("[Intro]\nhello sea"), page.input_value("#f_lyrics"))
-        check("skill: the preview closes", not page.is_visible("#guideSkill"))
+        check("skill: the draft fills the style", page.input_value("#promptBox") == "warm pop, clear female vocals", page.input_value("#promptBox"))
+        check("skill: the draft fills the lyrics", page.input_value("#f_lyrics").startswith("[Intro]\nhello sea"), page.input_value("#f_lyrics"))
+        check("skill: no Use these to press, What the guide filled in is open", page.query_selector("#guideSkillUse") is None
+              and page.evaluate("document.querySelector('#guideFilled').open"))
         print("skill: the question path")
         HELPER["reply"] = "QUESTION: Sung, or instrumental?"
-        page.fill("#promptBox", "music for my video about the sea")
-        page.click("#helperWriteBtn")
+        write(page, "music for my video about the sea")
         page.wait_for_selector("#guideSkillRestart", timeout=15000)
         check("skill: the question is shown", "Sung, or instrumental?" in text_of(page, "#guideSkill"))
         shot(page, "skill-question-1280x800")
         HELPER["reply"] = GOOD
         check("skill: the panel's input is the answer box, the bubble has none", page.query_selector("#guideSkillAnswer") is None
               and page.get_attribute("#guideInput", "placeholder").startswith("Your answer"), page.get_attribute("#guideInput", "placeholder"))
+        page.fill("#promptBox", "")
         page.fill("#guideInput", "Sung")
         page.press("#guideInput", "Enter")
-        page.wait_for_selector("#guideSkillUse", timeout=15000)
+        wait_value(page, "#promptBox", "warm pop, clear female vocals")
         check("skill: the answer goes back, with its question, and the same topic", SKILL_BODIES[-1].get("answers") == [{"q": "Sung, or instrumental?", "a": "Sung"}] and SKILL_BODIES[-1].get("topic") == "music for my video about the sea", SKILL_BODIES[-1])
-        page.click("#guideSkillDismiss")
-        check("skill: Dismiss closes it", not page.is_visible("#guideSkill"))
+        check("skill: once it wrote, the question's card is gone, nothing to dismiss (R10)", not page.is_visible("#guideSkill")
+              and page.query_selector("#guideSkillDismiss") is None)
         print("skill: problems are shown plainly")
         HELPER["reply"] = BAD
-        page.fill("#promptBox", "a song about the sea")
-        page.click("#helperWriteBtn")
+        write(page, "a song about the sea")
         page.wait_for_selector("#guideSkillProblems", timeout=15000)
         check("skill: both problems listed", page.eval_on_selector_all("#guideSkillProblems li", "els => els.length") == 2)
         shot(page, "skill-problems-1280x800")
         print("skill: 390 wide")
         HELPER["reply"] = GOOD
-        page.fill("#promptBox", "a song about the sea")
-        page.click("#helperWriteBtn")
-        page.wait_for_selector("#guideSkillUse", timeout=15000)
+        write(page, "a song about the sea")
+        wait_value(page, "#promptBox", "warm pop, clear female vocals")
         page.set_viewport_size({"width": 390, "height": 844})
         page.wait_for_timeout(300)
-        check("skill: no horizontal scroll at 390 with the preview open", no_hscroll(page))
-        page.locator("#guideSkill").scroll_into_view_if_needed()
+        check("skill: no horizontal scroll at 390 with the draft filled in", no_hscroll(page))
+        page.locator("#guidePanel").scroll_into_view_if_needed()
         shot(page, "skill-preview-390")
         page.set_viewport_size({"width": 1280, "height": 800})
-        page.click("#guideSkillDismiss")
         print("Make-time confirm: lyrics with no voice")
         page.fill("#promptBox", "warm acoustic pop, gentle drums")
         page.fill("#f_lyrics", "[Verse]\nSunlight on the water\n[Chorus]\nHold on")
@@ -454,33 +471,36 @@ try:
         check("confirm: the box closes", not page.is_visible("#makeConfirm"))
         page.click("#makeBtn")
         page.wait_for_selector("#makeConfirm:not([hidden])", timeout=15000)
+        n_gen, n_skill = len(GEN_BODIES), len(SKILL_BODIES)
+        HELPER["reply"] = GOOD
         page.click("#makeFixBtn")
-        check("confirm: Fix it goes to the guide", page.evaluate("document.activeElement && document.activeElement.id") == "guideInput" and not page.is_visible("#makeConfirm"))
+        wait_value(page, "#promptBox", "warm pop, clear female vocals")
+        check("confirm: Fix it goes to the guide, which rewrites against the list (R8)", len(SKILL_BODIES) == n_skill + 1
+              and SKILL_BODIES[-1].get("topic", "").startswith("Fix these before it renders: ")
+              and not page.is_visible("#makeConfirm") and len(GEN_BODIES) == n_gen, SKILL_BODIES[-1:])
         # P3b: Background music has its own writer now (the generic writer's page path
         # is covered by the P2c Picture t2i section below).
         print("Music, background music: a write conversation fills the caption and the lyrics")
         pick(page, "music")
         page.wait_for_timeout(600)
-        check("music: Help me write this is there", page.is_visible("#helperWriteBtn"), page.evaluate("STATE.mode"))
+        check("music: a writer mode, the guide's box is the write", page.is_visible("#guideFilled")
+              and not page.is_visible("#helperWriteBtn"), page.evaluate("STATE.mode"))
         MCAP = ("Global Metadata\n" + "Dusty 90s drums and a jazz piano loop. " * 30
                 + "\nVocal Details\nA male rapper with a low, gravelly voice.\nArrangement\nIntro: vinyl crackle, then the drums.")
         MLYR = "\n\n".join("[%s]\n" % t + "\n".join(["kicks on the shelf and the box is new"] * 8) for t in ("Verse", "Hook", "Verse", "Hook"))
         HELPER["replies"] = ["QUESTION: Who should sing it?\nOPTIONS: A male voice | A female voice | A duet",
                              "SECONDS: 150\nCAPTION:\n" + MCAP + "\nLYRICS:\n" + MLYR]
         del SKILL_BODIES[:]
-        page.fill("#promptBox", "a 90s boom bap rap about my brother's sneakers")
-        page.click("#helperWriteBtn")
+        write(page, "a 90s boom bap rap about my brother's sneakers")
         page.wait_for_selector("#guideSkillOptions", timeout=15000)
         page.click('#guideSkillOptions [data-option="A male voice"]')
-        page.wait_for_selector("#guideSkillUse", timeout=15000)
+        wait_value(page, "#promptBox", MCAP)
         check("music: the chosen answer went back with its question", SKILL_BODIES and SKILL_BODIES[-1].get("mode") == "music"
               and SKILL_BODIES[-1].get("answers") == [{"q": "Who should sing it?", "a": "A male voice"}], SKILL_BODIES[-1:])
-        check("music: the preview shows the description and the lyrics", "Vocal Details" in text_of(page, "#guideSkill")
-              and "kicks on the shelf" in text_of(page, "#guideSkill") and page.query_selector("#guideSkillProblems") is None)
+        check("music: no problems with the description and the lyrics", page.query_selector("#guideSkillProblems") is None)
         shot(page, "music-writer-preview-1280x800")
-        page.click("#guideSkillUse")
-        check("music: Use these fills the caption", page.input_value("#promptBox") == MCAP, page.input_value("#promptBox")[:80])
-        check("music: Use these fills the lyrics", page.input_value("#f_lyrics") == MLYR, page.input_value("#f_lyrics")[:80])
+        check("music: the draft fills the caption", page.input_value("#promptBox") == MCAP, page.input_value("#promptBox")[:80])
+        check("music: the draft fills the lyrics", page.input_value("#f_lyrics") == MLYR, page.input_value("#f_lyrics")[:80])
         print("Music, background music: a Markdown caption with no lyrics needs a confirm at Make")
         page.fill("#promptBox", "**Genre:** boom bap\n**Vocal Details** a raspy rapper")
         page.fill("#f_lyrics", "")
@@ -491,13 +511,14 @@ try:
         check("music confirm: Markdown and no real words are named", "Markdown" in confirm and "no real words" in confirm, confirm)
         check("music confirm: nothing was confirmed yet", len(GEN_BODIES) == 1 and "confirm" not in GEN_BODIES[0], GEN_BODIES)
         shot(page, "music-confirm-1280x800")
-        page.click("#makeFixBtn")
         page.close()
         print("no brain: no Write button, one line on how to add a helper")
         page = browser.new_page(viewport={"width": 1280, "height": 800})
         enter_room(page, url_none, "music")
         check("no brain: no Help me write this", not page.is_visible("#helperWriteBtn") and page.query_selector("#guideWriteBtn") is None)
-        check("no brain: the add-a-helper line for writing", text_of(page, "#guideWriteNoBrain") == "Add a helper to have the guide write the words for you.")
+        check("no brain: one line says the guide is off (FB-2 R6), with how to add a helper",
+              text_of(page, "#guideOffNote") == "The guide is off, so type straight into the fields."
+              and page.is_visible("#guideAddBrain") and not page.is_visible("#guideWriteNoBrain"))
         page.close()
 
         # ---------------- P2b: "Not right? Tell the guide" ----------------
@@ -560,13 +581,14 @@ try:
         page.locator("#guideSkill").scroll_into_view_if_needed()
         shot(page, "revise-reply-390")
         page.set_viewport_size({"width": 1280, "height": 800})
+        page.evaluate(OPEN_FILLED)
         page.fill("#promptBox", "something else")
         page.click("#guideReviseUse")
         check("revise: Use this prompt fills the prompt", page.input_value("#promptBox") == FIXED, page.input_value("#promptBox"))
         check("revise: and stays in t2i", page.evaluate("STATE.mode") == "t2i")
         check("revise: the reply and the chip close", not page.is_visible("#guideSkill") and not page.is_visible("#guideChip"))
-        check("revise: the input goes back to asking the guide",
-              page.get_attribute("#guideInput", "placeholder") == "Ask the guide. Enter sends, Shift+Enter for a new line.")
+        check("revise: the input goes back to asking the guide (t2i is a writer mode: the room's own box)",
+              page.get_attribute("#guideInput", "placeholder") == "Tell the Picture room what you want")
         print("revise: the question path")
         page.click("#notRightBtn")
         page.wait_for_selector("#guideChip:not([hidden])", timeout=15000)
@@ -608,10 +630,13 @@ try:
         page.click("#guideChipRemove")
         check("revise: the chip is gone", not page.is_visible("#guideChip"))
         n_revise = len(REVISE_BODIES)
-        HELPER.update(reply="Ask me anything.")
+        HELPER.update(reply="SAY: Ask me anything.")
+        del SKILL_BODIES[:]
+        page.on("request", lambda req: SKILL_BODIES.append(json.loads(req.post_data or "{}"))
+                if req.url.endswith("/api/guide/skill") and req.method == "POST" else None)
         send(page, "hello", 2)
-        check("revise: Send went to the chat, not the fixer", len(REVISE_BODIES) == n_revise and CHAT_BODIES
-              and "pictures" not in CHAT_BODIES[-1], CHAT_BODIES[-1:])
+        check("revise: Send went to the room's writer (FB-2), not the fixer", len(REVISE_BODIES) == n_revise and SKILL_BODIES
+              and "pictures" not in SKILL_BODIES[-1] and guide_msgs(page)[-1] == "Ask me anything.", SKILL_BODIES[-1:])
         print("revise: a reply renders as text, never as HTML")
         page.click("#notRightBtn")
         page.wait_for_selector("#guideChip:not([hidden])", timeout=15000)
@@ -660,11 +685,23 @@ try:
         IN_VIEW = ("sel => { const e = document.querySelector(sel); if(!e || !e.offsetParent) return false;"
                    " const r = e.getBoundingClientRect(), c = document.querySelector('#inspector').getBoundingClientRect();"
                    " return r.top >= Math.max(0, c.top) && r.bottom <= Math.min(innerHeight, c.bottom); }")
-        # The owner's order: the prompt box, Help me write this, the guide right under it, then the rest.
+        # The owner's order. FB-2: a writer mode is Try this, the guide (the one box), then
+        # What the guide filled in (the prompt box inside it), then the rest; with no helper the
+        # guide's one line sits above the prompt box; any other mode keeps the prompt box, Help
+        # me write this, the guide right under it, then the rest.
         ORDER = ("() => { const top = s => { const e = document.querySelector(s); return e && e.offsetParent ? e.getBoundingClientRect().top : null; };"
                  " const g = document.querySelector('#guidePanel'), f = document.querySelector('#makeBtn');"
                  " const below = !!(g.compareDocumentPosition(f) & Node.DOCUMENT_POSITION_FOLLOWING)"
                  "   && !!(g.compareDocumentPosition(document.querySelector('#recipeDetails')) & Node.DOCUMENT_POSITION_FOLLOWING);"
+                 " const filled = document.querySelector('#guideFilled'), tt = document.querySelector('#tryThisWrap');"
+                 " const kept = document.querySelector('#contentKeptWrap');"
+                 " const next = g.nextElementSibling === kept ? kept.nextElementSibling : g.nextElementSibling;"
+                 " if(filled && !filled.hidden) return below && next === filled"
+                 "   && filled.contains(document.querySelector('#promptWrap')) && g.previousElementSibling === tt"
+                 "   && top('#guideHeader') < filled.getBoundingClientRect().top;"
+                 " const off = document.querySelector('#guideOffNote');"
+                 " if(off && !off.hidden) return below && g.nextElementSibling === document.querySelector('#promptWrap')"
+                 "   && top('#guideOffNote') < top('#promptBox');"
                  " const right = g.previousElementSibling && g.previousElementSibling.id === 'promptWrap';"
                  " if(top('#promptBox') === null) return below && right;"
                  # the button is hidden with no helper: the guide takes its place
@@ -690,46 +727,45 @@ try:
             PAGE_FETCHES.extend(p.evaluate("() => window.__fetched || []"))
         def last_user(): return HELPER["requests"][-1]["messages"][-1]["content"] if HELPER["requests"] else None
 
-        print("P2c Picture, t2i (its pack writer since P3d): Help me write this -> the Picture Guide")
+        print("P2c Picture, t2i (its pack writer since P3d): the guide's box -> the Picture Guide (FB-2)")
         page = voice_page()
         enter_room(page, url_brain, "picture")
         check("one voice: t2i has its pack writer (P3d)",
               page.evaluate("() => currentMode().writer.label") == engines.writer("image", "t2i")["label"])
-        check("one voice: Help me write this is by the prompt box, cued to the guide", page.is_visible("#helperWriteBtn")
-              and text_of(page, "#helperCue") == "→ " + GUIDE_META["picture"]["name"])
-        page.fill("#promptBox", "a lighthouse")
+        check("one voice: the guide's box is the write, no Help me write this", not page.is_visible("#helperWriteBtn")
+              and page.get_attribute("#guideInput", "placeholder") == "Tell the Picture room what you want")
         del SKILL_BODIES[:]
         HELPER["requests"].clear()
         HELPER.update(reply="PROMPT: A lighthouse at dusk on a rocky point, warm light in the lamp room.", finish="stop", delay=1.5)
-        page.click("#helperWriteBtn")
-        page.wait_for_selector("#helperSpinner:not([hidden])", timeout=5000)
+        write(page, "a lighthouse")
+        page.wait_for_selector("#guideThinking:not([hidden])", timeout=5000)
         writing = GUIDE_META["picture"]["name"] + " is writing…"
-        check("one voice: while it writes, the guide says so by name", text_of(page, "#helperSpinner") == writing
-              and text_of(page, "#guideThinking") == writing, (text_of(page, "#helperSpinner"), text_of(page, "#guideThinking")))
-        page.wait_for_selector("#guideSkillUse", timeout=15000)
+        check("one voice: while it writes, the guide says so by name", text_of(page, "#guideThinking") == writing,
+              text_of(page, "#guideThinking"))
+        wait_value(page, "#promptBox", "A lighthouse at dusk on a rocky point, warm light in the lamp room.")
         HELPER["delay"] = 0
         body = SKILL_BODIES[-1] if SKILL_BODIES else {}
-        check("t2i: it went to /api/guide/skill with the prompt box's words", body.get("room") == "picture"
+        check("t2i: it went to /api/guide/skill with the box's words", body.get("room") == "picture"
               and body.get("mode") == "t2i" and body.get("topic") == "a lighthouse"
               and (body.get("context") or {}).get("mode") == "t2i" and "pictures" not in body, body)
         system = HELPER["requests"][-1]["messages"][0]["content"] if HELPER["requests"] else ""
         check("t2i: the brain got t2i's own writer prompt (P3d; the generic writer: tests/test_generic_writer.py)",
-              system == engines.writer("image", "t2i")["prompt"])
+              system.startswith(engines.writer("image", "t2i")["prompt"] + "\n\n") and "SAY:" in system[-200:])
         check("t2i: the reply is a guide message in the guide panel", page.eval_on_selector(
             "#guideSkill", "e => !!e.closest('#guidePanel')") and text_of(page, "#guideSkill .guide-who").lower() == GUIDE_META["picture"]["name"].lower())
-        check("t2i: and it is in view", page.evaluate(
-            "() => { const r = document.querySelector('#guideSkillUse').getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }"))
+        check("t2i: and what it filled in is in view", page.evaluate(
+            "() => { const r = document.querySelector('#guideFilled').getBoundingClientRect(); return r.top >= 0 && r.top < innerHeight; }"))
         shot(page, "p2c-picture-help-1280x800")
-        page.click("#guideSkillUse")
-        check("t2i: Use these fills the prompt box",
+        check("t2i: the draft fills the prompt box, no click",
               page.input_value("#promptBox") == "A lighthouse at dusk on a rocky point, warm light in the lamp room.",
               page.input_value("#promptBox"))
         print("P2c: a reply with no prompt comes back as the server's sentence, verbatim")
         HELPER["reply"] = "Sure! Here you go."
-        page.click("#helperWriteBtn")
+        write(page, "a lighthouse")
         page.wait_for_selector("#guideError:not([hidden])", timeout=15000)
         check("one voice: the server's error sentence, unchanged",
               text_of(page, "#guideError") == "The writer's answer didn't come back in the expected shape.", text_of(page, "#guideError"))
+        check("one voice: and the words go back in the box, to send again", page.input_value("#guideInput") == "a lighthouse")
         keep_fetches(page)
         page.close()
 
@@ -737,18 +773,20 @@ try:
         page = voice_page()
         show_fix_job(page, url_brain)
         page.wait_for_selector("#helperDescribeBtn:not([hidden])", timeout=15000)
+        check("describe (R9): by the guide's Send, visible with What the guide filled in closed",
+              page.eval_on_selector("#helperDescribeBtn", "e => !!e.closest('#guideActions')")
+              and not page.evaluate("document.querySelector('#guideFilled').open"))
         HELPER.update(reply="PROMPT: A soft colour gradient from green to violet.")
         HELPER["requests"].clear()
         page.click("#helperDescribeBtn")
-        page.wait_for_selector("#guideSkillUse", timeout=15000)
+        wait_value(page, "#promptBox", "A soft colour gradient from green to violet.")
         body = SKILL_BODIES[-1] if SKILL_BODIES else {}
         check("describe: it went to /api/guide/skill with the result as the picture",
               body.get("pictures") == [{"job_id": "fixjob1", "output": 0}] and body.get("mode") == "t2i", body)
         content = last_user()
         check("describe: the helper that can see got the picture", isinstance(content, list)
               and [x["type"] for x in content] == ["text", "image_url"], type(content))
-        page.click("#guideSkillUse")
-        check("describe: Use these fills the prompt box", page.input_value("#promptBox") == "A soft colour gradient from green to violet.",
+        check("describe: the draft fills the prompt box, no click", page.input_value("#promptBox") == "A soft colour gradient from green to violet.",
               page.input_value("#promptBox"))
         print("P2c Picture: Not right? opens and focuses this same panel")
         page.click("#notRightBtn")
@@ -812,8 +850,7 @@ try:
                              "QUESTION: Where are they flying?",
                              "WIDTH: 1024\nHEIGHT: 99999\nPROMPT: two red kites over a grey sea",
                              "WIDTH: 1024\nHEIGHT: 99999\nPROMPT: two red kites over a grey sea"]
-        page.fill("#promptBox", "kites")
-        page.click("#helperWriteBtn")
+        write(page, "kites")
         wait_question(page, "How many kites?")
         chips = page.eval_on_selector_all("#guideSkillOptions .skill-chip", "els => els.map(e => e.textContent)")
         check("write: the options are chips, and there is still a box for any answer",
@@ -821,7 +858,7 @@ try:
               and page.get_attribute("#guideInput", "placeholder") == "Your answer… (or pick one above)", chips)
         check("write: the question and its chips are in view as it arrives", page.evaluate(IN_VIEW, "#guideSkill .guide-text")
               and page.evaluate(IN_VIEW, "#guideSkillOptions"))
-        check("write: the guide sits right under Help me write this, the prompt above", page.evaluate(ORDER))
+        check("write: the guide sits right under Try this, What the guide filled in below it", page.evaluate(ORDER))
         check("write: Start over is offered", page.is_visible("#guideSkillRestart"))
         shot(page, "p2c-write-question-1280x800")
         page.click('#guideSkillOptions [data-option="Two"]')
@@ -837,9 +874,11 @@ try:
         wait_question(page, "Where are they flying?")
         check("write: after a reload the waiting question is back, once", guide_msgs(page).count("Where are they flying?") == 0
               and "Where are they flying?" in text_of(page, "#guideSkill"), guide_msgs(page))
+        page.evaluate("() => { document.querySelector('#inspector').scrollTop = 1e6; window.scrollTo(0, 1e6); }")
         page.fill("#guideInput", "over a grey sea")
         page.press("#guideInput", "Enter")
-        page.wait_for_selector("#guideSkillUse", timeout=15000)
+        wait_value(page, "#promptBox", "two red kites over a grey sea")
+        page.wait_for_timeout(300)
         check("write: the answers go back in order, rebuilt after the reload",
               SKILL_BODIES[-1].get("answers") == [{"q": "How many kites?", "a": "Two"},
                                                   {"q": "Where are they flying?", "a": "over a grey sea"}], SKILL_BODIES[-1:])
@@ -848,11 +887,8 @@ try:
         check("write: a bad setting is named, not used", "Height" in text_of(page, "#guideSkillProblems")
               and "99999" in text_of(page, "#guideSkillProblems"), text_of(page, "#guideSkill"))
         shot(page, "p2c-write-preview-1280x800")
-        page.evaluate("() => { document.querySelector('#inspector').scrollTop = 1e6; window.scrollTo(0, 1e6); }")
-        page.click("#guideSkillUse")
-        page.wait_for_timeout(300)
-        check("write: Use these brings the prompt box back into view", page.evaluate(IN_VIEW, "#promptBox"))
-        check("write: Use these fills the prompt and the setting it wrote", page.input_value("#promptBox")
+        check("write: the draft brings the prompt box into view", page.evaluate(IN_VIEW, "#promptBox"))
+        check("write: the draft fills the prompt and the setting it wrote", page.input_value("#promptBox")
               == "two red kites over a grey sea" and page.input_value('#inspector [data-field-id="width"]') == "1024",
               (page.input_value("#promptBox"), page.input_value('#inspector [data-field-id="width"]')))
         print("write: after 4 answers the guide writes, and names its defaults")
@@ -860,8 +896,7 @@ try:
         HELPER["requests"].clear()
         HELPER["replies"] = ["QUESTION: Q one?\nOPTIONS: yes | no", "QUESTION: Q two?", "QUESTION: Q three?", "QUESTION: Q four?",
                              "NOTE: I chose daylight and a square frame.\nPROMPT: a kite on a beach"]
-        page.fill("#promptBox", "a kite")
-        page.click("#helperWriteBtn")
+        write(page, "a kite")
         for q, a in (("Q one?", None), ("Q two?", "b"), ("Q three?", "c"), ("Q four?", "d")):
             wait_question(page, q)
             if a is None:
@@ -872,18 +907,18 @@ try:
             else:
                 page.fill("#guideInput", a)
                 page.click("#guideSendBtn")
-        page.wait_for_selector("#guideSkillUse", timeout=15000)
+        wait_value(page, "#promptBox", "a kite on a beach")
         check("write: the 5th call carried 4 answers and the write-now line", len(SKILL_BODIES) == 5
               and len(SKILL_BODIES[-1].get("answers") or []) == 4 and "No more questions: write it now" in user_msg(4),
               [len(b.get("answers") or []) for b in SKILL_BODIES])
         check("write: the typed answer in the panel went to the write, not the chat",
               SKILL_BODIES[3].get("answers", [{}])[-1].get("a") == "c", SKILL_BODIES[3:4])
-        check("write: the preview shows the NOTE", text_of(page, "#guideSkillNote") == "I chose daylight and a square frame.")
+        check("write: the guide's line carries the NOTE (R10: no card)", guide_msgs(page)[-1].endswith(" I chose daylight and a square frame."),
+              guide_msgs(page)[-1:])
         shot(page, "p2c-write-capped-note-1280x800")
         print("write: Start over clears the write conversation")
         HELPER["replies"] = ["QUESTION: Which beach?"]
-        page.fill("#promptBox", "a kite at the beach")
-        page.click("#helperWriteBtn")
+        write(page, "a kite at the beach")
         wait_question(page, "Which beach?")
         page.click("#guideSkillRestart")
         check("write: Start over closes it and takes its turns out of the log", not page.is_visible("#guideSkill")
@@ -903,11 +938,20 @@ try:
             check("%s: shows %s" % (room_id, GUIDE_META[gid]["name"]), page.is_visible("#guidePanel")
                   and page.inner_text("#guideName") == GUIDE_META[gid]["name"], page.inner_text("#guideName"))
             check("%s: the guide header is in view on entry" % room_id, page.evaluate(IN_VIEW, "#guideHeader"))
-            if page.is_visible("#promptWrap"):
+            if page.is_visible("#guideFilled"):   # FB-2: a writer mode -- the guide's box is the one to type in
+                # R12: what the guide cannot fill (the writer's picture, a Name) comes first under
+                # it, so the first thing under the guide is what must be in view, not the disclosure.
+                first = "#contentKeptWrap" if page.is_visible("#contentKeptWrap") else "#guideFilledSummary"
+                check("%s: the guide's box and the first thing under it are in view on entry" % room_id,
+                      page.evaluate(IN_VIEW, "#guideInput") and page.evaluate(
+                          "s => { const e = document.querySelector(s), r = e.getBoundingClientRect(),"
+                          " c = document.querySelector('#inspector').getBoundingClientRect();"
+                          " return r.top >= Math.max(0, c.top) && r.top < Math.min(innerHeight, c.bottom); }", first), first)
+            elif page.is_visible("#promptWrap"):
                 check("%s: the prompt box and Help me write this are in view on entry" % room_id,
                       page.evaluate(IN_VIEW, "#promptBox") and page.evaluate(IN_VIEW, "#helperWriteBtn"))
             if room_id != "cutting" and page.is_visible("#makeBtn"):   # a room with nothing installed has no form
-                check("%s: prompt box, Help me write this, the guide right under it, then the rest of the form" % room_id,
+                check("%s: the guide and the prompt box in the owner's order, then the rest of the form" % room_id,
                       page.evaluate(ORDER))
             shot(page, "brain-%s-1280x800" % room_id)
         keep_fetches(page)

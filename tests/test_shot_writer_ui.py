@@ -82,7 +82,8 @@ try:
               (b.get("room"), b.get("mode"), b.get("topic")) == ("video", "ltx", B1), b)
         check("no starting picture set: the request carries no attached pictures", not b.get("attached"), b.get("attached"))
         check("the beats either side go as context", (b.get("context") or {}).get("neighbours") == {"before": SLUG, "after": B2}, b)
-        check("the brain got LTX's own writer", bool(ASKED) and ASKED[-1][0]["content"] == ltx.ENGINE["writers"]["ltx"]["prompt"])
+        check("the brain got LTX's own writer", bool(ASKED) and ASKED[-1][0]["content"].startswith(ltx.ENGINE["writers"]["ltx"]["prompt"] + "\n\nIf the user asked a question")  # FB-2: + the shared SAY rule
+              and ASKED[-1][0]["content"].endswith("SAY: <your answer>, and nothing else."))
         check("the Film Room Guide speaks", "film room guide" in page.inner_text("#guideSkill").lower(), page.inner_text("#guideSkill"))
         page.click('#guideSkillOptions [data-option="Push in slowly"]')
         page.wait_for_selector("#guideSkillUse", timeout=15000)
@@ -121,7 +122,8 @@ try:
         check("the previous shot's actual prompt goes too", n.get("previous") == LTX_OUT, n)
         check("a keep line names the first beat's subjects and props", B1 in (n.get("keep") or "")
               and "subjects and props" in (n.get("keep") or ""), n)
-        check("the brain got H3's own writer", ASKED[-1][0]["content"] == minimax_h3.ENGINE["writers"]["ref2v"]["prompt"])
+        check("the brain got H3's own writer", ASKED[-1][0]["content"].startswith(minimax_h3.ENGINE["writers"]["ref2v"]["prompt"] + "\n\nIf the user asked a question")
+              and ASKED[-1][0]["content"].endswith("SAY: <your answer>, and nothing else."))
         check("the preview keeps H3's prefix and raises no problem",
               H3_OUT in page.inner_text("#guideSkill") and page.query_selector("#guideSkillProblems") is None)
         if SHOTS: page.screenshot(path=os.path.join(SHOTS, "write-this-shot-h3.png"))

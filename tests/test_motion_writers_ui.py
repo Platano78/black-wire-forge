@@ -60,25 +60,25 @@ try:
         page.on("request", lambda r: BODIES.append(json.loads(r.post_data or "{}")) if r.url.endswith("/api/guide/skill") else None)
         print("Talking Head: the write conversation")
         page.goto(URL + "#room=talking", wait_until="networkidle")
-        page.wait_for_selector("#helperWriteBtn", state="visible", timeout=15000)
+        # FB-2: a writer mode -- the guide's box is the one place to ask; Send is the write.
+        page.wait_for_function("() => !document.querySelector('#guideFilled').hidden", timeout=15000)
         REPLIES[:] = ["QUESTION: What tone should it have?\nOPTIONS: Excited | Grumpy | Professional",
                       "LENGTH: NONE\nLOOK: bright morning light, close-up\nNOTE: excited tone\nLINE: " + LINE]
-        page.fill("#promptBox", "say something about Mondays")
-        page.click("#helperWriteBtn")
+        page.fill("#guideInput", "say something about Mondays")
+        page.press("#guideInput", "Enter")
         page.wait_for_selector('#guideSkillOptions [data-option="Excited"]', timeout=15000)
         check("the tone question offers its options as chips", page.eval_on_selector_all(
             "#guideSkillOptions [data-option]", "els => els.map(e => e.dataset.option)") == ["Excited", "Grumpy", "Professional"])
         page.click('#guideSkillOptions [data-option="Excited"]')
-        page.wait_for_selector("#guideSkillUse", timeout=15000)
-        preview = page.inner_text("#guideSkill")
-        check("the preview shows the line, the shot note and the length the app worked out",
-              LINE in preview and "bright morning light, close-up" in preview and "153" in preview, preview)
+        page.wait_for_function("l => document.querySelector('#inspector [data-field-id=\"line\"]').value === l", arg=LINE,
+                               timeout=15000)
+        val = lambda f: page.input_value('#inspector [data-field-id="%s"]' % f)
+        check("the draft fills the line, the shot note and the length the app worked out, no click",
+              (val("line"), val("look"), val("length")) == (LINE, "bright morning light, close-up", "153"),
+              (val("line"), val("look"), val("length")))
         check("the answer went back with its question", BODIES[-1].get("answers") == [{"q": "What tone should it have?", "a": "Excited"}], BODIES[-1:])
         check("no face picture set: the request carries no attached pictures", not BODIES[-1].get("attached"), BODIES[-1].get("attached"))
-        page.click("#guideSkillUse")
-        val = lambda f: page.input_value('#inspector [data-field-id="%s"]' % f)
-        check("Use these fills line, look and length", (val("line"), val("look"), val("length")) ==
-              (LINE, "bright morning light, close-up", "153"), (val("line"), val("look"), val("length")))
+        check("no Use these to press", page.query_selector("#guideSkillUse") is None)
         print("Talking Head: a face picture set -- it rides along in Help me write this too")
         FACE_PNG = os.path.join(S, "face.png")
         with open(FACE_PNG, "wb") as f:
@@ -87,9 +87,10 @@ try:
         page.set_input_files("#upload_face", FACE_PNG)
         page.wait_for_selector("#thumbs_face img", timeout=15000)
         REPLIES[:] = ["LENGTH: NONE\nLOOK: soft light\nLINE: " + LINE]
-        page.fill("#promptBox", "say something about Mondays")
-        page.click("#helperWriteBtn")
-        page.wait_for_selector("#guideSkillUse", timeout=15000)
+        page.fill("#guideInput", "say something about Mondays")
+        page.press("#guideInput", "Enter")
+        page.wait_for_function("() => document.querySelector('#inspector [data-field-id=\"look\"]').value === 'soft light'",
+                               timeout=15000)
         b_face = BODIES[-1]
         check("a face picture set: the write request carries it as attached",
               isinstance(b_face.get("attached"), list) and len(b_face["attached"]) == 1

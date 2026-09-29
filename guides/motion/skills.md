@@ -2,7 +2,7 @@
 
 Three writing/judging jobs, one per situation the Guide gets pulled into. Each is a pack skill
 (`writers` / `revisers` in `engines/ltx.py` and `engines/minimax_h3.py`): the engine's own rules live
-in the pack, next to its fields. "Help me write this" is a short conversation: the writer asks at most
+in the pack, next to its fields. Telling the guide what you want here is a short conversation: the writer asks at most
 one question per turn, with clickable OPTIONS where the choices are few, and only when the answer
 changes the shot; after four answers it must write, naming its defaults in NOTE. What the user sees
 before anything fills the form is the preview of the engine's own fields.

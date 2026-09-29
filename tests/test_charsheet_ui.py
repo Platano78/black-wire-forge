@@ -35,7 +35,7 @@ try:
         made = []
         page.on("request", lambda r: made.append(r.url) if r.url.endswith("/api/generate") else None)
         page.reload(wait_until="networkidle")   # first paint predates the lane poll: reload for a settled form
-        page.wait_for_selector("#promptBox", timeout=15000)
+        page.wait_for_selector("#promptBox", state="attached", timeout=15000)   # FB-2: under a closed disclosure until used
         page.wait_for_timeout(1000)
         check("the Characters room is selected", page.evaluate("() => currentRoom() && currentRoom().id") == "characters")
         check("its mode is the sheet", page.evaluate("() => STATE.mode") == "charsheet")
@@ -49,6 +49,9 @@ try:
               and "Characters" in page.inner_text("#enginePickerCurrent"), page.inner_text("#enginePickerCurrent"))
         check("the empty-state line explains the two steps", EMPTY in page.inner_text("#monitor") if page.query_selector("#monitor")
               else EMPTY in page.inner_text("body"), page.inner_text("body")[:400])
+        # FB-2: the Sheet prompt and the name sit under "What the guide filled in"
+        # (closed while empty); open it to read the whole form.
+        page.evaluate("() => { document.querySelector('#guideFilled').open = true; }")
         text = page.inner_text("#inspector") + " " + page.inner_text("#promptLabel")
         check("the picture, name, sheet prompt and size are all on the form",
               all(w.lower() in text.lower() for w in ("Reference picture", "Name", "Sheet prompt", "Sheet size")), text[:600])
@@ -65,26 +68,25 @@ try:
         ui.shot(page, "chars-empty")
 
         print("the guide fills the Sheet prompt from the picture and the name")
-        check("no picture yet: Help me write this is offered, Describe this picture is not",
-              page.is_visible("#helperWriteBtn") and not page.is_visible("#helperDescribeBtn"))
-        check("the caption says it writes the Sheet prompt", "Sheet prompt" in page.inner_text("#helperWriteCaption"),
-              page.inner_text("#helperWriteCaption"))
+        check("no picture yet: the guide's box is the one place to ask (FB-2), Describe this picture is not offered",
+              page.is_visible("#guideInput") and not page.is_visible("#helperWriteBtn")
+              and not page.is_visible("#helperDescribeBtn"))
+        check("the box says it is the Characters room's", page.get_attribute("#guideInput", "placeholder")
+              == "Tell the Characters room what you want", page.get_attribute("#guideInput", "placeholder"))
         page.set_input_files("#upload_reference", PNG)
         page.wait_for_function("() => (STATE.uploads.reference || []).length === 1", timeout=15000)
         page.fill('#inspector [data-field-id="name"]', "Rookie")
         check("the box is empty when the guide is asked", page.input_value("#promptBox") == "")
         ui.ps.HELPER_STATE["requests"].clear()
         ui.ps.HELPER_STATE["replies"] = ["NOTE: read as a scout.\nPROMPT: " + SHEET]
-        page.click("#helperWriteBtn")
-        page.wait_for_selector("#guideSkillUse", timeout=20000)
+        page.fill("#guideInput", "a character sheet of her")
+        page.press("#guideInput", "Enter")
+        page.wait_for_function("() => document.querySelector('#promptBox').value.length > 200", timeout=20000)
         check("the writer got the name in its room line",
               'Name: \"Rookie\"' in ui.ps.HELPER_STATE["requests"][0]["messages"][1]["content"])
         check("nothing was sent to Make", made == [], made)
-        check("the draft is shown before it is used, the box still empty", page.input_value("#promptBox") == "")
-        page.click("#guideSkillUse")
-        page.wait_for_function("() => document.querySelector('#promptBox').value.length > 200", timeout=15000)
         filled = page.input_value("#promptBox")
-        check("Use these puts all ten sections in the Sheet prompt box",
+        check("the draft puts all ten sections in the Sheet prompt box, no click",
               filled == SHEET and all(("\n%d. " % n) in ("\n" + filled) for n in range(1, 11)), filled[:80])
         page.locator("#promptBox").scroll_into_view_if_needed()
         check("...and still nothing was sent to Make", made == [], made)

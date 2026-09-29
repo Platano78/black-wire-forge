@@ -453,6 +453,24 @@
   #advancedDisclosure summary::-webkit-details-marker{display:none}
   #advancedDisclosure summary::before{content:'▸ '; color:var(--accent)}
   #advancedDisclosure[open] summary::before{content:'▾ '}
+  /* FB-2: in a writer mode the prompt box and its content fields sit in here,
+     under the guide -- the guide fills them, the user checks them, then Make. */
+  #guideFilled{margin-top:8px}
+  #guideFilled summary{cursor:pointer; font-size:12px; text-transform:uppercase; letter-spacing:.04em;
+    color:var(--text-mid); min-height:36px; display:flex; align-items:center; user-select:none}
+  #guideFilled summary::-webkit-details-marker{display:none}
+  #guideFilled summary::before{content:'▸ '; color:var(--accent)}
+  #guideFilled[open] summary::before{content:'▾ '}
+  #guideOffNote{font-size:13px; margin:4px 0}
+  /* R12: the writer's picture, moved under the guide, reads like the fields beside it */
+  #contentKeptPicture .ledger-slot .hint{font-size:11px; color:var(--text-mid); margin:3px 0 0; max-width:72ch}
+  #contentKeptPicture{margin-bottom:6px}
+  #guideDraftBar{margin:2px 0 0}
+  #guideDraftBar .guide-restart{background:none; border:none; padding:0; min-height:24px; cursor:pointer;
+    color:var(--accent); font-size:12px; text-decoration:underline}
+  /* R11: the compact box is two lines, so the room's whole ask ("Tell the
+     Characters room what you want") shows at any width */
+  #guidePanel[data-expanded="false"] #guideInput{height:auto; min-height:calc(3em + 18px)}
   #makeBtn{width:100%; min-height:44px; font-size:14px; text-transform:uppercase; letter-spacing:.05em}
   #inspectorMsg{font-size:12px; min-height:0; margin:0}
   #inspectorMsg.err{color:var(--error)}
@@ -894,6 +912,14 @@
     <div id="contentFieldsWrap" hidden>
       <div id="contentFields"></div>
     </div>
+    <!-- FB-2 R9: a Content field the mode's writer does not fill (a sheet's
+         Name) is the user's to type, so it is never tucked under "What the
+         guide filled in": in a writer mode it sits right under the guide. -->
+    <div id="contentKeptWrap" hidden>
+      <!-- R12: the picture the mode's writer reads (its `pictures` field) comes first. -->
+      <div id="contentKeptPicture"></div>
+      <div id="contentKeptFields"></div>
+    </div>
     <!-- Room guide: shown in any room whose rooms.json entry names a guide --
          the room's one voice. Sits here, right under the prompt box and its
          "Help me write this" (or where they would be, in a mode with no
@@ -911,6 +937,7 @@
       </div>
       <p id="guideDefinition"></p>
       <div id="guideNoBrain" hidden>
+        <p id="guideOffNote" hidden>The guide is off, so type straight into the fields.</p>
         <ul id="guideNoBrainList"></ul>
         <p id="guideAddBrain"></p>
         <p id="guideWriteNoBrain" hidden>Add a helper to have the guide write the words for you.</p>
@@ -920,6 +947,7 @@
         <p id="guideSizeNote"></p>
         <p id="guideCtxNote" hidden></p>
         <div id="guideLog" role="log" aria-label="Conversation with the guide"></div>
+        <div id="guideDraftBar" hidden></div>
         <div id="guideActionBar" hidden></div>
         <div id="guideSkill" class="guide-msg from-guide" hidden aria-live="polite"></div>
         <div id="guideChip" hidden></div>
@@ -936,6 +964,14 @@
       </div>
       <p id="guideError" hidden role="alert"></p>
     </section>
+    <!-- FB-2: a writer mode (its writer writes for this mode, and the room's
+         guide has a helper) has ONE place to speak: the guide's input above.
+         The prompt box and its content fields are moved in here (the same
+         elements, never copies) by placeGuidePanel(); the guide fills them,
+         the user checks them and presses Make. Hidden in every other mode. -->
+    <details id="guideFilled" hidden>
+      <summary id="guideFilledSummary">What the guide filled in</summary>
+    </details>
 
     <!-- A mode with no text field (e.g. a cutout/upscale tool) has nothing
          for a prompt box to say -- its input picker takes this slot instead,
@@ -978,6 +1014,7 @@
     <div id="makeConfirm" hidden role="alert">
       <p id="makeConfirmLead">Before this renders:</p>
       <ul id="makeConfirmList"></ul>
+      <p id="makeFixHint" class="hint" hidden>Change what's listed, then press Make.</p>
       <div class="make-confirm-actions">
         <button type="button" class="btn" id="makeFixBtn">Fix it</button>
         <button type="button" class="btn" id="makeAnywayBtn">Make anyway</button>
@@ -1880,6 +1917,7 @@ function useAgain(job){
       });
       if(job.prompt) $('#promptBox').value = job.prompt;
       if(job.quality) selectQualityTier(job.quality); else applyTierValues();
+      guideFilledReveal();
     });
   });
 }
@@ -2500,6 +2538,7 @@ function applyExample(ex){
   if(ex.quality) selectQualityTier(ex.quality);
   Object.entries(ex.values || {}).forEach(([k, v]) => setFieldValue(k, v));
   refreshEnabled(fieldsFor(mode));
+  guideFilledReveal();
 }
 function tryThisModeSupplied(mode){
   // Whether the current mode's own main upload field already has a file --
@@ -2687,8 +2726,17 @@ async function renderModeFields(){
   }
   // UX-2 #2: Style, then Lyrics (or whatever a future pack's own Content
   // group adds) sits right under the prompt box, above Quality/Sound.
-  $('#contentFieldsWrap').hidden = !contentFields.length;
-  $('#contentFields').innerHTML = contentFields.length ? groupedHTML(contentFields, values, carry) : '';
+  // FB-2 R9: a Content field this mode's own writer does not fill stays the
+  // user's (never under "What the guide filled in"): it renders on its own.
+  const ownFills = mode && mode.writer && !mode.writer.target ? (mode.writer.fills || null) : null;
+  const keptFields = ownFills ? contentFields.filter(f => !ownFills.includes(f.id)) : [];
+  const filledFields = contentFields.filter(f => !keptFields.includes(f));
+  $('#contentFieldsWrap').hidden = !filledFields.length;
+  $('#contentFields').innerHTML = filledFields.length ? groupedHTML(filledFields, values, carry) : '';
+  $('#contentKeptWrap').hidden = !keptFields.length;
+  $('#contentKeptFields').innerHTML = keptFields.length ? groupedHTML(keptFields, values, carry) : '';
+  placeGuidePanel(currentRoom());   // FB-2: a writer mode puts the prompt under the guide
+  renderGuideOff();
   renderHelperBar();
   guideSkillClear();
   makeConfirmHide();
@@ -2706,12 +2754,14 @@ async function renderModeFields(){
   const prominentFields = promptField ? uploadFields.filter(f => tierOf(f) === 'primary') : ledgerFields;
   const drawerFields = ledgerFields.filter(f => !prominentFields.includes(f));
   const rowHTML = f => UPLOAD_TYPES.includes(f.type) ? ledgerRowHTML(f, values) : jackNoteHTML(f);
+  $('#contentKeptPicture').textContent = '';   // R12: a moved picture row is re-rendered below
   $('#ledgerProminent').hidden = !prominentFields.length;
   $('#ledgerProminentTitle').textContent =
     prominentFields.filter(f => UPLOAD_TYPES.includes(f.type)).length > 1 ? 'Add files' : 'Add a file';
   $('#ledgerProminentBody').innerHTML = prominentFields.map(rowHTML).join('');
   $('#ledgerInRecipe').hidden = !drawerFields.length;
   $('#ledgerInRecipeBody').innerHTML = drawerFields.map(rowHTML).join('');
+  placeWriterPicture();
   uploadFields.forEach(f => {
     const input = $('#upload_' + f.id);
     if(!input) return;
@@ -2757,6 +2807,8 @@ async function renderModeFields(){
   // recipe's on top (applyPreset runs applyTierValues first). Run earlier,
   // the lookups found nothing and a recipe's numbers never reached its fields.
   if(presets.length) applyPreset(); else applyTierValues();
+  // FB-2: closed while there is nothing in it yet, open once there is.
+  $('#guideFilled').open = guideFilledAny();
 
   // re-evaluate enabled_when whenever any field changes; A5: a real input/change
   // event (never a recipe or quality tier setting .value programmatically) marks
@@ -3006,9 +3058,11 @@ function renderHelperBar(){
   const roomReady = cutting || (roomModesHere.length > 0 && !roomModesAllOff(roomModesHere));
   const show = !!(g && GUIDE.helper && mode && roomReady && !$('#promptWrap').hidden && (!cutting || slotWriteBeat()));
   $('#helperBar').hidden = !show;
-  if(!show){ $('#helperWriteCaption').hidden = true; return; }
+  if(!show){ $('#helperWriteCaption').hidden = true; $('#helperDescribeBtn').hidden = true; return; }
   $('#helperCue').textContent = '→ ' + g.name;
-  $('#helperWriteBtn').hidden = cutting;
+  // FB-2: in a writer mode the guide's Send IS the write; only Describe stays.
+  const writer = guideLayout(room) === 'writer';
+  $('#helperWriteBtn').hidden = cutting || writer;
   $('#slotWriteBtn').hidden = !cutting;
   // a topic box describes nothing; nor does a writer that already reads the room's own picture (the sheet writer)
   $('#helperDescribeBtn').hidden = cutting || !currentImageSource() || !$('#promptBox').dataset.fieldId
@@ -3018,7 +3072,8 @@ function renderHelperBar(){
   // nothing said the writer also fills Lyrics, further down the form).
   const fillLabels = cutting ? [] : writerFillLabels(mode);
   $('#helperWriteCaption').textContent = fillLabels.length ? 'Writes: ' + fillLabels.join(', ') : '';
-  $('#helperWriteCaption').hidden = !fillLabels.length;
+  $('#helperWriteCaption').hidden = !fillLabels.length || writer;
+  if(writer) $('#helperBar').hidden = true;   // R9: its one button left (Describe) sits by Send
 }
 $('#helperWriteBtn').onclick = () => guideSkillRun(undefined, false);
 $('#slotWriteBtn').onclick = () => guideSkillRun(undefined, false, true);
@@ -3184,11 +3239,75 @@ function guideShowError(text){
 // above the rest of the form. The Cutting Room (whose form is a picked
 // shot's, or hidden) and a room with no form: just above #roomForm, under
 // the sequence picker.
+// FB-2: which shape the room's form takes around its guide.
+// 'writer': the mode's writer writes for this mode and the guide has a helper
+//   -- Try this, the guide (the one box), then #guideFilled holding the
+//   prompt box and its content fields, then the rest of the form.
+// 'off': the same mode with no helper -- the guide is one line, the prompt
+//   box stays the main field, in place (never inside a closed disclosure).
+// null: every other mode (no writer, a writer for another mode, the Cutting
+//   Room, a guide not loaded yet) -- the layout as it always was.
+function guideLayout(room){
+  const mode = currentMode(), w = mode && mode.writer;
+  if(!room || !room.guide || isCutting(room) || $('#roomForm').hidden || !w || w.target) return null;
+  if(!GUIDE || !GUIDE.guide || GUIDE_ROOM !== room.id) return null;
+  return GUIDE.helper ? 'writer' : 'off';
+}
 function placeGuidePanel(room){
-  const panel = $('#guidePanel');
-  if(!isCutting(room) && !$('#roomForm').hidden){
-    if(panel.previousElementSibling !== $('#promptWrap')) $('#promptWrap').after(panel);
-  } else if(panel.nextElementSibling !== $('#roomForm')) $('#roomForm').before(panel);
+  const panel = $('#guidePanel'), filled = $('#guideFilled'), pw = $('#promptWrap'), cw = $('#contentFieldsWrap'),
+    kw = $('#contentKeptWrap');
+  // Moves an element only when it is not already where it goes, so a focused
+  // box (the guide's input, the prompt) is never blurred by a re-render.
+  const chain = els => { for(let i = 1; i < els.length; i++) if(els[i - 1].nextElementSibling !== els[i]) els[i - 1].after(els[i]); };
+  const lay = guideLayout(room), inForm = !isCutting(room) && !$('#roomForm').hidden;
+  if(lay === 'writer'){
+    // R9: the prompt box too stays out when the writer does not fill it.
+    const fills = currentMode().writer.fills || [];
+    const ownPrompt = !!$('#promptBox').dataset.fieldId && !fills.includes($('#promptBox').dataset.fieldId);
+    chain([$('#tryThisWrap'), panel].concat(ownPrompt ? [pw] : [], [kw, filled]));
+    chain([$('#guideFilledSummary')].concat(ownPrompt ? [] : [pw], [cw]));
+  } else {
+    chain(lay === 'off' ? [$('#tryThisWrap'), panel, pw, cw, kw, filled]
+      : inForm ? [$('#tryThisWrap'), pw, panel, cw, kw, filled] : [$('#tryThisWrap'), pw, cw, kw, filled]);
+    if(!inForm && panel.nextElementSibling !== $('#roomForm')) $('#roomForm').before(panel);
+  }
+  filled.hidden = lay !== 'writer';
+  placeWriterPicture();
+  // R9: Describe this picture sits by the guide's Send in a writer mode, never
+  // inside the disclosure; everywhere else it is back in the prompt's bar.
+  const describe = $('#helperDescribeBtn');
+  if(lay === 'writer'){ if(describe.previousElementSibling !== $('#guideSendBtn')) $('#guideSendBtn').after(describe); }
+  else if(describe.previousElementSibling !== $('#helperWriteBtn')) $('#helperWriteBtn').after(describe);
+}
+// FB-2 R12: in a writer mode, the upload the writer reads its pictures from
+// (writer.pictures, a field id from the pack) sits with the fields the guide
+// cannot fill, right under the guide -- the guide needs it before it can write.
+// Every other layout: back in the ledger it was rendered into.
+function placeWriterPicture(){
+  const room = currentRoom(), mode = currentMode(), wrap = $('#contentKeptPicture');
+  const pid = guideLayout(room) === 'writer' && mode.writer.pictures;
+  const slot = pid ? $('#inspector .ledger-slot[data-ledger="' + CSS.escape(pid) + '"]') : null;
+  if(slot && slot.parentElement !== wrap){
+    const label = slot.previousElementSibling && slot.previousElementSibling.matches('[data-ledger-row]') ? slot.previousElementSibling : null;
+    wrap.dataset.home = slot.parentElement.id;
+    wrap.append(...[label, slot].filter(Boolean));
+  } else if(!pid && wrap.children.length && wrap.dataset.home){
+    $('#' + wrap.dataset.home).append(...wrap.children);
+  }
+  // A ledger left with no rows hides; one that got its row back shows again.
+  [['#ledgerProminent', '#ledgerProminentBody'], ['#ledgerInRecipe', '#ledgerInRecipeBody']].forEach(([w, b]) => {
+    if(wrap.dataset.home === b.slice(1)) $(w).hidden = !$(b).children.length;
+  });
+  $('#contentKeptWrap').hidden = !wrap.children.length && !$('#contentKeptFields').children.length;
+}
+// #guideFilled opens itself once any field in it holds words (a draft landed,
+// a Try this, a result used again); it is only ever closed by a new mode.
+function guideFilledAny(){
+  return $$('#promptWrap [data-field-id], #contentFields [data-field-id]')
+    .some(el => el.type === 'checkbox' ? el.checked : String(el.value || '').trim() !== '');
+}
+function guideFilledReveal(){
+  if(guideFilledAny()) $('#guideFilled').open = true;
 }
 // Compact (the default) or expanded, remembered per viewer. `force` opens it
 // for this once without changing what is remembered ("Not right?" with no
@@ -3229,6 +3348,7 @@ async function renderGuidePanel(){
 function renderGuideBody(){
   const g = GUIDE && GUIDE.guide;
   const brain = !!(g && GUIDE.helper);
+  placeGuidePanel(currentRoom());   // FB-2: the layout waits on GUIDE.helper
   $('#guideName').textContent = g ? g.name : '';
   $('#guideDefinition').textContent = g ? g.definition : '';
   $('#guideNoBrain').hidden = !g || brain;
@@ -3249,6 +3369,16 @@ function renderGuideBody(){
   renderGuideWrite();
   renderReviseChip();
   renderHelperBar();
+}
+// FB-2 (R6): no helper, in a mode whose writer would write here -- the panel
+// is one line, the prompt box is the main field. A result attached with "Not
+// right?" still gets the full guidance (openRevise expands it on purpose).
+function renderGuideOff(){
+  const off = guideLayout(currentRoom()) === 'off' && !(GUIDE_REVISE && GUIDE_REVISE.room === GUIDE_ROOM);
+  $('#guideOffNote').hidden = !off;
+  $('#guideHeader').hidden = off;
+  $('#guideDefinition').hidden = off;
+  $('#guideNoBrainList').hidden = off;
 }
 function renderGuideToggle(){
   const v = guideVerbosity();
@@ -3476,9 +3606,19 @@ function renderGuideLog(){
   });
   // Compact shows one line of the log, so the last reply's buttons also sit
   // in the bar under it; expanded, they are in the conversation itself.
+  // FB-2 R10: a draft that went straight into the form has no card: its Start
+  // over sits right under the guide's "I filled in …" line.
+  const last = hist[hist.length - 1];
+  const draftBar = $('#guideDraftBar');
+  draftBar.textContent = '';
+  draftBar.hidden = !(last && last.role === 'assistant' && last.applied);
+  if(!draftBar.hidden){
+    const b = skillButton('Start over', 'guideSkillRestart', false, () => guideWriteStartOver(last.w));
+    b.className = 'guide-restart';
+    draftBar.appendChild(b);
+  }
   const bar = $('#guideActionBar');
   bar.textContent = '';
-  const last = hist[hist.length - 1];
   const lastActions = last && last.role === 'assistant' ? guideActions(last.content).actions : [];
   if(lastActions.length){
     bar.appendChild(guideActionsEl(lastActions, hist.length - 1));
@@ -3514,6 +3654,12 @@ async function guideSend(){
   const input = $('#guideInput');
   const text = input.value.trim();
   if(!text) return;
+  // FB-2 (R3c): in a writer mode what is typed here is the request -- the
+  // mode's writer writes it into the fields below, with the form as context.
+  if(guideLayout(currentRoom()) === 'writer'){
+    input.value = '';
+    return guideSkillRun(undefined, false, false, text);
+  }
   const key = guideHistKey(), room = GUIDE_ROOM, verbosity = guideVerbosity();
   const hist = guideHistLoad(key);
   hist.push({role: 'user', content: text});
@@ -3667,7 +3813,7 @@ function renderGuideWrite(){
   // A preview or question for another shot never fills this one.
   if(GUIDE_SKILL && (GUIDE_SKILL.slot || null) !== writeSlotId()) guideSkillClear();
   const writes = !!(g && mode && !$('#promptWrap').hidden && (!isCutting(currentRoom()) || slotWriteBeat()));
-  $('#guideWriteNoBrain').hidden = !(writes && !GUIDE.helper);
+  $('#guideWriteNoBrain').hidden = !(writes && !GUIDE.helper) || guideLayout(currentRoom()) === 'off';
   if(writes && GUIDE.helper && GUIDE_ROOM === currentRoom().id && $('#guideSkill').hidden) guideWriteRestore();
 }
 function guidePictureRef(src){
@@ -3754,6 +3900,7 @@ function guideInputPlaceholder(){
   const revise = GUIDE_REVISE && GUIDE_REVISE.room === GUIDE_ROOM;
   $('#guideInput').placeholder = revise ? "What's wrong with it?"
     : asking ? (asking.pending.options.length ? 'Your answer… (or pick one above)' : 'Your answer…')
+    : guideLayout(currentRoom()) === 'writer' ? 'Tell the ' + currentRoom().name + ' room what you want'
     : GUIDE_INPUT_PLACEHOLDER;
 }
 // The mode a written draft fills: another one when the writer says so.
@@ -3774,28 +3921,32 @@ function renderGuideMissing(r){
   box.hidden = false;
   box.scrollIntoView({block: 'nearest'});
 }
-function renderGuideSkill(r, w, slot){
+// `applied` (FB-2): the draft is already in the form, so the fields ARE the
+// preview -- only its note, problems and Start over are shown here.
+function renderGuideSkill(r, w, slot, applied){
   const box = $('#guideSkill');
   box.textContent = '';
   GUIDE_SKILL = {w: w, slot: slot || null};
   box.appendChild(skillEl('div', GUIDE.guide.name, 'guide-who'));
   const mode = skillMode(r);
-  box.appendChild(skillEl('div', 'Here is what I wrote.', 'guide-text'));
-  if(r.target){
-    const where = skillEl('p', 'This goes to the ' + (r.target.room_name || r.target.mode_label) + ' room: '
-      + r.target.mode_label + '.', 'guide-hint');
-    where.id = 'guideSkillTarget';
-    box.appendChild(where);
+  if(!applied){
+    box.appendChild(skillEl('div', 'Here is what I wrote.', 'guide-text'));
+    if(r.target){
+      const where = skillEl('p', 'This goes to the ' + (r.target.room_name || r.target.mode_label) + ' room: '
+        + r.target.mode_label + '.', 'guide-hint');
+      where.id = 'guideSkillTarget';
+      box.appendChild(where);
+    }
+    const dl = skillEl('dl');
+    fieldsFor(mode).filter(f => f.id in r.fields).forEach(f => {
+      const v = r.fields[f.id];
+      const dd = skillEl('dd');
+      if(f.type === 'textarea') dd.appendChild(skillEl('pre', v === '' ? '(empty: instrumental)' : String(v)));
+      else dd.textContent = String(v);
+      dl.append(skillEl('dt', f.label || f.id), dd);
+    });
+    box.appendChild(dl);
   }
-  const dl = skillEl('dl');
-  fieldsFor(mode).filter(f => f.id in r.fields).forEach(f => {
-    const v = r.fields[f.id];
-    const dd = skillEl('dd');
-    if(f.type === 'textarea') dd.appendChild(skillEl('pre', v === '' ? '(empty: instrumental)' : String(v)));
-    else dd.textContent = String(v);
-    dl.append(skillEl('dt', f.label || f.id), dd);
-  });
-  box.appendChild(dl);
   if(r.note){
     const n = skillEl('p', r.note, 'skill-note');
     n.id = 'guideSkillNote';
@@ -3809,13 +3960,13 @@ function renderGuideSkill(r, w, slot){
   }
   if(r.vision === false) box.appendChild(skillEl('p', "This helper can't see pictures, so it only has your words to go on.", 'guide-hint'));
   const actions = skillEl('div', null, 'skill-actions');
-  actions.append(skillButton('Use these', 'guideSkillUse', true,
-                   () => r.target ? guideSkillUseTarget(r) : guideSkillUse(r.fields)),
-                 skillButton('Dismiss', 'guideSkillDismiss', false, guideSkillClear),
+  if(!applied) actions.append(skillButton('Use these', 'guideSkillUse', true,
+                                () => r.target ? guideSkillUseTarget(r) : guideSkillUse(r.fields)));
+  actions.append(skillButton('Dismiss', 'guideSkillDismiss', false, guideSkillClear),
                  skillButton('Start over', 'guideSkillRestart', false, () => guideWriteStartOver(w)));
   box.appendChild(actions);
   box.hidden = false;
-  box.scrollIntoView({block: 'nearest'});
+  if(!applied) box.scrollIntoView({block: 'nearest'});
 }
 // Fill the form the way typing would: every field gets its value, then the
 // same input/change events a person's edit fires, so the page reacts alike.
@@ -3830,6 +3981,7 @@ function guideSkillUse(fields){
   refreshEnabled(fieldsFor(currentMode()));
   makeConfirmHide();
   guideSkillClear();
+  guideFilledReveal();
   // The words land in the prompt box above: bring it back into view.
   const r = $('#promptBox').getBoundingClientRect(), c = $('#inspector').getBoundingClientRect();
   if(!$('#promptWrap').hidden && (r.top < Math.max(0, c.top) || r.bottom > Math.min(innerHeight, c.bottom)))
@@ -3848,7 +4000,10 @@ async function guideSkillUseTarget(r){
 // "Write this shot" (`shot`, the Cutting Room) starts one for the shot on
 // screen: its beat is the topic, the beats either side go as context, and
 // the shot's own mode's writer writes, from the room that mode lives in.
-async function guideSkillRun(answer, describe, shot){
+// FB-2: `typed` (a writer mode's Send) is the request itself, in place of the
+// prompt box's words. R8: `fixSaid` marks a "Fix it" write -- the log shows
+// that line for the user's turn, and the guide says it fixed, not filled.
+async function guideSkillRun(answer, describe, shot, typed, fixSaid){
   if(GUIDE_ABORT || !GUIDE || !GUIDE.helper || !currentMode() || $('#promptWrap').hidden) return;
   const answering = typeof answer === 'string';
   const key = guideHistKey(), room = GUIDE_ROOM, mode = STATE.mode;
@@ -3866,11 +4021,11 @@ async function guideSkillRun(answer, describe, shot){
     const pictures = describe ? [guidePictureRef(currentImageSource())].filter(Boolean) : null;
     if(describe && !pictures.length){ guideShowError('No picture to describe yet.'); return; }
     hist.filter(m => m.wk === 'topic').forEach(m => { m.closed = true; });
-    const topic = beat ? String(beat.text || '').trim() : $('#promptBox').value.trim();
+    const topic = beat ? String(beat.text || '').trim() : typeof typed === 'string' ? typed : $('#promptBox').value.trim();
     st = {w: Date.now().toString(36), mode: mode, topic: topic, pictures: pictures, answers: []};
     if(beat) Object.assign(st, {slot: STATE.seqSlotId, room: jobRoom({kind: STATE.cap, mode: mode}),
                                 neighbours: slotWriteNeighbours(beat)});
-    const said = beat ? 'Write this shot: ' + topic : topic || (describe ? 'Describe this picture.' : '');
+    const said = beat ? 'Write this shot: ' + topic : fixSaid || topic || (describe ? 'Describe this picture.' : '');
     turn = said ? {role: 'user', content: said, w: st.w, wk: 'topic', mode: mode, topic: topic, pictures: pictures} : null;
     if(turn && beat) Object.assign(turn, {slot: st.slot, room: st.room, neighbours: st.neighbours});
   }
@@ -3906,6 +4061,12 @@ async function guideSkillRun(answer, describe, shot){
       guideHistSave(key, h);
       renderGuideLog();
       renderGuideMissing(r);
+    } else if(r.say){
+      // FB-2 (R5): the guide just talked -- a line in the conversation, nothing filled.
+      h.forEach(m => { if(m.w === st.w && m.wk === 'topic') m.closed = true; });
+      h.push({role: 'assistant', content: r.say, w: st.w, wk: 'done'});
+      guideHistSave(key, h);
+      renderGuideLog();
     } else if(r.question){
       h.push({role: 'assistant', content: r.question, w: st.w, wk: 'q', options: r.options || []});
       guideHistSave(key, h);
@@ -3913,13 +4074,26 @@ async function guideSkillRun(answer, describe, shot){
       renderGuideQuestion(guideWriteOpen(h) || {w: st.w, pending: {q: r.question, options: r.options || []}}, r);
     } else {
       const labels = fieldsFor(skillMode(r)).filter(f => f.id in r.fields).map(f => f.label || f.id);
+      // FB-2 (R4): a writer mode's draft for its own form goes straight into
+      // the fields (never Make: the user checks them and presses it).
+      const auto = !r.target && !st.slot && guideLayout(currentRoom()) === 'writer';
+      // R10: an auto-applied draft keeps its card only for what the form cannot say.
+      const card = !auto || !!(r.problems && r.problems.length) || r.vision === false;
       h.forEach(m => { if(m.w === st.w && m.wk === 'topic') m.closed = true; });
-      h.push({role: 'assistant', content: 'I wrote ' + (labels.join(', ') || 'nothing')
-               + (r.target ? ' for the ' + (r.target.room_name || r.target.mode_label) + ' room.' : ' for the form.')
-               + (r.note ? ' ' + r.note : ''), w: st.w, wk: 'done'});
+      h.push({role: 'assistant', content: (auto
+                 ? (fixSaid ? 'I fixed ' + (labels.join(', ') || 'nothing') + ' — check them, then press Make.'
+                    : 'I filled in ' + (labels.join(', ') || 'nothing') + ' — check them below, then press Make.')
+                 : 'I wrote ' + (labels.join(', ') || 'nothing')
+                   + (r.target ? ' for the ' + (r.target.room_name || r.target.mode_label) + ' room.' : ' for the form.'))
+               + (r.note ? ' ' + r.note : ''), w: st.w, wk: 'done', applied: !card});
       guideHistSave(key, h);
       renderGuideLog();
-      renderGuideSkill(r, st.w, st.slot);
+      if(auto){
+        guideSkillUse(r.fields);
+        $('#guideFilled').open = true;
+        if(card) renderGuideSkill(r, st.w, st.slot, true);
+        $('#guideFilled').scrollIntoView({block: 'nearest'});
+      } else renderGuideSkill(r, st.w, st.slot);
     }
   } catch(e){
     // Nothing came back: take this turn out again, so asking again never
@@ -3933,6 +4107,7 @@ async function guideSkillRun(answer, describe, shot){
       renderGuideLog();
       guideWriteRestore();
       if(answering && !$('#guideSkill').hidden && !(st.pending.options || []).includes(answer)) $('#guideInput').value = answer;
+      if(typeof typed === 'string' && !fixSaid && !$('#guideInput').value) $('#guideInput').value = typed;
     }
     if(e.name !== 'AbortError'){
       guideShowError(String(e.message || e));
@@ -3984,6 +4159,7 @@ function renderReviseChip(){
   const brain = !!(GUIDE && GUIDE.guide && GUIDE.helper);
   const r = GUIDE_REVISE && GUIDE_REVISE.room === GUIDE_ROOM ? GUIDE_REVISE : null;
   $('#guideReviseNoBrain').hidden = !(r && GUIDE && GUIDE.guide && !brain);
+  renderGuideOff();
   guideInputPlaceholder();
   chip.textContent = '';
   chip.hidden = !(r && brain);
@@ -4164,6 +4340,8 @@ function refreshEnabled(fields){
 
 function focusFirstInput(){
   if($('#roomForm').hidden) return;
+  // FB-2: a writer mode's one box is the guide's.
+  if(guideLayout(currentRoom()) === 'writer'){ $('#guideInput').focus({preventScroll: true}); return; }
   // Prompt-first: focus the box everyone understands. A mode with no prompt
   // (upload-only tools) focuses its first input picker instead -- never an
   // empty, inert prompt box (UX review #1/#4, structural note on tool modes).
@@ -4186,16 +4364,28 @@ function msgInspector(text, kind){
    not start until the user has seen the problems and chosen. "Fix it" goes
    to the guide when there is a brain, else to the form's first field. */
 let MAKE_CONFIRM_RETRY = null;
+let MAKE_CONFIRM_PROBLEMS = [];   // R8: what the list says, for Fix it
+let MAKE_CONFIRM_SHAPE = false;   // R8: a shot-shape problem (a picture to change, not words to rewrite)
 function makeConfirmHide(){
   MAKE_CONFIRM_RETRY = null;
+  MAKE_CONFIRM_PROBLEMS = [];
+  MAKE_CONFIRM_SHAPE = false;
+  $('#makeFixHint').hidden = true;
+  $('#makeFixBtn').disabled = false;
+  $('#makeAnywayBtn').disabled = false;
   $('#makeConfirm').hidden = true;
   $('#makeDupeNotice').hidden = true;   // UX-2 #6: same reset points as the other Make-time notice
 }
-function makeConfirmShow(problems, retry){
+function makeConfirmShow(problems, retry, shape){
   const ul = $('#makeConfirmList');
   ul.textContent = '';
   (problems || []).forEach(t => { const li = document.createElement('li'); li.textContent = t; ul.appendChild(li); });
   MAKE_CONFIRM_RETRY = retry;
+  MAKE_CONFIRM_PROBLEMS = (problems || []).map(String);
+  MAKE_CONFIRM_SHAPE = !!shape;
+  $('#makeFixHint').hidden = true;
+  $('#makeFixBtn').disabled = false;
+  $('#makeAnywayBtn').disabled = false;
   msgInspector('', '');
   $('#makeConfirm').hidden = false;
   $('#makeConfirm').scrollIntoView({block: 'nearest'});
@@ -4224,16 +4414,58 @@ $('#slotDeleteBtn').onclick = () => {
   renderSlotMeta(slot);
   setTimeout(() => renderSlotMeta(currentSlot()), 5100);
 };
-$('#makeFixBtn').onclick = () => {
-  makeConfirmHide();
-  if(!$('#guidePanel').hidden && !$('#guideTalk').hidden){
-    $('#guideInput').focus();
-    $('#guidePanel').scrollIntoView({block: 'nearest'});
-  } else {
-    const el = $('#inspector [data-field-id]');
-    if(el) el.focus();
+// R8: "Fix it". In a writer mode with a helper, the guide rewrites the fields
+// against the listed problems (one writer request, the form as context); the
+// list stays up, its buttons off, until the draft lands and auto-applies
+// (guideSkillUse hides it). Never Make. Anywhere else -- no helper, no writer,
+// a shot-shape problem no writer can fix -- the list stays, with a line saying
+// what to do, and the field it names (else the first main field) gets focus.
+$('#makeFixBtn').onclick = async () => {
+  const probs = MAKE_CONFIRM_PROBLEMS.slice();
+  if(!MAKE_CONFIRM_SHAPE && probs.length && !GUIDE_ABORT && guideLayout(currentRoom()) === 'writer'){
+    $('#makeFixBtn').disabled = true;
+    $('#makeAnywayBtn').disabled = true;
+    try{
+      await guideSkillRun(undefined, false, false, ('Fix these before it renders: ' + probs.join('; ')).slice(0, 4000),
+                          'Fix: ' + probs.join('; '));
+    } finally {
+      $('#makeFixBtn').disabled = false;
+      $('#makeAnywayBtn').disabled = false;
+    }
+    return;
   }
+  $('#makeFixHint').hidden = false;
+  const el = makeFixTarget(probs, MAKE_CONFIRM_SHAPE);
+  if(!el) return;
+  if($('#guideFilled').contains(el)) $('#guideFilled').open = true;
+  el.focus({preventScroll: true});
+  el.scrollIntoView({block: 'nearest'});
 };
+const FOCUSABLE_FIELD = 'input:not([type=hidden]), textarea, select';
+function makeFixTarget(probs, shape){
+  const visible = el => !!(el && (el.offsetParent || $('#guideFilled').contains(el)));
+  const fields = fieldsFor(currentMode());
+  if(shape){
+    // A picture that is not the shot's shape: its own picker, else the picture shot's tile.
+    for(const f of fields.filter(f => f.type === 'image' || f.type === 'image_list')){
+      const input = $('#upload_' + f.id);
+      if(visible(input)) return input;
+      const cable = ((STATE.seq && STATE.seq.cables) || []).find(c => c.to === STATE.seqSlotId && c.field === f.id);
+      const tile = cable && document.querySelector('[data-slot-id="' + cable.from + '"]');
+      if(tile) return tile;
+    }
+  }
+  // A problem that names a field, by its label or its id.
+  const text = probs.join(' ').toLowerCase();
+  for(const f of fields){
+    if(!((f.label && text.includes(f.label.toLowerCase())) || text.includes(String(f.id).toLowerCase()))) continue;
+    const el = $('#inspector [data-field-id="' + f.id + '"]');
+    const input = el && (el.matches(FOCUSABLE_FIELD) ? el : el.querySelector(FOCUSABLE_FIELD));
+    if(visible(input)) return input;
+  }
+  return $$('#inspector [data-field-tier="primary"]').map(el => el.matches(FOCUSABLE_FIELD) ? el : el.querySelector(FOCUSABLE_FIELD))
+    .find(visible) || null;
+}
 // A picture that is not the shot's shape comes out stretched or oddly moving:
 // said before anything renders, the way a pack's writer check is. Read from the
 // pictures on screen (a field's thumbnail, or a cabled picture shot's tile).
@@ -4314,7 +4546,7 @@ async function handleSlotMake(slot, confirm, shapeOk, skipDupe){
   }
   if(!confirm && !shapeOk){
     const probs = shotShapeProblems(slot);
-    if(probs.length){ makeConfirmShow(probs, () => handleSlotMake(slot, false, true)); return; }
+    if(probs.length){ makeConfirmShow(probs, () => handleSlotMake(slot, false, true), true); return; }
   }
   $('#makeBtn').disabled = true;
   msgInspector('Saving...', '');

@@ -54,7 +54,7 @@ check("200 with no problems, no retry", code == 200 and b.get("problems") == [] 
 check("caption, lyrics and seconds are the fields", b.get("fields") == {"caption": CAPTION, "lyrics": LYRICS, "seconds": 150.0},
       b.get("fields"))
 check("the brain got the music prompt and 2048 tokens", ASKED[-1]["max_tokens"] == 2048
-      and ASKED[-1]["messages"][0]["content"] == audio.ENGINE["writers"]["music"]["prompt"])
+      and ASKED[-1]["messages"][0]["content"] == audio.ENGINE["writers"]["music"]["prompt"] + "\n\n" + srv.GUIDE_SKILL_SAY_RULE)
 REPLIES[:] = ["CAPTION:\n**Global Metadata**\nrap\nLYRICS:\nNONE"] * 2
 b, code = srv.guide_skill({"room": "music", "mode": "music", "topic": "a rap"})
 check("a Markdown caption is retried once, its problems returned", b.get("retried") is True

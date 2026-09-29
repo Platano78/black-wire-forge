@@ -115,6 +115,9 @@ try:
         else:
             check("item 1: a single-engine room's chip has no caret", caret_hidden is True)
 
+        # FB-2: with a helper, song is a writer mode -- Style and Lyrics sit under
+        # "What the guide filled in", closed while empty; open it to reach them by hand.
+        page.evaluate("() => { const d = document.querySelector('#guideFilled'); if(d && !d.hidden) d.open = true; }")
         if page.is_visible("#f_lyrics"):
             check("item 2: Lyrics sits BEFORE Quality in the DOM (Content group, not several groups down)",
                   page.eval_on_selector(

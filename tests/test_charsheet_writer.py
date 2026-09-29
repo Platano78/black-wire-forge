@@ -109,7 +109,7 @@ try:
                     "NOTE: read as a scout.\nPROMPT: " + GOOD)
     check("picture + name, empty box: 200 and the Sheet prompt field is filled",
           code == 200 and b.get("fields") == {"prompt": GOOD} and b["problems"] == [] and not b["retried"], (code, b.get("error"), b.get("problems")))
-    check("...it is the pack's own writer prompt", REQ[0]["messages"][0]["content"] == qwen_image.CHARSHEET_WRITER_PROMPT)
+    check("...it is the pack's own writer prompt", REQ[0]["messages"][0]["content"] == qwen_image.CHARSHEET_WRITER_PROMPT + "\n\n" + srv.GUIDE_SKILL_SAY_RULE)
     u = REQ[0]["messages"][1]["content"]
     check("...the request carries the name through the room line", 'Name: "Rookie"' in u, u[:300])
     check("...and says the picture is attached (this helper cannot see it)", "cannot see pictures" in u, u[-120:])

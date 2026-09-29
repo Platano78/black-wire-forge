@@ -238,7 +238,7 @@ check("skill: the question path #2", "fields" not in b)
 check("skill: the question path #3", len(HELPER_STATE["requests"]) == 1)
 
 req = HELPER_STATE["requests"][-1]
-check("skill: the request the fake got", req["messages"][0] == {"role": "system", "content": W["prompt"]})
+check("skill: the request the fake got", req["messages"][0] == {"role": "system", "content": W["prompt"] + "\n\n" + srv.GUIDE_SKILL_SAY_RULE})
 check("skill: the request the fake got #2", req["max_tokens"] == 1024)
 user = req["messages"][1]["content"]
 check("skill: the request the fake got #3", user.startswith("[Current room: Music · Duration (seconds): 150]"), user)

@@ -4973,6 +4973,11 @@ def _generic_writer(cap, mode, g):
 GUIDE_SKILL_MAX_ANSWERS = 4
 GUIDE_SKILL_WRITE_NOW = ("No more questions: write it now with sensible defaults, "
                          "and add a NOTE line naming each default you chose.")
+# FB-2: the room's one box sends everything typed in a writer mode here, so
+# every writer may also just talk: one shared rule, appended to each writer's
+# own system prompt (engines.parse_writer_reply reads the SAY line).
+GUIDE_SKILL_SAY_RULE = ("If the user asked a question or said something that is not a request to make "
+                        "something, write nothing: reply with one line, SAY: <your answer>, and nothing else.")
 GUIDE_SKILL_KEPT_ASKING = ("The guide kept asking after %d answers. Start over, or write it yourself."
                            % GUIDE_SKILL_MAX_ANSWERS)
 
@@ -5202,7 +5207,7 @@ def guide_skill(p):
 
     def ask(text):
         """-> (sent, parsed reply or None, raw reply)."""
-        sent = {"system": w["prompt"], "user": text}
+        sent = {"system": w["prompt"] + "\n\n" + GUIDE_SKILL_SAY_RULE, "user": text}
         if refs or attached:
             sent["pictures"] = len(urls)
         reply, finish = _guide_helper_chat([{"role": "system", "content": sent["system"]},
@@ -5245,6 +5250,11 @@ def guide_skill(p):
             if parsed is None or "question" in parsed:
                 return {"ok": False, "error": GUIDE_SKILL_SHAPE_ERROR if parsed is None else GUIDE_SKILL_KEPT_ASKING,
                         "raw": raw[:GUIDE_SKILL_RAW_LIMIT], "sent": sent}, 502
+        if "say" in parsed:
+            body = {"ok": True, "say": parsed["say"], "sent": sent, "retried": False}
+            if refs or attached:
+                body["vision"] = vision
+            return body, 200
         if "missing" in parsed:
             body = {"ok": True, "missing": parsed["missing"], "sent": sent, "retried": False}
             if refs or attached:

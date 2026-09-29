@@ -101,7 +101,7 @@
   <h1>How Black Wire Forge works</h1>
   <p>Black Wire Forge makes pictures, video, sound and 3D on your own machines. Pick the job first, the engine
   second. Everything you make lands in History, and rendering stays on your own configured machines. The one
-  exception: if the optional prompt helper is set up, "Help me write this" and "Describe this picture" send your
+  exception: if the optional prompt helper is set up, what you tell the room's guide and "Describe this picture" send your
   text (and, for a picture, the image) to that helper's own endpoint — see the FAQ below.</p>
 
   <h2 id="the-screen">The screen</h2>
@@ -156,19 +156,24 @@
   <div id="roomsLive"><p class="muted">Loading&hellip;</p></div>
 
   <h2 id="the-guide">The room's guide</h2>
-  <p>Every room has a guide: a helper that knows that room's engines. It sits in the inspector, right
-  under the prompt box and its "Help me write this" button. It is not a separate app: it talks through
-  the optional prompt helper set up in config.json.</p>
+  <p>Every room has a guide: a helper that knows that room's engines. It sits in the inspector, near the top
+  of the form. It is not a separate app: it talks through the optional prompt helper set up in config.json.</p>
   <ul>
-    <li><strong>Help me write this:</strong> tell it in a few words what you want (in the prompt box), press
-      the button, and the guide writes the fields for that mode. It may ask you one question at a time
-      first; when a question has choices, click one or type your own answer. It asks at most 4 questions,
-      then writes anyway, using sensible defaults and naming each default it picked.</li>
-    <li><strong>The preview:</strong> what it wrote appears in the guide panel field by field. Nothing reaches
-      your form until you press <strong>Use these</strong>; <strong>Dismiss</strong> throws it away and
-      <strong>Start over</strong> begins again. It never starts a job: you still press Make.</li>
-    <li><strong>Talking to it:</strong> you can also just ask the guide a question in its box (Enter sends,
-      Shift+Enter makes a new line). The conversation stays in your browser.</li>
+    <li><strong>One box:</strong> in a mode the guide can write for (a song, a picture, a video shot...), its box
+      is the only place you need to type. Say what you want ("a sad country song about a porch") and press
+      Send (or Enter; Shift+Enter makes a new line). The guide writes that mode's fields for you. It may ask
+      you one question at a time first; when a question has choices, click one or type your own answer. It
+      asks at most 4 questions, then writes anyway, using sensible defaults and naming each default it picked.</li>
+    <li><strong>What the guide filled in:</strong> what it wrote goes straight into the prompt box and the
+      fields beside it, under <strong>What the guide filled in</strong>, which opens itself. Read them, change
+      anything by hand, or tell the guide what to change ("make it slower and sadder") and it rewrites them
+      from what is there now. <strong>Start over</strong> begins again. It never starts a job: you still press Make.</li>
+    <li><strong>Talking to it:</strong> ask it a question instead ("what's the difference between these two
+      engines?") and it just answers, filling nothing. In a mode it does not write for (a clean-up tool, the
+      Cutting Room), its box is for questions. The conversation stays in your browser.</li>
+    <li><strong>Words for another room:</strong> the 3D room's picture mode has no prompt of its own. Say what the
+      model should be of in its box, press <strong>Help me write this</strong>, check what the guide wrote,
+      and <strong>Use these</strong> takes the words to the Picture room.</li>
     <li><strong>Compact / Verbose:</strong> how much the guide knows. Compact suits small models and is the
       default; Verbose knows more but needs a model with more context. The panel says how much context
       each needs, and warns you if your helper reports less, but it never switches for you.</li>
@@ -180,8 +185,9 @@
       pictures says so and goes by your words.</li>
     <li><strong>Edit this result:</strong> on a finished picture, opens the room's edit mode with that picture
       already in place as picture 1; say what to change, then press Make.</li>
-    <li><strong>No helper set up?</strong> The guide panel still shows the room's plain guidance, and says how
-      to add a helper. "Help me write this" only appears once a helper is set up.</li>
+    <li><strong>No helper set up?</strong> In a mode the guide would write for, it says it is off and how to
+      add a helper, and you type straight into the fields. Elsewhere the guide panel still shows the room's
+      plain guidance, and says how to add a helper.</li>
   </ul>
 
   <h2 id="first-five-minutes">Your first five minutes</h2>
@@ -326,12 +332,12 @@
     <dd>Each machine takes its own queue. A process lane (the app's own
     machine, or another one running a local program) runs up to its
     configured worker count at once — one at a time by default.</dd>
-    <dt>What does "Help me write this" do?</dt>
-    <dd>It hands the words in the prompt box, or a picture you have, to the
-    room's guide, which writes a prompt in the style this mode expects. The
-    answer appears in the guide panel right below the button. Only offered
-    when the app was set up with a helper; you always see what it wrote first
-    and choose whether to use it. It never starts a job on its own. Your text
+    <dt>What does the room's guide do with what I type?</dt>
+    <dd>It hands your words, or a picture you have, to the room's guide,
+    which writes the fields in the style this mode expects and puts them in
+    the form under "What the guide filled in". Only when the app was set up
+    with a helper; you always see what it wrote before anything is made, and
+    can change any of it. It never starts a job on its own. Your text
     — and, for "Describe this picture", the image itself when the helper can
     see pictures — is sent to that helper's own endpoint; its operator and
     privacy policy apply, not this app's.</dd>

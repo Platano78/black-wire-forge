@@ -129,7 +129,7 @@ body, code = srv.guide_skill({"room": "video", "mode": "ltx", "topic": H3_BEAT,
                               "context": {"mode": "ltx", "fields": {}, "neighbours": NEIGH}})
 check("LTX shot: 200 with the prompt written", code == 200 and body.get("fields", {}).get("prompt") == LTX_PROMPT, body)
 system, user = (ASKED[-1][0]["content"], ASKED[-1][1]["content"]) if ASKED else ("", "")
-check("LTX shot: the brain got LTX's own writer prompt", system == ltx.ENGINE["writers"]["ltx"]["prompt"])
+check("LTX shot: the brain got LTX's own writer prompt", system == ltx.ENGINE["writers"]["ltx"]["prompt"] + "\n\n" + srv.GUIDE_SKILL_SAY_RULE)
 check("LTX shot: the previous beat is in the request, one line", "Before: INT. LUNAR APARTMENT - NIGHT." in user, user)
 check("LTX shot: the next beat is in the request, without the other engine's prefix",
       "After: The target video holds a close-up on <Subject 2>." in user and PREFIX not in user, user)
@@ -145,7 +145,7 @@ body, code = srv.guide_skill({"room": "video", "mode": "ref2v", "topic": H3_BEAT
 check("H3 shot: 200, its own prefix kept and no problem raised",
       code == 200 and body.get("fields", {}).get("prompt") == H3_PROMPT and body.get("problems") == [], body)
 system, user = (ASKED[-1][0]["content"], ASKED[-1][1]["content"]) if ASKED else ("", "")
-check("H3 shot: the brain got H3's own reference writer prompt", system == minimax_h3.ENGINE["writers"]["ref2v"]["prompt"])
+check("H3 shot: the brain got H3's own reference writer prompt", system == minimax_h3.ENGINE["writers"]["ref2v"]["prompt"] + "\n\n" + srv.GUIDE_SKILL_SAY_RULE)
 check("H3 shot: the beat goes whole, prefix and all", "Request (THIS shot's beat, the only one to write): " + H3_BEAT in user, user)
 check("H3 shot: the next beat keeps the prefix too", "After: " + NEIGH["after"] in user, user)
 

@@ -53,7 +53,7 @@ try:
                     "WIDTH: 1664\nHEIGHT: 928\nNEGATIVE: NONE\nNOTE: a film still.\nPROMPT: " + GOOD)
     check("t2i: prompt and shape", code == 200 and b.get("fields") == {"width": 1664, "height": 928, "prompt": GOOD}
           and b["problems"] == [] and not b["retried"] and "target" not in b, b)
-    check("t2i: the pack's own prompt", REQ[0]["messages"][0]["content"] == qwen_image.T2I_WRITER_PROMPT)
+    check("t2i: the pack's own prompt", REQ[0]["messages"][0]["content"] == qwen_image.T2I_WRITER_PROMPT + "\n\n" + srv.GUIDE_SKILL_SAY_RULE)
     b, code = skill({"room": "picture", "mode": "t2i", "topic": "godzilla vs ghidorah"},
                     "PROMPT: godzilla vs ghidorah", "NEGATIVE: NONE\nPROMPT: " + GOOD)
     check("t2i: a thin prompt gets one retry, the problem named", b.get("retried") and b["fields"]["prompt"] == GOOD
@@ -75,7 +75,7 @@ try:
                     "of the man in <image2> with the jacket from <image1>, keeping everything else in <image2> unchanged.")
     check("edit: two attached, the instruction written", code == 200 and b["fields"]["prompt"].startswith("Replace") and b["problems"] == [], b)
     check("edit: grounded on both, unseen", user().endswith("[The user attached 2 pictures, but this helper cannot see pictures.]"), user()[-90:])
-    check("edit: the edit writer's prompt", REQ[0]["messages"][0]["content"] == qwen_image.EDIT_WRITER_PROMPT)
+    check("edit: the edit writer's prompt", REQ[0]["messages"][0]["content"] == qwen_image.EDIT_WRITER_PROMPT + "\n\n" + srv.GUIDE_SKILL_SAY_RULE)
     b, _ = skill({"room": "picture", "mode": "edit", "topic": "make it night", "attached": [UP]},
                  "PROMPT: Change the scene to night.\n\n1 picture attached.")
     check("edit: a copied grounding line never reaches the prompt (live trial)", b["fields"]["prompt"] == "Change the scene to night.", b)
@@ -94,7 +94,7 @@ try:
           and b.get("fields") == {"negative": "hard shadows, reflections", "prompt": SRC} and "three-quarter" in user(1), b)
     check("3D: it names where it goes", b.get("target") == {"cap": "image", "mode": "t2i", "room": "picture",
           "room_name": "Picture", "mode_label": engines.mode_words("image")["t2i"]}, b.get("target"))
-    check("3D: the pack's own prompt", REQ[0]["messages"][0]["content"] == mesh3d.SOURCE_PICTURE_PROMPT)
+    check("3D: the pack's own prompt", REQ[0]["messages"][0]["content"] == mesh3d.SOURCE_PICTURE_PROMPT + "\n\n" + srv.GUIDE_SKILL_SAY_RULE)
 finally:
     LANE.terminate()
 

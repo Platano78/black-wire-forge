@@ -54,6 +54,9 @@ try:
             check("%d: its thumb is the picture" % w, page.eval_on_selector_all("#thumbs_ref_images img", "e => e.length") == 1)
             check("%d: the form says it is picture 1" % w, "picture 1 under Pictures to work from"
                   in page.inner_text("#inspectorMsg"), page.inner_text("#inspectorMsg"))
+            # FB-2: edit is a writer mode here (a helper is set up): its box sits under
+            # "What the guide filled in", closed while empty -- open it to type by hand.
+            page.evaluate("() => { document.querySelector('#guideFilled').open = true; }")
             page.fill("#promptBox", "make the sky gold")
             page.locator("#thumbs_ref_images").scroll_into_view_if_needed()
             ui.shot(page, "edit-result-after-%dx%d" % (w, h))

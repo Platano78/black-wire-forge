@@ -183,7 +183,7 @@ HELPER_STATE["reply"] = "PROMPT: A slow push in on a rain-soaked street at night
 code, b = skill({"room": "video", "mode": "ltx", "topic": "a rainy street"})
 check("ltx: PROMPT fills the prompt", code == 200 and b.get("fields") == {"prompt": "A slow push in on a rain-soaked street at night."}, b)
 check("ltx: its pack writer's own prompt (P3c)",
-      engines.writer("video", "ltx")["prompt"] == HELPER_STATE["requests"][-1]["messages"][0]["content"])
+      engines.writer("video", "ltx")["prompt"] + "\n\n" + srv.GUIDE_SKILL_SAY_RULE == HELPER_STATE["requests"][-1]["messages"][0]["content"])
 HELPER_STATE["reply"] = "**PROMPT:** a heavy wooden door creaking open"
 code, b = skill({"room": "sfx", "mode": "sfx", "topic": "a creaky door"})
 check("sfx: PROMPT fills the prompt (bold key tolerated)", code == 200 and b.get("fields") == {"prompt": "a heavy wooden door creaking open"}, b)
@@ -206,7 +206,7 @@ print("skill: a mode with a pack writer still uses it")
 HELPER_STATE["reply"] = "QUESTION: Sung, or instrumental?"
 code, b = skill({"room": "music", "mode": "song", "topic": "a song"})
 check("song: the pack writer's own prompt", code == 200 and HELPER_STATE["requests"][-1]["messages"][0]["content"]
-      == engines.writer("audio", "song")["prompt"])
+      == engines.writer("audio", "song")["prompt"] + "\n\n" + srv.GUIDE_SKILL_SAY_RULE)
 
 # ---------------------------------------------------------------------------
 # 3. "Describe this picture": the same call with pictures
