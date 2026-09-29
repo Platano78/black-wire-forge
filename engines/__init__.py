@@ -867,7 +867,7 @@ def _writer_options(value, none):
     return out[:WRITER_OPTIONS_MAX] if len(out) >= 2 else []
 
 
-def parse_writer_reply(w, text):
+def parse_writer_reply(w, text, prose_say=False):
     """Parse a writer's line-delimited reply ->
     {"question": str, "options": [..]} when it asks (options may be []),
     {"missing": str} when a writer with `pictures` says one is missing,
@@ -882,7 +882,9 @@ def parse_writer_reply(w, text):
     stays as text inside the part, so a repeated header never truncates
     lyrics. The parts may come in any order. Any other key whose value is blank or the
     none_token is left out. Raises ValueError when the reply holds neither a
-    question nor the (first) multiline key."""
+    question nor the (first) multiline key -- unless prose_say and the reply
+    holds no line headed by a writer key or NOTE/QUESTION/OPTIONS/MISSING/SAY:
+    a plain prose answer is then {"say": whole stripped reply}."""
     text = text or ""
     if _THINK[1] in text:
         text = text.split(_THINK[1], 1)[1]
@@ -942,6 +944,9 @@ def parse_writer_reply(w, text):
     if part is not None:
         close()
     if multis[0] not in started:
+        known = set(keys) | {"NOTE", "QUESTION", "OPTIONS", "MISSING", "SAY"}
+        if prose_say and text.strip() and not any(_writer_line(l)[0] in known for l in all_lines):
+            return {"say": text.strip()}
         raise ValueError("no %s line" % multis[0])
     return {"values": values, "note": note}
 

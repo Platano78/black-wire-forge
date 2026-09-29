@@ -760,7 +760,7 @@ try:
               page.input_value("#promptBox") == "A lighthouse at dusk on a rocky point, warm light in the lamp room.",
               page.input_value("#promptBox"))
         print("P2c: a reply with no prompt comes back as the server's sentence, verbatim")
-        HELPER["reply"] = "Sure! Here you go."
+        HELPER["reply"] = "NOTE: Sure! Here you go."   # FB-2b: bare prose is a SAY now; a recognised line with no PROMPT is still no answer
         write(page, "a lighthouse")
         page.wait_for_selector("#guideError:not([hidden])", timeout=15000)
         check("one voice: the server's error sentence, unchanged",

@@ -5215,7 +5215,7 @@ def guide_skill(p):
                                            max_tokens=w.get("max_tokens", 1024), retry_cut=True)
         cut.append(finish == "length")
         try:
-            parsed = engines.parse_writer_reply(w, reply)
+            parsed = engines.parse_writer_reply(w, reply, prose_say=finish != "length")
         except ValueError:
             return sent, None, reply
         if "missing" in parsed:

@@ -290,7 +290,8 @@ code, b = skill(body_5)
 check("skill: a key is matched to the engine's own spelling", b["fields"].get("keyscale") == "E minor", b)
 
 print("skill: a reply in the wrong shape")
-HELPER_STATE["replies"] = ["Sure! " + "x" * 3000]
+# FB-2b: plain prose is a SAY now; a reply with a recognised key but no lyrics is the wrong shape
+HELPER_STATE["replies"] = ["TAGS: warm pop\n" + "x" * 3000]
 code, b = skill(body_5)
 check("skill: a reply in the wrong shape", code == 502 and b["ok"] is False and b["error"] == "The writer's answer didn't come back in the expected shape." and len(b["raw"]) == 2000)
 

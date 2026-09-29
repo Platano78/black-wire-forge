@@ -194,13 +194,17 @@ code, b = skill({"room": "picture", "mode": "t2i", "topic": "a street"})
 check("question: returned as the question", code == 200 and b.get("question") == "Day or night?" and "fields" not in b, b)
 
 print("skill: a malformed reply")
-for label, reply in (("prose", "Sure! Here is a lovely prompt for you."), ("PROMPT NONE", "PROMPT: NONE"),
-                     ("PROMPT empty", "PROMPT:")):
+for label, reply in (("PROMPT NONE", "PROMPT: NONE"), ("PROMPT empty", "PROMPT:")):
     HELPER_STATE["reply"] = reply
     code, b = skill({"room": "picture", "mode": "t2i", "topic": "a street"})
     check("malformed (%s): the parse-failure shape" % label, code == 502 and b.get("ok") is False
           and b.get("error") == "The writer's answer didn't come back in the expected shape."
           and b.get("raw") == reply and "sent" in b, b)
+
+# FB-2b: a reply with no recognised line at all is the guide talking, not a shape error
+HELPER_STATE["reply"] = "Sure! Here is a lovely prompt for you."
+code, b = skill({"room": "picture", "mode": "t2i", "topic": "a street"})
+check("prose: a say, nothing filled", code == 200 and b.get("say") == "Sure! Here is a lovely prompt for you." and "fields" not in b, b)
 
 print("skill: a mode with a pack writer still uses it")
 HELPER_STATE["reply"] = "QUESTION: Sung, or instrumental?"
