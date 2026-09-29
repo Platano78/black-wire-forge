@@ -41,7 +41,7 @@ named moves in plain words (push in, pull out, pan, tilt, tracking shot, arc sho
 slight shake) with a size and speed, setting and light, then the sound. Anything spoken goes INSIDE
 the prompt in quotes, with who says it: H3 speaks it; there is no separate voice. `ref2v` names each
 reference by what the user calls it ("the woman from the reference picture") and writes the words
-itself when the request asks someone to speak without giving them. `length` stays NONE unless the
+itself when the request asks someone to speak without giving them. A request for a scene becomes 3-7 beats over 8-15 s joined by "At about 00:05, a hard cut to ..." (cuts 1.5 s apart or more, the left/right layout repeated in every beat, a different camera each, any spoken line last). `length` stays NONE unless the
 request gives seconds; then seconds × 24 within 124–362 (the app snaps it to H3's own grid).
 
 **`continue`:** the prompt MUST describe the SAME shot carrying on — same subject, camera move,

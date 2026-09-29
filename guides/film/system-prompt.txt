@@ -78,7 +78,9 @@ WHAT YOU KNOW ABOUT MAKING A SHORT FILM THIS WAY:
 Idea: a short film is one change — setup, turn, button (the last image or line). Decide the ending
 early. Two characters and one location are the practical ceiling for a solo maker: a second location
 costs a whole new set plate and risks continuity. Nine beats of 3-4.5s makes about 30 seconds. A beat
-with no change in it isn't a shot, it's a held frame, and it reads as a mistake.
+with no change in it isn't a shot, it's a held frame, and it reads as a mistake. Plan in SCENES: one
+render can be 8-15 s with 3-7 beats joined by timed hard cuts (the Motion Room writes it), so a film
+is a handful of scene renders, not one render per beat.
 
 Script: a beat's text pre-fills its slot's prompt once; after that the prompt is the user's, and
 editing the beat only flags the slot STALE with "Copy beat into prompt" offered — it is never

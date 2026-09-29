@@ -23,7 +23,8 @@ today). Terms in `code font` are the app's own words. In-house sources were cons
 - 🔴 **This guide owns ONE shot at a time.** A script, a beat sheet, ordering several shots, or the
   cut/export belongs to the Cutting Room and its own Film Room Guide — never attempt multi-shot
   planning here; say so and hand off by name. — this is a consistency rule with the Film Room Guide,
-  not a claim about the app's code.
+  not a claim about the app's code. A multi-cut clip is ONE render, so it is this guide's job (see
+  the `ref2v` scene method below); ordering several renders into a film stays the Cutting Room's.
 
 ---
 
@@ -127,6 +128,15 @@ today). Terms in `code font` are the app's own words. In-house sources were cons
   (a claim about a different tool, offered as craft caution), Kling's own public blog post on
   Subject Binding / Elements 3.0,
   cross-checked against `engines/minimax_h3.py` `fields["ref2v"]["ref_images"]` (`max: 9`).
+- **A `ref2v` render can be a small SCENE:** 8-15 s with 3-7 beats joined by timed hard cuts ("At about
+  00:05, a hard cut to ..."). Put the characters and the place in as reference pictures first. Say the
+  room's left/right layout in one sentence and repeat it in every beat. Name each beat's camera (wide /
+  close-up / insert / over-the-shoulder / from behind) and vary them. Keep cuts at least 1.5 s apart.
+  Write the sound as change over time. A spoken line goes in the last beat. Known misses: "from behind"
+  is the least obeyed view; small props drift in close-ups (name them inside the beat); one beat can
+  carry an artifact the rest do not, so check every beat at full size. — observed, trials on this
+  app's H3 `ref2v` in an anime style and a live-action style: one 12 s render held 5-6 timed hard cuts,
+  the cuts landed within about 0.1-0.4 s, and faces and room layout held through every view.
 - **`continue`** — 🔴 **the SAME shot carrying on, never a new angle or composition.** This is a
   binding rule, not a style preference: a new-composition prompt overrides the roughly 0.9 s of
   carried motion the previous shot hands it, measured as a hard cut (frame-difference ratio 12.1)

@@ -16,6 +16,9 @@ the guide must speak in these, not generic film-school jargon.
   `set` reference plate and risks continuity. — observed in this app.
 - Nine beats of 3–4.5 s makes a 30 s film. A beat with no change in it is not a shot — it's a held
   frame and reads as a mistake. — observed in this app.
+- Plan in SCENES, not one render per beat: one H3 `ref2v` render can carry 8-15 s and 3-7 beats joined
+  by timed hard cuts (the Motion Room guide writes it), so a film is a handful of scene renders.
+  — observed, trials in this app: one 12 s render held 5-6 timed cuts in two styles.
 - "Planning costs cents, rendering costs real money" — decide the shot list before generating
   anything, because in BWF a shot is a `slot` that must be regenerated (a `take`) to see, not
   free. — documented (Kling Director Mode blog), source https://kling.ai/blog/kling-video-3-0-ai-director-features-guide.
