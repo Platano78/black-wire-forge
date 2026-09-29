@@ -1201,6 +1201,24 @@ def quant_words(filename):
             return token.upper() if len(token) <= 5 else token
     return ""
 
+def mode_model_words(cap, mode):
+    """The pack's own plain-words name for the model a mode loads (its primary
+    role's entry in the pack's `words`), one leading "the " dropped; None when
+    the pack has no word for it. Reuses what the pack already declares."""
+    role = primary_role(cap, mode)
+    for pack in _discover():
+        if pack["cap"] != cap or mode not in pack["graphs"]:
+            continue
+        word = (pack.get("words") or {}).get(role) if role else None
+        if not isinstance(word, str) or not word.strip():
+            return None
+        word = word.strip()
+        if word[:4].lower() == "the ":
+            word = word[4:].strip()
+        return word or None
+    return None
+
+
 def primary_role(cap, mode):
     """The role whose FILE is the headline for a mode, e.g. for a job record.
 

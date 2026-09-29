@@ -7180,9 +7180,21 @@ class Handler(BaseHTTPRequestHandler):
                     model_missing = [mismatch_reason]
                 else:
                     model_missing = [] if able.get(ability) else engines.missing_words(m, ability)
+                # FB-1: which model this mode runs -- the pack's own words for
+                # its primary role, and the file discovery resolved for that role
+                # on the QUERIED lane (the same m.get(role) dispatch reads), as a
+                # basename only. null when there is nothing honest to say.
+                model_file = None
+                if lane is not None and not kind_mismatch and lane_kind(lane) != "process":
+                    _role = engines.primary_role(cap, mode)
+                    _f = m.get(_role) if _role else None
+                    if isinstance(_f, str) and _f:
+                        model_file = _f.replace("\\", "/").rsplit("/", 1)[-1] or None
                 modes.append({
                     "id": mode,
                     "label": words.get(mode, mode),
+                    "model": engines.mode_model_words(cap, mode),
+                    "model_file": model_file,
                     "available": bool(able.get(ability)) and deps_reason is None and not kind_mismatch,
                     "missing": model_missing if kind_mismatch else
                                model_missing + ([deps_reason] if deps_reason else []),

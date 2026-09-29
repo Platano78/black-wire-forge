@@ -284,6 +284,7 @@
   .engine-row input[type=radio]{width:18px; height:18px; accent-color:var(--accent); margin:2px 0 0; flex:none}
   .erow-body{flex:1; min-width:0; display:flex; flex-direction:column; gap:2px}
   .erow-label{font-size:14px; color:var(--text-hi)}
+  .erow-model{font-size:12px; color:var(--text-mid); max-width:72ch; overflow-wrap:anywhere}
   .erow-reason{font-size:12px; color:var(--text-mid); max-width:72ch}
   .erow-missing{font-size:12px; color:var(--error)}
   /* "runs on <machine>" is a routing note, not an error -- the muted tier.
@@ -2060,7 +2061,7 @@ function defaultEstimate(mode){
 let PICKER_KEY = '';
 function pickerKey(ms){
   return JSON.stringify([STATE.room, STATE.cap, STATE.mode, activeLaneName(),
-    ms.map(x => [x.info.available, x.info.missing, x.info.note, defaultEstimate(x.info), x.info.licence])]);
+    ms.map(x => [x.info.available, x.info.missing, x.info.note, defaultEstimate(x.info), x.info.licence, x.info.model, x.info.model_file])]);
 }
 // UX-2 #1: the chip's own open/closed state, kept outside renderEnginePicker
 // so a poll's rebuild (guarded by PICKER_KEY below) doesn't silently close a
@@ -2074,6 +2075,12 @@ function setEngineChipOpen(open){
 // The chip's one line: "<room> - <picked engine>", no caret/popover for a
 // single-engine room (audit B1 -- was one small muted <details> summary
 // sandwiched between TRY THIS and the prompt box).
+// FB-1: the model line for a mode -- the pack's own name for it, plus the file
+// the lane resolved (basename). '' when the pack names nothing.
+function modelLine(m){
+  if(!m || !m.model) return '';
+  return m.model + (m.model_file ? ' \u00b7 ' + m.model_file : '');
+}
 function renderEnginePickerSummary(ms, room){
   const cur = ms.find(x => x.cap === STATE.cap && x.mode === STATE.mode);
   const label = (room && room.name ? room.name + ' · ' : '') + (cur ? cur.info.label : '');
@@ -2081,6 +2088,8 @@ function renderEnginePickerSummary(ms, room){
   const multi = ms.length >= 2;
   $('#engineChipCaret').hidden = !multi;
   const btn = $('#engineChipBtn');
+  const ml = cur ? modelLine(cur.info) : '';
+  if(ml) btn.setAttribute('title', ml); else btn.removeAttribute('title');
   if(multi){
     btn.removeAttribute('disabled');
     btn.setAttribute('aria-haspopup', 'true');
@@ -2129,6 +2138,7 @@ function renderEnginePicker(force){
       + '<input type="radio" name="engine" id="' + id + '" data-cap="' + esc(x.cap) + '" data-mode="' + esc(x.mode) + '"'
       + (x.cap === STATE.cap && x.mode === STATE.mode ? ' checked' : '') + (off ? ' disabled' : '') + '>'
       + '<div class="erow-body"><div class="erow-label">' + esc(m.label) + '</div>'
+      + (m.model ? '<div class="erow-model">' + esc(modelLine(m)) + '</div>' : '')
       + (m.note ? '<div class="erow-reason">' + esc(m.note) + '</div>' : '')
       + ((off || foreign) ? '<div class="' + missingCls + '">' + esc(missing) + '</div>' : '')
       + '<div class="erow-meta"><span class="erow-estimate">' + esc(defaultEstimate(m)) + '</span>'
@@ -4191,7 +4201,19 @@ function makeConfirmShow(problems, retry){
   $('#makeConfirm').scrollIntoView({block: 'nearest'});
 }
 $('#makeAnywayBtn').onclick = () => { const retry = MAKE_CONFIRM_RETRY; makeConfirmHide(); if(retry) retry(); };
-$('#makeDupeAnywayBtn').onclick = () => { $('#makeDupeNotice').hidden = true; handleMake(true); };
+// FB-1: which Make raised the dupe notice. A slot Make must come back as a
+// NORMAL slot Make (shape check + the server's needs_confirm still run) that
+// skips only the dupe check -- handleMake(true) would also send confirm:true.
+let DUPE_ORIGIN = 'main';
+let DUPE_SLOT_ID = null;
+$('#makeDupeAnywayBtn').onclick = () => {
+  $('#makeDupeNotice').hidden = true;
+  if(DUPE_ORIGIN === 'slot'){
+    const slot = STATE.seq && (STATE.seq.slots || []).find(s => s.id === DUPE_SLOT_ID);
+    if(slot){ handleSlotMake(slot, false, false, true); return; }
+  }
+  handleMake(true);
+};
 $('#slotDeleteBtn').onclick = () => {
   const slot = currentSlot(); if(!slot) return;
   if(!(slot.takes || []).length){ removeSlot(slot.id); return; }
@@ -4264,9 +4286,32 @@ function shotShapeProblems(slot){
   }
   return out;
 }
-async function handleSlotMake(slot, confirm, shapeOk){
+// FB-1: the last successfully submitted slot Make (same-tab double-press guard,
+// the slot-side twin of LAST_MAKE_SIG below).
+let LAST_SLOT_MAKE_SIG = null;
+let LAST_SLOT_MAKE_JOB_ID = null;
+// Signed from what saveSlotOnce would send RIGHT NOW (the live form: autosave
+// lags typing by 600 ms, so slot.values can be stale), for the slot on screen.
+function slotMakeSig(slot){
+  let values = slot.values, recipe = slot.recipe, quality = slot.quality;
+  if(slot.id === STATE.seqSlotId && currentMode()){
+    values = coercedValues(currentMode());
+    if($('#recipeSelect') && !$('#recipeSelect').disabled) recipe = $('#recipeSelect').value || null;
+    if(SELECTED_QUALITY) quality = SELECTED_QUALITY;
+  }
+  return JSON.stringify({seq: STATE.seq.id, slot: slot.id, cap: slot.cap, mode: slot.mode,
+    values: values, recipe: recipe, quality: quality, refs: slot.refs});
+}
+async function handleSlotMake(slot, confirm, shapeOk, skipDupe){
   STATE.freshSlotId = null;
   makeConfirmHide();
+  if(!confirm && !shapeOk && !skipDupe && LAST_SLOT_MAKE_SIG === slotMakeSig(slot)
+     && STATE.jobs.some(j => j.id === LAST_SLOT_MAKE_JOB_ID && (j.status === 'queued' || j.status === 'running'))){
+    DUPE_ORIGIN = 'slot'; DUPE_SLOT_ID = slot.id;
+    $('#makeDupeNotice').hidden = false;
+    $('#makeDupeNotice').scrollIntoView({block: 'nearest'});
+    return;
+  }
   if(!confirm && !shapeOk){
     const probs = shotShapeProblems(slot);
     if(probs.length){ makeConfirmShow(probs, () => handleSlotMake(slot, false, true)); return; }
@@ -4275,6 +4320,7 @@ async function handleSlotMake(slot, confirm, shapeOk){
   msgInspector('Saving...', '');
   const saved = await saveSlotNow();
   if(!saved){ $('#makeBtn').disabled = false; return; }
+  const submitSig = slotMakeSig(slot);   // FB-1: same function, same live-form inputs as the check
   msgInspector('Sending it over...', '');
   try{
     const req = {id: STATE.seq.id, slot_id: slot.id};
@@ -4284,6 +4330,7 @@ async function handleSlotMake(slot, confirm, shapeOk){
     if(!r.ok){ msgInspector(r.error || 'That did not go through.', 'err'); return; }
     msgInspector('On its way.', 'ok');
     if(r.job){
+      LAST_SLOT_MAKE_SIG = submitSig; LAST_SLOT_MAKE_JOB_ID = r.job.id;   // FB-1
       STATE.jobs = [r.job, ...STATE.jobs.filter(j => j.id !== r.job.id)];
       STATE.selectedJobId = r.job.id;
       STATE.pendingJobId = r.job.id;
@@ -4355,6 +4402,7 @@ async function handleMake(confirm){
   const dupeSig = JSON.stringify(body);
   if(confirm !== true && LAST_MAKE_SIG === dupeSig
      && STATE.jobs.some(j => j.id === LAST_MAKE_JOB_ID && (j.status === 'queued' || j.status === 'running'))){
+    DUPE_ORIGIN = 'main';
     $('#makeDupeNotice').hidden = false;
     $('#makeDupeNotice').scrollIntoView({block: 'nearest'});
     return;
