@@ -1,5 +1,7 @@
 # Black Wire Forge
 
+**Your own AI media studio: songs, pictures, video and 3D, made on machines you own.**
+
 A plain-language web interface for one or more ComfyUI instances. Say what you want, choose an
 available machine, and the app builds and submits the graph; sequence and process-lane workflows
 can select an eligible machine automatically. **Black Wire Studios.**
