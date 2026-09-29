@@ -91,7 +91,6 @@ SEQ_DIR = os.path.join(DATA_DIR, "sequences")   # one <id>.json per sequence
 SEQ_MEDIA_DIR = os.path.join(DATA_DIR, "seq")   # <id>/{refs,takes,cuts}/ -- media a sequence owns
 GUIDE_HIST_DIR = os.path.join(DATA_DIR, "guide_history")   # one <key>.json per guide conversation
 CONFIG_FILE = os.environ.get("GENCENTER_CONFIG") or os.path.join(APP_DIR, "config.json")
-EXAMPLE_FILE = os.path.join(APP_DIR, "config.example.json")
 
 MODEL_KEYS = engines.model_keys()   # whatever the installed packs declare
 # The only things a lane genuinely cannot be guessed from. Everything else has
@@ -104,38 +103,42 @@ def die(msg):
     raise SystemExit(2)
 
 
+class ConfigError(Exception):
+    """A config that load_config() refuses, with the sentence to say why."""
+
+
 def load_config():
-    """Read config.json, or explain exactly what to do instead of crashing."""
-    if not os.path.exists(CONFIG_FILE):
-        hint = ""
-        if os.path.exists(EXAMPLE_FILE):
-            hint = ("    cp %s %s\n"
-                    "    # then edit it: put in your own ComfyUI hosts, ports and model filenames\n"
-                    % (EXAMPLE_FILE, CONFIG_FILE))
-        die("No config file at %s\n\n"
-            "This app ships no machine addresses of its own. Create one from the example:\n\n"
-            "%s\n"
-            "Set GENCENTER_CONFIG=/path/to/config.json to keep it somewhere else."
-            % (CONFIG_FILE, hint))
+    """Read config.json, or explain exactly what to do instead of crashing.
+    Only called when the file exists: a missing one is Setup mode (below)."""
     try:
         with open(CONFIG_FILE) as f:
             cfg = json.load(f)
     except ValueError as e:
         die("%s is not valid JSON: %s\n"
             "Tip: JSON has no comments and no trailing commas." % (CONFIG_FILE, e))
+    try:
+        return validate_config(cfg)
+    except ConfigError as e:
+        die(str(e))
+
+
+def validate_config(cfg):
+    """Every rule a config must meet -> cfg (defaults filled in), or raises
+    ConfigError. Shared by load_config() and Setup's writer, so Setup can
+    never write a file the next start would refuse."""
     if not isinstance(cfg, dict):
-        die("%s must contain a JSON object." % CONFIG_FILE)
+        raise ConfigError("%s must contain a JSON object." % CONFIG_FILE)
 
     lanes = cfg.get("lanes")
     if not isinstance(lanes, list) or not lanes:
-        die("%s needs a non-empty \"lanes\" list -- one entry per ComfyUI instance." % CONFIG_FILE)
+        raise ConfigError("%s needs a non-empty \"lanes\" list -- one entry per ComfyUI instance." % CONFIG_FILE)
     seen = set()
     for i, lane in enumerate(lanes):
         if not isinstance(lane, dict):
-            die("lanes[%d] in %s must be an object." % (i, CONFIG_FILE))
+            raise ConfigError("lanes[%d] in %s must be an object." % (i, CONFIG_FILE))
         kind = lane.get("kind") or "comfy"
         if kind not in ("comfy", "process"):
-            die("lanes[%d] (%s): \"kind\" must be \"comfy\" or \"process\"."
+            raise ConfigError("lanes[%d] (%s): \"kind\" must be \"comfy\" or \"process\"."
                 % (i, lane.get("id", "no id")))
         lane["kind"] = kind
         # A process lane runs programs on the box this app is on: it has no
@@ -143,10 +146,10 @@ def load_config():
         missing = [k for k in (("id", "name") if kind == "process" else LANE_KEYS)
                    if k not in lane]
         if missing:
-            die("lanes[%d] (%s) in %s is missing: %s"
+            raise ConfigError("lanes[%d] (%s) in %s is missing: %s"
                 % (i, lane.get("id", "no id"), CONFIG_FILE, ", ".join(missing)))
         if lane["id"] in seen:
-            die("Two lanes share the id %r in %s. Lane ids must be unique."
+            raise ConfigError("Two lanes share the id %r in %s. Lane ids must be unique."
                 % (lane["id"], CONFIG_FILE))
         seen.add(lane["id"])
         # "caps" is optional and means "what I want this lane used for". What it
@@ -157,12 +160,12 @@ def load_config():
         if kind == "process":
             caps = lane.get("caps")
             if caps is None:
-                die("lanes[%d] (%s): a process lane must say which caps it is\n"
+                raise ConfigError("lanes[%d] (%s): a process lane must say which caps it is\n"
                     "offered for, e.g. \"caps\": [\"3d\"]." % (i, lane["id"]))
         else:
             caps = lane.setdefault("caps", list(engines.caps()))
         if not isinstance(caps, list) or not caps or set(caps) - set(engines.caps()):
-            die("lanes[%d] (%s): \"caps\" must be a non-empty list drawn from %s,\n"
+            raise ConfigError("lanes[%d] (%s): \"caps\" must be a non-empty list drawn from %s,\n"
                 "or left out entirely to let the lane offer whatever models it has."
                 % (i, lane["id"], engines.caps()))
         lane.setdefault("box", "")
@@ -179,7 +182,7 @@ def load_config():
             try:
                 lane["port"] = int(lane["port"])
             except (TypeError, ValueError):
-                die("lanes[%d] (%s): \"port\" must be a number." % (i, lane["id"]))
+                raise ConfigError("lanes[%d] (%s): \"port\" must be a number." % (i, lane["id"]))
             # No "gpu" given? Assume every lane on the same host shares one
             # card. That is the conservative guess: it may free weights that
             # did not need freeing (costing a reload), where the opposite
@@ -188,21 +191,21 @@ def load_config():
             lane.setdefault("gpu", lane["host"])
             lane.setdefault("gpu_label", lane.get("box") or lane["host"])
         if lane.get("models") is not None and not isinstance(lane["models"], dict):
-            die("lanes[%d] (%s): \"models\" must be an object if present." % (i, lane["id"]))
+            raise ConfigError("lanes[%d] (%s): \"models\" must be an object if present." % (i, lane["id"]))
         # LORA-1 Build C: downloads are OPT-IN PER LANE (owner ruling
         # 2026-09-28) -- absent by default, so a fresh config downloads
         # nothing. Present, it must at least name where a LoRA file lands.
         dl = lane.get("downloads")
         if dl is not None:
             if not isinstance(dl, dict) or not dl.get("loras_dir"):
-                die("lanes[%d] (%s): \"downloads\" must be an object with at least "
+                raise ConfigError("lanes[%d] (%s): \"downloads\" must be an object with at least "
                     "\"loras_dir\" (an absolute path) if present." % (i, lane["id"]))
             if not os.path.isabs(dl["loras_dir"]):
-                die("lanes[%d] (%s): \"downloads\".\"loras_dir\" must be an absolute path."
+                raise ConfigError("lanes[%d] (%s): \"downloads\".\"loras_dir\" must be an absolute path."
                     % (i, lane["id"]))
             mb = dl.get("max_bytes")
             if mb is not None and (not isinstance(mb, int) or isinstance(mb, bool) or mb <= 0):
-                die("lanes[%d] (%s): \"downloads\".\"max_bytes\" must be a positive whole "
+                raise ConfigError("lanes[%d] (%s): \"downloads\".\"max_bytes\" must be a positive whole "
                     "number of bytes if present." % (i, lane["id"]))
         # UX-2 #5: "Remove also deletes the file" is OPT-IN PER LANE, same
         # shape as "downloads" above -- absent by default, so a fresh
@@ -212,10 +215,10 @@ def load_config():
         outs = lane.get("outputs")
         if outs is not None:
             if not isinstance(outs, dict) or not outs.get("dir"):
-                die("lanes[%d] (%s): \"outputs\" must be an object with at least "
+                raise ConfigError("lanes[%d] (%s): \"outputs\" must be an object with at least "
                     "\"dir\" (an absolute path) if present." % (i, lane["id"]))
             if not os.path.isabs(outs["dir"]):
-                die("lanes[%d] (%s): \"outputs\".\"dir\" must be an absolute path."
+                raise ConfigError("lanes[%d] (%s): \"outputs\".\"dir\" must be an absolute path."
                     % (i, lane["id"]))
 
     # "models" is OPTIONAL. Model filenames are discovered from each lane at
@@ -224,11 +227,11 @@ def load_config():
     models = cfg.get("models")
     if models is not None:
         if not isinstance(models, dict):
-            die("\"models\" in %s must be an object (or left out: filenames are\n"
+            raise ConfigError("\"models\" in %s must be an object (or left out: filenames are\n"
                 "discovered from each lane automatically)." % CONFIG_FILE)
         unknown = [k for k in models if k not in MODEL_KEYS]
         if unknown:
-            die("\"models\" in %s has key(s) this app does not use: %s\n"
+            raise ConfigError("\"models\" in %s has key(s) this app does not use: %s\n"
                 "Valid keys: %s" % (CONFIG_FILE, ", ".join(unknown), ", ".join(MODEL_KEYS)))
 
     # "helper" (L5) is OPTIONAL: an OpenAI-compatible chat endpoint for "Help
@@ -237,33 +240,39 @@ def load_config():
     # that lives here, in the operator's own config.
     helper = cfg.get("helper")
     if helper is not None and (not isinstance(helper, dict) or not helper.get("url")):
-        die("\"helper\" in %s must be an object with at least a \"url\" "
+        raise ConfigError("\"helper\" in %s must be an object with at least a \"url\" "
             "(ending in \"/v1\")." % CONFIG_FILE)
     ctx = helper.get("context") if helper is not None else None
     if ctx is not None and (not isinstance(ctx, int) or isinstance(ctx, bool) or ctx <= 0):
-        die("\"helper\".\"context\" in %s must be a whole number of tokens (the context "
+        raise ConfigError("\"helper\".\"context\" in %s must be a whole number of tokens (the context "
             "the helper model actually serves), e.g. 16384." % CONFIG_FILE)
     vision = helper.get("vision") if helper is not None else None
     if vision is not None and not isinstance(vision, bool):
-        die("\"helper\".\"vision\" in %s must be true or false (whether the helper model "
+        raise ConfigError("\"helper\".\"vision\" in %s must be true or false (whether the helper model "
             "can see pictures)." % CONFIG_FILE)
     max_images = helper.get("max_images") if helper is not None else None
     if max_images is not None and (not isinstance(max_images, int) or isinstance(max_images, bool)
                                    or max_images < 1):
-        die("\"helper\".\"max_images\" in %s must be a whole number, 1 or more (how many "
+        raise ConfigError("\"helper\".\"max_images\" in %s must be a whole number, 1 or more (how many "
             "pictures one guide message may carry)." % CONFIG_FILE)
     max_tokens = helper.get("max_tokens") if helper is not None else None
     if max_tokens is not None and (not isinstance(max_tokens, int) or isinstance(max_tokens, bool)
                                    or max_tokens < 1):
-        die("\"helper\".\"max_tokens\" in %s must be a whole number, 1 or more (the fewest tokens "
+        raise ConfigError("\"helper\".\"max_tokens\" in %s must be a whole number, 1 or more (the fewest tokens "
             "every guide reply may use; a model that thinks first needs room for it), e.g. 8192." % CONFIG_FILE)
     return cfg
 
 
-CONFIG = load_config()
+# W1 Setup mode: no config file yet -> instead of exiting, serve only the
+# Setup page (setup.html) and /api/setup/*, which ask a few questions and
+# write config.json. A synthetic config with no lanes and no helper; bound to
+# this machine only, whatever the defaults say, so a first run never exposes
+# the box. A config that exists but is broken still exits (load_config).
+SETUP_MODE = not os.path.exists(CONFIG_FILE)
+CONFIG = {"lanes": [], "bind": "127.0.0.1"} if SETUP_MODE else load_config()
 
-PORT = int(CONFIG.get("port", 3998))
-BIND = CONFIG.get("bind", "0.0.0.0")
+PORT = 3998 if SETUP_MODE else int(CONFIG.get("port", 3998))
+BIND = "127.0.0.1" if SETUP_MODE else CONFIG.get("bind", "0.0.0.0")
 # B1: extra hostnames the Host check accepts ("allowed_hosts": ["forge.lan",
 # "studio.local:3998"]). Optional; the guard works without it.
 ALLOWED_HOSTS = [str(h).strip().lower() for h in (CONFIG.get("allowed_hosts") or [])
@@ -4114,13 +4123,17 @@ HELPER_CONNECT_TIMEOUT = 3.0
 
 
 def _helper_connect_check():
+    _helper_connect_check_to(HELPER)
+
+
+def _helper_connect_check_to(helper):
     """P3: a plain HTTP request's timeout covers connect AND read together,
     so an unreachable (not merely refusing) helper host used to hang for the
     full read timeout_s (default 60s) before the page saw anything besides
     "Thinking...". A short TCP connect probe first turns that into an
     immediate, specific sentence; a helper that DOES answer, just slowly,
     still gets the full timeout_s as its read timeout below."""
-    parsed = urllib.parse.urlsplit(HELPER["url"])
+    parsed = urllib.parse.urlsplit(helper["url"])
     host = parsed.hostname or ""
     port = parsed.port or (443 if parsed.scheme == "https" else 80)
     try:
@@ -4137,15 +4150,52 @@ def _helper_chat(messages, max_tokens=512, timeout=None):
     (content, finish_reason). Raises ValueError(HELPER_BUSY_SENTENCE) on
     timeout, connection failure or a reply this app cannot parse -- a
     caller has exactly one thing to catch and turn into the 503."""
-    _helper_connect_check()
-    url = HELPER["url"].rstrip("/") + "/chat/completions"
-    payload = {"model": HELPER.get("model") or "", "messages": messages, "max_tokens": max_tokens}
+    return _helper_chat_to(HELPER, messages, max_tokens, timeout)
+
+
+def _read_by(r, deadline, limit):
+    """Read an HTTP response's body by a time.monotonic() deadline, at most
+    `limit` bytes -> bytes, or raises. Each socket wait is cut to the time
+    left, so neither a stalled nor a trickling answer outlasts the deadline.
+    ponytail: covers the BODY only -- a server trickling its status line and
+    headers is still bounded only by the per-read socket timeout passed to
+    urlopen (a watchdog thread would close that gap)."""
+    sock = getattr(getattr(getattr(r, "fp", None), "raw", None), "_sock", None)
+    buf = bytearray()
+    while True:
+        left = deadline - time.monotonic()
+        if left <= 0:
+            raise TimeoutError("answer took too long")
+        if sock is not None and not r.isclosed():   # a finished response closes its socket
+            sock.settimeout(left)
+        chunk = r.read1(65536)
+        if not chunk:
+            return bytes(buf)
+        buf += chunk
+        if len(buf) > limit:
+            raise ValueError("answer too large")
+
+
+def _helper_chat_to(helper, messages, max_tokens=512, timeout=None, opener=None, total=None):
+    """_helper_chat against a given helper dict ({"url", "model", ...}) --
+    Setup tests a guide before any config names it. Setup also passes its
+    no-redirect `opener` and `total`: a wall-clock limit in seconds for the
+    whole exchange, which caps the answer at SETUP_READ_LIMIT bytes too.
+    Neither given = exactly the normal-mode behaviour."""
+    deadline = time.monotonic() + total if total else None
+    _helper_connect_check_to(helper)
+    url = helper["url"].rstrip("/") + "/chat/completions"
+    payload = {"model": helper.get("model") or "", "messages": messages, "max_tokens": max_tokens}
     body = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(url, data=body, method="POST",
                                  headers={"Content-Type": "application/json"})
+    wait = timeout or helper.get("timeout_s", 60)
+    if deadline:
+        wait = max(0.1, min(wait, deadline - time.monotonic()))
     try:
-        with urllib.request.urlopen(req, timeout=timeout or HELPER.get("timeout_s", 60)) as r:
-            raw = json.loads(r.read().decode("utf-8"))
+        with (opener.open if opener else urllib.request.urlopen)(req, timeout=wait) as r:
+            data = _read_by(r, deadline, SETUP_READ_LIMIT) if deadline else r.read()
+            raw = json.loads(data.decode("utf-8"))
         choice = raw["choices"][0]
         return choice["message"]["content"] or "", choice.get("finish_reason")
     except Exception as e:
@@ -6933,6 +6983,334 @@ def request_refusal(handler):
     return None
 
 
+# ---------------------------------------------------------------------------
+# W1 Setup: the first-run questions (setup.html) behind /api/setup/*. Live
+# ONLY in SETUP_MODE (no config file): every route here 404s once a config
+# exists. The probes take a host + port or an http(s) URL typed on the Setup
+# page, time out in 4 s or less, and hand back only the fields the page shows
+# -- never a raw response body. The page sends answers, never JSON to write:
+# the config is built here and checked by validate_config() before writing.
+# ---------------------------------------------------------------------------
+
+SETUP_PROBE_TIMEOUT = 4.0
+SETUP_HELPER_PROBE_TIMEOUT = 3.0
+SETUP_READ_LIMIT = 1024 * 1024
+SETUP_COMFY_PORTS = (8188, 8000)   # ComfyUI Desktop's port first, then portable/manual's default
+SETUP_HELPER_CANDIDATES = (("Ollama", "http://127.0.0.1:11434/v1"),
+                           ("LM Studio", "http://127.0.0.1:1234/v1"),
+                           ("llama.cpp", "http://127.0.0.1:8080/v1"))
+SETUP_TEST_MESSAGE = "Reply with the word ready."
+SETUP_TEST_SECONDS = 60.0   # "Test it", whole exchange: a model still loading needs this long
+SETUP_EXISTS = "A settings file already exists."
+_SETUP_HOST_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9.\-]{0,251}[A-Za-z0-9])?$")
+SETUP_LOCK = threading.Lock()
+SETUP_HELPER_TRIED = {}   # (url, model) -> True when "Test it" got a reply
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *a, **k):
+        return None   # a probe answers for the address typed, never somewhere else
+
+
+_SETUP_OPENER = urllib.request.build_opener(_NoRedirect)
+
+
+def _setup_get_json(url, timeout):
+    """GET url -> parsed JSON (dict or list), or raises. Reads at most 1 MiB,
+    and the whole exchange ends within `timeout` seconds."""
+    deadline = time.monotonic() + timeout
+    req = urllib.request.Request(url, headers={"Accept": "application/json"})
+    with _SETUP_OPENER.open(req, timeout=timeout) as r:
+        raw = _read_by(r, deadline, SETUP_READ_LIMIT)
+    return json.loads(raw.decode("utf-8"))
+
+
+def _setup_short(v, n):
+    return v.strip()[:n] if isinstance(v, str) else ""
+
+
+def _setup_address(host, port):
+    """A typed host + port (or an http(s)://host:port the user pasted into the
+    host box) -> (host, port) or raises ValueError with a plain sentence."""
+    host = str(host or "").strip()
+    if "://" in host:
+        parts = urllib.parse.urlsplit(host)
+        if parts.scheme not in ("http", "https") or not parts.hostname:
+            raise ValueError("Type an address like 127.0.0.1 and a port like 8188.")
+        try:
+            port = port or parts.port
+        except ValueError:
+            raise ValueError("That port is not a number from 1 to 65535.")
+        host = parts.hostname
+    if not _SETUP_HOST_RE.match(host):
+        raise ValueError("Type an address like 127.0.0.1 or a computer name, with no spaces.")
+    try:
+        port = int(port)
+    except (TypeError, ValueError):
+        raise ValueError("That port is not a number from 1 to 65535.")
+    if not 1 <= port <= 65535:
+        raise ValueError("That port is not a number from 1 to 65535.")
+    return host, port
+
+
+def _setup_comfy_stats(host, port):
+    """-> the fields the page shows, or None when no ComfyUI answered there."""
+    try:
+        stats = _setup_get_json("http://%s:%d/system_stats" % (host, port), SETUP_PROBE_TIMEOUT)
+    except Exception:
+        return None
+    if not isinstance(stats, dict) or not isinstance(stats.get("system"), dict):
+        return None
+    devs = stats.get("devices") if isinstance(stats.get("devices"), list) else []
+    dev = devs[0] if devs and isinstance(devs[0], dict) else {}
+    gpu = _setup_short(dev.get("name"), 120)
+    vram = dev.get("vram_total")
+    vram_gb = (round(vram / 2 ** 30, 1)
+               if isinstance(vram, (int, float)) and not isinstance(vram, bool) and vram > 0 else None)
+    # ComfyUI names a device like "cuda:0 <card name> : <allocator>": the card
+    # name alone is the suggested lane name, which the user can change.
+    name = re.sub(r"^\S+:\d+\s+", "", gpu).split(" : ")[0].strip()
+    return {"host": host, "port": port, "gpu": gpu or None, "vram_gb": vram_gb,
+            "version": _setup_short(stats["system"].get("comfyui_version"), 40) or None,
+            "name": name or "ComfyUI"}
+
+
+def setup_probe_comfy(body):
+    """{host?, port?} -> the ComfyUI found. No host: 127.0.0.1 on 8188, then 8000."""
+    if body.get("host"):
+        try:
+            host, port = _setup_address(body.get("host"), body.get("port"))
+        except ValueError as e:
+            return {"ok": False, "error": str(e)}, 400
+        found = _setup_comfy_stats(host, port)
+        if not found:
+            return {"ok": False, "error": "No ComfyUI answered at %s:%d." % (host, port)}, 200
+        return {"ok": True, "found": found}, 200
+    for port in SETUP_COMFY_PORTS:
+        found = _setup_comfy_stats("127.0.0.1", port)
+        if found:
+            return {"ok": True, "found": found}, 200
+    return {"ok": False, "error": "No ComfyUI answered on this computer (ports %s)."
+            % " or ".join(str(p) for p in SETUP_COMFY_PORTS)}, 200
+
+
+def _setup_helper_url(url):
+    """A typed guide address -> its OpenAI-compatible base URL (".../v1"), or
+    raises ValueError. A bare http://host:port gets "/v1" added."""
+    url = str(url or "").strip().rstrip("/")
+    parts = urllib.parse.urlsplit(url)
+    try:
+        parts.port
+    except ValueError:
+        raise ValueError("That address has a port that is not a number.")
+    if (parts.scheme not in ("http", "https") or not parts.hostname or "@" in parts.netloc
+            or parts.query or parts.fragment or len(url) > 300):
+        raise ValueError("Type the guide's address like http://127.0.0.1:11434/v1.")
+    return url if parts.path else url + "/v1"
+
+
+def _setup_helper_models(url):
+    """GET <url>/models -> a list of model names, or None when nothing
+    OpenAI-compatible answered."""
+    try:
+        raw = _setup_get_json(url + "/models", SETUP_HELPER_PROBE_TIMEOUT)
+    except Exception:
+        return None
+    if not isinstance(raw, dict):
+        return None
+    names = []
+    for key, fields in (("data", ("id",)), ("models", ("model", "name"))):
+        for m in raw.get(key) if isinstance(raw.get(key), list) else []:
+            for fld in fields:
+                n = _setup_short(m.get(fld) if isinstance(m, dict) else None, 200)
+                if n:
+                    if n not in names:
+                        names.append(n)
+                    break
+    return names[:50]
+
+
+def setup_probe_helper(body):
+    """{url?} -> the guides found: that address, or the usual ones on this machine."""
+    if body.get("url"):
+        try:
+            cands = [("", _setup_helper_url(body.get("url")))]
+        except ValueError as e:
+            return {"ok": False, "error": str(e)}, 400
+    else:
+        cands = list(SETUP_HELPER_CANDIDATES)
+    results = [None] * len(cands)
+
+    def one(i, url):
+        results[i] = _setup_helper_models(url)
+    threads = [threading.Thread(target=one, args=(i, u), daemon=True) for i, (_, u) in enumerate(cands)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(SETUP_HELPER_PROBE_TIMEOUT + 1)
+    found = [{"label": label, "url": url, "models": models}
+             for (label, url), models in zip(cands, results) if models is not None]
+    if not found:
+        where = (cands[0][1] if body.get("url")
+                 else "this computer (%s)" % ", ".join(label for label, _ in cands))
+        return {"ok": False, "found": [], "error": "No guide answered at %s." % where}, 200
+    return {"ok": True, "found": found}, 200
+
+
+def setup_test_helper(body):
+    """{url, model} -> one short chat through _helper_chat_to: the reply, or
+    one plain sentence. Remembers the outcome for setup_build_config()."""
+    try:
+        url = _setup_helper_url(body.get("url"))
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}, 400
+    model = _setup_short(body.get("model"), 200)
+    helper = {"url": url, "model": model}
+    parts = urllib.parse.urlsplit(url)
+    where = "%s:%d" % (parts.hostname, parts.port or (443 if parts.scheme == "https" else 80))
+    try:
+        _helper_connect_check_to(helper)
+    except ValueError:
+        SETUP_HELPER_TRIED[(url, model)] = False
+        return {"ok": False, "error": "Nothing is answering at %s." % where}, 200
+    try:
+        text, _ = _helper_chat_to(helper, [{"role": "user", "content": SETUP_TEST_MESSAGE}], max_tokens=1024,
+                                  opener=_SETUP_OPENER, total=SETUP_TEST_SECONDS)
+    except ValueError:
+        SETUP_HELPER_TRIED[(url, model)] = False
+        return {"ok": False, "error": "The guide at %s did not answer the test: it may be busy, still "
+                "loading, or the model name may be wrong." % where}, 200
+    SETUP_HELPER_TRIED[(url, model)] = True
+    reply = _clean_helper_text(text)[:200]
+    return {"ok": True, "reply": reply or "(it answered with no words: a model that thinks first may "
+            "need more room, but it is working)"}, 200
+
+
+def setup_build_config(body):
+    """The page's answers -> the config dict to write, or raises ValueError
+    with a plain sentence. Nothing here is taken as raw JSON."""
+    lanes = []
+    comfy = body.get("comfy")
+    if comfy:
+        if not isinstance(comfy, dict):
+            raise ValueError("The ComfyUI answer is not in the expected shape.")
+        host, port = _setup_address(comfy.get("host"), comfy.get("port"))
+        name = _setup_short(comfy.get("name"), 80)
+        if not name or any(ord(c) < 32 for c in name):
+            raise ValueError("Give your ComfyUI a name, like \"My computer\".")
+        lanes.append({"id": "comfy", "name": name, "host": host, "port": port})
+    if body.get("process") is True:
+        lanes.append({"id": "cpu", "name": "This machine", "kind": "process", "caps": ["3d"]})
+    if not lanes:
+        raise ValueError("Setup needs somewhere to make things: a ComfyUI, or this machine for "
+                         "the 3D turntable.")
+    bind = {"local": "127.0.0.1", "network": "0.0.0.0"}.get(body.get("who"))
+    if not bind:
+        raise ValueError("Choose who can open Black Wire Forge.")
+    cfg = {"bind": bind, "lanes": lanes}
+    guide = body.get("helper")
+    if guide:
+        if not isinstance(guide, dict):
+            raise ValueError("The guide answer is not in the expected shape.")
+        url = _setup_helper_url(guide.get("url"))
+        model = _setup_short(guide.get("model"), 200)
+        tried = SETUP_HELPER_TRIED.get((url, model))
+        if not (tried or (tried is False and guide.get("insist") is True)):
+            raise ValueError("Test the guide first, or skip it for now.")
+        cfg["helper"] = {"url": url, "model": model}
+    try:
+        validate_config(copy.deepcopy(cfg))
+    except ConfigError as e:
+        raise ValueError(str(e).replace(CONFIG_FILE, os.path.basename(CONFIG_FILE)))
+    return cfg
+
+
+def setup_preview(body):
+    try:
+        cfg = setup_build_config(body)
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}, 400
+    return {"ok": True, "name": os.path.basename(CONFIG_FILE), "text": json.dumps(cfg, indent=2) + "\n"}, 200
+
+
+def _setup_write_new(text):
+    """Create CONFIG_FILE holding text, never replacing one: a temp file in the
+    same folder (O_EXCL), then a hard link to the real name, which fails if
+    the name exists. Returns False when a file is already there."""
+    folder = os.path.dirname(os.path.abspath(CONFIG_FILE))
+    fd, tmp = tempfile.mkstemp(prefix=".config-setup-", suffix=".tmp", dir=folder)
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        try:
+            os.link(tmp, CONFIG_FILE)
+            return True
+        except FileExistsError:
+            return False
+        except OSError:
+            pass   # a filesystem without hard links: exclusive create instead
+        try:
+            out = os.open(CONFIG_FILE, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+        except FileExistsError:
+            return False
+        try:
+            with os.fdopen(out, "w") as f:
+                f.write(text)
+                f.flush()
+                os.fsync(f.fileno())
+        except BaseException:
+            os.unlink(CONFIG_FILE)   # ours, created just above: never leave half a file
+            raise
+        return True
+    finally:
+        os.unlink(tmp)
+
+
+def _setup_restart():
+    """Re-exec this server in-process so the new config loads (same pid,
+    same arguments, same environment)."""
+    time.sleep(0.5)   # let the response reach the page first
+    log("Settings saved to %s -- restarting." % os.path.basename(CONFIG_FILE), "ok")
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os.execv(sys.executable, [sys.executable] + sys.argv)
+
+
+def setup_write(body):
+    if os.path.lexists(CONFIG_FILE):
+        return {"ok": False, "error": SETUP_EXISTS}, 409
+    try:
+        cfg = setup_build_config(body)
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}, 400
+    with SETUP_LOCK:
+        if os.path.lexists(CONFIG_FILE):
+            return {"ok": False, "error": SETUP_EXISTS}, 409
+        try:
+            written = _setup_write_new(json.dumps(cfg, indent=2) + "\n")
+        except OSError:
+            return {"ok": False, "error": "Could not save %s: check that its folder exists and can be "
+                    "written to." % os.path.basename(CONFIG_FILE)}, 500
+        if not written:
+            return {"ok": False, "error": SETUP_EXISTS}, 409
+    threading.Thread(target=_setup_restart, daemon=True).start()
+    return {"ok": True, "name": os.path.basename(CONFIG_FILE)}, 200
+
+
+def setup_state():
+    return {"ok": True, "setup": True, "name": os.path.basename(CONFIG_FILE),
+            "exists": os.path.lexists(CONFIG_FILE),
+            "tools": {"blender": bool(shutil.which("blender")), "ffmpeg": bool(shutil.which("ffmpeg"))}}, 200
+
+
+SETUP_POSTS = {"/api/setup/probe-comfy": setup_probe_comfy, "/api/setup/probe-helper": setup_probe_helper,
+               "/api/setup/test-helper": setup_test_helper, "/api/setup/preview": setup_preview,
+               "/api/setup/write": setup_write}
+SETUP_UNFINISHED = {"ok": False, "setup": True, "error": "Finish Setup first."}
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     server_version = "GenerationCenter/1.0"
@@ -6993,6 +7371,48 @@ class Handler(BaseHTTPRequestHandler):
     def read_json(self):
         return json.loads(self.read_body().decode("utf-8") or "{}")
 
+    def setup_route(self, u):
+        """W1: True when this request was answered here. In Setup mode only the
+        Setup page, /help, the favicon, /api/health and /api/setup/* answer;
+        every other API is 503. Once a config exists, /api/setup/* is 404."""
+        is_setup = u.path.startswith("/api/setup/")
+        if not SETUP_MODE and not is_setup:
+            return False
+        if self.command == "POST":
+            body_ok = True
+            try:
+                body = self.read_json()
+                body_ok = isinstance(body, dict)
+            except ValueError:
+                body_ok = False
+        try:
+            if not SETUP_MODE:
+                self.send_json({"error": "not found"}, 404)
+            elif self.command == "GET" and u.path in ("/", "/index.html"):
+                with open(os.path.join(APP_DIR, "setup.html"), "rb") as f:
+                    self.send_blob(f.read(), "text/html; charset=utf-8")
+            elif self.command == "GET" and u.path == "/api/health":
+                self.send_json({"ok": True, "port": PORT, "lanes": 0, "setup": True})
+            elif self.command == "GET" and u.path == "/api/setup/state":
+                self.send_json(*setup_state())
+            elif self.command == "POST" and u.path in SETUP_POSTS:
+                if not body_ok:
+                    self.send_json({"ok": False, "error": "Send a JSON object."}, 400)
+                else:
+                    self.send_json(*SETUP_POSTS[u.path](body))
+            elif u.path.startswith("/api/"):
+                self.send_json(SETUP_UNFINISHED, 503)
+            elif self.command == "POST":
+                self.send_json({"error": "not found"}, 404)
+            else:
+                return False   # /help, /favicon.ico, anything else: the usual answer
+        except BrokenPipeError:
+            pass
+        except Exception:
+            traceback.print_exc()
+            self.send_json({"ok": False, "error": "Something went wrong in Setup."}, 500)
+        return True
+
     # -- GET ----------------------------------------------------------------
     def refuse(self):
         """Run the B1 guard; if it refuses, drain any body (keep-alive must not
@@ -7021,6 +7441,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         u = urllib.parse.urlparse(self.path)
         q = urllib.parse.parse_qs(u.query)
+        if self.setup_route(u):
+            return
         try:
             if u.path == "/favicon.ico":
                 # F4: this app serves no icon; a bare 404 logs a console error
@@ -7043,7 +7465,7 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/api/view":
                 return self.proxy_view(q)
             if u.path == "/api/health":
-                return self.send_json({"ok": True, "port": PORT, "lanes": len(LANES)})
+                return self.send_json({"ok": True, "port": PORT, "lanes": len(LANES), "setup": SETUP_MODE})
             if u.path == "/api/engines":
                 return self.send_json(self.engines_payload(q))
             if u.path == "/api/credits":
@@ -7504,6 +7926,8 @@ class Handler(BaseHTTPRequestHandler):
         if self.refuse():
             return
         u = urllib.parse.urlparse(self.path)
+        if self.setup_route(u):
+            return
         try:
             if u.path == "/api/upload":
                 return self.api_upload()
@@ -7758,6 +8182,13 @@ def main():
         raise
     srv.daemon_threads = True
 
+    if SETUP_MODE:
+        # Basename only, like below: the full path is how a home directory
+        # ends up in a screenshot. No lanes, no pollers, no jobs to load.
+        log("No %s yet: open http://127.0.0.1:%d/ in a browser on this computer to set up %s."
+            % (os.path.basename(CONFIG_FILE), PORT, TITLE), "ok")
+        srv.serve_forever()
+        return
     load_jobs()
     seq_mark_interrupted_cuts()
     for l in LANES:

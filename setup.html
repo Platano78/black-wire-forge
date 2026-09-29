@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Set up Black Wire Forge</title>
+<style>
+  /* First-run Setup (W1). Standalone on purpose: served only while there is
+     no config.json. Colour tokens and fonts copied from index.html's :root. */
+  :root{
+    --canvas:#121417; --panel:#181b1f; --surface2:#20242a; --surface3:#15171a;
+    --divider:#686e76; --hairline:#2d333b;
+    --accent:#ff5c00; --accent-hover:#ff6b1a; --on-accent:#121417;
+    --ready:#10b981; --asleep:#64748b; --asleep-label:#94a3b8; --error:#ef4444;
+    --text-hi:#f1f5f9; --text-mid:#94a3b8; --text-disabled:#475569;
+    --sans:system-ui,-apple-system,'Segoe UI',sans-serif;
+    --mono:ui-monospace,'SF Mono','Cascadia Mono',monospace;
+    --stale:#f59e0b;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--canvas); color:var(--text-hi); font-family:var(--sans); font-size:15px; line-height:1.5}
+  button,input,select{font-family:inherit;font-size:inherit;color:inherit}
+  a{color:var(--accent)}
+  .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,[tabindex]:focus-visible{
+    outline:2px solid var(--accent); outline-offset:1px;
+  }
+  [hidden]{display:none !important}
+  header{border-bottom:1px solid var(--divider); padding:12px 20px; display:flex; justify-content:space-between;
+    align-items:center; gap:12px; flex-wrap:wrap}
+  header .brand{font-weight:600}
+  main{max-width:720px; margin:0 auto; padding:20px}
+  #progress{font-family:var(--mono); font-size:12px; letter-spacing:.06em; text-transform:uppercase;
+    color:var(--text-mid); margin:0 0 8px}
+  h1{font-size:22px; font-weight:600; margin:0 0 12px}
+  h1:focus{outline:none}
+  p{margin:0 0 12px}
+  .muted{color:var(--text-mid)}
+  .panel{background:var(--panel); border:1px solid var(--divider); padding:16px; margin:12px 0}
+  .choices{display:flex; flex-wrap:wrap; gap:8px; margin:12px 0}
+  .btn{background:var(--surface2); border:1px solid var(--divider); color:var(--text-hi); min-height:40px;
+    padding:0 14px; display:inline-flex; align-items:center; gap:8px; border-radius:0; cursor:pointer}
+  .btn:hover{background:var(--surface3)}
+  .btn[disabled]{color:var(--text-disabled); cursor:not-allowed}
+  .btn[aria-pressed="true"]{border-color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent)}
+  .btn-primary{background:var(--accent); color:var(--on-accent); border-color:var(--accent); font-weight:600}
+  .btn-primary:hover{background:var(--accent-hover)}
+  .btn-primary[disabled]{background:var(--surface2); color:var(--text-disabled); border-color:var(--divider)}
+  .field{display:flex; flex-direction:column; gap:4px; margin:0 0 12px}
+  .row{display:flex; flex-wrap:wrap; gap:8px; align-items:flex-end}
+  .row .field{margin:0}
+  input[type=text],select{background:var(--surface3); border:1px solid var(--divider); min-height:40px;
+    padding:0 10px; border-radius:0; width:100%; max-width:100%}
+  .grow{flex:1 1 220px}
+  .port{flex:0 0 110px}
+  .check{display:flex; gap:10px; align-items:flex-start; margin:8px 0}
+  .check input{width:20px; height:20px; margin:2px 0 0; accent-color:var(--accent)}
+  dl{display:grid; grid-template-columns:max-content 1fr; gap:4px 16px; margin:0 0 12px}
+  dt{color:var(--text-mid)} dd{margin:0; overflow-wrap:anywhere}
+  .ok{color:var(--ready)} .bad{color:var(--error)} .warn{border-color:var(--stale)}
+  pre{background:var(--surface3); border:1px solid var(--divider); padding:12px; overflow:auto;
+    font-family:var(--mono); font-size:13px; margin:0 0 12px}
+  nav.steps{display:flex; justify-content:space-between; gap:8px; margin-top:20px; border-top:1px solid var(--hairline);
+    padding-top:16px}
+  ul{margin:0 0 12px; padding-left:20px}
+  li{margin:4px 0}
+</style>
+</head>
+<body>
+<header>
+  <span class="brand">Black Wire Forge &middot; Setup</span>
+  <a href="/help" target="_blank" rel="noopener">Help</a>
+</header>
+<main>
+  <p id="progress">Step 1 of 4</p>
+
+  <section data-step="1" aria-labelledby="h1">
+    <h1 id="h1" tabindex="-1">Do you have ComfyUI running?</h1>
+    <p>ComfyUI is the program that makes the pictures, video and sound. Black Wire Forge sends your work to it.</p>
+    <div class="choices" role="group" aria-label="Do you have ComfyUI running?">
+      <button type="button" class="btn" id="c-yes-btn" aria-pressed="false">Yes, find it</button>
+      <button type="button" class="btn" id="c-notyet-btn" aria-pressed="false">Not yet</button>
+      <button type="button" class="btn" id="c-nogpu-btn" aria-pressed="false">No graphics card</button>
+    </div>
+
+    <div id="c-yes" class="panel" hidden>
+      <p id="c-status" role="status" aria-live="polite"></p>
+      <div id="c-found" hidden>
+        <dl>
+          <dt>Graphics card</dt><dd id="c-gpu"></dd>
+          <dt>Graphics memory</dt><dd id="c-vram"></dd>
+          <dt>ComfyUI version</dt><dd id="c-version"></dd>
+          <dt>Address</dt><dd id="c-where" class="num"></dd>
+        </dl>
+        <div class="field">
+          <label for="c-name">Its name in Black Wire Forge (you can change it)</label>
+          <input type="text" id="c-name" maxlength="80" autocomplete="off">
+        </div>
+      </div>
+      <p class="muted">Running somewhere else, or on another port? Type where it is.</p>
+      <div class="row">
+        <div class="field grow"><label for="c-host">Address</label>
+          <input type="text" id="c-host" placeholder="127.0.0.1" autocomplete="off" spellcheck="false"></div>
+        <div class="field port"><label for="c-port">Port</label>
+          <input type="text" id="c-port" placeholder="8188" inputmode="numeric" autocomplete="off"></div>
+        <button type="button" class="btn" id="c-check">Check this address</button>
+      </div>
+    </div>
+
+    <div id="c-notyet" class="panel" hidden>
+      <p>Install ComfyUI first, start it, then come back here. Black Wire Forge never installs it for you.
+        Pick the way that suits you, from ComfyUI's own pages:</p>
+      <ul>
+        <li><a href="https://comfy.org/download" target="_blank" rel="noopener">ComfyUI Desktop</a> &mdash; the simplest: an installer.</li>
+        <li><a href="https://docs.comfy.org/installation/comfyui_portable_windows" target="_blank" rel="noopener">ComfyUI portable</a> &mdash; unzip and run.</li>
+        <li><a href="https://docs.comfy.org/installation/manual_install" target="_blank" rel="noopener">Manual install</a> &mdash; for people at home in a terminal.</li>
+      </ul>
+      <button type="button" class="btn" id="c-again">Check again</button>
+      <p id="c-again-status" role="status" aria-live="polite"></p>
+    </div>
+
+    <div id="c-nogpu" class="panel" hidden>
+      <p>Without a graphics card, Black Wire Forge can make one thing today: the 3D turntable, which spins a
+        model into a short video. It needs two free programs on this computer, Blender and ffmpeg.
+        Pictures, video and sound need ComfyUI and a graphics card.</p>
+      <ul id="tools">
+        <li>Blender: <span id="t-blender"></span></li>
+        <li>ffmpeg: <span id="t-ffmpeg"></span></li>
+      </ul>
+      <div id="p-offer" class="check" hidden>
+        <input type="checkbox" id="p-use">
+        <label for="p-use">Use this machine for the 3D turntable</label>
+      </div>
+      <p id="p-missing" hidden>Install what is missing (<a href="https://www.blender.org/download/" target="_blank"
+        rel="noopener">Blender</a>, <a href="https://ffmpeg.org/download.html" target="_blank" rel="noopener">ffmpeg</a>),
+        then check again.</p>
+      <button type="button" class="btn" id="p-again" hidden>Check again</button>
+    </div>
+  </section>
+
+  <section data-step="2" aria-labelledby="h2" hidden>
+    <h1 id="h2" tabindex="-1">Switch on a guide (recommended)</h1>
+    <p>A guide is a chat model that works with you in every room. You tell each room what you want, the guide
+      fills in the details, and you press Make.</p>
+    <p id="g-status" role="status" aria-live="polite"></p>
+    <div class="row">
+      <div class="field grow"><label for="g-url">Or type the guide's address</label>
+        <input type="text" id="g-url" placeholder="http://127.0.0.1:11434/v1" autocomplete="off" spellcheck="false"></div>
+      <button type="button" class="btn" id="g-check">Check this address</button>
+    </div>
+    <div id="g-found" class="panel" hidden>
+      <div class="field"><label for="g-model">Model</label><select id="g-model"></select></div>
+      <button type="button" class="btn" id="g-test">Test it</button>
+      <p id="g-result" role="status" aria-live="polite"></p>
+      <div id="g-insist" class="check" hidden>
+        <input type="checkbox" id="g-insist-box">
+        <label for="g-insist-box">Use this guide anyway (it may not answer)</label>
+      </div>
+    </div>
+    <div class="panel">
+      <button type="button" class="btn" id="g-skip">Skip for now</button>
+      <p class="muted" style="margin:8px 0 0">Skipping means each room shows the engine's own box to write in, with
+        no guide to help. A guide can be added to the settings file later.</p>
+    </div>
+  </section>
+
+  <section data-step="3" aria-labelledby="h3" hidden>
+    <h1 id="h3" tabindex="-1">Who can open Black Wire Forge?</h1>
+    <div class="check">
+      <input type="radio" name="who" id="who-local" value="local" checked>
+      <label for="who-local">Only this computer</label>
+    </div>
+    <div class="check">
+      <input type="radio" name="who" id="who-network" value="network">
+      <label for="who-network">Other devices on my home network</label>
+    </div>
+    <div id="who-warn" class="panel warn" hidden>
+      <p>Black Wire Forge has no password. Anyone who can reach this computer on your network can see everything
+        you make and start new work.</p>
+      <p style="margin:0">Only choose this on a home network you trust. Never open it to the internet: to reach it
+        from outside, use a private network app (a VPN) instead.</p>
+    </div>
+  </section>
+
+  <section data-step="4" aria-labelledby="h4" hidden>
+    <h1 id="h4" tabindex="-1">Here is your settings file</h1>
+    <p>Black Wire Forge will save this as <span id="f-name" class="num">config.json</span>, then start.</p>
+    <pre id="f-text" aria-label="The settings file"></pre>
+    <p id="f-status" role="status" aria-live="polite"></p>
+  </section>
+
+  <nav class="steps" aria-label="Setup steps">
+    <button type="button" class="btn" id="back">Back</button>
+    <button type="button" class="btn btn-primary" id="next" disabled>Next</button>
+  </nav>
+</main>
+<script>
+(function(){
+  "use strict";
+  var $ = function(id){ return document.getElementById(id); };
+  var S = {step: 1, path: null, comfy: null, process: false, tools: {}, guide: null,
+           guideTested: null, skip: false, who: "local", saving: false};
+
+  function post(path, body){
+    return fetch(path, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body || {})})
+      .then(function(r){ return r.json().then(function(j){ j._code = r.status; return j; }); });
+  }
+  function say(el, text, cls){ el.textContent = text || ""; el.className = cls || ""; }
+
+  // ---- steps ----------------------------------------------------------
+  function canNext(){
+    if (S.step === 1) {
+      if (S.path === "yes") return !!(S.comfy && $("c-name").value.trim());
+      if (S.path === "nogpu") return S.process;
+      return false;
+    }
+    if (S.step === 2) return S.skip || S.guideTested === true || (S.guideTested === false && $("g-insist-box").checked);
+    if (S.step === 3) return true;
+    return !S.saving;
+  }
+  function refresh(){
+    $("next").disabled = !canNext();
+    $("back").hidden = S.step === 1;
+    $("next").textContent = S.step === 4 ? "Save and start" : "Next";
+  }
+  function show(n){
+    S.step = n;
+    document.querySelectorAll("section[data-step]").forEach(function(s){ s.hidden = +s.dataset.step !== n; });
+    $("progress").textContent = "Step " + n + " of 4";
+    refresh();
+    $("h" + n).focus();
+    if (n === 2 && !S.looked) { S.looked = true; lookForGuides(); }
+    if (n === 4) preview();
+  }
+  function answers(){
+    var a = {who: S.who, process: S.path === "nogpu" && S.process, comfy: null, helper: null};
+    if (S.path === "yes" && S.comfy) a.comfy = {host: S.comfy.host, port: S.comfy.port, name: $("c-name").value.trim()};
+    if (!S.skip && S.guide) a.helper = {url: S.guide.url, model: S.guide.model,
+                                        insist: S.guideTested === false && $("g-insist-box").checked};
+    return a;
+  }
+
+  // ---- step 1: ComfyUI ------------------------------------------------
+  function choose(path){
+    S.path = path;
+    ["yes", "notyet", "nogpu"].forEach(function(p){
+      $("c-" + p).hidden = p !== path;
+      $("c-" + p + "-btn").setAttribute("aria-pressed", p === path ? "true" : "false");
+    });
+    if (path === "yes" && !S.comfy) findComfy({});
+    if (path === "nogpu") loadTools();
+    refresh();
+  }
+  function showComfy(f){
+    S.comfy = f;
+    $("c-found").hidden = !f;
+    if (!f) return;
+    $("c-gpu").textContent = f.gpu || "None reported";
+    $("c-vram").textContent = f.vram_gb != null ? f.vram_gb + " GB" : "Not reported";
+    $("c-version").textContent = f.version || "Not reported";
+    $("c-where").textContent = f.host + ":" + f.port;
+    $("c-name").value = f.name || "ComfyUI";
+  }
+  function findComfy(body, statusEl){
+    var el = statusEl || $("c-status");
+    say(el, body.host ? "Checking " + body.host + (body.port ? ":" + body.port : "") + "…" : "Looking for ComfyUI on this computer…");
+    return post("/api/setup/probe-comfy", body).then(function(j){
+      if (j.ok) {
+        say(el, "Found ComfyUI.", "ok");
+        showComfy(j.found);
+        if (statusEl) { choose("yes"); say($("c-status"), "Found ComfyUI.", "ok"); }
+      } else {
+        say(el, j.error || "Nothing answered.", "bad");
+        if (!statusEl) showComfy(null);
+      }
+      refresh();
+    }).catch(function(){ say(el, "Setup could not reach its own server. Is it still running?", "bad"); });
+  }
+  $("c-yes-btn").onclick = function(){ choose("yes"); };
+  $("c-notyet-btn").onclick = function(){ choose("notyet"); };
+  $("c-nogpu-btn").onclick = function(){ choose("nogpu"); };
+  $("c-check").onclick = function(){
+    if (!$("c-host").value.trim()) { say($("c-status"), "Type an address first, like 127.0.0.1.", "bad"); $("c-host").focus(); return; }
+    findComfy({host: $("c-host").value.trim(), port: $("c-port").value.trim() || 8188});
+  };
+  $("c-again").onclick = function(){ findComfy({}, $("c-again-status")); };
+  $("c-name").oninput = refresh;
+
+  function loadTools(){
+    return fetch("/api/setup/state").then(function(r){ return r.json(); }).then(function(j){
+      var t = j.tools || {};
+      [["blender", "t-blender"], ["ffmpeg", "t-ffmpeg"]].forEach(function(p){
+        say($(p[1]), t[p[0]] ? "found" : "not found", t[p[0]] ? "ok" : "bad");
+      });
+      var both = !!(t.blender && t.ffmpeg);
+      $("p-offer").hidden = !both;
+      $("p-missing").hidden = both;
+      $("p-again").hidden = both;
+      if (!both) { $("p-use").checked = false; S.process = false; }
+      refresh();
+    });
+  }
+  $("p-use").onchange = function(){ S.process = this.checked; refresh(); };
+  $("p-again").onclick = loadTools;
+
+  // ---- step 2: the guide ----------------------------------------------
+  function listGuides(found){
+    var sel = $("g-model");
+    sel.textContent = "";
+    found.forEach(function(g){
+      var models = g.models.length ? g.models : [""];
+      models.forEach(function(m){
+        var o = document.createElement("option");
+        o.value = JSON.stringify({url: g.url, model: m});
+        o.textContent = (m || "its default model") + (g.label ? " (" + g.label + ")" : " (" + g.url + ")");
+        sel.appendChild(o);
+      });
+    });
+    $("g-found").hidden = !found.length;
+    pickGuide();
+  }
+  function pickGuide(){
+    var v = $("g-model").value;
+    S.guide = v ? JSON.parse(v) : null;
+    S.guideTested = null;
+    S.skip = false;
+    say($("g-result"), "");
+    $("g-insist").hidden = true;
+    $("g-insist-box").checked = false;
+    refresh();
+  }
+  function probeGuides(body){
+    say($("g-status"), body.url ? "Checking " + body.url + "…" : "Looking for a guide on this computer…");
+    return post("/api/setup/probe-helper", body).then(function(j){
+      if (j.ok) {
+        var n = j.found.reduce(function(a, g){ return a + Math.max(g.models.length, 1); }, 0);
+        say($("g-status"), "Found " + n + " model" + (n === 1 ? "" : "s") + ". Pick one and test it.", "ok");
+        listGuides(j.found);
+      } else {
+        say($("g-status"), (j.error || "No guide answered.") +
+          (body.url ? "" : " If you run one (for example Ollama or LM Studio), start it, or type its address."), "bad");
+        if (body.url) listGuides([]);
+      }
+    }).catch(function(){ say($("g-status"), "Setup could not reach its own server. Is it still running?", "bad"); });
+  }
+  function lookForGuides(){ return probeGuides({}); }
+  $("g-check").onclick = function(){
+    if (!$("g-url").value.trim()) { say($("g-status"), "Type an address first, like http://127.0.0.1:11434/v1.", "bad"); $("g-url").focus(); return; }
+    probeGuides({url: $("g-url").value.trim()});
+  };
+  $("g-model").onchange = pickGuide;
+  $("g-test").onclick = function(){
+    if (!S.guide) return;
+    var btn = this;
+    btn.disabled = true;
+    say($("g-result"), "Asking the guide to reply… (a model that is still loading can take a minute)");
+    post("/api/setup/test-helper", S.guide).then(function(j){
+      S.guideTested = !!j.ok;
+      if (j.ok) say($("g-result"), "It works. The guide replied: “" + j.reply + "”", "ok");
+      else say($("g-result"), j.error || "The guide did not answer.", "bad");
+      $("g-insist").hidden = !!j.ok;
+      refresh();
+    }).catch(function(){ say($("g-result"), "Setup could not reach its own server. Is it still running?", "bad"); })
+      .then(function(){ btn.disabled = false; });
+  };
+  $("g-insist-box").onchange = refresh;
+  $("g-skip").onclick = function(){ S.skip = true; show(3); };
+
+  // ---- step 3: who ----------------------------------------------------
+  document.querySelectorAll("input[name=who]").forEach(function(r){
+    r.onchange = function(){ S.who = this.value; $("who-warn").hidden = S.who !== "network"; };
+  });
+
+  // ---- step 4: the file -----------------------------------------------
+  function preview(){
+    say($("f-status"), "");
+    $("f-text").textContent = "";
+    post("/api/setup/preview", answers()).then(function(j){
+      if (j.ok) { $("f-name").textContent = j.name; $("f-text").textContent = j.text; }
+      else say($("f-status"), j.error, "bad");
+    });
+  }
+  function waitForStart(tries){
+    fetch("/api/health", {cache: "no-store"}).then(function(r){ return r.json(); }).then(function(h){
+      if (h.setup === false) { window.location.href = "/"; return; }
+      throw new Error("still in setup");
+    }).catch(function(){
+      if (tries > 120) { say($("f-status"), "Saved, but Black Wire Forge has not come back. Look at the window it runs in, then reload this page.", "bad"); return; }
+      setTimeout(function(){ waitForStart(tries + 1); }, 500);
+    });
+  }
+  function save(){
+    S.saving = true;
+    refresh();
+    say($("f-status"), "Saving…");
+    post("/api/setup/write", answers()).then(function(j){
+      if (j.ok) { say($("f-status"), "Saved. Starting Black Wire Forge…", "ok"); setTimeout(function(){ waitForStart(0); }, 800); return; }
+      S.saving = false;
+      refresh();
+      say($("f-status"), j._code === 409 ? j.error + " Restart Black Wire Forge to use it." : j.error, "bad");
+    }).catch(function(){ S.saving = false; refresh(); say($("f-status"), "Setup could not reach its own server. Is it still running?", "bad"); });
+  }
+
+  // ---- nav ------------------------------------------------------------
+  $("next").onclick = function(){ if (S.step === 4) save(); else show(S.step + 1); };
+  $("back").onclick = function(){ if (S.step > 1) show(S.step - 1); };
+  show(1);
+})();
+</script>
+</body>
+</html>

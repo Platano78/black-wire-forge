@@ -100,8 +100,9 @@ python3 -m venv .venv
   Art's colour-lock/dither and the picture→video image-fit step are unavailable, each saying
   what to install. `ffmpeg` on `PATH` is likewise optional: without it the Cutting Room opens
   but cannot build a cut yet.
-- `config.json` is **required** and its `"lanes"` list must not be empty — the app refuses to
-  start without a lane (see "Troubleshooting"). It is gitignored; never commit or share it.
+- `config.json` is **required**, `"lanes"` non-empty. Missing, the app opens only a local
+  Setup page that writes it (you may write it yourself instead); broken, the app exits (see
+  "Troubleshooting"). It is gitignored; never commit or share it.
   `test -e config.json || cp ...` creates it only if missing — a bare `cp` would clobber a real
   one on a re-run.
 - The example config binds `127.0.0.1` (localhost only). `server.py` runs in the
@@ -237,7 +238,7 @@ prefers one also containing `2.1`) — do not guess a filename requirement not i
 
 | Symptom / sentence (grep `server.py` for the exact wording) | Cause | Fix |
 |---|---|---|
-| `No config file at <path>...` (on startup) | `config.json` doesn't exist yet | `cp config.example.json config.json`, then edit it |
+| A "Set up Black Wire Forge" page instead of the rooms; every other API answers 503 `Finish Setup first.` | `config.json` doesn't exist yet (Setup mode, `127.0.0.1:3998` only) | answer the page, or stop the server, `cp config.example.json config.json`, edit it and start again |
 | `<config> needs a non-empty "lanes" list -- one entry per ComfyUI instance.` | `"lanes"` is missing or `[]` | add at least one lane object |
 | `<config> is not valid JSON: ...` | malformed JSON (commented-out lines, trailing comma) | fix the JSON; it allows neither |
 | `Port <N> is already in use.` | another process (maybe a previous run) already has the port | `lsof -nP -iTCP:<N> -sTCP:LISTEN`, or change `"port"` in `config.json` |

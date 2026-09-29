@@ -11,6 +11,14 @@ can see every job in History and start new ones.
 limiting. Put it behind a VPN (e.g. Tailscale, WireGuard) if you need to reach it away
 from home; do not port-forward it.
 
+## First run binds localhost
+
+With no `config.json`, the app starts in Setup mode: bound to `127.0.0.1` whatever else is
+set, answering only the Setup page (every other API is 503). Its probes reach only the
+addresses typed on that page (or the usual local ports), time out within 4 seconds and pass
+back only the fields the page shows. Setup never replaces an existing `config.json`, and its
+`/api/setup/*` routes are gone (404) once one exists.
+
 ## What the request guard blocks
 
 The app has no login, so every request has to prove where it came from

@@ -67,9 +67,12 @@ Ubuntu 26.04/Python 3.14 box):
 
 ## Minimal config
 
-`config.json` is required and its `"lanes"` list must not be empty -- the app ships no
-machine addresses of its own and refuses to start without at least one. The smallest working
-config, one ComfyUI instance running on the same machine:
+`config.json` is required to use the app and its `"lanes"` list must not be empty -- the app
+ships no machine addresses of its own. With no `config.json` at all, `python3 server.py` starts
+in Setup mode instead: open http://127.0.0.1:3998 on the same computer and it asks where
+ComfyUI (and, optionally, a guide) is, shows the file, and writes it -- never over an existing
+one. A `config.json` that exists but is broken still stops the app with a message. The smallest
+working config, one ComfyUI instance running on the same machine:
 
 ```json
 {
