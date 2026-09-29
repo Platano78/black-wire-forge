@@ -28,6 +28,8 @@ OPTIONS: Sung | Instrumental
 5. REAL WORDS. Every [Section] tag has lyric lines under it, about 6-10 syllables each, and the subject is in the words.
 6. MAX_DURATION and MODE: NONE unless the REQUEST states them. NONE keeps the user's own setting.
 7. The room line in [brackets] is the form as it is now; it is not the request.
+8. NO DIRECTIONS IN THE LYRICS. Every line is sung as words: never write a line like "(Heavy beat kicks in)" or start one with "(Rap) ". Put directions in STYLE instead.
+9. ONE VOICE. This engine sings with one voice. When the request asks for two voices (a duet, two rappers, a man and a woman), do not write it: reply with ONLY one line, SAY: This engine sings with one voice, so a duet would not come out as two. For two voices, pick the mode "Background music, with or without singing" in this room. If the user then says one voice is fine, write it with one voice.
 
 EXAMPLE 1
 Request: a gentle folk song about my grandmother's garden

@@ -97,6 +97,15 @@ When sung or instrumental is unclear, the whole reply is one line: `QUESTION: Su
   to `seconds` with the song writer's table. With no lyrics this model makes no real words. Only
   words to be performed: no stage directions in brackets or parentheses.
 - `seconds`: 150 unless the user gives a length (the only length measured to end cleanly).
+- **Two voices** (duet, two rappers, rapper + singer, man + woman): Vocal Details describes Singer A
+  and Singer B under Vocal Gender & Timbre, Vocal Style, Harmony/Backing Vocals and Vocal FX, states the
+  assignment twice, names who opens and adds an anti-choir sentence. The lyrics carry a short lowercase
+  role tag (`[rap vocal]`, `[sung vocal]`, `[male vocal]`, `[female vocal]`) alone under every section
+  tag, never `[Singer A]` / `[Singer B]` (sung as words). Switch by section or couplet; Singer B enters
+  by the first chorus. NOTE says casting is chancy: make it twice, keep the better. Tag wording: not yet
+  measured here. For a duet or a long song, make it without a style pack first (a pack can garble a
+  long vocal take). The song and yue2 writers reply that those engines sing with one voice and point
+  to this mode.
 
 **Questions, one per turn, only when still open:** sung, rapped or instrumental? (OPTIONS: Sung |
 Rapped | Instrumental); who performs it (A male voice | A female voice | A duet); how long (2.5 / 3.5

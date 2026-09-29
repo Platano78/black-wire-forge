@@ -968,6 +968,17 @@ def song_sections_needed(duration):
     return SONG_SECTIONS_FOR[-1][1], SONG_SECTIONS_FOR[-1][2]
 
 
+# A lyric line that is only a direction, or that opens with a "(Word) " label, is sung as words.
+_DIRECTION_RE = re.compile(r"^\s*(?:\([^()\n]*\)|\([\w'-]+\)\s+\S.*)\s*$")
+
+
+def stage_direction_problems(lyrics):
+    """One problem per lyric line that is entirely inside ( ) or starts with
+    "(Word) ". [Section] tags are not flagged; nothing is removed."""
+    return ['This line will be sung as words: "%s". Put directions in the style/description instead.' % line.strip()
+            for line in (lyrics or "").splitlines() if _DIRECTION_RE.match(line)]
+
+
 def song_check(values, request):
     """The song writer's check, also run as the Make-time guard for this mode.
     `values` are the mode's field values (coerced); `request` is the raw
@@ -991,7 +1002,7 @@ def song_check(values, request):
             problems.append("%g seconds needs lyrics for at least %d sections (%s); these have %d. Too few "
                             "words for the length plays as a long instrumental stretch."
                             % (duration, need, words, have))
-    return problems
+    return problems + stage_direction_problems(lyrics)
 
 
 SONG_WRITER_PROMPT = (
@@ -1034,7 +1045,13 @@ SONG_WRITER_PROMPT = (
     "the subject appears in the words. A tag with nothing under it is WRONG.\n"
     "6. DURATION: use the Duration in the current room line when there is one; otherwise 150.\n"
     "7. BPM, KEY, TIMESIG and LANGUAGE: write NONE unless the REQUEST states them. Do not pick one "
-    "yourself and do not copy them from the room line. NONE keeps the user's own setting.\n\n"
+    "yourself and do not copy them from the room line. NONE keeps the user's own setting.\n"
+    "8. NO DIRECTIONS IN THE LYRICS. Every line is sung as words: never write a line like \"(Heavy beat kicks in)\" "
+    "or start one with \"(Rap) \". Put directions in TAGS instead.\n"
+    "9. ONE VOICE. This engine sings with one voice. When the request asks for two voices (a duet, two rappers, a "
+    "man and a woman), do not write it: reply with ONLY one line, SAY: This engine sings with one voice, so a "
+    "duet would not come out as two. For two voices, pick the mode \"Background music, with or without singing\" "
+    "in this room. If the user then says one voice is fine, write it with one voice.\n\n"
     "EXAMPLE 1\n"
     "Request: a punk song about missing the last train home\n"
     "TAGS: 1977 UK punk rock, fast downstroke guitars, raw shouted female vocals, snotty and urgent\n"
@@ -1210,7 +1227,7 @@ def music_check(values, request):
         size = _music_length_fit_problem(caption, lyrics, values.get("seconds"))
     if size:
         problems.append(size)
-    return problems
+    return problems + stage_direction_problems(lyrics)
 
 
 # ── planned song writer (YuE2) ──
@@ -1233,7 +1250,7 @@ def yue2_check(values, request):
     size = _lyrics_size_problem(lyrics, values.get("max_duration"), "seconds of room")
     if size:
         problems.append(size)
-    return problems
+    return problems + stage_direction_problems(lyrics)
 
 
 # ── cover arranger (YuE2 cover) ──
@@ -1253,12 +1270,12 @@ def cover_check(values, request):
     voiced = song_voice_named(values.get("style"))
     if lyrics and not voiced:
         return ["There are lyrics, but the style names no voice, so the words will likely be lost. Add a voice "
-                "to the style, for example \"warm male vocals\"."]
+                "to the style, for example \"warm male vocals\"."] + stage_direction_problems(lyrics)
     if voiced and not lyrics:
         return ["The style names a voice, but there are no lyrics. The track gives the tune, not its words, so "
                 "this will likely come out with no real words. Put the words in Lyrics, or take the voice out "
                 "of the style for an instrumental."]
-    return []
+    return stage_direction_problems(lyrics)
 
 
 # ── sound effect describer (Stable Audio Open) ──

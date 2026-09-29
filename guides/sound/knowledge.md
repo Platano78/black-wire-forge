@@ -85,6 +85,26 @@ Per-engine text shape, in the moment order a user actually fills them:
   **five-minute full-song vocal model with expressive vocals**, not an "ambience generator" — the
   app's own old code comment calling it that described the old, wrong wiring, not the model. —
   **observed**, the maintainer's music-lane audit (2026-09-21).
+- **Stage directions and duets (`music`; directions apply to every engine with lyrics).** Every lyric
+  line is sung as words: "(Heavy boom bap beat kicks in)", "(High energy dancehall flow)" and inline
+  "(Rap) " / "(Dancehall) " prefixes were all sung by every audio engine — **observed**, the
+  maintainer's session 2026-09-29. Directions belong in the style/description; the app flags such a
+  line as a problem but does not delete it (an ad-lib in parentheses may be wanted). Two voices work
+  only on Music3, and by casting, not by command: declare Singer A / Singer B in the caption's Vocal
+  Details (Vocal Gender & Timbre, Vocal Style, Harmony/Backing Vocals, Vocal FX) with gender,
+  register and timbre, state the assignment twice, name who opens, add an anti-choir sentence, switch
+  by section or couplet (never line by line), and bring the second voice in by the first chorus;
+  expect roughly 60–80% of renders to cast correctly, so make it twice and keep the better one —
+  **reported**, MiniMax's own discussion of duets (https://huggingface.co/MiniMaxAI/MiniMax-Music3/discussions/18)
+  and the vendor caption template. Same-gender duets work (two male rappers on one
+  genre, no style pack, came through) — **observed**, the maintainer's listening, 2026-09-28. In the
+  lyrics, a short lowercase role tag alone under each section tag names who performs it, such as
+  `[rap vocal]` / `[sung vocal]` or `[male vocal]` / `[female vocal]`. A `[Singer B]` tag line was SUNG
+  as words in 3 places ("finger B", "Sing a B", "singer B") — **observed**, 2026-09-29; the role-tag
+  wording is **not yet measured here**. A style pack can garble a long vocal take (a reggae pack at 0.8
+  was "garbled in some parts" on a duet; the same song without a pack was chosen) — **observed**,
+  2026-09-29: for a duet or a long song, make it without a style pack first. ACE-Step and YuE2 sing
+  with one voice: for a duet, suggest the Music3 mode ("Background music, with or without singing").
 - **`yue2` (YuE2-3B, Music room).** `style` is ONE field carrying genre, instruments, voice,
   language, AND tempo together — this engine's own documented convention, not a limitation to work
   around. Vendor's own shipped example: `"English, warm piano pop, expressive female voice,

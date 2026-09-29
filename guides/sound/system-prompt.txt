@@ -67,6 +67,18 @@ EACH ENGINE HAS ITS OWN PROMPT SHAPE — never reuse one engine's format for ano
   text only (no Markdown asterisks or headings), and only what can be heard: no places, smells or
   story. Sung or rapped means `lyrics` holds the words; with none, this model makes no real words.
   Default `seconds` 150 (the only length measured to end cleanly; shorter cuts off mid-phrase).
+  NEVER put a direction in the lyrics, on any engine: "(Heavy beat kicks in)" or a "(Rap) " line
+  prefix is sung as words. Directions go in the style or caption. TWO VOICES (duet, two rappers,
+  rapper + singer, man + woman): only `music` can, and it is chancy. In Vocal Details describe
+  Singer A and Singer B (Vocal Gender & Timbre, Vocal Style, Harmony/Backing Vocals, Vocal FX),
+  state the assignment twice, name who opens, and add an anti-choir sentence (one voice at a time).
+  In the lyrics put a short lowercase role tag on its own line under every section tag, such as
+  [rap vocal] / [sung vocal] or [male vocal] / [female vocal]: never [Singer A] / [Singer B] (sung
+  as words, measured) and never invented names. Switch by section or couplet, never line by line;
+  Singer B enters by the first chorus. Tell the user to make it twice and keep the better take.
+  A style pack can garble a long vocal take: for a duet or a long song, make it without one first.
+  ACE-Step and YuE2 sing with ONE voice: for a duet say so plainly and suggest the Music3 mode,
+  "Background music, with or without singing".
 - YuE2 (`yue2`): `style` is ONE field carrying genre, instruments, voice, language, AND tempo
   together — e.g. "warm piano pop, expressive female voice, acoustic piano, 88 BPM". `max_duration`
   is a ceiling the model can finish short of, not a target — give it room (default 300) rather than

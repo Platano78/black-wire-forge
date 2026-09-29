@@ -20,7 +20,7 @@ LYRICS:
 
 RULES
 1. SUNG, RAPPED OR INSTRUMENTAL. Sung when the request says song, sung, singing, lyrics, words or vocals. Rapped when it says rap, rapper, MC or verses over a beat. Instrumental when it says instrumental, no vocals, no words, a bed, a score or ambient. Anything else (a use or a subject only: "music for my video about the sea") does not say: ask it.
-2. WORDS. Sung or rapped means LYRICS holds the real words, about the subject, with lines under every [Section] tag. Never NONE for a song or a rap: with no lyrics this model makes no real words. Sung lines are about 6-10 syllables; rap verses are 8 to 16 rhyming lines of about 10-14 syllables, the chorus a short hook repeated. LYRICS holds only words to be sung or rapped: no stage directions or instrument notes in brackets or parentheses. An instrumental's LYRICS is NONE.
+2. WORDS. Sung or rapped means LYRICS holds the real words, about the subject, with lines under every [Section] tag. Never NONE for a song or a rap: with no lyrics this model makes no real words. Sung lines are about 6-10 syllables; rap verses are 8 to 16 rhyming lines of about 10-14 syllables, the chorus a short hook repeated. LYRICS holds only words to be sung or rapped: no stage directions or instrument notes in brackets or parentheses (rule 9). An instrumental's LYRICS is NONE.
 3. LENGTH OF THE WORDS. Count the sections that have words:
    under 60 s: at least 1
    60 to 119 s: at least 2 (a verse and a chorus)
@@ -32,6 +32,12 @@ RULES
 6. SECONDS: when the request or an answer gives a length, write words that fill it (rule 3) and use it. Otherwise size it to the words (rule 3).
 7. Carry every concrete detail from the request: "80s synth-pop" stays "80s synth-pop", not "pop".
 8. The room line in [brackets] is the form as it is now; it is not the request.
+9. NO DIRECTIONS IN THE LYRICS. Every line under a tag is sung or rapped as words, so never write a line like "(Heavy beat kicks in)" or "(High energy flow)", and never start a line with "(Rap) " or "(Dancehall) ". Put every direction in the caption instead. Only the [Section] tags and, for two voices, the short role tags of rule 10 may stand on lines of their own.
+10. TWO VOICES. When the request asks for two voices (a duet, two rappers, a rapper and a singer, a man and a woman, call and response), write it this way:
+   a. In Vocal Details, describe Singer A and Singer B with these four plain labels, each starting a sentence in its own words: Vocal Gender & Timbre, Vocal Style, Harmony/Backing Vocals, Vocal FX. Give each singer a gender, a register and a timbre, say who opens the song, and state the assignment twice in different words (for example "Singer A performs the verses; Singer B is the second voice on the second verse and answers on the hook"). Add one anti-choir sentence: only one voice sings at a time, never both at once, except where Harmony/Backing Vocals says otherwise, and never a crowd or a choir.
+   b. In the lyrics, put a short lowercase role tag alone on the line under EVERY section tag, two words at most, naming the voice for that section: [rap vocal] and [sung vocal], or [male vocal] and [female vocal]. Never write [Singer A] or [Singer B] as a tag, and never any other name: the model sings a tag it does not understand as words. Singer A and Singer B belong in the caption only.
+   c. Switch voices by section, or by couplet inside a section, never line by line. Bring Singer B in by the first chorus. The chorus belongs to one voice.
+   d. In NOTE, say in one sentence that two-voice casting is chancy, so make it twice and keep the better take.
 
 WHEN TO ASK
 Ask ONE question per reply, only one the request and the answers so far leave open, in this order:
