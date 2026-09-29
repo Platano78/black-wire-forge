@@ -25,6 +25,14 @@ falsy — is ignored. The dict has exactly these keys:
                        sampling STAGE for UX-2 #9's percent -- e.g. YuE2's
                        own generator nodes report progress under their own
                        class_type, not KSampler's.
+  optional_nodes  optional dict  short id -> ComfyUI node class. Speed-only
+                       nodes a graph may use but never needs: server.py's
+                       discovery checks each on the lane and models_for()
+                       carries the answer as a bool under the short id
+                       (m.get("cs_attn")), so a lane without the node still
+                       gets a graph that validates.
+  generic_modes  optional list[str]  modes of a "legacy_dispatch" pack that
+                       take the generic field-driven path anyway.
   words     dict  role_name -> str
                        plain-English label used in "missing X" messages
   graphs    dict  mode_name -> callable(args, models) -> graph_dict
@@ -146,6 +154,12 @@ falsy — is ignored. The dict has exactly these keys:
                                      to add, or None: `text` is the request
                                      and answers, `count` the pictures
                                      attached; checked before the brain
+                         topic_default  optional sentence: the request when the
+                                     topic box is empty (the writer needs no
+                                     words of its own: the pictures and the
+                                     form are the request); a box holding a
+                                     whole earlier draft (past the text
+                                     limit) is read as empty too
                        A reply may instead be one "QUESTION: ..." line: the
                        writer asks the user one thing before writing,
                        optionally followed by "OPTIONS: a | b | c" (2-5 short
@@ -373,6 +387,19 @@ def stage_class_types():
     return out
 
 
+def optional_nodes():
+    """short id -> ComfyUI node class name, merged across packs (CHARS-1).
+    A mode's graph builder checks `m[short_id]` (a bool filled in by
+    server.py's discovery, alongside model roles) before wiring in a node
+    that speeds up a render but isn't everywhere -- a lane missing it still
+    gets a graph that validates, just without the speed-up. See
+    engines/qwen_image.py's `charsheet_graph`."""
+    out = {}
+    for pack in _discover():
+        out.update(pack.get("optional_nodes") or {})
+    return out
+
+
 def role_pool():
     """role -> pool_name, merged across packs."""
     out = {}
@@ -583,7 +610,8 @@ def legacy_dispatch(cap, mode):
     """
     for pack in _discover():
         if pack["cap"] == cap and mode in pack["graphs"]:
-            return bool(pack.get("legacy_dispatch"))
+            # A legacy pack may hand single modes back to the generic path.
+            return bool(pack.get("legacy_dispatch")) and mode not in (pack.get("generic_modes") or ())
     return False
 
 

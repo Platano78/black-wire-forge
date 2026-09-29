@@ -112,7 +112,7 @@ cleanup_pack = next(p for p in engines.packs() if p["id"] == "cleanup")
 check("cleanup's own describe() never names an engine (always '')",
       cleanup_pack["describe"]({"birefnet_model": "model.safetensors", "upscale_model": "x"}) == "")
 check("modes_for('image') lists every image pack's modes (qwen-image, cleanup, pixelart)",
-      sorted(engines.modes_for("image")) == sorted(["t2i", "edit", "cutout", "upscale", "pixelart"]),
+      sorted(engines.modes_for("image")) == sorted(["t2i", "edit", "charsheet", "cutout", "upscale", "pixelart"]),
       str(engines.modes_for("image")))
 # R3-1: t2i/edit resolve to their OWN mode-specific abilities now, not the
 # bare cap name -- see tests/test_ability_isolation.py for the full RED/

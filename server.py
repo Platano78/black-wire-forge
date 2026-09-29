@@ -1235,6 +1235,7 @@ POOL_NODES = {
 # any:  at least one must be present (empty means no constraint)
 # prefer: ranking bonuses, earliest term worth the most
 ROLE_RULES = engines.role_rules()   # role -> match rule, declared by packs
+OPTIONAL_NODES = engines.optional_nodes()   # CHARS-1: short id -> node class name, declared by packs
 
 # Quantisation markers, for choosing a build the card can actually hold.
 SMALL_QUANTS = ("nvfp4", "int8", "fp8", "w4a8", "int4", "gguf", "q8", "q6", "q5", "q4", "awq")
@@ -1367,7 +1368,7 @@ def discover_lane(lane):
         pools[pool] = fetch_pool(lane, pool)
     if not any(pools.values()):
         with DISCOVERY_LOCK:
-            DISCOVERY[lane["id"]] = {"models": {}, "pools": pools, "checked": time.time(),
+            DISCOVERY[lane["id"]] = {"models": {}, "pools": pools, "nodes": {}, "checked": time.time(),
                                      "err": "the lane did not answer /object_info"}
         return
     for role, rule in ROLE_RULES.items():
@@ -1380,10 +1381,21 @@ def discover_lane(lane):
         if hit:
             found[role] = hit
 
+    # CHARS-1: optional speed nodes, no model file of their own -- presence
+    # is a plain /object_info hit, True/False per short id, read back through
+    # nodes_for() below; a generate call hands them to the graph builder.
+    node_flags = {}
+    for short_id, node_cls in OPTIONAL_NODES.items():
+        try:
+            info = http_get_json(lane_url(lane, "/object_info/%s" % node_cls), timeout=8.0)
+        except Exception:
+            info = None
+        node_flags[short_id] = bool(info and node_cls in info)
+
     with DISCOVERY_LOCK:
         entry = DISCOVERY.get(lane["id"]) or {}
         prev, first = entry.get("models") or {}, not entry.get("checked")
-        DISCOVERY[lane["id"]] = {"models": found, "pools": pools,
+        DISCOVERY[lane["id"]] = {"models": found, "pools": pools, "nodes": node_flags,
                                  "checked": time.time(), "err": ""}
     # Say something the first time we look at a lane, and whenever the answer
     # changes. A lane with nothing usable is worth saying out loud, once.
@@ -1407,6 +1419,15 @@ def models_for(lane):
     out.update(CONFIG_MODELS)
     out.update({k: v for k, v in (lane.get("models") or {}).items() if v})
     return out
+
+
+def nodes_for(lane):
+    """CHARS-1: which of the packs' optional speed nodes this lane has,
+    {short id: bool}. Kept apart from models_for() so the lane listing's
+    "files" stays a list of files; a generate call merges the two into the
+    dict a graph builder reads."""
+    with DISCOVERY_LOCK:
+        return dict((DISCOVERY.get(lane["id"]) or {}).get("nodes") or {})
 
 
 def abilities(lane):
@@ -4986,7 +5007,7 @@ def _writer_payload(cap, mode):
     if w.get("target"):
         tcap, tmode = _writer_target(w, cap, mode)
         out["target"] = _mode_target(tcap, tmode)
-    for k in ("topic_label", "pictures"):
+    for k in ("topic_label", "pictures", "topic_default"):
         if w.get(k):
             out[k] = w[k]
     if w.get("keys"):
@@ -5096,7 +5117,14 @@ def guide_skill(p):
         return {"ok": False, "error": err}, 400
     if refs and topic is None:
         topic = ""
-    if not isinstance(topic, str) or not (topic.strip() or refs):
+    # A writer with a `topic_default` (CHARS-1) needs no words of its own: its
+    # pictures and the form are the request (no picture is answered by its
+    # `missing` check). A topic box holding a whole earlier draft, too long to
+    # be a request, counts as empty.
+    default_topic = (engines.writer(cap, mode) or {}).get("topic_default")
+    if default_topic and (topic is None or (isinstance(topic, str) and len(topic) > HELPER_TEXT_LIMIT)):
+        topic = ""
+    if not isinstance(topic, str) or not (topic.strip() or refs or default_topic):
         return {"ok": False, "error": "Say what it should be about first."}, 400
     if len(topic) > HELPER_TEXT_LIMIT:
         return {"ok": False, "error": "That is too long (at most %d characters)." % HELPER_TEXT_LIMIT}, 400
@@ -5151,7 +5179,7 @@ def guide_skill(p):
             user += "\nThe user's own words so far: " + engines.foreign_prefix_stripped(cap, mode, topic.strip())
     else:
         user += ("Request (THIS shot's beat, the only one to write): " if neighbours else "Request: ") \
-            + engines.foreign_prefix_stripped(cap, mode, topic.strip())
+            + engines.foreign_prefix_stripped(cap, mode, topic.strip() or w.get("topic_default") or "")
     if answer and answer.strip():
         user += "\n\nThe user answered: " + answer.strip()
     if answers:
@@ -5478,7 +5506,7 @@ def generate(p):
             return {"ok": False, "error": "%s is offline right now. Pick one of the lanes glowing green." % lane["name"]}, 409
     kind = p.get("kind")
     mode = p.get("mode")
-    m = models_for(lane)
+    m = dict(models_for(lane), **nodes_for(lane))
     able = abilities(lane)
     # P2: a mode whose pack declares a writer check never starts a render
     # the check says will not be what was asked for (lyrics with no voice

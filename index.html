@@ -3000,7 +3000,9 @@ function renderHelperBar(){
   $('#helperCue').textContent = '→ ' + g.name;
   $('#helperWriteBtn').hidden = cutting;
   $('#slotWriteBtn').hidden = !cutting;
-  $('#helperDescribeBtn').hidden = cutting || !currentImageSource() || !$('#promptBox').dataset.fieldId;   // a topic box describes nothing
+  // a topic box describes nothing; nor does a writer that already reads the room's own picture (the sheet writer)
+  $('#helperDescribeBtn').hidden = cutting || !currentImageSource() || !$('#promptBox').dataset.fieldId
+    || !!(mode.writer && mode.writer.topic_default);
   // B3: "Writes: <field labels>" under Help me write this, so the button
   // doesn't look like it only fills the box it sits under (the YuE2 case:
   // nothing said the writer also fills Lyrics, further down the form).

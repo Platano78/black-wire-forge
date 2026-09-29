@@ -2,7 +2,7 @@
 
 Pins engines.rooms() -- rooms.json merged with each pack's `mode_rooms`:
 1. every mode of every pack lands in exactly one room;
-2. the ten task rooms + the Cutting Room exist, in order;
+2. the eleven task rooms + the Cutting Room exist, in order;
 3. a mode naming an unknown room, and a mode with no `mode_rooms` entry,
    each still get a room (a stranger's pack shows up) -- proved with a
    SYNTHETIC pack, never by breaking a real one;
@@ -46,14 +46,14 @@ check("no room lists a mode no pack provides", set(placed) <= set(ALL_MODES),
       repr(set(placed) - set(ALL_MODES)))
 
 print()
-print("the ten task rooms + the Cutting Room exist, in order")
-WANT = ["music", "cover", "sfx", "picture", "pixelart", "cleanup", "textures", "video", "talking", "3d", "cutting"]
+print("the eleven task rooms + the Cutting Room exist, in order")
+WANT = ["music", "cover", "sfx", "picture", "characters", "pixelart", "cleanup", "textures", "video", "talking", "3d", "cutting"]
 ids = [r["id"] for r in ROOMS]
 check("room ids in order == %r" % WANT, ids[:len(WANT)] == WANT, repr(ids))
 check("no fallback room exists for the real packs", len(ids) == len(WANT), repr(ids[len(WANT):]))
 orders = [r["order"] for r in ROOMS]
 check("orders ascend", orders == sorted(orders), repr(orders))
-GROUPS = {"music": "SOUND", "cover": "SOUND", "sfx": "SOUND", "picture": "PICTURE", "pixelart": "PICTURE",
+GROUPS = {"music": "SOUND", "cover": "SOUND", "sfx": "SOUND", "picture": "PICTURE", "characters": "PICTURE", "pixelart": "PICTURE",
           "cleanup": "PICTURE", "textures": "PICTURE", "video": "MOTION", "talking": "MOTION", "3d": "OBJECT"}
 by_id = {r["id"]: r for r in ROOMS}
 for rid, g in GROUPS.items():
@@ -70,7 +70,7 @@ print()
 print("rooms_spec.md's table: which modes each room holds today, in (cap_order, pack id, graphs) order")
 WANT_MODES = {
     "music": ["song", "music", "yue2"], "cover": ["cover"], "sfx": ["sfx"],
-    "picture": ["t2i", "edit"], "pixelart": ["pixelart"], "cleanup": ["cutout", "upscale"],
+    "picture": ["t2i", "edit"], "characters": ["charsheet"], "pixelart": ["pixelart"], "cleanup": ["cutout", "upscale"],
     "video": ["ltx", "ltx_loop", "fl2va", "ref2v", "continue"], "talking": ["talking"], "3d": ["mesh", "turntable"],
 }
 for rid, want in WANT_MODES.items():

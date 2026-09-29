@@ -44,6 +44,31 @@ Verified working source: `Abiray/Qwen-Image-2.1-GGUF`'s `qwen_image_2.1_Q6_K.ggu
 BiRefNet (`birefnet_model` — see the BiRefNet section below); downloading only the three rows
 above leaves Pixel Art unavailable.
 
+### Character sheet mode (`charsheet`, the Characters room)
+
+One reference picture and a name become one 3:2 character design sheet. It needs **no model
+beyond the three roles above** (`qwen_unet`, `qwen_clip`, `qwen_vae`), and it renders through the
+2.1 edit encoder (`TextEncodeQwenImage21`, the reference on its `images.image_1` input) with a
+plain `VAEDecode`.
+
+Two nodes only make it faster, and the mode leaves them out when the lane does not report them,
+so a lane without them still renders: `ModelAttentionBackend` (set to its "comfy kitchen
+attention") and `QwenImage21Cache`. Discovery looks each one up by name on `/object_info`,
+declared as the pack's `optional_nodes`; nothing needs installing for the mode to work.
+
+The recipe is fixed: 25 steps, guidance 1, `euler`, `simple`. Sheet size is a field, by megapixels
+at 3:2 with both sides a multiple of 32. Measured on a 16 GB card, single job, empty queue:
+
+| Sheet size | Pixels | Time |
+|---|---|---|
+| Quick | 1216 x 832 (1 MP) | 22.6 s |
+| Balanced (default) | 2272 x 1504 (3.4 MP) | about 33 s |
+| Large | 3008 x 2016 (6 MP) | 62 s |
+
+Large leaves about 1 GB of that card free, and its labels read worse than Balanced's. The sheet
+prompt is written by the Characters guide (ten numbered sections, 900 to 1600 words); the words on
+the sheet come out best as short common words (one-word names, "LOOKING UP" and not "UPWARD GAZE").
+
 ### Style packs (LoRAs)
 
 Not a required model — optional, per lane. Any `.safetensors` LoRA already in the lane's ComfyUI

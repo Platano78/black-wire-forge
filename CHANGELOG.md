@@ -6,6 +6,16 @@ All notable changes to Black Wire Forge are recorded here.
 
 ### Added
 
+- A **Characters** room: one picture of a character and a name become one design sheet (a title
+  column, a large hero pose, front/side/back views, three action angles, three silhouettes, three
+  expressions and a grid of close-up details) on the Qwen-Image 2.1 edit encoder. The Characters
+  guide reads the picture and the name and writes the ten-section sheet prompt into the Sheet
+  prompt box for you to read and edit before Make. Sheet size is Quick (1 MP), Balanced (3.4 MP,
+  the default) or Large (6 MP). It needs no new model files; two speed-only nodes
+  (`ModelAttentionBackend`, `QwenImage21Cache`) are used when the lane has them and skipped when
+  it does not. A pack can now declare `optional_nodes` and `generic_modes`, and a writer a
+  `topic_default`, so a writer needs no words of its own once its picture is attached.
+
 - UX flow pass (owner rulings, 2026-09-28): the picked engine is now a chip beside the room
   heading ("Music · Background music ▾"), always visible (no caret/popover for a single-engine
   room); Style and Lyrics (or any pack's own Content-group pair) sit directly under the prompt

@@ -62,7 +62,8 @@ Room). `/api/helper` stays for API users, but the page no longer calls it: the p
 writing actions go to the room's guide (below).
 
 Every room names a guide: Sound (Music, Cover, Sound FX), Picture (Picture, Pixel Art,
-Clean-up, Textures), Motion (Video, Talking Head), Object (3D) and Film (the Cutting Room).
+Clean-up, Textures), Characters (its own), Motion (Video, Talking Head), Object (3D) and Film
+(the Cutting Room).
 On the copy it forwards to the helper, and never on what it returns, the server adds two
 things the app knows and the user's text cannot be trusted to say: every user turn ends with
 its attachment status (`[No picture is attached to this message.]`; the chat is text-only),

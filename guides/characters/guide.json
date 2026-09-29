@@ -1,0 +1,24 @@
+{
+  "id": "characters",
+  "name": "The Characters Guide",
+  "persona": "characters.persona.json",
+  "projections": {
+    "compact": "system-prompt.txt",
+    "verbose": "system-prompt-verbose.txt"
+  },
+  "knowledge": "knowledge.md",
+  "caps": {
+    "compact": {"max_tokens": 1024, "answer_chars": 6000},
+    "verbose": {"max_tokens": 2048, "answer_chars": 12000}
+  },
+  "greeting": "Add a picture of your character and a name, and I'll write the whole sheet prompt for you to read before anything is drawn.",
+  "no_brain": [
+    "No brain is set up for this room yet, so I can't write the sheet prompt for you right now — but here's how the room works, and what matters most either way.",
+    "This room draws one character design sheet from ONE picture: a title column, a large hero pose, front/side/back views, three action angles, three silhouettes, three expressions and a grid of close-up details, all on one page.",
+    "The sheet is drawn from a long prompt in ten numbered sections. Writing that by hand is slow and easy to get wrong — don't be ashamed to use AI for it; that is what this guide is for once a brain is connected.",
+    "Pick a picture that shows the whole character clearly, with the colours you want kept. Whatever the sheet draws, it draws from that picture.",
+    "Name: one word renders most reliably. \"The Rookie\" came out misspelled, \"Rookie\" did not. Every label on the sheet works the same way: short, common words only.",
+    "Sheet size: Balanced is the default. Large is slower and its labels came out worse on a 16 GB card, so bigger is not better here.",
+    "Add a brain by setting \"helper\" in config.json to an OpenAI-compatible chat model to have the sheet prompt written for you."
+  ]
+}

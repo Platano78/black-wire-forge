@@ -177,7 +177,7 @@ ROOMS = json.loads(read("rooms.json"))
 check("loader: every room in rooms.json names a guide", all(r.get("guide") for r in ROOMS),
       repr([r["id"] for r in ROOMS if not r.get("guide")]))
 EXPECTED_GUIDES = {"music": "sound", "cover": "sound", "sfx": "sound", "picture": "picture",
-                   "pixelart": "picture", "cleanup": "picture", "textures": "picture", "video": "motion",
+                   "characters": "characters", "pixelart": "picture", "cleanup": "picture", "textures": "picture", "video": "motion",
                    "talking": "motion", "3d": "object", "cutting": "film"}
 check("loader: each room names its group's guide", {r["id"]: r.get("guide") for r in ROOMS} == EXPECTED_GUIDES,
       repr({r["id"]: r.get("guide") for r in ROOMS}))

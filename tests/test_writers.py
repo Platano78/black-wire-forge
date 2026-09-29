@@ -159,7 +159,7 @@ WRITERS = {("audio", "song"): "Song writer", ("image", "pixelart"): "Sprite writ
            ("video", "ltx"): "Shot writer", ("video", "ltx_loop"): "Long take writer",  # P3c
            ("video", "talking"): "Line writer", ("video", "fl2va"): "Shot writer",
            ("video", "ref2v"): "Reference shot writer", ("video", "continue"): "Carry-on writer",
-           ("image", "t2i"): "Picture prompt writer", ("image", "edit"): "Edit writer",   # P3d
+           ("image", "t2i"): "Picture prompt writer", ("image", "edit"): "Edit writer", ("image", "charsheet"): "Sheet writer",   # P3d, CHARS-1
            ("3d", "mesh"): "Source picture writer"}
 others = [(cap, m["id"]) for cap, v in body.items() if cap not in ("rooms", "helper") for m in v["modes"] if (cap, m["id"]) not in WRITERS and m.get("writer") is not None]
 check("contract: every other mode reports writer null", others == [], others)

@@ -5,6 +5,7 @@ abilities()/missing_for() labels, describe_image(), and the qwen_*_graph
 builders. Logic is verbatim; only the lane->models indirection is replaced
 by the contract's direct ``models`` dict.
 """
+import math
 import re
 
 from . import unet_loader, quant_words
@@ -166,6 +167,78 @@ def qwen_edit_graph(p, m):
         nid = str(100 + i)
         g[nid] = {"class_type": "LoadImage", "inputs": {"image": name}}
         g["4"]["inputs"]["images.image_%d" % i] = [nid, 0]
+    return g
+
+
+# CHARS-1: the Characters room's sheet sizes. A sheet is a 3:2 landscape page
+# with a lot of small labelled panels, so it wants many more pixels than a
+# picture does. Measured 2026-09-28 on a 16 GB card at 25 steps: 1 MP took
+# 22.6 s, 3.4 MP about 33 s, 6 MP 62 s. 6 MP leaves about 1 GB free and its
+# labels read WORSE than 3.4 MP, so Balanced is the default.
+CHARSHEET_SIZES = {
+    "Quick (1 MP)": 1.0,
+    "Balanced (3.4 MP)": 3.4,
+    "Large (6 MP)": 6.0,
+}
+CHARSHEET_DEFAULT_SIZE = "Balanced (3.4 MP)"
+
+
+def charsheet_size(megapixels, multiple=32):
+    """(width, height) of a 3:2 landscape at about `megapixels`, each side a
+    multiple of 32 (the model's latent grid). Each side is rounded on its own,
+    not derived from the other, so the result lands closest to both the
+    asked-for area and a clean 3:2. 1 MP -> 1216x832, 3.4 MP -> 2272x1504,
+    6 MP -> 3008x2016."""
+    width = math.sqrt(megapixels * 1_000_000 * 3 / 2)
+    height = width * 2 / 3
+    return (max(multiple, int(width / multiple + 0.5) * multiple),
+            max(multiple, int(height / multiple + 0.5) * multiple))
+
+
+def qwen_charsheet_graph(p, m):
+    """CHARS-1: one reference picture + the writer's sheet prompt -> a 3:2
+    design sheet, on Qwen-Image 2.1's edit encoder.
+
+    Two things here are easy to break silently:
+    - The reference reaches TextEncodeQwenImage21 through the AUTOGROW key
+      "images.image_1". It is a DOTTED input name; a nested {"images": {...}}
+      dict passes validation and then quietly renders from the prompt alone.
+    - The sampler takes its latent from EmptyLatentImage, NOT from the
+      encoder's own latent output. The encoder's latent is sized to the
+      reference; the sheet is a different shape entirely.
+    ModelAttentionBackend and QwenImage21Cache only make it faster: they are
+    wired in when the lane reports them (m["cs_attn"], m["cs_cache"], from
+    ENGINE["optional_nodes"]) and left out when it doesn't, so a lane without
+    them still renders."""
+    ref = p.get("reference")
+    if not ref:
+        raise ValueError("Add a picture of your character first.")
+    width, height = charsheet_size(CHARSHEET_SIZES.get(p.get("size"), CHARSHEET_SIZES[CHARSHEET_DEFAULT_SIZE]))
+    g = {
+        "1": unet_loader(m["qwen_unet"]),
+        "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": m["qwen_clip"], "type": "qwen_image", "device": "default"}},
+        "3": {"class_type": "VAELoader", "inputs": {"vae_name": m["qwen_vae"]}},
+        "5": {"class_type": "LoadImage", "inputs": {"image": ref}},
+        "4": {"class_type": "TextEncodeQwenImage21", "inputs": {
+            "clip": ["2", 0], "vae": ["3", 0], "prompt": p.get("prompt", ""), "negative_prompt": "",
+            "resolution": 1024, "images.image_1": ["5", 0]}},
+        "6": {"class_type": "EmptyLatentImage", "inputs": {"width": width, "height": height, "batch_size": 1}},
+    }
+    model_out = ["1", 0]
+    if m.get("cs_attn"):
+        g["11"] = {"class_type": "ModelAttentionBackend",
+                   "inputs": {"model": model_out, "attention": "comfy kitchen attention"}}
+        model_out = ["11", 0]
+    if m.get("cs_cache"):
+        g["12"] = {"class_type": "QwenImage21Cache",
+                   "inputs": {"model": model_out, "device": "auto", "dtype": "default"}}
+        model_out = ["12", 0]
+    g["8"] = {"class_type": "KSampler", "inputs": {
+        "model": model_out, "positive": ["4", 0], "negative": ["4", 1], "latent_image": ["6", 0],
+        "seed": p["seed"], "steps": 25, "cfg": 1, "sampler_name": "euler", "scheduler": "simple",
+        "denoise": 1}}
+    g["9"] = {"class_type": "VAEDecode", "inputs": {"samples": ["8", 0], "vae": ["3", 0]}}
+    g["10"] = {"class_type": "SaveImage", "inputs": {"images": ["9", 0], "filename_prefix": "blackwire/CHARSHEET"}}
     return g
 
 
@@ -543,6 +616,126 @@ EDIT_WRITER_PROMPT = (
 )
 
 
+# CHARS-1: the Characters guide's sheet writer. One reference picture and a
+# name in, the ten-section prompt for qwen_charsheet_graph out. The method is
+# this project's own; what it leans on was measured on the sheets themselves
+# (2026-09-28): a label the model has to spell from a rare word comes out
+# wrong ("UPWARD GAZE" 5 of 5 times, "LOOKING UP" never), a one-word title is
+# spelled right where a two-word one was not, and an accessory whose side is
+# not stated lands on either side from panel to panel.
+CHARSHEET_SECTIONS = 10
+_SHEET_NUMBER_RE = re.compile(r"(?m)^\s*(\d{1,2})[.)]\s")
+CHARSHEET_BANNED_LABELS = ("upward gaze",)   # -> the label to use, in the problem sentence
+CHARSHEET_WORDS = (700, 2000)   # the writer aims for 900-1600; a reply far outside it is a broken one
+
+
+def charsheet_missing(text, count):
+    """The sheet writer's picture check, run before the brain."""
+    if not count:
+        return "Add a picture of your character first: the sheet is drawn from it."
+    return None
+
+
+def charsheet_check(values, request):
+    """The sheet writer's check on its own drafts: ten numbered sections in
+    order, none of the labels the model misspells, a sane length, and the
+    name (when the form has one) actually on the sheet."""
+    prompt = values.get("prompt") or ""
+    problems = []
+    numbers = [int(n) for n in _SHEET_NUMBER_RE.findall(prompt)]
+    if numbers != list(range(1, CHARSHEET_SECTIONS + 1)):
+        problems.append("The sheet prompt must be exactly ten numbered sections, 1 to 10, each starting a "
+                        "new line as one paragraph; this one has %s." % (
+                            "no numbered sections" if not numbers
+                            else "sections numbered " + ", ".join(str(n) for n in numbers)))
+    low = prompt.lower()
+    for bad in CHARSHEET_BANNED_LABELS:
+        if bad in low:
+            problems.append("\"%s\" is misspelled by the picture model almost every time: use the label "
+                            "\"LOOKING UP\"." % bad.upper())
+    words = len(prompt.split())
+    if numbers and not CHARSHEET_WORDS[0] <= words <= CHARSHEET_WORDS[1]:
+        problems.append("The sheet prompt is %d words; it should be about 900 to 1600." % words)
+    name = (values.get("name") or "").strip()
+    if name and prompt and name.lower() not in low:
+        problems.append("The name \"%s\" is not on the sheet: the title panel must show it." % name)
+    return problems
+
+
+CHARSHEET_WRITER_PROMPT = (
+    "You write the prompt for a picture model that draws a CHARACTER DESIGN SHEET from ONE reference "
+    "picture. The model gets that picture and your prompt and draws one landscape page (3:2): a title "
+    "column, a large hero pose, turnaround views, action angles, silhouettes, expression heads and a "
+    "detail grid. It draws what the words say, cannot ask, and spells only short common words right.\n\n"
+    "Reply in plain text, no JSON, no markdown, no commentary, in EXACTLY one of these two shapes.\n\n"
+    "To ask:\n"
+    "QUESTION: <one short question>\n"
+    "OPTIONS: <2 to 5 short choices separated by |, or leave the line out>\n\n"
+    "To write:\n"
+    "NOTE: <one sentence: what you decided that the user did not say (the kind of subject, a guessed "
+    "colour, a shortened name), or blank>\n"
+    "PROMPT: <the ten sections>\n"
+    "PROMPT comes last. Write nothing after it.\n\n"
+    "THE NAME comes from the room line in [brackets] (\"Name: ...\"). It is the sheet's title. If there "
+    "is none, ask for it: QUESTION: What should the sheet be called? One word works best. A name of "
+    "several words is kept as given, and NOTE says one word renders more reliably.\n"
+    "THE PICTURE is attached. If the note at the end says you cannot see pictures, do not guess: ask "
+    "with QUESTION for the character's colours, shapes and which side of the body each accessory is on.\n"
+    "AN EARLIER SHEET: when the request is a sheet prompt already, treat it as the draft: keep what "
+    "still fits the picture and rewrite it to these rules.\n\n"
+    "METHOD, in this order\n"
+    "1. AUDIT only what the picture shows. Decide the kind (person, stylised character, creature, robot, "
+    "animal, vehicle or object) and the medium (photograph, painting, 3D render, flat drawing, pixel "
+    "art). Never add a feature you cannot see; a part that is hidden is drawn plainly as unseen, not "
+    "invented.\n"
+    "2. IDENTITY LOCKS: 4 to 7 things that make this subject this subject. Each is a colour plus a shape "
+    "plus a position (\"a rust-red scarf knotted at the left of the neck\"). Say which SIDE of the body "
+    "an accessory is on from the FIGURE'S OWN left and right, never the viewer's; a side left unsaid "
+    "lands on either side from panel to panel. Write each lock the same way every time it returns.\n"
+    "3. SIGNATURE COLOURS: 3 or 4 colours in sequence, taken from the subject itself (never from a "
+    "trend), each with a modifier (\"deep teal\", \"pale gold\"). They colour the title bar, the swatches "
+    "and every panel's frame, so the page reads as one design.\n"
+    "4. THE LAYOUT never changes: a narrow column on the left with the title, three identity rows and "
+    "three colour swatches; the large hero, full body, in the middle; under or beside it the "
+    "turnaround (front, side, back); three action angles; three silhouettes; three expression heads "
+    "(for a robot, vehicle or object: three machine states instead of faces); and a 2 by 3 grid of "
+    "close-up details.\n\n"
+    "THE TEN SECTIONS, numbered 1. to 10., each ONE paragraph on its own line, in this order:\n"
+    "1. The subject and the style: kind, medium, and that this is one 3:2 design sheet on a plain "
+    "backdrop.\n"
+    "2. The layout: where each zone sits.\n"
+    "3. The title column: the title in quotes, three identity rows (each a short label and a short "
+    "value, in quotes) and the three swatches with their colours.\n"
+    "4. The hero: the full-body pose, the expression, every identity lock, the light.\n"
+    "5. The turnaround: front, side, back, the same figure at the same height, locks kept.\n"
+    "6. The three action angles: what the figure does in each, seen from a different angle.\n"
+    "7. The three silhouettes: solid black shapes; what each one shows of the outline.\n"
+    "8. The three expression heads or machine states: a short quoted label under each.\n"
+    "9. The detail grid: six close-ups, a short quoted label each, at least three of them identity locks.\n"
+    "10. The final rules: the identity locks once more, the signature colours, and that every panel "
+    "shows the same subject.\n\n"
+    "RULES FOR THE WORDS\n"
+    "a. 900 to 1600 words in all. English only. Present tense, describing the finished sheet.\n"
+    "b. Every piece of text that must appear on the sheet goes in double quotes, and is 1 to 3 common "
+    "words in capitals (\"FRONT\", \"SIDE\", \"BACK\", \"CALM\", \"LOOKING UP\", \"DETAILS\"). Never a rare or "
+    "long word: it comes out misspelled. Never write \"UPWARD GAZE\"; write \"LOOKING UP\".\n"
+    "c. The title is one word when the name allows it. It is the name exactly as given.\n"
+    "d. Never write a pixel size, a resolution or a file format. The only shape named is 3:2 landscape.\n"
+    "e. Describe what is drawn; put nothing in the form of a ban (\"no\", \"without\", \"never\").\n"
+    "f. Keep every detail the user gave. A colour you cannot judge from the picture is described by "
+    "what it looks like, and NOTE says you chose it.\n\n"
+    "EXAMPLE (two of the ten sections only, for a robot named Tin; the real reply has all ten)\n"
+    "NOTE: I read it as a small delivery robot and chose warm grey for the plating you could not see.\n"
+    "PROMPT: 1. A single character design sheet, 3:2 landscape, for a small boxy delivery robot, drawn as "
+    "a clean 3D render on a plain warm-grey backdrop, every panel showing the same robot.\n"
+    "2. The page has a narrow title column on the left, ...\n"
+    "3. The title column shows the title \"TIN\" in a deep-teal bar, then three rows: \"KIND\" \"Robot\", "
+    "\"BODY\" \"Boxy\", \"TRIM\" \"Teal\", then three swatches: deep teal, warm grey, pale gold. ...\n"
+    "4. In the centre the robot stands full body, facing three-quarters left, a round teal lamp on the "
+    "top of its head, a dented grey box body, a pale gold handle on its RIGHT side, ...\n"
+)
+
+
 ENGINE = {
     "id": "qwen-image",
     "cap": "image",
@@ -553,12 +746,15 @@ ENGINE = {
     # generic field declarations do not fully capture -- keep it on the
     # legacy path rather than the generic one every other pack now uses.
     "legacy_dispatch": True,
+    # ...except CHARS-1's charsheet, whose fields are all declared: it takes
+    # the generic field-driven path (engines.legacy_dispatch checks this).
+    "generic_modes": ["charsheet"],
     "roles": {
         "qwen_unet": ("unet", {"all": ["qwen_image"], "none": ["minimax", "vae"], "prefer": ["2.1"]}),
         "qwen_clip": ("clip", {"all": ["qwen3vl"], "none": ["minimax"], "prefer": ["8b"]}),
         "qwen_vae": ("vae", {"all": ["qwen_image", "vae"], "none": ["minimax"], "prefer": ["2.1"]}),
     },
-    "primary": {"t2i": "qwen_unet", "edit": "qwen_unet"},
+    "primary": {"t2i": "qwen_unet", "edit": "qwen_unet", "charsheet": "qwen_unet"},
     # mode-specific abilities, not the cap name itself. Before this,
     # the ability was literally "image" (== the cap), which was harmless
     # while qwen-image was the sole owner of cap "image" -- once a second
@@ -570,6 +766,13 @@ ENGINE = {
     "provides": {
         "t2i": ["qwen_unet", "qwen_clip", "qwen_vae"],
         "edit": ["qwen_unet", "qwen_clip", "qwen_vae"],
+        "charsheet": ["qwen_unet", "qwen_clip", "qwen_vae"],
+    },
+    # CHARS-1: speed-only nodes, found by presence on the lane (server.py's
+    # discovery); short id -> ComfyUI node class. Never required.
+    "optional_nodes": {
+        "cs_attn": "ModelAttentionBackend",
+        "cs_cache": "QwenImage21Cache",
     },
     "words": {
         "qwen_unet": "the Qwen-Image model",
@@ -579,13 +782,15 @@ ENGINE = {
     "graphs": {
         "t2i": qwen_t2i_graph,
         "edit": qwen_edit_graph,
+        "charsheet": qwen_charsheet_graph,
     },
     "describe": _describe,
     "mode_words": {
         "t2i": "A picture from a text prompt",
         "edit": "Edit a picture you upload",
+        "charsheet": "A character design sheet from one picture",
     },
-    "mode_rooms": {"t2i": "picture", "edit": "picture"},
+    "mode_rooms": {"t2i": "picture", "edit": "picture", "charsheet": "characters"},
     "mode_notes": {
         "t2i": "from words alone; has recipes for seamless tiles, set plates and characters",  # source: engines/qwen_image.py:200, :211, :218 (preset labels)
         "edit": "changes a picture you have; can also cut out a background with a clean edge, slower",  # source: engines/qwen_image.py:234 (remove-background preset note)
@@ -598,6 +803,8 @@ ENGINE = {
                "Return only the positive prompt. Do not write what to avoid.",
         "edit": "Describe the edit to make to the uploaded picture(s) as a positive "  # source: engines/qwen_image.py:234-236 (remove-background preset)
                 "instruction, e.g. \"Remove the background\" works directly as a prompt.",
+        "charsheet": "The sheet prompt is written by the Characters guide from the reference "  # source: this pack's CHARS-1 writer below
+                     "picture and the name; it is long, in ten numbered sections.",
     },
     # P3d: the Picture guide's writing skills (engines/__init__.py "writers").
     "writers": {
@@ -620,6 +827,23 @@ ENGINE = {
             "make_time": False,
             "pictures": "ref_images",
             "missing": edit_missing,
+        },
+        # CHARS-1: the Characters guide's sheet writer. The reference picture
+        # is the form's "reference" field; the name reaches it in the room
+        # line. A long reply: ten sections of 900-1600 words.
+        "charsheet": {
+            "label": "Sheet writer",
+            "prompt": CHARSHEET_WRITER_PROMPT,
+            "keys": {"PROMPT": "prompt"},
+            "multiline": "PROMPT",
+            "none_token": "NONE",
+            "check": charsheet_check,
+            "make_time": False,
+            "max_tokens": 4096,
+            "pictures": "reference",
+            "missing": charsheet_missing,
+            "topic_default": "Write the character design sheet prompt for the attached picture and the "
+                             "name in the room line.",
         },
     },
     # P3d: "Edit this result": a finished picture of either mode opens in edit.
@@ -789,11 +1013,37 @@ ENGINE = {
              "enabled_when": {"field": "guidance_style", "equals": "Balanced"},
              "disabled_reason": "Only used when Guidance style is Balanced."},
         ] + STYLE_FIELDS,
+        # CHARS-1. The prompt box is the LOWEST-order text field (the page's
+        # rule), so the sheet prompt carries order 1; the name sits under it.
+        # The declared order is what the room reads top to bottom.
+        "charsheet": [
+            {"id": "reference", "label": "Reference picture", "type": "image",
+             "tier": "primary", "group": "Content", "order": 1,
+             "hint": "One picture of the character. Everything on the sheet is drawn from it."},
+            {"id": "name", "label": "Name", "type": "text", "default": "",
+             "tier": "primary", "group": "Content", "order": 2,
+             "hint": "One word renders most reliably: \"The Rookie\" came out misspelled, \"Rookie\" did not."},
+            {"id": "prompt", "label": "Sheet prompt", "type": "textarea",
+             "tier": "primary", "group": "Content", "order": 1,
+             "hint": "The guide writes this from your picture and the name. Edit it if you like."},
+            {"id": "size", "label": "Sheet size", "type": "select", "default": CHARSHEET_DEFAULT_SIZE,
+             "options": list(CHARSHEET_SIZES),
+             "tier": "primary", "group": "Size", "order": 1,
+             "hint": "Quick is 1216x832 (about 23 s), Balanced 2272x1504 (about 33 s), Large 3008x2016 "
+                     "(about 62 s), measured on a 16 GB card. Large leaves about 1 GB free there and its "
+                     "labels came out worse than Balanced."},
+        ],
     },
     # R3: named parameter sets. `default` covers the plain path (the app's
     # existing production defaults); the others cite real measurements --
     # see engines/audio.py's presets for the same discipline.
     "presets": {
+        "charsheet": [
+            {"id": "default", "label": "Default",
+             "note": "25 steps, guidance 1, euler: the recipe the sheets were proven on. "
+                     "Measured 2026-09-28.",
+             "values": {}},
+        ],
         "t2i": [
             # Q21: arm D of the A/B, owner-confirmed 2026-09-23 (internal
             # research notes, measured on our hardware). Costs about 3x the time
@@ -873,6 +1123,11 @@ ENGINE = {
     # (index.html, since replaced) -- same four steps counts, same "why"
     # text, Standard still the default. No new tiers invented.
     "quality": {
+        "charsheet": [
+            {"id": "standard", "label": "Standard", "default": True,
+             "why": "the only setting there is; the sheet size is its own field",
+             "values": {}},
+        ],
         "t2i": [
             {"id": "draft", "label": "Draft", "why": "fastest, a bit rough",
              "values": {"steps": 12}},
@@ -908,6 +1163,11 @@ ENGINE = {
              "quality": "standard",
              "values": {"prompt": "add a warm golden glow to the light"},
              "why": "changes a picture you upload", "needs": "picture"},
+        ],
+        "charsheet": [
+            {"id": "charsheet-try", "label": "A sheet from a picture", "recipe": "default",
+             "quality": "standard", "values": {"name": "Rookie"},
+             "why": "a design sheet drawn from a picture of your character", "needs": "picture"},
         ],
     },
     "licence": {

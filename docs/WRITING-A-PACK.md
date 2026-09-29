@@ -216,6 +216,12 @@ at all.
 - **`legacy_dispatch`** — `True` only for packs the core's own hand-tuned dispatch logic
   still owns (cfg defaults, frame-grid snapping). New packs should not set this; it exists
   for two packs mid-migration to the generic field-driven path (`engines.legacy_dispatch()`).
+- **`generic_modes`** — a list of mode ids a `legacy_dispatch` pack hands back to the generic
+  path (qwen-image's `charsheet`, whose fields are all declared).
+- **`optional_nodes`** — `{short id: ComfyUI node class}`: speed-only nodes a graph may use but
+  never needs. Discovery looks each up on the lane; a graph builder reads the answer as a bool
+  from its models dict (`m.get("cs_attn")`) and leaves the node out when it is false, so the
+  graph still validates on a lane without it.
 
 ## From a field list to the page
 
