@@ -374,6 +374,9 @@
   #guideNoBrainList{margin:0 0 8px; padding-left:18px; font-size:13px}
   #guideNoBrainList li{margin-bottom:4px}
   #guideAddBrain{font-size:12px; color:var(--text-mid); margin:0}
+  #guideNewBtn{min-height:32px; padding:0 10px; font-size:12px; flex:none; margin-left:auto}
+  #guideNewUndo{margin:6px 0 0; font-size:12px; color:var(--text-mid)}
+  #guideNewUndo .btn{min-height:28px; padding:0 8px; font-size:12px}
   #guideVerbosity{display:flex; border:1px solid var(--divider); flex:none}
   #guideVerbosity button{min-height:32px; padding:0 5px; background:var(--surface2); color:var(--text-mid); border:none;
     border-right:1px solid var(--divider); font-size:10px; text-transform:uppercase}
@@ -934,6 +937,7 @@
           <button type="button" data-verbosity="compact" aria-pressed="true">Compact</button>
           <button type="button" data-verbosity="verbose" aria-pressed="false">Verbose</button>
         </div>
+        <button type="button" class="btn" id="guideNewBtn" hidden>New song</button>
       </div>
       <p id="guideDefinition"></p>
       <div id="guideNoBrain" hidden>
@@ -962,6 +966,7 @@
           </div>
         </div>
       </div>
+      <p id="guideNewUndo" hidden role="status"><span>Started fresh.</span> <button type="button" class="btn" id="guideNewUndoBtn">Undo</button></p>
       <p id="guideError" hidden role="alert"></p>
     </section>
     <!-- FB-2: a writer mode (its writer writes for this mode, and the room's
@@ -3330,6 +3335,7 @@ async function renderGuidePanel(){
   placeGuidePanel(room);
   renderGuideExpand();
   $('#guidePanel').hidden = false;
+  renderGuideNew();
   guideHistSync(guideHistKey());   // B2: room entry, and a sequence switch within the Cutting Room
   if(GUIDE_ROOM !== room.id){
     GUIDE_ROOM = room.id;
@@ -3376,9 +3382,11 @@ function renderGuideBody(){
 function renderGuideOff(){
   const off = guideLayout(currentRoom()) === 'off' && !(GUIDE_REVISE && GUIDE_REVISE.room === GUIDE_ROOM);
   $('#guideOffNote').hidden = !off;
-  $('#guideHeader').hidden = off;
+  $('#guideHeader').hidden = false;   // FB-4: the New button lives here, off or not
+  $('#guideExpandBtn').hidden = off;
   $('#guideDefinition').hidden = off;
   $('#guideNoBrainList').hidden = off;
+  renderGuideNew();
 }
 function renderGuideToggle(){
   const v = guideVerbosity();
@@ -3642,6 +3650,7 @@ function guideBusy(on){
   $('#slotWriteBtn').disabled = on;
 }
 async function guideSend(){
+  guideNewUndoHide();
   if(GUIDE_REVISE) return guideReviseRun();   // a result is attached: this is a complaint about it
   if(GUIDE_ABORT || !GUIDE || !GUIDE.guide || !GUIDE.helper) return;
   // The guide asked something for a write: what is typed here answers it.
@@ -3709,6 +3718,92 @@ $('#guideClearBtn').onclick = () => {
   guideShowError('');
   if(GUIDE && GUIDE.guide) renderGuideLog();
 };
+/* ---------------------------------------------------------------------
+   FB-4: "New song" (New sound / picture / sheet / video / model) -- a clean
+   slate in one click, and one line of Undo for a mis-click. Keeps the mode,
+   the lane, History and every job; nothing server-side is deleted except
+   the guide's own conversation, which Undo puts back through the same
+   history save path (after the clear has landed, so its generation is the
+   server's own).
+--------------------------------------------------------------------- */
+const GUIDE_NEW_WORD = {music: 'song', cover: 'song', sfx: 'sound', picture: 'picture', pixelart: 'picture',
+  cleanup: 'picture', textures: 'picture', characters: 'sheet', video: 'video', talking: 'video', '3d': 'model'};
+const GUIDE_NEW_CAP_WORD = {audio: 'song', image: 'picture', video: 'video', '3d': 'model'};
+const GUIDE_NEW_UNDO_MS = 10000;
+let GUIDE_NEW_SNAP = null;   // {room, cap, mode, key, hist, values, edited, uploads, quality, recipe, open, typed, clearing}
+let GUIDE_NEW_TIMER = null;
+function guideNewWord(room){
+  return GUIDE_NEW_WORD[room.id] || GUIDE_NEW_CAP_WORD[STATE.cap] || 'thing';
+}
+function guideNewShown(){
+  const room = currentRoom();
+  return !!(room && room.guide && !isCutting(room) && !$('#roomForm').hidden && currentMode());
+}
+function guideNewUndoHide(){
+  clearTimeout(GUIDE_NEW_TIMER);
+  GUIDE_NEW_TIMER = null;
+  GUIDE_NEW_SNAP = null;
+  $('#guideNewUndo').hidden = true;
+}
+function renderGuideNew(){
+  const show = guideNewShown();
+  $('#guideNewBtn').hidden = !show;
+  if(show) $('#guideNewBtn').textContent = 'New ' + guideNewWord(currentRoom());
+  const s = GUIDE_NEW_SNAP;
+  if(s && (!show || s.room !== STATE.room || s.cap !== STATE.cap || s.mode !== STATE.mode)) guideNewUndoHide();
+}
+async function guideNewStart(){
+  if(!guideNewShown()) return;
+  guideNewUndoHide();
+  const key = guideHistKey();
+  const snap = {room: STATE.room, cap: STATE.cap, mode: STATE.mode, key: key, hist: guideHistLoad(key),
+    values: currentValues(), edited: new Set(STATE.editedFields),
+    uploads: JSON.parse(JSON.stringify(STATE.uploads || {})), quality: SELECTED_QUALITY,
+    recipe: $('#recipeSelect').value, open: $('#guideFilled').open, typed: $('#guideInput').value, clearing: null};
+  if(GUIDE_ABORT) GUIDE_ABORT.abort();
+  snap.clearing = guideHistClear(key);
+  guideSkillClear();
+  guideShowError('');
+  STATE.editedFields = new Set();
+  SELECTED_QUALITY = null;   // the mode's own default tier comes back
+  await renderModeFields();   // the page's own first-open path: defaults, no uploads, notices hidden
+  makeConfirmHide();
+  $('#guideFilled').open = false;
+  $('#guideInput').value = '';
+  if(GUIDE && GUIDE.guide) renderGuideLog();
+  await snap.clearing;
+  // an aborted call's own cleanup can hand its words back to the box after this point: not on a clean slate
+  setTimeout(() => { if(GUIDE_NEW_SNAP === snap && !GUIDE_ABORT) $('#guideInput').value = ''; }, 0);
+  GUIDE_NEW_SNAP = snap;
+  $('#guideNewUndo').hidden = false;
+  GUIDE_NEW_TIMER = setTimeout(guideNewUndoHide, GUIDE_NEW_UNDO_MS);
+  $('#guideInput').focus({preventScroll: true});
+}
+async function guideNewUndo(){
+  const s = GUIDE_NEW_SNAP;
+  if(!s) return;
+  guideNewUndoHide();
+  if(s.room !== STATE.room || s.cap !== STATE.cap || s.mode !== STATE.mode) return;
+  await s.clearing;
+  if($('#recipeSelect').value !== s.recipe && $$('#recipeSelect option').some(o => o.value === s.recipe)){
+    $('#recipeSelect').value = s.recipe;
+    if($('#recipeSelect').onchange) $('#recipeSelect').onchange();
+  }
+  if(s.quality && s.quality !== SELECTED_QUALITY) selectQualityTier(s.quality);
+  Object.entries(s.values).forEach(([k, v]) => setFieldValue(k, v));
+  refreshEnabled(fieldsFor(currentMode()));
+  STATE.editedFields = new Set(s.edited);
+  Object.entries(s.uploads).forEach(([fid, files]) => setUploads(fid, files));
+  $('#guideFilled').open = s.open;
+  $('#guideInput').value = s.typed;
+  guideHistSave(s.key, s.hist);   // the same save path; the clear has landed, so it is at the server's generation
+  if(GUIDE && GUIDE.guide && guideHistKey() === s.key) renderGuideLog();
+}
+$('#guideNewBtn').onclick = guideNewStart;
+$('#guideNewUndoBtn').onclick = guideNewUndo;
+// typing (the guide's box, or a field by hand) or sending anything ends the Undo
+$('#guideInput').addEventListener('input', guideNewUndoHide);
+$('#inspector').addEventListener('input', e => { if(e.isTrusted) guideNewUndoHide(); }, true);
 $('#guideInput').addEventListener('keydown', e => {
   if(e.key === 'Enter' && !e.shiftKey && !e.isComposing){ e.preventDefault(); guideSend(); }
 });
