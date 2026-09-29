@@ -878,6 +878,11 @@
     <div id="roomForm">
     <div id="slotWarnings" hidden></div>
     <div id="slotTools" hidden><button type="button" class="btn" id="slotDeleteBtn">Delete this shot</button></div>
+    <!-- E1: "Sing along" -- built by renderSlotSing() from the server's own
+         sing_offer/sing_span; every offset but a chain head's is computed. -->
+    <div id="slotSing" hidden></div>
+    <!-- F5: "Use one I already made" -- built by renderSlotAdopt(); sends adopt_take. -->
+    <div id="slotAdopt" hidden></div>
     <div id="laneNote" role="status"></div>
     <!-- H2: "Try this" -- a one-click example per mode, from the packs.
          Sits above the engine picker so it is the first thing offered. -->
@@ -5466,8 +5471,83 @@ async function saveSlotOnce(){
   return r;
 }
 
+/* E1: the Cutting Room's "Sing along" for a video shot. The server says
+   whether it is offered (the mode can take the song, and the sequence has
+   one) and where the shot sings (sing_span); only a chain head's "Starts at"
+   is ever typed. Written only on change, so a half-typed start survives polls. */
+function singTime(sec){
+  const t = Math.round(sec * 10) / 10, m = Math.floor(t / 60);
+  return m + ':' + (t - m * 60 < 10 ? '0' : '') + (t - m * 60).toFixed(1);
+}
+function songTitle(seq){
+  const job = seq && seq.song ? findJob(seq.song.job_id) : null;
+  const words = String((job && (job.title || job.prompt)) || 'the song').trim();
+  return words.length > 60 ? words.slice(0, 59) + '…' : words;
+}
+function renderSlotSing(slot){
+  const el = $('#slotSing');
+  if(!el) return;
+  const span = slot && slot.sing_span;
+  if(!slot || !(slot.sing_offer || span)){ setHTML(el, ''); el.hidden = true; return; }
+  const on = !!(slot.sing && slot.sing.on);
+  let html = '<div class="field-row"><label class="field-label"><input type="checkbox" id="singToggle" data-sing-slot="'
+    + esc(slot.id) + '"' + (on ? ' checked' : '') + (slot.sing_offer ? '' : ' disabled') + '> Sing along</label></div>';
+  if(span && span.head)
+    html += '<div class="field-row"><label class="field-label" for="singStart">Starts at (seconds)</label>'
+      + '<input type="number" id="singStart" min="0" step="0.1" value="' + esc(String(span.start)) + '"></div>';
+  if(span)
+    html += '<p class="hint" id="singLine">Sings ' + singTime(span.heard_start) + ' – ' + singTime(span.end)
+      + ' of ' + esc(songTitle(STATE.seq)) + '</p>';
+  el.hidden = false;
+  if(!setHTML(el, html)) return;
+  const toggle = $('#singToggle'), start = $('#singStart'), slotId = toggle.dataset.singSlot;
+  toggle.onchange = async () => {
+    const r = await seqOp('set_sing', {slot_id: slotId, on: toggle.checked});
+    if(r) renderTimeline(); else toggle.checked = !toggle.checked;
+  };
+  if(start) start.onchange = async () => {
+    const v = Number(start.value);
+    if(start.value === '' || !(v >= 0)){ msgSeq('Starts at must be a number of seconds, zero or more.', 'err'); return; }
+    if(await seqOp('set_sing', {slot_id: slotId, start: v})) renderTimeline();
+  };
+}
+
+// F5: the finished jobs of this shot's kind that are not already its takes,
+// newest first, at most 30 -- from the job list the page already polls.
+function renderSlotAdopt(slot){
+  const el = $('#slotAdopt');
+  if(!el) return;
+  if(!slot){ setHTML(el, ''); el.hidden = true; return; }
+  const have = new Set((slot.takes || []).map(t => t.job_id));
+  const rows = STATE.jobs.filter(j => j.status === 'done' && j.kind === slot.cap && !have.has(j.id))
+    .sort((a, b) => (b.created || 0) - (a.created || 0)).slice(0, 30);
+  if(!rows.length){ setHTML(el, ''); el.hidden = true; return; }
+  let html = '<div class="field-row"><label class="field-label" for="adoptSelect">Use one I already made</label>'
+    + '<select id="adoptSelect" data-adopt-slot="' + esc(slot.id) + '"><option value="">Choose…</option>';
+  rows.forEach(j => {
+    // The output's file name leads: many prompts open with the same words
+    // (a Music3 caption always starts "Global Metadata"), the file name never.
+    const words = String(j.title || j.prompt || j.kind).trim();
+    const file = ((j.outputs || [])[0] || {}).filename;
+    html += '<option value="' + esc(j.id) + '">' + esc((file ? file + ' · ' : '')
+      + (words.length > 50 ? words.slice(0, 50) + '…' : words)
+      + ' · ' + (j.model || j.mode || '') + ' · ' + ago(j.created)) + '</option>';
+  });
+  html += '</select></div>';
+  el.hidden = false;
+  if(!setHTML(el, html)) return;
+  const sel = $('#adoptSelect'), slotId = sel.dataset.adoptSlot;
+  sel.onchange = async () => {
+    if(!sel.value) return;
+    if(await seqOp('adopt_take', {slot_id: slotId, job_id: sel.value})) renderTimeline();
+    else sel.value = '';
+  };
+}
+
 function renderSlotMeta(slot){
   $('#slotTools').hidden = !slot;
+  renderSlotSing(slot);
+  renderSlotAdopt(slot);
   if(!slot) return;
   const delBtn = $('#slotDeleteBtn');
   if(delBtn){
@@ -5688,6 +5768,8 @@ function renderTimeline(){
   renderScriptLane();     // C3.5: the script rides the same cadence as the lanes
   refreshCableLayer();
   renderCutBar();
+  renderSlotAdopt(currentSlot());   // F5: what is already a take stops being offered
+  renderSlotSing(currentSlot());   // E1: a reorder/cable/length change moves where a shot sings
 }
 
 /* ---------------------------------------------------------------------
@@ -5725,7 +5807,7 @@ function peakNoteText(entry){
   return entry && entry.peak_unverified ? 'true peak could not be measured' : '';
 }
 function cutNotesText(entry){
-  return [loudnessNoteText(entry.loudness), peakNoteText(entry)].filter(Boolean).join(' · ');
+  return [loudnessNoteText(entry.loudness), peakNoteText(entry), entry.soundtrack_note].filter(Boolean).join(' · ');
 }
 /* The CUT bar's own one-line summary of the latest cut -- the actual
    video plays in the MONITOR (renderMonitorCut, F4), never a second copy

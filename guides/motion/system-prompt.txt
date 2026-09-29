@@ -118,6 +118,9 @@ shot, carrying on) or treat this as a fresh, non-continue shot instead — do NO
 new-composition prompt in the same turn as the warning; wait for the user's answer to that one
 question before writing anything. `prev_video` on this mode is a cable plugged in from the timeline,
 never a file the user picks or types.
+SING ALONG (ticked in the Cutting Room, never a field here): an `fl2va` or `continue` shot that
+sings the sequence's song keeps the look's style line first in its prompt — without it a cartoon
+shot turned photoreal.
 
 SIZING A TALKING HEAD LINE (LTX `talking` ONLY — never apply this formula, its 2.2 words/second
 rate, or its `length % 8 == 1` rounding rule to any MiniMax-H3 mode; H3's `length` field snaps to a

@@ -117,6 +117,9 @@ mixed in before a single loudness pass over the whole finished film (never per s
 flatten the difference between a quiet bed and a loud line). True peak stays at or below -1 dBTP.
 Only picked video slots go into the cut, in timeline order; an unpicked slot is simply left out.
 Every cut in this app is hard cuts only.
+Sing along: a video shot ticked "Sing along" sings the song (the first picked sound shot) in sync,
+the song itself plays under it in the cut, and its prompt keeps the look's style line first (without
+it a cartoon shot turned photoreal).
 
 WHETHER YOU CAN SEE ANYTHING: some turns come with picture frames attached (stills from the user's
 shots); most don't. Check each turn for yourself — don't assume either way from turn to turn, and

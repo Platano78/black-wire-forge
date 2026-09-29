@@ -46,6 +46,29 @@ def apply_style_loras(g, p, model_ref):
     return model_ref
 
 
+# E1 "Sing along": the song slice REPLACES the clip's audio latent, frozen
+# (a zero noise mask), so the render's soundtrack is the slice and the mouths
+# perform its words -- the E0 probe's chain, all stock ComfyUI nodes. Node ids
+# "300"-"306" are unused elsewhere in this pack. `sing_audio` is a file already
+# on the lane (the Cutting Room uploads the sequence's song); `sing_start` is
+# seconds into it. The slice is the WHOLE latent's length (length / 24 s),
+# context frames included. Without `sing_audio` the graph is untouched.
+def apply_sing_along(g, p):
+    if not p.get("sing_audio"):
+        return
+    g["300"] = {"class_type": "LoadAudio", "inputs": {"audio": p["sing_audio"]}}
+    g["306"] = {"class_type": "TrimAudioDuration", "inputs": {
+        "audio": ["300", 0], "start_index": float(p.get("sing_start") or 0.0),
+        "duration": p["length"] / 24.0}}
+    g["301"] = {"class_type": "VAEEncodeAudio", "inputs": {"audio": ["306", 0], "vae": ["24", 0]}}
+    g["302"] = {"class_type": "SolidMask", "inputs": {"value": 0.0, "width": 32, "height": 32}}
+    g["303"] = {"class_type": "SetLatentNoiseMask", "inputs": {"samples": ["301", 0], "mask": ["302", 0]}}
+    g["304"] = {"class_type": "LTXVSeparateAVLatent", "inputs": {"av_latent": ["104", 1]}}
+    g["305"] = {"class_type": "LTXVConcatAVLatent", "inputs": {
+        "video_latent": ["304", 0], "audio_latent": ["303", 0]}}
+    g["14"]["inputs"]["latent_image"] = ["305", 0]
+
+
 # Declared once, shared by fl2va/continue/ref2v below -- discovery rule:
 # filename contains minimax_h3/minimax-h3, case-insensitive, excluding the
 # speed/turbo LoRAs the same pool carries (see ENGINE["style_catalogs"]).
@@ -115,6 +138,7 @@ def h3_fl2va_graph(p, m):
     if p.get("last_frame"):
         g["201"] = {"class_type": "LoadImage", "inputs": {"image": p["last_frame"]}}
         g["104"]["inputs"]["last_frame"] = ["201", 0]
+    apply_sing_along(g, p)
     return g
 
 
@@ -179,6 +203,7 @@ def h3_continue_graph(p, m):
             "fps": 24.0, "match_tail": True}}
         g["91"]["inputs"]["images"] = ["223", 0]
         g["91"]["inputs"]["audio"] = ["223", 1]
+    apply_sing_along(g, p)
     return g
 
 
@@ -589,6 +614,14 @@ ENGINE = {
     "describe": _describe,
     "mode_words": ENGINE_MODE_WORDS,
     "mode_rooms": {"fl2va": "video", "ref2v": "video", "continue": "video"},
+    # E1: the modes whose graphs take `sing_audio`/`sing_start` (apply_sing_along),
+    # and what the Cutting Room needs to place a shot on the song: frames per
+    # second, the length field, and how many frames a CABLED shot re-renders
+    # from the shot before it (continue's context, trimmed off its delivery).
+    "sing_along": {
+        "fl2va": {"fps": 24, "length_field": "length", "carried_frames": 0},
+        "continue": {"fps": 24, "length_field": "length", "carried_frames": 22},
+    },
     # This engine's own task-type prefix (see _TASK_PREFIX_RE): a beat written
     # for an H3 shot keeps it; copied into another engine's shot, the core
     # takes it off (engines/__init__.py "task_prefix").

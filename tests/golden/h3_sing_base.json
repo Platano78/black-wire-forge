@@ -1,0 +1,826 @@
+{
+ "cases": {
+  "continue_cabled": {
+   "args": {
+    "encoder": null,
+    "height": 480,
+    "length": 243,
+    "prev_video": "prev.mp4",
+    "prompt": "a man sings to camera",
+    "seed": 7,
+    "steps": 8,
+    "turbo_lora": true,
+    "width": 864
+   },
+   "graph": {
+    "10": {
+     "class_type": "VAEDecode",
+     "inputs": {
+      "samples": [
+       "14",
+       0
+      ],
+      "vae": [
+       "11",
+       0
+      ]
+     }
+    },
+    "104": {
+     "class_type": "MiniMaxH3ImageToVideo",
+     "inputs": {
+      "clip": [
+       "13",
+       0
+      ],
+      "height": 480,
+      "length": 243,
+      "prompt": "a man sings to camera",
+      "vae": [
+       "11",
+       0
+      ],
+      "width": 864
+     }
+    },
+    "11": {
+     "class_type": "VAELoader",
+     "inputs": {
+      "vae_name": "minimax_h3/vae_video.safetensors"
+     }
+    },
+    "13": {
+     "class_type": "CLIPLoader",
+     "inputs": {
+      "clip_name": "minimax_h3/te_int8.safetensors",
+      "device": "default",
+      "type": "minimax"
+     }
+    },
+    "14": {
+     "class_type": "SamplerCustomAdvanced",
+     "inputs": {
+      "guider": [
+       "16",
+       0
+      ],
+      "latent_image": [
+       "104",
+       1
+      ],
+      "noise": [
+       "15",
+       0
+      ],
+      "sampler": [
+       "17",
+       0
+      ],
+      "sigmas": [
+       "9",
+       0
+      ]
+     }
+    },
+    "15": {
+     "class_type": "RandomNoise",
+     "inputs": {
+      "noise_seed": 7
+     }
+    },
+    "16": {
+     "class_type": "BasicGuider",
+     "inputs": {
+      "conditioning": [
+       "222",
+       0
+      ],
+      "model": [
+       "7",
+       0
+      ]
+     }
+    },
+    "17": {
+     "class_type": "KSamplerSelect",
+     "inputs": {
+      "sampler_name": "res_multistep"
+     }
+    },
+    "220": {
+     "class_type": "LoadVideo",
+     "inputs": {
+      "file": "prev.mp4"
+     }
+    },
+    "221": {
+     "class_type": "GetVideoComponents",
+     "inputs": {
+      "video": [
+       "220",
+       0
+      ]
+     }
+    },
+    "222": {
+     "class_type": "MiniMaxH3MotionContext",
+     "inputs": {
+      "audio_context_length": 24,
+      "audio_vae": [
+       "24",
+       0
+      ],
+      "conditioning": [
+       "104",
+       0
+      ],
+      "context_audio": [
+       "221",
+       1
+      ],
+      "context_frames": [
+       "221",
+       0
+      ],
+      "context_length": "22",
+      "latent": [
+       "104",
+       1
+      ],
+      "vae": [
+       "11",
+       0
+      ]
+     }
+    },
+    "223": {
+     "class_type": "MiniMaxH3MotionContextTrim",
+     "inputs": {
+      "audio": [
+       "23",
+       0
+      ],
+      "fps": 24.0,
+      "images": [
+       "10",
+       0
+      ],
+      "match_tail": true,
+      "trim_frames": [
+       "222",
+       1
+      ]
+     }
+    },
+    "23": {
+     "class_type": "VAEDecodeAudio",
+     "inputs": {
+      "samples": [
+       "14",
+       0
+      ],
+      "vae": [
+       "24",
+       0
+      ]
+     }
+    },
+    "24": {
+     "class_type": "VAELoader",
+     "inputs": {
+      "vae_name": "minimax_h3/vae_audio.safetensors"
+     }
+    },
+    "6": {
+     "class_type": "UNETLoader",
+     "inputs": {
+      "unet_name": "minimax_h3_fl2va.safetensors",
+      "weight_dtype": "default"
+     }
+    },
+    "7": {
+     "class_type": "LoraLoaderModelOnly",
+     "inputs": {
+      "lora_name": "minimax_h3/turbo.safetensors",
+      "model": [
+       "6",
+       0
+      ],
+      "strength_model": 1.0
+     }
+    },
+    "9": {
+     "class_type": "BasicScheduler",
+     "inputs": {
+      "denoise": 1.0,
+      "model": [
+       "7",
+       0
+      ],
+      "scheduler": "simple",
+      "steps": 8
+     }
+    },
+    "91": {
+     "class_type": "CreateVideo",
+     "inputs": {
+      "audio": [
+       "223",
+       1
+      ],
+      "fps": 24.0,
+      "images": [
+       "223",
+       0
+      ]
+     }
+    },
+    "92": {
+     "class_type": "SaveVideo",
+     "inputs": {
+      "codec": "auto",
+      "filename_prefix": "blackwire/CONT",
+      "format": "auto",
+      "video": [
+       "91",
+       0
+      ]
+     }
+    }
+   },
+   "mode": "continue"
+  },
+  "continue_head": {
+   "args": {
+    "encoder": null,
+    "height": 480,
+    "length": 124,
+    "prompt": "a man sings to camera",
+    "seed": 7,
+    "steps": 8,
+    "turbo_lora": true,
+    "width": 864
+   },
+   "graph": {
+    "10": {
+     "class_type": "VAEDecode",
+     "inputs": {
+      "samples": [
+       "14",
+       0
+      ],
+      "vae": [
+       "11",
+       0
+      ]
+     }
+    },
+    "104": {
+     "class_type": "MiniMaxH3ImageToVideo",
+     "inputs": {
+      "clip": [
+       "13",
+       0
+      ],
+      "height": 480,
+      "length": 124,
+      "prompt": "a man sings to camera",
+      "vae": [
+       "11",
+       0
+      ],
+      "width": 864
+     }
+    },
+    "11": {
+     "class_type": "VAELoader",
+     "inputs": {
+      "vae_name": "minimax_h3/vae_video.safetensors"
+     }
+    },
+    "13": {
+     "class_type": "CLIPLoader",
+     "inputs": {
+      "clip_name": "minimax_h3/te_int8.safetensors",
+      "device": "default",
+      "type": "minimax"
+     }
+    },
+    "14": {
+     "class_type": "SamplerCustomAdvanced",
+     "inputs": {
+      "guider": [
+       "16",
+       0
+      ],
+      "latent_image": [
+       "104",
+       1
+      ],
+      "noise": [
+       "15",
+       0
+      ],
+      "sampler": [
+       "17",
+       0
+      ],
+      "sigmas": [
+       "9",
+       0
+      ]
+     }
+    },
+    "15": {
+     "class_type": "RandomNoise",
+     "inputs": {
+      "noise_seed": 7
+     }
+    },
+    "16": {
+     "class_type": "BasicGuider",
+     "inputs": {
+      "conditioning": [
+       "104",
+       0
+      ],
+      "model": [
+       "7",
+       0
+      ]
+     }
+    },
+    "17": {
+     "class_type": "KSamplerSelect",
+     "inputs": {
+      "sampler_name": "res_multistep"
+     }
+    },
+    "23": {
+     "class_type": "VAEDecodeAudio",
+     "inputs": {
+      "samples": [
+       "14",
+       0
+      ],
+      "vae": [
+       "24",
+       0
+      ]
+     }
+    },
+    "24": {
+     "class_type": "VAELoader",
+     "inputs": {
+      "vae_name": "minimax_h3/vae_audio.safetensors"
+     }
+    },
+    "6": {
+     "class_type": "UNETLoader",
+     "inputs": {
+      "unet_name": "minimax_h3_fl2va.safetensors",
+      "weight_dtype": "default"
+     }
+    },
+    "7": {
+     "class_type": "LoraLoaderModelOnly",
+     "inputs": {
+      "lora_name": "minimax_h3/turbo.safetensors",
+      "model": [
+       "6",
+       0
+      ],
+      "strength_model": 1.0
+     }
+    },
+    "9": {
+     "class_type": "BasicScheduler",
+     "inputs": {
+      "denoise": 1.0,
+      "model": [
+       "7",
+       0
+      ],
+      "scheduler": "simple",
+      "steps": 8
+     }
+    },
+    "91": {
+     "class_type": "CreateVideo",
+     "inputs": {
+      "audio": [
+       "23",
+       0
+      ],
+      "fps": 24.0,
+      "images": [
+       "10",
+       0
+      ]
+     }
+    },
+    "92": {
+     "class_type": "SaveVideo",
+     "inputs": {
+      "codec": "auto",
+      "filename_prefix": "blackwire/CONT",
+      "format": "auto",
+      "video": [
+       "91",
+       0
+      ]
+     }
+    }
+   },
+   "mode": "continue"
+  },
+  "fl2va_first_frame_turbo_style": {
+   "args": {
+    "encoder": null,
+    "first_frame": "start.png",
+    "height": 480,
+    "length": 124,
+    "prompt": "a man sings to camera",
+    "seed": 7,
+    "steps": 8,
+    "style_1": "minimax_h3/style.safetensors",
+    "turbo_lora": true,
+    "width": 864
+   },
+   "graph": {
+    "10": {
+     "class_type": "VAEDecode",
+     "inputs": {
+      "samples": [
+       "14",
+       0
+      ],
+      "vae": [
+       "11",
+       0
+      ]
+     }
+    },
+    "104": {
+     "class_type": "MiniMaxH3ImageToVideo",
+     "inputs": {
+      "clip": [
+       "13",
+       0
+      ],
+      "first_frame": [
+       "200",
+       0
+      ],
+      "height": 480,
+      "length": 124,
+      "prompt": "a man sings to camera",
+      "vae": [
+       "11",
+       0
+      ],
+      "width": 864
+     }
+    },
+    "11": {
+     "class_type": "VAELoader",
+     "inputs": {
+      "vae_name": "minimax_h3/vae_video.safetensors"
+     }
+    },
+    "13": {
+     "class_type": "CLIPLoader",
+     "inputs": {
+      "clip_name": "minimax_h3/te_int8.safetensors",
+      "device": "default",
+      "type": "minimax"
+     }
+    },
+    "14": {
+     "class_type": "SamplerCustomAdvanced",
+     "inputs": {
+      "guider": [
+       "16",
+       0
+      ],
+      "latent_image": [
+       "104",
+       1
+      ],
+      "noise": [
+       "15",
+       0
+      ],
+      "sampler": [
+       "17",
+       0
+      ],
+      "sigmas": [
+       "9",
+       0
+      ]
+     }
+    },
+    "15": {
+     "class_type": "RandomNoise",
+     "inputs": {
+      "noise_seed": 7
+     }
+    },
+    "16": {
+     "class_type": "BasicGuider",
+     "inputs": {
+      "conditioning": [
+       "104",
+       0
+      ],
+      "model": [
+       "230",
+       0
+      ]
+     }
+    },
+    "17": {
+     "class_type": "KSamplerSelect",
+     "inputs": {
+      "sampler_name": "res_multistep"
+     }
+    },
+    "200": {
+     "class_type": "LoadImage",
+     "inputs": {
+      "image": "start.png"
+     }
+    },
+    "23": {
+     "class_type": "VAEDecodeAudio",
+     "inputs": {
+      "samples": [
+       "14",
+       0
+      ],
+      "vae": [
+       "24",
+       0
+      ]
+     }
+    },
+    "230": {
+     "class_type": "LoraLoaderModelOnly",
+     "inputs": {
+      "lora_name": "minimax_h3/style.safetensors",
+      "model": [
+       "7",
+       0
+      ],
+      "strength_model": 1.0
+     }
+    },
+    "24": {
+     "class_type": "VAELoader",
+     "inputs": {
+      "vae_name": "minimax_h3/vae_audio.safetensors"
+     }
+    },
+    "6": {
+     "class_type": "UNETLoader",
+     "inputs": {
+      "unet_name": "minimax_h3_fl2va.safetensors",
+      "weight_dtype": "default"
+     }
+    },
+    "7": {
+     "class_type": "LoraLoaderModelOnly",
+     "inputs": {
+      "lora_name": "minimax_h3/turbo.safetensors",
+      "model": [
+       "6",
+       0
+      ],
+      "strength_model": 1.0
+     }
+    },
+    "9": {
+     "class_type": "BasicScheduler",
+     "inputs": {
+      "denoise": 1.0,
+      "model": [
+       "230",
+       0
+      ],
+      "scheduler": "simple",
+      "steps": 8
+     }
+    },
+    "91": {
+     "class_type": "CreateVideo",
+     "inputs": {
+      "audio": [
+       "23",
+       0
+      ],
+      "fps": 24.0,
+      "images": [
+       "10",
+       0
+      ]
+     }
+    },
+    "92": {
+     "class_type": "SaveVideo",
+     "inputs": {
+      "codec": "auto",
+      "filename_prefix": "blackwire/VID",
+      "format": "auto",
+      "video": [
+       "91",
+       0
+      ]
+     }
+    }
+   },
+   "mode": "fl2va"
+  },
+  "fl2va_t2v": {
+   "args": {
+    "encoder": null,
+    "height": 480,
+    "length": 124,
+    "prompt": "a man sings to camera",
+    "seed": 7,
+    "steps": 8,
+    "turbo_lora": false,
+    "width": 864
+   },
+   "graph": {
+    "10": {
+     "class_type": "VAEDecode",
+     "inputs": {
+      "samples": [
+       "14",
+       0
+      ],
+      "vae": [
+       "11",
+       0
+      ]
+     }
+    },
+    "104": {
+     "class_type": "MiniMaxH3ImageToVideo",
+     "inputs": {
+      "clip": [
+       "13",
+       0
+      ],
+      "height": 480,
+      "length": 124,
+      "prompt": "a man sings to camera",
+      "vae": [
+       "11",
+       0
+      ],
+      "width": 864
+     }
+    },
+    "11": {
+     "class_type": "VAELoader",
+     "inputs": {
+      "vae_name": "minimax_h3/vae_video.safetensors"
+     }
+    },
+    "13": {
+     "class_type": "CLIPLoader",
+     "inputs": {
+      "clip_name": "minimax_h3/te_int8.safetensors",
+      "device": "default",
+      "type": "minimax"
+     }
+    },
+    "14": {
+     "class_type": "SamplerCustomAdvanced",
+     "inputs": {
+      "guider": [
+       "16",
+       0
+      ],
+      "latent_image": [
+       "104",
+       1
+      ],
+      "noise": [
+       "15",
+       0
+      ],
+      "sampler": [
+       "17",
+       0
+      ],
+      "sigmas": [
+       "9",
+       0
+      ]
+     }
+    },
+    "15": {
+     "class_type": "RandomNoise",
+     "inputs": {
+      "noise_seed": 7
+     }
+    },
+    "16": {
+     "class_type": "BasicGuider",
+     "inputs": {
+      "conditioning": [
+       "104",
+       0
+      ],
+      "model": [
+       "6",
+       0
+      ]
+     }
+    },
+    "17": {
+     "class_type": "KSamplerSelect",
+     "inputs": {
+      "sampler_name": "res_multistep"
+     }
+    },
+    "23": {
+     "class_type": "VAEDecodeAudio",
+     "inputs": {
+      "samples": [
+       "14",
+       0
+      ],
+      "vae": [
+       "24",
+       0
+      ]
+     }
+    },
+    "24": {
+     "class_type": "VAELoader",
+     "inputs": {
+      "vae_name": "minimax_h3/vae_audio.safetensors"
+     }
+    },
+    "6": {
+     "class_type": "UNETLoader",
+     "inputs": {
+      "unet_name": "minimax_h3_fl2va.safetensors",
+      "weight_dtype": "default"
+     }
+    },
+    "9": {
+     "class_type": "BasicScheduler",
+     "inputs": {
+      "denoise": 1.0,
+      "model": [
+       "6",
+       0
+      ],
+      "scheduler": "simple",
+      "steps": 8
+     }
+    },
+    "91": {
+     "class_type": "CreateVideo",
+     "inputs": {
+      "audio": [
+       "23",
+       0
+      ],
+      "fps": 24.0,
+      "images": [
+       "10",
+       0
+      ]
+     }
+    },
+    "92": {
+     "class_type": "SaveVideo",
+     "inputs": {
+      "codec": "auto",
+      "filename_prefix": "blackwire/VID",
+      "format": "auto",
+      "video": [
+       "91",
+       0
+      ]
+     }
+    }
+   },
+   "mode": "fl2va"
+  }
+ },
+ "models": {
+  "h3_clip_int8": "minimax_h3/te_int8.safetensors",
+  "h3_clip_nvfp4": "minimax_h3/te_nvfp4.safetensors",
+  "h3_turbo_lora": "minimax_h3/turbo.safetensors",
+  "h3_unet_fl2va": "minimax_h3_fl2va.safetensors",
+  "h3_vae_audio": "minimax_h3/vae_audio.safetensors",
+  "h3_vae_video": "minimax_h3/vae_video.safetensors"
+ }
+}

@@ -2307,12 +2307,96 @@ def _resolved_cable_uses(seq, slot):
     return uses
 
 
+# -- E1 "Sing along" ---------------------------------------------------------
+# A video shot whose mode's pack declares `sing_along` can sing the sequence's
+# song: the first SOUND-lane slot with a pick (the cut's own bed rule). The
+# shot's own record is slot["sing"] = {"on", "start"}; where it sings is always
+# COMPUTED here, never typed, except a chain head's "Starts at" (R3).
+
+def _sing_spec(cap, mode):
+    """The owning pack's `sing_along` entry for this mode, or None."""
+    for pack in engines.packs():
+        if pack["cap"] == cap and mode in pack["graphs"]:
+            return (pack.get("sing_along") or {}).get(mode)
+    return None
+
+
+def seq_song_slot(seq):
+    return next((s for s in seq.get("slots") or [] if s.get("lane") == "sound" and s.get("pick")), None)
+
+
+def _sing_length(slot, spec):
+    """The shot's length in frames, snapped exactly as its graph will get it."""
+    field = spec.get("length_field", "length")
+    val = (slot.get("values") or {}).get(field)
+    if val is None:
+        val = next((f.get("default") for f in engines.fields(slot.get("cap"), slot.get("mode"))
+                    if f.get("id") == field), None)
+    try:
+        return snap_frames(val)
+    except (TypeError, ValueError):
+        return None
+
+
+def seq_sing_plan(seq):
+    """R3: {slot id: {start, end, length, fps, head, lead_in, heard_start}} for every video
+    shot singing along right now, in video-lane order. A shot continue-cabled
+    from an earlier singing shot starts where that shot's last carried frames
+    start: prev.start + (prev.length - carried) / fps. Any other singing shot
+    is a chain head and starts at its own "Starts at". `lead_in` is how far
+    into its slice a shot's first DELIVERED frame is (a cabled shot's carried
+    frames are trimmed off its delivery); `heard_start` = start + lead_in is
+    where its audible span begins (what the page prints)."""
+    if seq_song_slot(seq) is None:
+        return {}
+    plan = {}
+    cables = seq.get("cables") or []
+    for slot in seq.get("slots") or []:
+        if slot.get("lane") != "video" or not (slot.get("sing") or {}).get("on"):
+            continue
+        spec = _sing_spec(slot.get("cap"), slot.get("mode"))
+        length = _sing_length(slot, spec) if spec else None
+        if length is None:
+            continue
+        fps = float(spec["fps"])
+        video_jacks = {j["field"] for j in slot_jacks(slot) if j.get("type") == "video"}
+        cable = next((c for c in cables if c.get("to") == slot["id"] and c.get("field") in video_jacks), None)
+        carried = spec.get("carried_frames", 0) if cable else 0
+        prev = plan.get(cable.get("from")) if cable else None
+        if prev is not None:
+            start = prev["start"] + (prev["length"] - carried) / fps
+        else:
+            start = float(slot["sing"].get("start") or 0.0)
+        plan[slot["id"]] = {"start": round(start, 6), "end": round(start + length / fps, 6), "length": length,
+                            "fps": fps, "head": prev is None, "lead_in": round(carried / fps, 6),
+                            "heard_start": round(start + carried / fps, 6)}
+    return plan
+
+
+def _resolved_sing_entry(seq, slot):
+    return seq_sing_plan(seq).get(slot.get("id"))
+
+
+def _resolved_sing_use(seq, slot):
+    """What a generate right now would put in take["inputs"]["sing"], or None."""
+    entry = seq_sing_plan(seq).get(slot.get("id"))
+    if entry is None:
+        return None
+    return {"song": seq_song_slot(seq)["pick"], "start": entry["start"], "lead_in": entry["lead_in"]}
+
+
 def slot_stale_inputs(seq, slot, take):
     """The inputs half of STALE: "room plate changed" arrives with refs
-    (C3.2b); "<jack label, lower-cased> changed" arrives with cables (C3.4).
+    (C3.2b); "<jack label, lower-cased> changed" arrives with cables (C3.4);
+    E1's song/offset changes arrive with sing.
     It compares the pick's take["inputs"] against what would resolve now."""
     reasons = []
     inputs = take.get("inputs")
+    if isinstance(inputs, dict) and inputs.get("adopted") is True:
+        # F5: a take the person already had (adopt_take) was not made from this
+        # slot's refs or cables, so it is never stale for them; only the song
+        # check below still speaks.
+        inputs = {k: v for k, v in inputs.items() if k not in ("refs", "cables")}
     if isinstance(inputs, dict) and isinstance(inputs.get("refs"), list):
         if inputs["refs"] != _resolved_ref_uses(seq, slot):
             reasons.append("room plate changed")
@@ -2324,6 +2408,15 @@ def slot_stale_inputs(seq, slot, take):
                 reason = "%s changed" % labels.get(field_id, field_id).lower()
                 if reason not in reasons:
                     reasons.append(reason)
+    if isinstance(inputs, dict):
+        made, now = inputs.get("sing"), _resolved_sing_use(seq, slot)
+        if made != now:
+            if made and now and made.get("song") != now.get("song"):
+                reasons.append("song changed")
+            elif made and now:
+                reasons.append("song timing changed")
+            else:
+                reasons.append("sing along changed")
     return reasons
 
 
@@ -2387,7 +2480,17 @@ def slot_warnings(seq, slot):
     return warnings
 
 
-def slot_stale(seq, slot, beats):
+def _sing_upstream(seq, slot):
+    """The slot cabled into a video jack of `slot`, or None."""
+    video_jacks = {j["field"] for j in slot_jacks(slot) if j.get("type") == "video"}
+    cable = next((c for c in seq.get("cables") or []
+                  if c.get("to") == slot.get("id") and c.get("field") in video_jacks), None)
+    if cable is None:
+        return None
+    return next((s for s in seq.get("slots") or [] if s.get("id") == cable.get("from")), None)
+
+
+def slot_stale(seq, slot, beats, _seen=None):
     take = next((t for t in slot.get("takes") or [] if t.get("job_id") == slot.get("pick")), None)
     if not take:
         return []
@@ -2395,7 +2498,15 @@ def slot_stale(seq, slot, beats):
     beat = beats.get(slot.get("beat_id"))
     if beat and take.get("beat_rev") is not None and take["beat_rev"] != beat.get("rev"):
         reasons.append("script changed")
-    return reasons + slot_stale_inputs(seq, slot, take)
+    reasons += slot_stale_inputs(seq, slot, take)
+    # E1: along a SINGING chain staleness is transitive (a chain is re-rolled
+    # in order). Only for a shot that sings; everything else keeps the one hop.
+    if slot.get("id") in seq_sing_plan(seq):
+        seen = (_seen or set()) | {slot.get("id")}
+        up = _sing_upstream(seq, slot)
+        if up is not None and up.get("id") not in seen and slot_stale(seq, up, beats, seen):
+            reasons.append("an earlier shot changed")
+    return reasons
 
 
 def slot_trim_effective(sid, slot):
@@ -2437,7 +2548,15 @@ def seq_derive(seq):
     with STATE_LOCK:
         lane_up = {lid: bool(st.get("up")) for lid, st in LANE_STATE.items()}
     beats = {b.get("id"): b for b in out.get("beats") or []}
+    song = seq_song_slot(out)
+    sing_plan = seq_sing_plan(out)
+    out["song"] = {"slot_id": song["id"], "job_id": song["pick"]} if song else None
     for slot in out.get("slots") or []:
+        # E1: "Sing along" is offered on a video shot whose mode can take the
+        # song, only while the sequence has one; sing_span is where it sings.
+        slot["sing_offer"] = bool(song and slot.get("lane") == "video"
+                                  and _sing_spec(slot.get("cap"), slot.get("mode")))
+        slot["sing_span"] = sing_plan.get(slot["id"])
         slot["state"], slot["progress"] = slot_state(slot, jobs, lane_up)
         slot["stale"] = slot_stale(out, slot, beats)
         slot["sees_refs"] = slot_sees_refs(slot)
@@ -2683,6 +2802,39 @@ def _op_pick_take(seq, p):
     slot["pick"] = jid
 
 
+def _op_adopt_take(seq, p):
+    """F5. {slot_id, job_id}: make a finished job the person already has (from
+    History) one of this shot's takes and its pick. A take of another mode
+    of the same kind turns the shot into that mode."""
+    slot = _slot(seq, p)
+    jid = p.get("job_id")
+    if not isinstance(jid, str) or not jid:
+        raise ValueError("Choose one of the finished takes.")
+    with JOBS_LOCK:
+        job = copy.deepcopy(JOBS.get(jid))
+    if job is None:
+        raise ValueError("That take is not in History any more.")
+    if job.get("status") != "done":
+        raise ValueError("That take has not finished, so it cannot be used.")
+    cap = slot.get("cap")
+    if job.get("kind") != cap:
+        raise ValueError("That take is a %s, but this shot makes a %s." % (
+            engines.cap_word(job.get("kind")), engines.cap_word(cap)))
+    if job.get("mode") not in engines.modes_for(cap):
+        raise ValueError("No installed engine makes that kind of take.")
+    if jid in [t.get("job_id") for t in slot["takes"]]:
+        raise ValueError("This shot already has that take.")
+    if job["mode"] != slot.get("mode"):
+        slot["mode"] = job["mode"]
+        known = {f["id"] for f in engines.fields(cap, job["mode"])}
+        slot["values"] = {k: v for k, v in (slot.get("values") or {}).items() if k in known}
+        slot["recipe"] = slot["quality"] = None   # both belong to the old mode
+        _check_slot(seq, slot)
+    slot["takes"].append({"job_id": jid, "made": time.time(), "beat_rev": None,
+                          "inputs": {"refs": [], "cables": {}, "adopted": True}, "file": None})
+    slot["pick"] = jid
+
+
 def _op_set_trim(seq, p):
     """R3: `trim.in` may be null (tail-keep: in = the take's probed duration
     minus len, computed at GET/cut time -- see slot_trim_effective) -- only
@@ -2698,6 +2850,33 @@ def _op_set_trim(seq, p):
             raise ValueError("The length must be more than zero.")
         trim = {"in": trim["in"], "len": trim["len"]}
     slot["trim"] = trim
+
+
+def _op_set_sing(seq, p):
+    """E1 (R2/R3). {slot_id, on?, start?}: a video shot's "Sing along" toggle
+    and its "Starts at" (seconds into the song -- only a chain head uses it;
+    everything else about where a shot sings is computed, seq_sing_plan)."""
+    slot = _slot(seq, p)
+    if slot.get("lane") != "video" or not _sing_spec(slot.get("cap"), slot.get("mode")):
+        raise ValueError("This shot's recipe cannot sing along.")
+    sing = dict(slot.get("sing") or {"on": False, "start": 0.0})
+    if "on" in p:
+        if not isinstance(p["on"], bool):
+            raise ValueError("Sing along is either on or off.")
+        if p["on"] and seq_song_slot(seq) is None:
+            raise ValueError("Pick a song in the sound lane first.")
+        sing["on"] = p["on"]
+    if "start" in p:
+        start = _num(p["start"], "Starts at")
+        try:
+            start = float(start)
+            in_range = 0 <= start <= 86400
+        except OverflowError:   # a huge int has no float
+            in_range = False
+        if not in_range:   # NaN and inf fail the comparison too
+            raise ValueError("Starts at must be a number of seconds from 0 up to 24 hours.")
+        sing["start"] = start
+    slot["sing"] = sing
 
 
 def _op_set_title_card(seq, p):
@@ -3088,8 +3267,8 @@ def _op_copy_beat_to_prompt(seq, p):
 SEQ_OPS = {
     "set_title": _op_set_title, "set_mode": _op_set_mode, "set_canvas": _op_set_canvas,
     "add_slot": _op_add_slot, "update_slot": _op_update_slot, "move_slot": _op_move_slot,
-    "remove_slot": _op_remove_slot, "pick_take": _op_pick_take, "set_trim": _op_set_trim,
-    "set_title_card": _op_set_title_card,
+    "remove_slot": _op_remove_slot, "pick_take": _op_pick_take, "adopt_take": _op_adopt_take, "set_trim": _op_set_trim,
+    "set_title_card": _op_set_title_card, "set_sing": _op_set_sing,
     "add_ref": _op_add_ref, "move_ref": _op_move_ref, "remove_ref": _op_remove_ref,
     "patch": _op_patch, "unpatch": _op_unpatch,
     "insert_beat": _op_insert_beat, "update_beat": _op_update_beat,
@@ -3102,7 +3281,7 @@ SEQ_OPS = {
 # for these, AFTER SEQ_LOCK is released, so the new reference is pinned before
 # anything else could restart the app first. Named in one place so C3.2b's take
 # ops (which also name a fresh job id) can be added here, not re-derived.
-SEQ_OPS_PIN_JOBS = frozenset({"add_ref", "pick_take"})
+SEQ_OPS_PIN_JOBS = frozenset({"add_ref", "pick_take", "adopt_take"})
 
 
 # -- the entry points the routes call; each returns (body, http code) --------
@@ -5756,6 +5935,14 @@ def _generate_video(p, lane, m, able, mode, qmode, prompt, seed, steps):
             "keep_audio": bool(p.get("keep_audio", True)),
             "ref_image_size": p.get("ref_image_size", "match"),
             "prev_video": p.get("prev_video")}
+    # E1: the Cutting Room's song slice (seq_generate/resolve_slot_sing), never
+    # a room-form field. Only a graph that declares sing_along reads it.
+    if p.get("sing_audio"):
+        start = p.get("sing_start", 0.0)
+        if (isinstance(start, bool) or not isinstance(start, (int, float))
+                or not math.isfinite(start) or start < 0):
+            return {"ok": False, "error": "The song's start must be a number of seconds, zero or more."}, 400
+        args["sing_audio"], args["sing_start"] = str(p["sing_audio"]), float(start)
     if mode == "ref2v":
         if not able["ref2v"]:
             return {"ok": False, "error":
@@ -6162,6 +6349,52 @@ def resolve_slot_cables(seq, slot, target_lane):
     return field_values, uses
 
 
+# ponytail: process-lifetime cache -- a lane that wipes its input folder
+# mid-session keeps the stale name until this app restarts; key it on the
+# lane's boot id if that ever bites.
+SING_UPLOADS = {}   # (lane id, song job id) -> the name that lane answered with
+SING_DURATIONS = {}   # same key -> the song file's probed length in seconds
+
+
+def _song_clock(sec):
+    tenths = int(round(sec * 10))
+    return "%d:%04.1f" % (tenths // 600, (tenths % 600) / 10.0)
+
+
+def resolve_slot_sing(seq, slot, target_lane):
+    """E1 (R2): (lane file name, the take's inputs.sing record) for a shot
+    singing along, else (None, None). The song reaches the lane the way a
+    continue cable's clip does: the cut's own harvest retry gets the take onto
+    local disk, carry() uploads it unchanged -- once per lane per song take."""
+    use = _resolved_sing_use(seq, slot)
+    if use is None:
+        return None, None
+    key = (target_lane["id"], use["song"])
+    name = SING_UPLOADS.get(key)
+    duration = SING_DURATIONS.get(key)
+    if name is None or duration is None:
+        song = seq_song_slot(seq)
+        path = _cut_ensure_take_file(seq["id"], song["id"], use["song"])
+        if duration is None:
+            duration = _probe_duration(path)
+            if duration is None:
+                raise ValueError("Couldn't read the song's length.")
+            SING_DURATIONS[key] = duration
+        if name is None:
+            with JOBS_LOCK:
+                job = copy.deepcopy(JOBS.get(use["song"]))
+            if job is None:
+                raise ValueError("The song (%s) is not made yet." % song["id"])
+            name, _note = carry(job, 0, target_lane, fit=None, cache_path=path)
+            SING_UPLOADS[key] = name
+    entry = _resolved_sing_entry(seq, slot)
+    fps = entry["fps"]
+    if entry["end"] > duration + 1.0 / fps:
+        raise ValueError("This shot would sing to %s but the song is %s long. Start it earlier or make it shorter."
+                         % (_song_clock(entry["end"]), _song_clock(duration)))
+    return name, use
+
+
 def seq_generate(payload):
     """POST /api/sequence/generate {id, slot_id} (§7). Builds `p` from the
     slot, resolves references, calls generate(p), then appends a take
@@ -6209,18 +6442,23 @@ def seq_generate(payload):
     try:
         field_values, ref_uses = resolve_slot_refs(seq, slot, lane)
         cable_values, cable_uses = resolve_slot_cables(seq, slot, lane)
+        sing_audio, sing_use = resolve_slot_sing(seq, slot, lane)
     except ValueError as e:
         return {"ok": False, "error": str(e)}, 400
     field_values.update(cable_values)
     p.update(field_values)
     p["values"].update(field_values)
+    if sing_use:
+        p["sing_audio"], p["sing_start"] = sing_audio, sing_use["start"]
     body, code = generate(p)
     if not body.get("ok"):
         return body, code
     job = body["job"]
     beat = next((b for b in seq.get("beats") or [] if b.get("id") == slot.get("beat_id")), None)
-    seq_add_take(sid, slot_id, job["id"], beat_rev=beat.get("rev") if beat else None,
-                 inputs={"refs": ref_uses, "cables": cable_uses})
+    inputs = {"refs": ref_uses, "cables": cable_uses}
+    if sing_use:
+        inputs["sing"] = sing_use
+    seq_add_take(sid, slot_id, job["id"], beat_rev=beat.get("rev") if beat else None, inputs=inputs)
     return {"ok": True, "job": job}, code
 
 
@@ -6433,7 +6671,7 @@ def seq_cut_start(payload):
     # scaled to it; a different aspect ratio is still refused, naming the
     # shot and both sizes. The sequence canvas still governs the cable
     # crop and default_canvas() -- untouched here.
-    shots, probed = [], []
+    shots, probed, sung = [], [], []
     for slot in picked:
         job_id = slot["pick"]
         try:
@@ -6461,6 +6699,15 @@ def seq_cut_start(payload):
         probed.append({"slot_id": slot["id"], "path": path, "in": in_point, "len": length,
                         "w": vw, "h": vh, "has_audio": _probe_audio_stream(info) is not None,
                         "title": slot.get("title")})
+        # E1 (R4): what this take was made singing (its own record, not the
+        # slot's current state), and its pictures' own exact length.
+        made = next((t.get("inputs") for t in slot.get("takes") or [] if t.get("job_id") == job_id), None)
+        try:
+            vdur = float(vstream.get("duration"))
+        except (TypeError, ValueError):
+            vdur = None
+        sung.append({"sing": made.get("sing") if isinstance(made, dict) else None,
+                     "whole": slot.get("trim") is None, "vdur": vdur})
 
     # Aspect is checked against the SEQUENCE CANVAS (as R5 always has), not
     # against the largest take -- a pack that delivers a multiple of its
@@ -6500,10 +6747,30 @@ def seq_cut_start(payload):
         shots.append({"slot_id": bed_slot["id"], "job_id": bed_slot["pick"], "licence": bed_job.get("licence"),
                       "role": "bed"})
 
+    # E1 (R4): with a song and at least one shot made singing it, the song
+    # itself is the soundtrack -- unless the timeline cannot line every such
+    # shot up on one continuous track, when each shot keeps its own sound.
+    song_plan, song_note = None, None
+    if bed_slot is not None and any(x["sing"] and x["sing"].get("song") == bed_slot["pick"] for x in sung):
+        song_plan = _cut_song_plan(clip_plans, sung, bed_slot["pick"])
+        if song_plan is None:
+            song_note = ("The song could not run as one track under the singing shots (the timeline's order "
+                         "or gaps break its timing), so each shot keeps its own sound.")
+            bed_path = None
+            shots = [s for s in shots if s.get("role") != "bed"]
+        else:
+            for clip, length in zip(clip_plans, song_plan["lens"]):
+                clip["len"] = length
+
     cut_id = "k" + uuid.uuid4().hex[:8]
     out_path = os.path.join(SEQ_MEDIA_DIR, sid, "cuts", cut_id + ".mp4")
     entry = {"id": cut_id, "status": "queued", "made": time.time(), "file": None, "log": "",
              "shots": shots, "left_out": left_out, "loudness": None}
+    if song_plan:
+        entry["soundtrack"] = "song"
+    elif song_note:
+        entry["soundtrack"] = "clips"
+        entry["soundtrack_note"] = song_note
     with SEQ_LOCK:
         seq2 = _seq_read(sid)
         if seq2 is None:
@@ -6515,8 +6782,57 @@ def seq_cut_start(payload):
         seq2["updated"] = time.time()
         _seq_write(seq2)
     threading.Thread(target=_run_cut, args=(sid, cut_id, clip_plans, bed_path, out_path, out_w, out_h),
-                     daemon=True).start()
+                     kwargs={"song_plan": song_plan}, daemon=True).start()
     return {"ok": True, "cut_id": cut_id}, 200
+
+
+CUT_SING_TOLERANCE = 1.0 / 48   # half a frame at 24 fps
+
+
+def _cut_song_plan(clip_plans, sung, song_job):
+    """R4: where the song sits under the cut. A shot made singing `song_job`
+    shows song time (its start + lead_in + its own trim in-point) at its first
+    cut frame; every such shot must agree on ONE offset (song time minus cut
+    time, within half a frame) for one continuous track. A whole-take shot's
+    length becomes its pictures' own exact length, so the song and the
+    pictures never drift apart. -> {"offset", "lens", "sing"}, or None."""
+    t, offset, lens, sing = 0.0, None, [], []
+    for clip, made in zip(clip_plans, sung):
+        rec = made["sing"]
+        on = bool(rec and rec.get("song") == song_job)
+        length = made["vdur"] if on and made["whole"] and made["vdur"] else clip["len"]
+        if on:
+            d = rec["start"] + rec.get("lead_in", 0.0) + clip["in"] - t
+            if offset is None:
+                offset = d
+            elif abs(d - offset) > CUT_SING_TOLERANCE:
+                return None
+        lens.append(length)
+        sing.append(on)
+        t += length
+    return {"offset": offset, "lens": lens, "sing": sing}
+
+
+def _song_track_chain(clip_plans, song_plan):
+    """R4: the song as the soundtrack -- shifted so cut time t plays song time
+    t + offset; full level under the singing shots (whose own audio is
+    silenced, never doubled), the bed's CUT_BED_GAIN_DB everywhere else."""
+    parts = ["aformat=sample_rates=%d:channel_layouts=%s" % (CUT_SAMPLE_RATE, CUT_CHANNEL_LAYOUT)]
+    offset = song_plan["offset"]
+    if offset >= 0:
+        parts += ["atrim=start=%.6f" % offset, "asetpts=PTS-STARTPTS"]
+    else:
+        ms = int(round(-offset * 1000))
+        parts.append("adelay=delays=%d|%d" % (ms, ms))
+    spans, t = [], 0.0
+    for clip, on in zip(clip_plans, song_plan["sing"]):
+        if on:
+            spans.append("between(t,%.6f,%.6f)" % (t, t + clip["len"]))
+        t += clip["len"]
+    # 1 ms frames, so the level switches within a millisecond of a shot change.
+    parts += ["asetnsamples=n=%d:p=0" % (CUT_SAMPLE_RATE // 1000),
+              "volume=volume='if(%s,1,%.6f)':eval=frame" % ("+".join(spans), 10 ** (CUT_BED_GAIN_DB / 20.0))]
+    return ",".join(parts)
 
 
 def _cut_update(sid, cut_id, **fields):
@@ -6641,7 +6957,7 @@ def _measure_true_peak(path, timeout=120):
         return None
 
 
-def _run_cut(sid, cut_id, clip_plans, bed_path, out_path, out_w, out_h):
+def _run_cut(sid, cut_id, clip_plans, bed_path, out_path, out_w, out_h, song_plan=None):
     """The whole ffmpeg build, off the request thread (R8). ffmpeg always
     runs as an argv list, never a shell. Any failure -- ffmpeg's own
     non-zero exit, a take that turns out corrupt once ffmpeg opens it, or a
@@ -6664,7 +6980,10 @@ def _run_cut(sid, cut_id, clip_plans, bed_path, out_path, out_w, out_h):
             if ttmp:
                 title_tmps.append(ttmp)
             v_chains.append(vchain)
-            a_chains.append(_clip_audio_chain(i, clip))
+            # E1 (R4): a singing shot's own audio IS the song -- silenced here,
+            # the song track below plays under it instead.
+            sings = bool(song_plan and song_plan["sing"][i])
+            a_chains.append(_clip_audio_chain(i, dict(clip, has_audio=False) if sings else clip))
         concat_inputs = "".join("[v%d][a%d]" % (i, i) for i in range(n))
         graph = v_chains + a_chains + ["%sconcat=n=%d:v=1:a=1[vcat][acat]" % (concat_inputs, n)]
         # A second, AUDIO-ONLY concat (never producing [vcat]) for the
@@ -6679,8 +6998,11 @@ def _run_cut(sid, cut_id, clip_plans, bed_path, out_path, out_w, out_h):
 
         def _mix_bed(stmts, acat_label):
             stmts = list(stmts)
-            stmts.append("[%d:a]aformat=sample_rates=%d:channel_layouts=%s,volume=%ddB[bed]"
-                         % (bed_index, CUT_SAMPLE_RATE, CUT_CHANNEL_LAYOUT, CUT_BED_GAIN_DB))
+            if song_plan:
+                stmts.append("[%d:a]%s[bed]" % (bed_index, _song_track_chain(clip_plans, song_plan)))
+            else:
+                stmts.append("[%d:a]aformat=sample_rates=%d:channel_layouts=%s,volume=%ddB[bed]"
+                             % (bed_index, CUT_SAMPLE_RATE, CUT_CHANNEL_LAYOUT, CUT_BED_GAIN_DB))
             stmts.append("[%s]aformat=sample_rates=%d:channel_layouts=%s[acatf]"
                          % (acat_label, CUT_SAMPLE_RATE, CUT_CHANNEL_LAYOUT))
             stmts.append("[acatf][bed]amix=inputs=2:duration=first:normalize=0[amixed]")

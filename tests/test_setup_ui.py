@@ -87,6 +87,14 @@ def walk(browser, width, height, lane_port, helper_port):
     page.get_by_label("Or type the guide's address").fill("http://127.0.0.1:%d" % helper_port)
     page.get_by_role("button", name="Check this address").click()
     page.wait_for_selector("#g-found:not([hidden])", timeout=10000)
+    # A real guide already running on this machine (llama.cpp on :8080, say) is
+    # found by step 2's own look-around first, so #g-found is visible before the
+    # typed address's answer lands: wait for that answer, not for visibility.
+    try:
+        page.wait_for_function("document.getElementById('g-model').textContent.includes('fake-model')",
+                               timeout=10000)
+    except Exception:
+        pass
     check("%s: the guide's model is listed" % tag, "fake-model" in text(page, "#g-model"))
     check("%s: Skip for now is offered" % tag, page.get_by_role("button", name="Skip for now").is_visible())
     fx.HELPER_STATE["replies"].append("ready")
