@@ -302,6 +302,23 @@ ENGINE = {
         "trellis_texture_vae": ("vae", {"all": ["trellis", "texture"]}),
         "trellis_clip_vision": ("clip_vision", {"all": ["trellis"]}),
     },
+    # W2: where each role's file comes from -- copied from docs/MODELS.md's table, which
+    # tests/test_model_sources.py keeps in step with this both ways. Setup shows these;
+    # nothing here is fetched by the app.
+    "sources": {
+        "trellis_unet": [
+            {"repo": "Comfy-Org/TRELLIS.2", "file": "diffusion_models/trellis_2_int8_convrot.safetensors", "size": 5_253_048_192, "folder": "diffusion_models", "run_by_us": True, "licence": "MIT"},
+        ],
+        "trellis_shape_vae": [
+            {"repo": "Comfy-Org/TRELLIS.2", "file": "vae/trellis_2_shape_vae_bf16.safetensors", "size": 1_095_844_024, "folder": "vae", "run_by_us": True, "licence": "MIT"},
+        ],
+        "trellis_texture_vae": [
+            {"repo": "Comfy-Org/TRELLIS.2", "file": "vae/trellis_2_texture_vae_bf16.safetensors", "size": 948_461_364, "folder": "vae", "run_by_us": True, "licence": "MIT"},
+        ],
+        "trellis_clip_vision": [
+            {"repo": "Comfy-Org/TRELLIS.2", "file": "clip_vision/dino_v3_vit_l.safetensors", "size": 1_212_559_776, "folder": "clip_vision", "subdir": "trellis2", "run_by_us": True, "licence": "MIT"},
+        ],
+    },
     "primary": {"mesh": "trellis_unet"},
     "cap_from": ["mesh"],
     "provides": {
@@ -382,5 +399,6 @@ ENGINE = {
         "name": "MIT",
         "shippable": True,
         "attribution": "TRELLIS2 by Microsoft",
+        "summary": "Free to use commercially.",
     },
 }

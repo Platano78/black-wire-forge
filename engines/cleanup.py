@@ -121,6 +121,17 @@ ENGINE = {
         "birefnet_model": ("bg_removal", {"all": []}),
         "upscale_model": ("upscale_model", {"all": []}),
     },
+    # W2: where each role's file comes from -- copied from docs/MODELS.md's table, which
+    # tests/test_model_sources.py keeps in step with this both ways. Setup shows these;
+    # nothing here is fetched by the app.
+    "sources": {
+        "birefnet_model": [
+            {"repo": "ZhengPeng7/BiRefNet", "file": "model.safetensors", "size": 444_473_596, "folder": "background_removal", "run_by_us": True, "licence": "MIT"},
+        ],
+        "upscale_model": [
+            {"repo": "schwgHao/RealESRGAN_x4plus", "file": "RealESRGAN_x4plus.pth", "size": 67_040_989, "folder": "upscale_models", "run_by_us": True, "licence": "BSD-3-Clause"},
+        ],
+    },
     "primary": {"cutout": "birefnet_model", "upscale": "upscale_model"},
     "cap_from": ["cutout", "upscale"],
     "provides": {
@@ -211,6 +222,7 @@ ENGINE = {
             "name": "MIT",
             "shippable": True,
             "attribution": "BiRefNet",
+            "summary": "Free to use commercially.",
             "modes": ["cutout"],
         },
         {
@@ -220,6 +232,7 @@ ENGINE = {
             "name": "BSD-3-Clause",
             "shippable": True,
             "attribution": "Real-ESRGAN by Xintao Wang et al.",
+            "summary": "Free to use commercially.",
             "modes": ["upscale"],
         },
     ],

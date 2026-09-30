@@ -1097,6 +1097,30 @@ ENGINE = {
         # See the port report: needs [("LatentUpscaleModelLoader", "model_name")].
         "ltx_upscaler": ("latent_upscaler", {"all": ["ltx"], "prefer": ["spatial"]}),
     },
+    # W2: where each role's file comes from -- copied from docs/MODELS.md's table, which
+    # tests/test_model_sources.py keeps in step with this both ways. Setup shows these;
+    # nothing here is fetched by the app.
+    "sources": {
+        "ltx_transformer": [
+            {"repo": "ruygar/LTX-2.5-Comfy-GGUF", "file": "ltx-2.5-22b-distilled-transformer-bf16-Q5_K_M.gguf", "size": 14_831_573_088, "folder": "unet", "run_by_us": True, "licence": "LTX-2.x Community License Agreement"},
+        ],
+        "ltx_clip": [
+            {"repo": "comfyicu/LTX-2.5", "file": "text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors", "size": 15_372_971_786, "folder": "text_encoders", "run_by_us": True, "licence": "LTX-2.x Community License Agreement"},
+        ],
+        "ltx_vae_video": [
+            {"repo": "comfyicu/LTX-2.5", "file": "vae/ltx-2.5-video-vae-bf16.safetensors", "size": 1_472_223_346, "folder": "vae", "run_by_us": True, "licence": "LTX-2.x Community License Agreement"},
+        ],
+        "ltx_vae_audio": [
+            {"repo": "comfyicu/LTX-2.5", "file": "vae/ltx-2.5-audio-vae-bf16.safetensors", "size": 364_866_540, "folder": "vae", "run_by_us": True, "licence": "LTX-2.x Community License Agreement"},
+        ],
+        "ltx_upscaler": [
+            {"repo": "comfyicu/LTX-2.5", "file": "latent_upscale_models/ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors", "size": 995_778_752, "folder": "latent_upscale_models", "run_by_us": True, "licence": "LTX-2.x Community License Agreement"},
+        ],
+    },
+    "nodes": [
+        {"name": "ComfyUI-GGUF", "url": "https://github.com/city96/ComfyUI-GGUF"},
+        {"name": "ComfyUI-LTXVideo", "url": "https://github.com/Lightricks/ComfyUI-LTXVideo"},
+    ],
     "primary": {"ltx": "ltx_transformer", "ltx_loop": "ltx_transformer", "talking": "ltx_transformer"},
     "cap_from": ["ltx", "ltx_loop", "talking"],
     "provides": {
@@ -1415,7 +1439,9 @@ ENGINE = {
         "name": "LTX-2.x Community License Agreement",
         "shippable": False,
         "attribution": "LTX-2.5 by Lightricks",
-        "url": "https://github.com/Lightricks/LTX-2/blob/main/LICENSE-2_x",
+        "url": "https://raw.githubusercontent.com/Lightricks/LTX-2/main/LICENSE-2_x",
+        "summary": "Free to use, including commercially, below $10M a year in revenue; above that, a paid "
+                   "licence from Lightricks.",
     },
     # LORA-2A CONTRACT v2 (engines.style_catalogs()).
     "style_catalogs": [

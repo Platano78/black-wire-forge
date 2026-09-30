@@ -65,6 +65,23 @@
     padding-top:16px}
   ul{margin:0 0 12px; padding-left:20px}
   li{margin:4px 0}
+  /* W2: step 2, the rooms and what each needs */
+  h2.group{font-family:var(--mono); font-size:12px; letter-spacing:.06em; text-transform:uppercase;
+    color:var(--text-mid); font-weight:400; margin:16px 0 4px}
+  details.room{background:var(--panel); border:1px solid var(--divider); margin:8px 0}
+  details.room > summary{cursor:pointer; padding:12px 16px; list-style-position:outside; margin-left:16px}
+  details.room > summary:focus-visible{outline:2px solid var(--accent); outline-offset:1px}
+  details.room .body{padding:0 16px 12px; border-top:1px solid var(--hairline)}
+  .room-name{font-weight:600}
+  .blk{display:block}
+  .facts{display:flex; flex-wrap:wrap; gap:4px 12px; font-size:13px; color:var(--text-mid); margin-top:4px}
+  .badge{display:inline-block; border:1px solid var(--divider); padding:0 6px; font-size:12px}
+  .badge.ok{border-color:var(--ready)}
+  .file{border-top:1px solid var(--hairline); padding:8px 0; overflow-wrap:anywhere}
+  .file:first-child{border-top:0}
+  code.cmd{display:block; background:var(--surface3); border:1px solid var(--divider); padding:8px;
+    font-family:var(--mono); font-size:12px; overflow-wrap:anywhere; white-space:pre-wrap; margin:4px 0}
+  details.alt > summary{cursor:pointer; color:var(--text-mid); font-size:13px}
 </style>
 </head>
 <body>
@@ -73,7 +90,7 @@
   <a href="/help" target="_blank" rel="noopener">Help</a>
 </header>
 <main>
-  <p id="progress">Step 1 of 4</p>
+  <p id="progress">Step 1 of 5</p>
 
   <section data-step="1" aria-labelledby="h1">
     <h1 id="h1" tabindex="-1">Do you have ComfyUI running?</h1>
@@ -140,7 +157,17 @@
   </section>
 
   <section data-step="2" aria-labelledby="h2" hidden>
-    <h1 id="h2" tabindex="-1">Switch on a guide (recommended)</h1>
+    <h1 id="h2" tabindex="-1">What do you want to make first?</h1>
+    <p>Each room needs its own model files in ComfyUI. Open a room to see the files, their sizes and their
+      licences, with a command to get each one.</p>
+    <p class="muted">Nothing downloads from here, and nothing here is saved. You can look now or later: press Next
+      when you are ready.</p>
+    <p id="r-status" role="status" aria-live="polite"></p>
+    <div id="r-list"></div>
+  </section>
+
+  <section data-step="3" aria-labelledby="h3" hidden>
+    <h1 id="h3" tabindex="-1">Switch on a guide (recommended)</h1>
     <p>A guide is a chat model that works with you in every room. You tell each room what you want, the guide
       fills in the details, and you press Make.</p>
     <p id="g-status" role="status" aria-live="polite"></p>
@@ -165,8 +192,8 @@
     </div>
   </section>
 
-  <section data-step="3" aria-labelledby="h3" hidden>
-    <h1 id="h3" tabindex="-1">Who can open Black Wire Forge?</h1>
+  <section data-step="4" aria-labelledby="h4" hidden>
+    <h1 id="h4" tabindex="-1">Who can open Black Wire Forge?</h1>
     <div class="check">
       <input type="radio" name="who" id="who-local" value="local" checked>
       <label for="who-local">Only this computer</label>
@@ -183,8 +210,8 @@
     </div>
   </section>
 
-  <section data-step="4" aria-labelledby="h4" hidden>
-    <h1 id="h4" tabindex="-1">Here is your settings file</h1>
+  <section data-step="5" aria-labelledby="h5" hidden>
+    <h1 id="h5" tabindex="-1">Here is your settings file</h1>
     <p>Black Wire Forge will save this as <span id="f-name" class="num">config.json</span>, then start.</p>
     <pre id="f-text" aria-label="The settings file"></pre>
     <p id="f-status" role="status" aria-live="polite"></p>
@@ -215,23 +242,25 @@
       if (S.path === "nogpu") return S.process;
       return false;
     }
-    if (S.step === 2) return S.skip || S.guideTested === true || (S.guideTested === false && $("g-insist-box").checked);
-    if (S.step === 3) return true;
+    if (S.step === 2) return true;
+    if (S.step === 3) return S.skip || S.guideTested === true || (S.guideTested === false && $("g-insist-box").checked);
+    if (S.step === 4) return true;
     return !S.saving;
   }
   function refresh(){
     $("next").disabled = !canNext();
     $("back").hidden = S.step === 1;
-    $("next").textContent = S.step === 4 ? "Save and start" : "Next";
+    $("next").textContent = S.step === 5 ? "Save and start" : "Next";
   }
   function show(n){
     S.step = n;
     document.querySelectorAll("section[data-step]").forEach(function(s){ s.hidden = +s.dataset.step !== n; });
-    $("progress").textContent = "Step " + n + " of 4";
+    $("progress").textContent = "Step " + n + " of 5";
     refresh();
     $("h" + n).focus();
-    if (n === 2 && !S.looked) { S.looked = true; lookForGuides(); }
-    if (n === 4) preview();
+    if (n === 2) loadRooms();
+    if (n === 3 && !S.looked) { S.looked = true; lookForGuides(); }
+    if (n === 5) preview();
   }
   function answers(){
     var a = {who: S.who, process: S.path === "nogpu" && S.process, comfy: null, helper: null};
@@ -304,7 +333,125 @@
   $("p-use").onchange = function(){ S.process = this.checked; refresh(); };
   $("p-again").onclick = loadTools;
 
-  // ---- step 2: the guide ----------------------------------------------
+  // ---- step 2: what each room needs (information only) ------------------
+  function el(tag, cls, text){
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  function gb(bytes){ return (bytes / 1e9).toFixed(1) + " GB"; }
+  function base(f){ return f.split("/").pop(); }
+  function command(s){
+    return "hf download " + s.repo + " " + s.file + " --local-dir \"<ComfyUI>/models/" + s.folder +
+      (s.subdir ? "/" + s.subdir : "") + "\"";
+  }
+  function copyText(text, btn){
+    var done = function(){ btn.textContent = "Copied"; setTimeout(function(){ btn.textContent = "Copy"; }, 2000); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function(){ btn.textContent = "Select and copy it by hand"; });
+    } else btn.textContent = "Select and copy it by hand";
+  }
+  function badge(r){
+    if (r.kind === "cutting") return ["Nothing to download", "badge ok"];
+    if (!r.modes.length) return ["Nothing makes this yet", "badge"];
+    if (!r.roles.length) return [r.programs.length ? "No model files" : "Nothing to download", "badge ok"];
+    if (r.installed) return ["Installed", "badge ok"];
+    return ["Needs " + r.needs.files + " file" + (r.needs.files === 1 ? "" : "s") + " (" + gb(r.needs.bytes) + ")",
+            "badge"];
+  }
+  function fileRow(s, installed){
+    var box = el("div", "file");
+    var line = el("div");
+    line.appendChild(el("span", "num", base(s.file)));
+    line.appendChild(document.createTextNode(" \u00b7 " + gb(s.size) + " \u00b7 folder " + s.folder +
+      (s.subdir ? "/" + s.subdir : "")));
+    if (installed) line.appendChild(el("span", "ok", " \u00b7 already in your ComfyUI"));
+    box.appendChild(line);
+    box.appendChild(el("div", "muted", s.licence ? "Licence: " + s.licence : "No stated licence: ask its author first."));
+    var cmd = el("code", "cmd", command(s));
+    box.appendChild(cmd);
+    var btn = el("button", "btn", "Copy");
+    btn.type = "button";
+    btn.setAttribute("aria-label", "Copy the command for " + base(s.file));
+    btn.onclick = function(){ copyText(cmd.textContent, btn); };
+    box.appendChild(btn);
+    return box;
+  }
+  function roomCard(r){
+    var d = el("details", "room");
+    d.dataset.room = r.id;
+    var sum = el("summary");
+    sum.appendChild(el("span", "room-name", r.name));
+    if (r.blurb) sum.appendChild(el("span", "muted blk", r.blurb));
+    var facts = el("span", "facts");
+    var b = badge(r);
+    facts.appendChild(el("span", b[1], b[0]));
+    if (r.total_bytes) facts.appendChild(el("span", "size", gb(r.total_bytes) + " in all"));
+    r.licences.forEach(function(l){ facts.appendChild(el("span", "lic", l.name + ": " + l.summary)); });
+    sum.appendChild(facts);
+    d.appendChild(sum);
+    var body = el("div", "body");
+    if (r.modes.length) body.appendChild(el("p", "muted", "Makes: " + r.modes.map(function(m){ return m.label; }).join(", ") + "."));
+    r.roles.forEach(function(role){
+      var main = role.sources.filter(function(s){ return s.run_by_us; })[0];
+      var rest = role.sources.filter(function(s){ return s !== main; });
+      var wrap = el("div", "file");
+      wrap.appendChild(el("div", "room-name", role.label.charAt(0).toUpperCase() + role.label.slice(1)));
+      if (main) wrap.appendChild(fileRow(main, role.installed));
+      if (rest.length) {
+        var alt = el("details", "alt");
+        alt.appendChild(el("summary", null, "Other choices (" + rest.length + ")"));
+        rest.forEach(function(s){
+          alt.appendChild(el("p", "muted", s.run_by_us ? "Another choice. We run the one above." :
+                                             "Not run by us: it may work, but we have not tried it."));
+          alt.appendChild(fileRow(s, false));
+        });
+        wrap.appendChild(alt);
+      }
+      body.appendChild(wrap);
+    });
+    if (r.programs.length) body.appendChild(el("p", null, "Also needs " + r.programs.join(" and ") +
+      " on the server machine."));
+    if (r.nodes.length) {
+      body.appendChild(el("p", null, "ComfyUI add-ons it uses (install them in ComfyUI):"));
+      var ul = el("ul");
+      r.nodes.forEach(function(n){
+        var li = el("li"), a = el("a", null, n.name);
+        a.href = n.url; a.target = "_blank"; a.rel = "noopener";
+        li.appendChild(a);
+        ul.appendChild(li);
+      });
+      body.appendChild(ul);
+    }
+    r.licences.forEach(function(l){
+      if (!l.url) return;
+      var p = el("p"), a = el("a", null, "Read the " + l.name);
+      a.href = l.url; a.target = "_blank"; a.rel = "noopener";
+      p.appendChild(a);
+      body.appendChild(p);
+    });
+    if (r.roles.length) body.appendChild(el("p", "muted",
+      "<ComfyUI> in each command is your ComfyUI folder. The hf command comes with the huggingface_hub Python package."));
+    d.appendChild(body);
+    return d;
+  }
+  function loadRooms(){
+    var q = S.path === "yes" && S.comfy ? "?host=" + encodeURIComponent(S.comfy.host) + "&port=" + S.comfy.port : "";
+    say($("r-status"), "Reading what each room needs…");
+    return fetch("/api/setup/rooms" + q, {cache: "no-store"}).then(function(r){ return r.json(); }).then(function(j){
+      var list = $("r-list"), group = null;
+      list.textContent = "";
+      j.rooms.forEach(function(r){
+        if (r.group && r.group !== group) { group = r.group; list.appendChild(el("h2", "group", group)); }
+        list.appendChild(roomCard(r));
+      });
+      say($("r-status"), j.comfy ? "Checked against your ComfyUI." :
+        "No ComfyUI to check against yet, so nothing is marked installed.");
+    }).catch(function(){ say($("r-status"), "Setup could not reach its own server. Is it still running?", "bad"); });
+  }
+
+  // ---- step 3: the guide ----------------------------------------------
   function listGuides(found){
     var sel = $("g-model");
     sel.textContent = "";
@@ -365,14 +512,14 @@
       .then(function(){ btn.disabled = false; });
   };
   $("g-insist-box").onchange = refresh;
-  $("g-skip").onclick = function(){ S.skip = true; show(3); };
+  $("g-skip").onclick = function(){ S.skip = true; show(4); };
 
-  // ---- step 3: who ----------------------------------------------------
+  // ---- step 4: who ----------------------------------------------------
   document.querySelectorAll("input[name=who]").forEach(function(r){
     r.onchange = function(){ S.who = this.value; $("who-warn").hidden = S.who !== "network"; };
   });
 
-  // ---- step 4: the file -----------------------------------------------
+  // ---- step 5: the file -----------------------------------------------
   function preview(){
     say($("f-status"), "");
     $("f-text").textContent = "";
@@ -403,7 +550,7 @@
   }
 
   // ---- nav ------------------------------------------------------------
-  $("next").onclick = function(){ if (S.step === 4) save(); else show(S.step + 1); };
+  $("next").onclick = function(){ if (S.step === 5) save(); else show(S.step + 1); };
   $("back").onclick = function(){ if (S.step > 1) show(S.step - 1); };
   show(1);
 })();

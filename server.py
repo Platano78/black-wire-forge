@@ -1338,10 +1338,18 @@ def fetch_pool(lane, pool):
     unrecognised third shape is logged once by node name instead of repeating
     that silence.
     """
+    return pool_names(pool, lambda node: http_get_json(lane_url(lane, "/object_info/%s" % node), timeout=8.0),
+                      lane["name"])
+
+
+def pool_names(pool, info_for, where):
+    """fetch_pool()'s reading of one pool from /object_info answers: info_for(node)
+    -> that node's /object_info dict (per-node or the whole thing), or raises.
+    W2's Setup reuses it on one whole-/object_info fetch."""
     names = []
     for node, field in POOL_NODES[pool]:
         try:
-            info = http_get_json(lane_url(lane, "/object_info/%s" % node), timeout=8.0)
+            info = info_for(node)
         except Exception:
             continue       # node not installed on this build, or lane went away
         spec = (info or {}).get(node) or {}
@@ -1354,7 +1362,7 @@ def fetch_pool(lane, pool):
             candidates = opts[1].get("options") or []
         else:
             log("%s: %s.%s has an unrecognised dropdown shape, skipping"
-                % (lane["name"], node, field), "warn")
+                % (where, node, field), "warn")
             continue
         # Keep things that look like files. ComfyUI puts pseudo-entries in some of
         # these lists (VAELoader offers "pixel_space", which is not a file).
@@ -7484,6 +7492,10 @@ SETUP_EXISTS = "A settings file already exists."
 _SETUP_HOST_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9.\-]{0,251}[A-Za-z0-9])?$")
 SETUP_LOCK = threading.Lock()
 SETUP_HELPER_TRIED = {}   # (url, model) -> True when "Test it" got a reply
+SETUP_COMFY_SEEN = set()  # (host, port) a ComfyUI probe found: the only addresses W2's rooms step reads
+SETUP_POOLS = {}          # (host, port) -> its model pools, read once per Setup session
+SETUP_POOLS_TIMEOUT = 20.0              # the whole /object_info: big installs take seconds to list
+SETUP_POOLS_READ_LIMIT = 64 * 1024 * 1024
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -7494,13 +7506,13 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 _SETUP_OPENER = urllib.request.build_opener(_NoRedirect)
 
 
-def _setup_get_json(url, timeout):
-    """GET url -> parsed JSON (dict or list), or raises. Reads at most 1 MiB,
-    and the whole exchange ends within `timeout` seconds."""
+def _setup_get_json(url, timeout, limit=SETUP_READ_LIMIT):
+    """GET url -> parsed JSON (dict or list), or raises. Reads at most `limit`
+    bytes (1 MiB unless said), and the whole exchange ends within `timeout` seconds."""
     deadline = time.monotonic() + timeout
     req = urllib.request.Request(url, headers={"Accept": "application/json"})
     with _SETUP_OPENER.open(req, timeout=timeout) as r:
-        raw = _read_by(r, deadline, SETUP_READ_LIMIT)
+        raw = _read_by(r, deadline, limit)
     return json.loads(raw.decode("utf-8"))
 
 
@@ -7549,6 +7561,7 @@ def _setup_comfy_stats(host, port):
     # ComfyUI names a device like "cuda:0 <card name> : <allocator>": the card
     # name alone is the suggested lane name, which the user can change.
     name = re.sub(r"^\S+:\d+\s+", "", gpu).split(" : ")[0].strip()
+    SETUP_COMFY_SEEN.add((host, port))
     return {"host": host, "port": port, "gpu": gpu or None, "vram_gb": vram_gb,
             "version": _setup_short(stats["system"].get("comfyui_version"), 40) or None,
             "name": name or "ComfyUI"}
@@ -7784,6 +7797,84 @@ def setup_state():
             "tools": {"blender": bool(shutil.which("blender")), "ffmpeg": bool(shutil.which("ffmpeg"))}}, 200
 
 
+def _setup_pools(host, port):
+    """The model pools of a ComfyUI a probe found, read the way discovery reads
+    them (pool_names) from ONE bounded GET /object_info, kept for this Setup
+    session. None when it cannot be read (then nothing is marked installed)."""
+    key = (host, port)
+    if key in SETUP_POOLS:
+        return SETUP_POOLS[key]
+    try:
+        info = _setup_get_json("http://%s:%d/object_info" % key, SETUP_POOLS_TIMEOUT, SETUP_POOLS_READ_LIMIT)
+    except Exception:
+        return None
+    if not isinstance(info, dict):
+        return None
+    pools = {p: pool_names(p, lambda node: info, "ComfyUI at %s:%d" % key) for p in POOL_NODES}
+    SETUP_POOLS[key] = pools
+    return pools
+
+
+def setup_rooms(query):
+    """W2 "What do you want to make first?": every room (rooms.json order) with
+    the files its modes need, from the packs' own sources. ?host=&port= names
+    the ComfyUI step 1 found; only an address a probe found is ever read, and
+    `installed` stays null without one."""
+    pools = None
+    host, port = (query.get("host") or [""])[0], (query.get("port") or [""])[0]
+    if host:
+        try:
+            host, port = _setup_address(host, port)
+        except ValueError:
+            host = ""
+        if host and (host, port) in SETUP_COMFY_SEEN:
+            pools = _setup_pools(host, port)
+    out = []
+    for room in engines.rooms():
+        entries, nodes, programs, licences, modes = [], [], [], [], []
+        sources, words = {}, {}
+        for m in room.get("modes") or []:
+            n = engines.needs(m["cap"], m["mode"])
+            modes.append({"mode": m["mode"], "label": engines.mode_words(m["cap"]).get(m["mode"], m["mode"])})
+            sources.update(n["sources"])
+            words.update(n["words"])
+            for e in n["roles"]:
+                if e not in entries:
+                    entries.append(e)
+            for x, into in ((n["nodes"], nodes), (n["programs"], programs), ([n["licence"]] if n["licence"] else [],
+                                                                             licences)):
+                for item in x:
+                    if item not in into:
+                        into.append(item)
+        roles, counted, total = [], set(), 0
+        need_files, need_bytes = set(), 0
+        for e in entries:
+            group = e if isinstance(e, list) else [e]
+            srcs = [s for r in group for s in sources.get(r, [])]
+            srcs.sort(key=lambda s: not s["run_by_us"])          # the recommended file first
+            installed = (None if pools is None else
+                         any(pick_model(pools.get(ROLE_POOL[r], []), ROLE_RULES[r], False) for r in group))
+            role = {"role": group[0], "label": words.get(group[0], group[0]), "sources": srcs, "installed": installed}
+            if len(group) > 1:
+                role["any_of"] = group
+            roles.append(role)
+            main = next((s for s in srcs if s["run_by_us"]), None)
+            if main:
+                key = (main["repo"], main["file"])
+                if key not in counted:
+                    counted.add(key)
+                    total += main["size"]
+                if not installed and key not in need_files:
+                    need_files.add(key)
+                    need_bytes += main["size"]
+        out.append({"id": room["id"], "name": room.get("name", room["id"]), "group": room.get("group") or "",
+                    "blurb": room.get("blurb", ""), "kind": room.get("kind") or "modes", "modes": modes,
+                    "roles": roles, "nodes": nodes, "programs": programs, "licences": licences,
+                    "total_bytes": total, "needs": {"files": len(need_files), "bytes": need_bytes},
+                    "installed": None if pools is None or not roles else all(r["installed"] for r in roles)})
+    return {"ok": True, "comfy": pools is not None, "rooms": out}, 200
+
+
 SETUP_POSTS = {"/api/setup/probe-comfy": setup_probe_comfy, "/api/setup/probe-helper": setup_probe_helper,
                "/api/setup/test-helper": setup_test_helper, "/api/setup/preview": setup_preview,
                "/api/setup/write": setup_write}
@@ -7874,6 +7965,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"ok": True, "port": PORT, "lanes": 0, "setup": True})
             elif self.command == "GET" and u.path == "/api/setup/state":
                 self.send_json(*setup_state())
+            elif self.command == "GET" and u.path == "/api/setup/rooms":
+                self.send_json(*setup_rooms(urllib.parse.parse_qs(u.query)))
             elif self.command == "POST" and u.path in SETUP_POSTS:
                 if not body_ok:
                     self.send_json({"ok": False, "error": "Send a JSON object."}, 400)

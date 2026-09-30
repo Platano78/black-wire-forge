@@ -1,9 +1,12 @@
-"""Browser walk of W1's Setup page (setup.html) at 1280 and 390 wide: a real server.py in
+"""Browser walk of the Setup page (setup.html) at 1280 and 390 wide: a real server.py in
 Setup mode (no config file), the fake ComfyUI and a FakeHelper with /v1/models. Each step:
-"Step N of 4", focus on the step's heading, a label on every input, no sideways scroll;
-Back works; step 1 finds the fake ComfyUI by address, step 2 tests the guide, step 3 shows
-the warning for "other devices", step 4 shows the exact file, and "Save and start" lands
-in the app. SKIPs cleanly without Playwright/Chromium.
+"Step N of 5", focus on the step's heading, a label on every input, no sideways scroll;
+Back works; step 1 finds the fake ComfyUI by address; step 2 (W2) shows the rooms as cards
+with size, licence and a badge, a card opens by keyboard to per-file commands with the
+<ComfyUI> placeholder, Copy puts the command on the clipboard, "not run by us" choices stay
+folded, and Next works with no room chosen; step 3 tests the guide, step 4 shows the warning
+for "other devices", step 5 shows the exact file, and "Save and start" lands in the app. No
+page errors anywhere. SKIPs cleanly without Playwright/Chromium.
 
 Set BWF_SETUP_SHOTS=<dir> to save a screenshot of every step at both widths.
 
@@ -34,7 +37,7 @@ def text(page, sel):
 
 
 def step_ok(page, n, tag):
-    check("%s: Step %d of 4 shown" % (tag, n), text(page, "#progress") == "Step %d of 4" % n, text(page, "#progress"))
+    check("%s: Step %d of 5 shown" % (tag, n), text(page, "#progress") == "Step %d of 5" % n, text(page, "#progress"))
     check("%s: focus is on step %d's heading" % (tag, n),
           page.evaluate("document.activeElement && document.activeElement.id") == "h%d" % n)
     unlabelled = page.evaluate("[...document.querySelectorAll('section:not([hidden]) input, section:not([hidden]) "
@@ -44,6 +47,47 @@ def step_ok(page, n, tag):
           page.evaluate("document.documentElement.scrollWidth <= window.innerWidth"))
 
 
+def rooms_step(page, tag):
+    """W2's step 2: cards, a card opened by keyboard, Copy, folded alternatives."""
+    page.wait_for_function("/Checked against your ComfyUI/.test(document.getElementById('r-status').textContent)",
+                           timeout=30000)
+    groups = page.evaluate("[...document.querySelectorAll('#r-list h2.group')].map(h => h.textContent)")
+    check("%s: rooms grouped like rooms.json" % tag, groups == ["SOUND", "PICTURE", "MOTION", "OBJECT"], groups)
+    card = page.locator("details.room[data-room=pixelart]")
+    summary = card.locator(":scope > summary").text_content()
+    check("%s: a card shows its total size, licence in plain words and a badge" % tag,
+          "16.3 GB in all" in summary and "Qwen Research License: Non-commercial use only." in summary
+          and ("Installed" in summary or "Needs " in summary), summary)
+    check("%s: a free-to-use room says so" % tag,
+          "MIT: Free to use commercially." in page.locator("details.room[data-room=cleanup] summary").text_content())
+    video_sum = page.locator("details.room[data-room=video] > summary").text_content()
+    check("%s: a revenue-threshold licence shows its own terms, not a blanket sentence" % tag,
+          "below $10M a year in revenue" in video_sum and "research use" not in video_sum, video_sum)
+    card.locator(":scope > summary").focus()
+    page.keyboard.press("Enter")
+    check("%s: Enter on a card's heading opens it" % tag, card.evaluate("d => d.open"))
+    cmds = card.locator("code.cmd").all_text_contents()
+    check("%s: each file has an hf download command with the <ComfyUI> placeholder" % tag,
+          len(cmds) == 4 and all(c.startswith("hf download ") and ' --local-dir "<ComfyUI>/models/' in c
+                                 for c in cmds), cmds)
+    card.get_by_role("button", name="Copy").first.click()
+    page.wait_for_function("document.querySelector('details.room[data-room=pixelart] .file .btn').textContent "
+                           "=== 'Copied'", timeout=5000)
+    check("%s: Copy puts the command on the clipboard" % tag,
+          page.evaluate("navigator.clipboard.readText()") == cmds[0], cmds[0])
+    video = page.locator("details.room[data-room=video]")
+    video.locator(":scope > summary").click()
+    check("%s: open cards fit: no sideways scroll" % tag,
+          page.evaluate("document.documentElement.scrollWidth <= window.innerWidth"))
+    alt = video.locator("details.alt")
+    check("%s: 'not run by us' choices are folded and labelled" % tag,
+          alt.count() >= 1 and not alt.first.evaluate("d => d.open")
+          and "Not run by us" in alt.first.text_content(), alt.count())
+    check("%s: add-ons are links" % tag, video.locator(".body ul a[href^='https://github.com/']").count() >= 1)
+    shot(page, "setup-%s-step2" % page.viewport_size["width"])
+    page.evaluate("document.querySelectorAll('details.room').forEach(d => d.open = false)")
+
+
 def walk(browser, width, height, lane_port, helper_port):
     tag = str(width)
     proc, cfg, logp = fx.boot("ui" + tag)
@@ -51,7 +95,11 @@ def walk(browser, width, height, lane_port, helper_port):
     check("%s: Setup server up" % tag, up, open(logp).read()[-400:])
     if not up:
         return
-    page = browser.new_page(viewport={"width": width, "height": height})
+    ctx = browser.new_context(viewport={"width": width, "height": height},
+                              permissions=["clipboard-read", "clipboard-write"])
+    page = ctx.new_page()
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
     page.goto(fx.BASE + "/")
     step_ok(page, 1, tag)
     check("%s: Back is hidden on step 1" % tag, not page.locator("#back").is_visible())
@@ -79,10 +127,15 @@ def walk(browser, width, height, lane_port, helper_port):
     shot(page, "setup-%s-step1" % tag)
     page.get_by_role("button", name="Next").click()
     step_ok(page, 2, tag)
+    rooms_step(page, tag)
     page.get_by_role("button", name="Back").click()
     check("%s: Back returns to step 1, answers kept" % tag,
-          text(page, "#progress") == "Step 1 of 4" and page.locator("#c-name").input_value() == "Studio")
+          text(page, "#progress") == "Step 1 of 5" and page.locator("#c-name").input_value() == "Studio")
     page.get_by_role("button", name="Next").click()
+    step_ok(page, 2, tag)
+    check("%s: Next works on step 2 with no room chosen" % tag, page.locator("#next").is_enabled())
+    page.get_by_role("button", name="Next").click()
+    step_ok(page, 3, tag)
     page.wait_for_function("!/^Looking/.test(document.getElementById('g-status').textContent)", timeout=20000)
     page.get_by_label("Or type the guide's address").fill("http://127.0.0.1:%d" % helper_port)
     page.get_by_role("button", name="Check this address").click()
@@ -101,25 +154,25 @@ def walk(browser, width, height, lane_port, helper_port):
     page.get_by_role("button", name="Test it").click()
     page.wait_for_function("/It works/.test(document.getElementById('g-result').textContent)", timeout=15000)
     check("%s: Test it shows the reply" % tag, "ready" in text(page, "#g-result"), text(page, "#g-result"))
-    shot(page, "setup-%s-step2" % tag)
+    shot(page, "setup-%s-step3" % tag)
     page.get_by_role("button", name="Next").click()
-    step_ok(page, 3, tag)
+    step_ok(page, 4, tag)
     check("%s: only this computer is the default" % tag, page.locator("#who-local").is_checked())
     page.get_by_label("Other devices on my home network").check()
     check("%s: the network choice shows the warning" % tag,
           page.locator("#who-warn").is_visible() and "no password" in text(page, "#who-warn"))
-    shot(page, "setup-%s-step3-network" % tag)
+    shot(page, "setup-%s-step4-network" % tag)
     page.get_by_label("Only this computer").check()
     check("%s: back to this computer hides it" % tag, not page.locator("#who-warn").is_visible())
     page.get_by_role("button", name="Next").click()
-    step_ok(page, 4, tag)
+    step_ok(page, 5, tag)
     page.wait_for_function("document.getElementById('f-text').textContent.length > 0", timeout=10000)
     shown = json.loads(text(page, "#f-text"))
-    check("%s: step 4 shows the exact file" % tag,
+    check("%s: step 5 shows the exact file" % tag,
           shown == {"bind": "127.0.0.1",
                     "lanes": [{"id": "comfy", "name": "Studio", "host": "127.0.0.1", "port": lane_port}],
                     "helper": {"url": "http://127.0.0.1:%d/v1" % helper_port, "model": "fake-model"}}, shown)
-    shot(page, "setup-%s-step4" % tag)
+    shot(page, "setup-%s-step5" % tag)
     with page.expect_navigation(timeout=30000):
         page.get_by_role("button", name="Save and start").click()
     page.wait_for_load_state("load")
@@ -129,7 +182,8 @@ def walk(browser, width, height, lane_port, helper_port):
     check("%s: config.json written" % tag, os.path.exists(cfg) and json.load(open(cfg)) == shown)
     page.wait_for_timeout(1500)
     shot(page, "setup-%s-done" % tag)
-    page.close()
+    check("%s: no page errors" % tag, errors == [], errors)
+    ctx.close()
     fx.stop(proc)
 
 

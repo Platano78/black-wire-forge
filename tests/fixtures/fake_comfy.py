@@ -6,6 +6,7 @@ hardware:
 
   GET /system_stats        fake version string, one fake 16 GiB GPU, 1 byte ram_free
   GET /queue               empty queue (running and pending)
+  GET /object_info         every node below in one answer (what W2's Setup reads)
   GET /object_info/<Node>  real dropdown contents, built from
                            tests/golden/pools_rig.json (captured from the real
                            rig by capture_pools_rig.py), merged with
@@ -14,7 +15,8 @@ hardware:
                            the merge is by exact "Node.field" key).
                            Pools whose entries never match a pack rule are
                            harmless: pick_model finds no candidate and the
-                           mode stays unavailable.
+                           mode stays unavailable. --pools FILE (same shape)
+                           replaces both, for a test that needs an exact pool.
   POST /prompt             500 by default -- this lane can never render
                            anything, so a job can never be started
                            end-to-end here UNLESS told otherwise (below).
@@ -114,10 +116,10 @@ def parse_multipart(body, boundary):
     return parts
 
 
-def _object_info():
-    """pools (rig golden + optional extra) -> per-node /object_info payloads."""
+def _object_info(paths=(RIG_POOLS, EXTRA_POOLS)):
+    """pools (rig golden + optional extra, or a --pools file) -> per-node /object_info payloads."""
     pools = {}
-    for path in (RIG_POOLS, EXTRA_POOLS):
+    for path in paths:
         if not os.path.exists(path):
             continue
         with open(path) as f:
@@ -170,6 +172,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, SYSTEM_STATS)
         elif path == "/queue":
             self._send(200, QUEUE)
+        elif path == "/object_info":
+            self._send(200, {node: {"input": {"required": fields}} for node, fields in NODES.items()})
         elif path.startswith("/object_info/"):
             node = path[len("/object_info/"):].strip("/")
             if node in NODES:
@@ -284,7 +288,11 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--port", type=int, required=True)
     ap.add_argument("--store", default=None, help="dir for uploads/outputs/requests.log (default: a temp dir)")
+    ap.add_argument("--pools", default=None, help="serve exactly these pools (pools_extra.json's shape) instead")
     args = ap.parse_args()
+    if args.pools:
+        global NODES
+        NODES = _object_info((args.pools,))
     if args.store:
         STORE_DIR = args.store
         os.makedirs(STORE_DIR, exist_ok=True)

@@ -197,9 +197,11 @@ confirmed **FAIL** by running `pick_model()` against the bare filename. Placed i
 `minimax_h3/` subfolder (`models/diffusion_models/minimax_h3/`), the dropdown-visible path is
 `minimax_h3/MiniMax-H3-FL2VA-Pruned-Q4_K_M.gguf`, which does contain `minimax_h3` —
 re-running `pick_model()` against that form confirmed **PASS** for both roles. The subfolder
-is not cosmetic; it's required. The same subfolder requirement applies to both `h3_turbo_lora`
-rows (bare filenames for both the 4-step and 8-step LoRAs lack `minimax_h3` too, at
-`models/loras/minimax_h3/`).
+is not cosmetic; it's required. Of the two `h3_turbo_lora` rows, only the 8-step
+`lightx2v_hybrid-4to8step-Turbo_r48.safetensors` needs the same subfolder
+(`models/loras/minimax_h3/`): its bare name lacks `minimax_h3`. The 4-step
+`minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors` contains it and passes bare, as
+its table row says; `models/loras/minimax_h3/` works for it too.
 
 ## ACE-Step 1.5 (`engines/audio.py`, song mode) — audio
 

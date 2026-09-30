@@ -754,6 +754,23 @@ ENGINE = {
         "qwen_clip": ("clip", {"all": ["qwen3vl"], "none": ["minimax"], "prefer": ["8b"]}),
         "qwen_vae": ("vae", {"all": ["qwen_image", "vae"], "none": ["minimax"], "prefer": ["2.1"]}),
     },
+    # W2: where each role's file comes from -- copied from docs/MODELS.md's table, which
+    # tests/test_model_sources.py keeps in step with this both ways. Setup shows these;
+    # nothing here is fetched by the app.
+    "sources": {
+        "qwen_unet": [
+            {"repo": "Abiray/Qwen-Image-2.1-GGUF", "file": "qwen_image_2.1_Q6_K.gguf", "size": 5_876_578_464, "folder": "unet", "run_by_us": True, "licence": "Qwen Research License"},
+        ],
+        "qwen_clip": [
+            {"repo": "Comfy-Org/Qwen-Image-2.1", "file": "text_encoders/qwen3vl_8b_int8_convrot.safetensors", "size": 9_350_798_360, "folder": "text_encoders", "run_by_us": True, "licence": "Qwen Research License"},
+        ],
+        "qwen_vae": [
+            {"repo": "Comfy-Org/Qwen-Image-2.1", "file": "vae/qwen_image_2.1_vae_bf16.safetensors", "size": 675_509_688, "folder": "vae", "run_by_us": True, "licence": "Qwen Research License"},
+        ],
+    },
+    "nodes": [
+        {"name": "ComfyUI-GGUF", "url": "https://github.com/city96/ComfyUI-GGUF"},
+    ],
     "primary": {"t2i": "qwen_unet", "edit": "qwen_unet", "charsheet": "qwen_unet"},
     # mode-specific abilities, not the cap name itself. Before this,
     # the ability was literally "image" (== the cap), which was harmless
@@ -1174,6 +1191,8 @@ ENGINE = {
         "name": "Qwen Research License",
         "shippable": False,
         "attribution": "Qwen-Image 2.1 by Alibaba Qwen team",
+        "url": "https://huggingface.co/Qwen/Qwen-Image-2.1/blob/main/LICENSE",
+        "summary": "Non-commercial use only.",
     },
     # LORA-1 Build B: which Hugging Face Hub base-model id a lane's "Browse
     # styles" catalog should query, and how to tell this pack owns that

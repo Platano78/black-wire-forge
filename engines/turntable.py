@@ -193,6 +193,7 @@ ENGINE = {
         "name": "GPL-2.0-or-later (Blender)",
         "shippable": True,
         "attribution": "Rendered with Blender. Blender's licence covers the program, not the pictures you make with it.",
+        "summary": "Free to use commercially; the licence covers the Blender program, not what you render.",
     },
 }
 

@@ -591,6 +591,37 @@ ENGINE = {
         "h3_turbo_lora": ("lora", {"all": ["minimax_h3"], "any": ["turbo", "4step", "lightx2v"],
                                    "prefer": ["comfy", "fl2v"]}),
     },
+    # W2: where each role's file comes from -- copied from docs/MODELS.md's table, which
+    # tests/test_model_sources.py keeps in step with this both ways. Setup shows these;
+    # nothing here is fetched by the app.
+    "sources": {
+        "h3_unet_fl2va": [
+            {"repo": "Abiray/MiniMax-H3-Pruned-GGUF", "file": "MiniMax-H3-FL2VA-Pruned-Q4_K_M.gguf", "size": 11_564_180_576, "folder": "diffusion_models", "subdir": "minimax_h3", "run_by_us": True, "licence": "MiniMax-H3 Model License"},
+        ],
+        "h3_unet_ref2va": [
+            {"repo": "Abiray/MiniMax-H3-Pruned-GGUF", "file": "MiniMax-H3-Ref2VA-Pruned-Q4_K_M.gguf", "size": 11_564_180_576, "folder": "diffusion_models", "subdir": "minimax_h3", "run_by_us": True, "licence": "MiniMax-H3 Model License"},
+        ],
+        "h3_clip_nvfp4": [
+            {"repo": "Comfy-Org/MiniMax-H3", "file": "text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors", "size": 15_687_142_551, "folder": "text_encoders", "run_by_us": True, "licence": "MiniMax-H3 Model License"},
+        ],
+        "h3_clip_int8": [
+            {"repo": "Comfy-Org/MiniMax-H3", "file": "text_encoders/qwen3vl_32b_minimax_h3_int8_convrot.safetensors", "size": 27_141_342_152, "folder": "text_encoders", "run_by_us": False, "licence": "MiniMax-H3 Model License"},
+        ],
+        "h3_vae_video": [
+            {"repo": "Comfy-Org/MiniMax-H3", "file": "vae/minimax_h3_video_vae_fp16.safetensors", "size": 5_207_808_496, "folder": "vae", "run_by_us": True, "licence": "MiniMax-H3 Model License"},
+        ],
+        "h3_vae_audio": [
+            {"repo": "Comfy-Org/MiniMax-H3", "file": "vae/minimax_h3_audio_vae_fp32.safetensors", "size": 605_254_808, "folder": "vae", "run_by_us": True, "licence": "MiniMax-H3 Model License"},
+        ],
+        "h3_turbo_lora": [
+            {"repo": "Comfy-Org/MiniMax-H3", "file": "loras/minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors", "size": 1_956_192_992, "folder": "loras", "subdir": "minimax_h3", "run_by_us": True, "licence": "MiniMax-H3 Model License"},
+            {"repo": "TenStrip/MinimaxH3-Turbo_Shenanigans", "file": "lightx2v_hybrid-4to8step-Turbo_r48.safetensors", "size": 943_947_204, "folder": "loras", "subdir": "minimax_h3", "run_by_us": True, "licence": None},
+        ],
+    },
+    "nodes": [
+        {"name": "ComfyUI-GGUF", "url": "https://github.com/city96/ComfyUI-GGUF"},
+        {"name": "ComfyUI-H3-Motion-Context", "url": "https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context", "modes": ["continue"]},
+    ],
     "primary": {"fl2va": "h3_unet_fl2va", "ref2v": "h3_unet_ref2va"},
     "cap_from": ["fl2va", "ref2v"],
     "provides": {
@@ -968,7 +999,10 @@ ENGINE = {
         "name": "MiniMax-H3 Model License",
         "shippable": False,
         "attribution": "MiniMax-H3 by MiniMax",
-        "url": "https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/LICENSE",
+        "url": "https://huggingface.co/MiniMaxAI/MiniMax-H3/raw/main/LICENSE",
+        "summary": "Open outside the EU, UK, South Korea and the USA (elsewhere, apply to MiniMax "
+                   "first); over $20M a year in commercial revenue needs written authorization "
+                   "from MiniMax; a commercial product must display \"MiniMax H3\".",
         "note": "Open weights are licensed outside the EU, UK, South Korea and the USA; "
                 "elsewhere MiniMax asks you to apply (platform.minimax.io/h3-license).",
     },

@@ -231,6 +231,11 @@ ENGINE = {
         "qwen_vae": ("vae", {"all": ["qwen_image", "vae"], "none": ["minimax"], "prefer": ["2.1"]}),
         "birefnet_model": ("bg_removal", {"all": []}),
     },
+    # W2: this pack's roles are qwen-image's and cleanup's, so their "sources" live there;
+    # the custom-node package docs/MODELS.md lists for it (tests/test_model_sources.py).
+    "nodes": [
+        {"name": "ComfyUI-GGUF", "url": "https://github.com/city96/ComfyUI-GGUF"},
+    ],
     "primary": {"pixelart": "qwen_unet"},
     "provides": {
         "pixelart": ["qwen_unet", "qwen_clip", "qwen_vae", "birefnet_model"],
@@ -366,5 +371,7 @@ ENGINE = {
         "name": "Qwen Research License",
         "shippable": False,
         "attribution": "Qwen-Image 2.1 by Alibaba Qwen team",
+        "url": "https://huggingface.co/Qwen/Qwen-Image-2.1/blob/main/LICENSE",
+        "summary": "Non-commercial use only.",
     },
 }

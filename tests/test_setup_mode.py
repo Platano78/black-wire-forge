@@ -158,7 +158,7 @@ try:
           and set(body.get("tools", {})) == {"blender", "ffmpeg"}, (code, body))
     code, page = fx.http("GET", "/")
     check("/ serves the Setup page", code == 200 and "Set up Black Wire Forge" in page
-          and "Step 1 of 4" in page, str(page)[:200])
+          and "Step 1 of 5" in page, str(page)[:200])
     code, _ = fx.http("GET", "/help")
     check("/help still answers", code == 200, code)
     code, body = fx.http("POST", "/api/setup/probe-comfy", None, {"Content-Type": "text/plain"})

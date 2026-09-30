@@ -1484,6 +1484,47 @@ ENGINE = {
         "yue2_ckpt": ("checkpoint", {"all": ["yue2"]}),
         "yue2_audio_encoder": ("audio_encoder", {"all": ["sheetsage2"]}),
     },
+    # W2: where each role's file comes from -- copied from docs/MODELS.md's table, which
+    # tests/test_model_sources.py keeps in step with this both ways. Setup shows these;
+    # nothing here is fetched by the app.
+    "sources": {
+        "ace_unet": [
+            {"repo": "Comfy-Org/ace_step_1.5_ComfyUI_files", "file": "split_files/diffusion_models/acestep_v1.5_turbo.safetensors", "size": 4_787_825_604, "folder": "diffusion_models", "subdir": "ace_step_1.5", "run_by_us": True, "licence": "MIT"},
+        ],
+        "ace_clip1": [
+            {"repo": "Comfy-Org/ace_step_1.5_ComfyUI_files", "file": "split_files/text_encoders/qwen_0.6b_ace15.safetensors", "size": 1_191_588_248, "folder": "text_encoders", "subdir": "ace_step_1.5", "run_by_us": True, "licence": "MIT"},
+        ],
+        "ace_clip2": [
+            {"repo": "Comfy-Org/ace_step_1.5_ComfyUI_files", "file": "split_files/text_encoders/qwen_1.7b_ace15.safetensors", "size": 3_708_523_360, "folder": "text_encoders", "subdir": "ace_step_1.5", "run_by_us": True, "licence": "MIT"},
+        ],
+        "ace_vae": [
+            {"repo": "Comfy-Org/ace_step_1.5_ComfyUI_files", "file": "split_files/vae/ace_1.5_vae.safetensors", "size": 337_431_732, "folder": "vae", "subdir": "ace_step_1.5", "run_by_us": True, "licence": "MIT"},
+        ],
+        "music3_unet": [
+            {"repo": "Comfy-Org/MiniMax-Music-3", "file": "diffusion_models/minimax_music3_dit_int8_convrot.safetensors", "size": 2_502_161_682, "folder": "diffusion_models", "run_by_us": True, "licence": "MiniMax-Music3 Community License"},
+        ],
+        "music3_clip": [
+            {"repo": "Comfy-Org/MiniMax-Music-3", "file": "text_encoders/minimax_music3_text_encoder_pruned_int8_convrot.safetensors", "size": 9_196_611_886, "folder": "text_encoders", "run_by_us": True, "licence": "MiniMax-Music3 Community License"},
+        ],
+        "music3_vae": [
+            {"repo": "Comfy-Org/MiniMax-Music-3", "file": "vae/minimax_music3_dav.safetensors", "size": 216_696_128, "folder": "vae", "run_by_us": True, "licence": "MiniMax-Music3 Community License"},
+        ],
+        "sao_ckpt": [
+            {"repo": "stabilityai/stable-audio-open-1.0", "file": "model.safetensors", "size": 4_853_889_016, "folder": "checkpoints", "subdir": "stable-audio-open-1.0", "run_by_us": True, "licence": "Stability AI Community License"},
+        ],
+        "sao_clip": [
+            {"repo": "google-t5/t5-base", "file": "model.safetensors", "size": 891_646_390, "folder": "text_encoders", "subdir": "stable-audio-open-1.0", "run_by_us": True, "licence": "Apache-2.0"},
+        ],
+        "yue2_ckpt": [
+            {"repo": "Comfy-Org/YuE2", "file": "checkpoints/yue2_3b_bf16.safetensors", "size": 7_799_983_228, "folder": "checkpoints", "run_by_us": True, "licence": "CC BY-NC 4.0"},
+        ],
+        "yue2_audio_encoder": [
+            {"repo": "Comfy-Org/YuE2", "file": "audio_encoders/sheetsage2_bf16.safetensors", "size": 1_386_868_122, "folder": "audio_encoders", "run_by_us": True, "licence": "CC BY-NC 4.0"},
+        ],
+    },
+    "nodes": [
+        {"name": "ComfyUI-MiniMax-Music-Production-Toolkit", "url": "https://github.com/jplenio/ComfyUI-MiniMax-Music-Production-Toolkit"},
+    ],
     "primary": {
         "song": "ace_unet", "music": "music3_unet", "sfx": "sao_ckpt",
         "yue2": "yue2_ckpt", "cover": "yue2_ckpt",
@@ -1920,6 +1961,7 @@ ENGINE = {
             "name": "MIT",
             "shippable": True,
             "attribution": "ACE-Step 1.5 by ACE Studio and StepFun",
+            "summary": "Free to use commercially.",
             "modes": ["song"],
         },
         {
@@ -1933,18 +1975,24 @@ ENGINE = {
             "name": "MiniMax-Music3 Community License",
             "shippable": False,
             "attribution": "MiniMax-Music3",
+            "summary": "Free to use and share; a commercial product must display \"MiniMax-Music3\"; "
+                       "over $20M a year in revenue needs written authorization from MiniMax.",
             "modes": ["music"],
         },
         {
             "name": "Stability AI Community License",
             "shippable": False,
             "attribution": "Powered by Stability AI",
+            "url": "https://stability.ai/license",
+            "summary": "Free unless used commercially by an organization over $1M a year in revenue "
+                       "(then an Enterprise licence); show \"Powered by Stability AI\".",
             "modes": ["sfx"],
         },
         {
             "name": "CC BY-NC 4.0",
             "shippable": False,
             "attribution": "YuE2-3B — non-commercial use only",
+            "summary": "Non-commercial use only.",
             "modes": ["yue2", "cover"],
         },
     ],

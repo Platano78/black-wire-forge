@@ -57,9 +57,9 @@ check("every pack declares a licence", len(lic) >= 2, str(sorted(lic)))
 check("each licence states shippability", all("shippable" in l for l in lic.values()))
 check("each licence states attribution", all(l.get("attribution") for l in lic.values()))
 check("ltx licence links to its licence text",
-      lic.get("ltx", {}).get("url") == "https://github.com/Lightricks/LTX-2/blob/main/LICENSE-2_x")
+      lic.get("ltx", {}).get("url") == "https://raw.githubusercontent.com/Lightricks/LTX-2/main/LICENSE-2_x")
 check("h3 licence links to its licence text",
-      lic.get("minimax-h3", {}).get("url") == "https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/LICENSE")
+      lic.get("minimax-h3", {}).get("url") == "https://huggingface.co/MiniMaxAI/MiniMax-H3/raw/main/LICENSE")
 check("h3 licence notes the geography restriction", "EU" in lic.get("minimax-h3", {}).get("note", ""))
 
 print()

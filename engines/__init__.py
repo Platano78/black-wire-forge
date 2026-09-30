@@ -40,9 +40,20 @@ falsy — is ignored. The dict has exactly these keys:
   describe  callable(models) -> str
                        short human label, e.g. "Qwen-Image 2.1 (GGUF)"
   licence   dict (or list of dicts, one per regime) with keys: name (str),
-                       shippable (bool), attribution (str), and optionally
+                       shippable (bool), attribution (str), summary (one plain line
+                       from docs/MODELS.md, shown by Setup), url (the licence text,
+                       where MODELS.md links one), and optionally
                        "modes" (list[str]) naming which modes a list entry
                        covers -- absent means the whole pack
+  sources   optional dict  role_name -> list of {repo, file, size, folder,
+                       subdir (optional), run_by_us, licence}: where the file
+                       for a role comes from, exactly as docs/MODELS.md's
+                       table says (tests/test_model_sources.py checks both
+                       ways). Declared once, by the pack whose MODELS.md
+                       section owns the row; Setup shows it, nothing fetches it.
+  nodes     optional list of {name, url, modes (optional)}: custom-node
+                       packages docs/MODELS.md lists for this pack. Information
+                       only -- this app installs no nodes.
   cap_word  optional str, plain-English noun for the cap in a sentence
                        ("picture" for "image"); absent uses the cap name.
                        Contract: a BARE noun, no article or quantifier --
@@ -712,6 +723,44 @@ def licences():
             entry = dict(entry)
             entry["engine"] = pack["id"]
             out.append(entry)
+    return out
+
+
+def needs(cap, mode):
+    """W2 Setup: what one mode needs before it can run, from its owning pack.
+
+    -> {"roles": [role, or a list = any one of these], "sources": {role:
+    [source, ...]}, "words": {role: plain label}, "nodes": [{name, url}],
+    "programs": [plain names] (a process pack's programs, never files),
+    "licence": {name, url, shippable, summary} or None}. A role's sources are looked
+    up across every pack (a pack may use a role another pack declares), in
+    declaration order, recommended first."""
+    out = {"roles": [], "sources": {}, "words": {}, "nodes": [], "programs": [], "licence": None}
+    pack = _owner(cap, mode)
+    if not pack:
+        return out
+    entries = pack["provides"].get(mode_ability(cap, mode)) or []
+    words = pack.get("words") or {}
+    if (pack.get("lane_kind") or "comfy") == "process":
+        out["programs"] = [words.get(r, r) for r in entries]
+        entries = []
+    known = {}
+    for p in _discover():
+        for role, lst in (p.get("sources") or {}).items():
+            known.setdefault(role, lst)
+    out["roles"] = [list(e) if isinstance(e, (list, tuple)) else e for e in entries]
+    for e in out["roles"]:
+        for role in (e if isinstance(e, list) else [e]):
+            out["sources"][role] = [dict(s) for s in known.get(role) or []]
+            out["words"][role] = words.get(role, role)
+    out["nodes"] = [{"name": n["name"], "url": n["url"]} for n in pack.get("nodes") or []
+                    if n.get("modes") is None or mode in n["modes"]]
+    lic = pack.get("licence")
+    for entry in (lic if isinstance(lic, list) else [lic] if lic else []):
+        if entry.get("modes") is None or mode in entry["modes"]:
+            out["licence"] = {"name": entry["name"], "url": entry.get("url"), "shippable": entry["shippable"],
+                              "summary": entry.get("summary") or ""}
+            break
     return out
 
 
