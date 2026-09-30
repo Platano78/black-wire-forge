@@ -36,15 +36,28 @@ never clobbers a real one.
 
 ## What it looks like
 
+Each clip is a short loop; click it for the full video.
+
+| | |
+|---|---|
+| [![First run: the Setup page finds ComfyUI and asks what you want to make first](docs/images/v0-setup.loop.webp)](docs/media/v0-setup.mp4) | [![A song: tell the Music room's guide what you want, press Make, play it](docs/images/v1-song.loop.webp)](docs/media/v1-song.mp4) |
+| **First run.** With no settings file yet, Black Wire Forge opens its Setup page: it finds ComfyUI, asks what you want to make first, switches on a guide and writes the file. | **A song.** Tell the Music room's guide what you want; it fills in the form; you press Make and play it. |
+| [![A picture: one box to the guide, Make, then a download with the recipe removed](docs/images/v2-picture.loop.webp)](docs/media/v2-picture.mp4) | [![From a script to a cut: shots made from a storyboard, one re-made, then the cut plays](docs/images/v4-storyboard.loop.webp)](docs/media/v4-storyboard.mp4) |
+| **A picture.** One box, Make, then a download with the recipe removed. | **From a script to a cut.** Paste a script, make its shots, re-make one after a change, cut the film. |
+| [![The Workflows tab: your ComfyUI's templates, searched, with what each still needs](docs/images/v5-workflows.loop.webp)](docs/media/v5-workflows.mp4) | |
+| **Workflows.** Every template your ComfyUI ships and every workflow you saved, with what each still needs on your machine. | |
+
 <p float="left">
-  <img src="docs/images/cutting-room.png" width="32%" alt="The Cutting Room: a timeline with three video shots and a sound bed, cut settings on the right.">
-  <img src="docs/images/cut-playing.png" width="32%" alt="A finished cut playing, its title card fading over the first shot.">
-  <img src="docs/images/storyboard.png" width="32%" alt="A storyboard: an imported script next to the shots it made, one flagged as changed since its shot was rendered.">
+  <img src="docs/images/picture-result.png" width="49%" alt="The Picture room: a finished painting of a lighthouse, the prompt the guide wrote on the right, the model and seed under the picture.">
+  <img src="docs/images/workflows-search.png" width="49%" alt="The Workflows tab searched for qwen: template cards, each marked Ready or with how many model files it still needs.">
+</p>
+<p float="left">
+  <img src="docs/images/cutting-room-1440x900.png" width="74%" alt="The Cutting Room: a sequence of three shots on a timeline, with the Film Room guide on the right.">
+  <img src="docs/images/cutting-room-390x844.png" width="24%" alt="The Cutting Room on a phone.">
 </p>
 
-Video frames in these screenshots were generated with LTX-2.5 (Lightricks), used under the
-[LTX-2.x Community License](https://github.com/Lightricks/LTX-2/blob/main/LICENSE-2_x); they
-are machine-generated.
+Every picture, video frame and sound in this section was made with Black Wire Forge and is machine-generated; which
+model made which is listed under [Credits for the media in this README](#credits-for-the-media-in-this-readme).
 
 The app has no login. It checks that requests arrive through its own address (`localhost`,
 the machine's own IP and hostname work with no configuration; any other name you reach it
@@ -244,6 +257,18 @@ chromium`, and `ffmpeg`/`ffprobe` on `PATH`. In the venv from "Install" that is:
 Without any of these, the suites that need them print a plain `SKIP` reason and exit cleanly
 rather than failing -- a clean clone with none of the optional deps installed still passes the
 suites that do not need them.
+
+## Credits for the media in this README
+
+The media in "What it looks like" is machine-generated with open-weight models, each under its own licence:
+
+| Media | Made with | Licence |
+|---|---|---|
+| The song (the song clip) | ACE-Step 1.5 (ACE Studio and StepFun) | [MIT](https://github.com/ace-step/ACE-Step-1.5) |
+| Pictures (the picture clip, the Picture screenshot) | Qwen-Image 2.1 (Qwen team, Alibaba) | [Qwen Research License](https://huggingface.co/Qwen/Qwen-Image-2.1/blob/main/LICENSE), non-commercial |
+| Video (the storyboard clip, the Cutting Room screenshots) | LTX-2.5 (Lightricks) | [LTX-2.x Community License](https://github.com/Lightricks/LTX-2/blob/main/LICENSE-2_x) |
+| Guide replies | the local chat model the guide was pointed at | its own licence |
+| Template thumbnails in the Workflows clip and screenshot | ComfyUI's own workflow templates, shown as your ComfyUI lists them | theirs |
 
 ## Licences
 
