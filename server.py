@@ -2596,6 +2596,10 @@ def seq_derive(seq):
     song = seq_song_slot(out)
     sing_plan = seq_sing_plan(out)
     out["song"] = {"slot_id": song["id"], "job_id": song["pick"]} if song else None
+    # RS3: known only once a probe has run (probe_song_async); absent, not guessed.
+    song_len = song_seconds_known(song["pick"]) if song else None
+    if song_len is not None:
+        out["song_seconds"] = song_len
     for slot in out.get("slots") or []:
         # E1: "Sing along" is offered on a video shot whose mode can take the
         # song, only while the sequence has one; sing_span is where it sings.
@@ -2758,11 +2762,28 @@ def _op_add_slot(seq, p):
     return {"added_slot_id": slot["id"]}
 
 
+def _switch_slot_mode(slot, cap, mode):
+    """A shot turning into another mode of the same kind (adopt_take, and
+    RS2's "Kind of shot" through update_slot): what the new mode does not
+    declare is dropped, and the recipe and quality -- both belong to the old
+    mode -- are reset. The caller runs _check_slot on the result."""
+    slot["mode"] = mode
+    if mode in engines.modes_for(cap):
+        known = {f["id"] for f in engines.fields(cap, mode)}
+        slot["values"] = {k: v for k, v in (slot.get("values") or {}).items() if k in known}
+    slot["recipe"] = slot["quality"] = None
+
+
 def _op_update_slot(seq, p):
     """Changes any of cap/mode/recipe/quality/refs, and MERGES `values`
-    (a key sent as null is removed). The result must still validate whole."""
+    (a key sent as null is removed). The result must still validate whole.
+    A changed `mode` is a mode switch (_switch_slot_mode): values the new
+    mode does not declare are pruned and recipe/quality reset, then anything
+    else sent in the same call is applied on top."""
     slot = _slot(seq, p)
     new = copy.deepcopy(slot)
+    if "mode" in p and p["mode"] != slot.get("mode"):
+        _switch_slot_mode(new, p.get("cap", slot.get("cap")), p["mode"])
     for k in ("cap", "mode", "recipe", "quality", "refs"):
         if k in p:
             new[k] = p[k]
@@ -2874,10 +2895,7 @@ def _op_adopt_take(seq, p):
     if jid in [t.get("job_id") for t in slot["takes"]]:
         raise ValueError("This shot already has that take.")
     if job["mode"] != slot.get("mode"):
-        slot["mode"] = job["mode"]
-        known = {f["id"] for f in engines.fields(cap, job["mode"])}
-        slot["values"] = {k: v for k, v in (slot.get("values") or {}).items() if k in known}
-        slot["recipe"] = slot["quality"] = None   # both belong to the old mode
+        _switch_slot_mode(slot, cap, job["mode"])   # values pruned, recipe/quality reset
         _check_slot(seq, slot)
     inputs = {"refs": [], "cables": {}, "adopted": True}
     if isinstance(job.get("join"), dict):
@@ -3374,6 +3392,9 @@ def seq_get(sid):
         seq = _seq_read(sid)
     if seq is None:
         return {"ok": False, "error": "There is no such sequence."}, 404
+    song = seq_song_slot(seq)
+    if song:
+        probe_song_async(sid, song["id"], song["pick"])   # RS3: e.g. after an app restart; background only
     return seq_derive(seq), 200
 
 
@@ -3503,6 +3524,12 @@ def seq_op(p):
                 "sequence": seq_derive(seq)}, 409
     if op in SEQ_OPS_PIN_JOBS:
         save_jobs()     # pin whatever job id this op just named, now
+    if op in ("pick_take", "adopt_take"):
+        # RS3: the song take just became (or stayed) the sequence's song --
+        # learn its length in the background, never in this request.
+        song = seq_song_slot(new)
+        if song and song["id"] == p.get("slot_id"):
+            probe_song_async(sid, song["id"], song["pick"])
     body = seq_derive(new)
     if extra:
         body.update(extra)
@@ -6412,6 +6439,45 @@ def resolve_slot_cables(seq, slot, target_lane):
 # lane's boot id if that ever bites.
 SING_UPLOADS = {}   # (lane id, song job id) -> the name that lane answered with
 SING_DURATIONS = {}   # same key -> the song file's probed length in seconds
+# RS3: the same probe, run once in the background when a take becomes the
+# sequence's song, so the page can warn before Make. Keyed by the song JOB
+# alone (SING_DURATIONS is per lane, and a GET has no lane to ask about).
+SONG_SECONDS = {}      # song job id -> seconds
+SONG_PROBE_TRIED = {}  # song job id -> when a background probe last started
+SONG_PROBE_RETRY_S = 60.0
+
+
+def song_seconds_known(job_id):
+    """The song take's length if some probe already learned it, else None.
+    Reads caches only -- never touches a file or the network (it runs in GET)."""
+    if job_id in SONG_SECONDS:
+        return SONG_SECONDS[job_id]
+    for (_lane, jid), dur in list(SING_DURATIONS.items()):
+        if jid == job_id:
+            return dur
+    return None
+
+
+def _song_probe_worker(sid, slot_id, job_id):
+    try:
+        path = _cut_ensure_take_file(sid, slot_id, job_id)
+        dur = _probe_duration(path)
+        if dur is not None:
+            SONG_SECONDS[job_id] = dur
+    except Exception:
+        pass   # unknown stays unknown: no warning, and Make (F4) still refuses
+
+
+def probe_song_async(sid, slot_id, job_id):
+    """RS3: probe a song take's length ONCE in the background. A no-op when it
+    is already known, or a probe for it started less than a minute ago."""
+    if not job_id or song_seconds_known(job_id) is not None:
+        return
+    now = time.time()
+    if now - SONG_PROBE_TRIED.get(job_id, 0.0) < SONG_PROBE_RETRY_S:
+        return
+    SONG_PROBE_TRIED[job_id] = now
+    threading.Thread(target=_song_probe_worker, args=(sid, slot_id, job_id), daemon=True).start()
 
 
 def _song_clock(sec):

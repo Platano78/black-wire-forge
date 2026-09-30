@@ -384,6 +384,9 @@
   #guideVerbosity button[aria-pressed="true"]{background:var(--accent); color:var(--on-accent)}
   #guideSizeNote, #guideCtxNote{font-size:11px; color:var(--text-mid); margin:4px 0 0}
   #guideCtxNote.warn{color:var(--stale)}
+  #singLine.warn{color:var(--stale)}
+  .job-tail{margin:6px 0 0; padding:6px 8px; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size:12px; color:var(--text-mid); background:var(--surface3); white-space:pre-wrap; word-break:break-word}
   #guideLog{margin-top:6px; max-height:40vh; overflow-y:auto; overflow-x:hidden; background:var(--surface3);
     border:1px solid var(--divider); padding:8px; display:flex; flex-direction:column; gap:8px}
   .guide-msg{min-width:0}
@@ -878,8 +881,10 @@
     <div id="roomForm">
     <div id="slotWarnings" hidden></div>
     <div id="slotTools" hidden><button type="button" class="btn" id="slotDeleteBtn">Delete this shot</button></div>
+    <!-- RS2: "Kind of shot" -- built by renderSlotKind(); sends update_slot {mode}. -->
     <!-- E1: "Sing along" -- built by renderSlotSing() from the server's own
          sing_offer/sing_span; every offset but a chain head's is computed. -->
+    <div id="slotKind" hidden></div>
     <div id="slotSing" hidden></div>
     <!-- F5: "Use one I already made" -- built by renderSlotAdopt(); sends adopt_take. -->
     <div id="slotAdopt" hidden></div>
@@ -1165,6 +1170,17 @@ function jobProgressLabel(p){
   const pct = p.percent == null ? 0 : Math.round(p.percent);
   return 'Rendering · stage ' + p.stage + ' of ' + p.stages + ' · ' + pct + '%'
     + (p.elapsed != null ? ' · ' + humanSeconds(p.elapsed) + ' elapsed' : '');
+}
+// RS4: a failed process job (the turntable) keeps the last lines its program
+// printed in job.notes; the reason is in them, so show the last 3 non-empty
+// ones (max 400 chars, monospace, escaped) under the error. Paths stay as they
+// are: it is the user's own machine. Comfy jobs' notes are something else.
+function processTailHTML(job){
+  if(job.status !== 'error') return '';
+  if(laneKindOf(STATE.lanes.find(l => l.id === job.lane)) !== 'process') return '';
+  const lines = (job.notes || []).map(x => String(x).trim()).filter(Boolean).slice(-3);
+  if(!lines.length) return '';
+  return '<pre class="job-tail" id="jobTail">' + esc(lines.join('\n').slice(-400)) + '</pre>';
 }
 function jobProgressPercent(p){
   if(!p || p.state === 'loading') return null;   // indeterminate while loading
@@ -1623,7 +1639,8 @@ function renderMonitor(){
     }
   } else if(job.status === 'error' || job.status === 'interrupted'){
     media = '<p style="color:var(--error)">' + esc(job.error
-      || (job.status === 'interrupted' ? 'That one was interrupted.' : 'That one failed.')) + '</p>';
+      || (job.status === 'interrupted' ? 'That one was interrupted.' : 'That one failed.')) + '</p>'
+      + processTailHTML(job);
   }
   const finished = job.status === 'done' || job.status === 'error' || job.status === 'interrupted';
   const chips = [
@@ -2107,8 +2124,18 @@ function defaultEstimate(mode){
   return text || '--';
 }
 let PICKER_KEY = '';
+// RS1: a lane that is (or may be) reachable but whose model list has not been
+// read yet. "needs ..." is a verdict, so the page may only say it once
+// discovery has answered; until then engines read "checking...". A lane that
+// was polled and is asleep is not "checking" -- it has answered, with silence.
+function laneChecking(lane){
+  return !!lane && !lane.discovered && (!!lane.up || !lane.checked);
+}
+function activeLaneChecking(){
+  return laneChecking(STATE.lanes.find(l => l.id === STATE.activeLane));
+}
 function pickerKey(ms){
-  return JSON.stringify([STATE.room, STATE.cap, STATE.mode, activeLaneName(),
+  return JSON.stringify([STATE.room, STATE.cap, STATE.mode, activeLaneName(), activeLaneChecking(),
     ms.map(x => [x.info.available, x.info.missing, x.info.note, defaultEstimate(x.info), x.info.licence, x.info.model, x.info.model_file])]);
 }
 // UX-2 #1: the chip's own open/closed state, kept outside renderEnginePicker
@@ -2132,7 +2159,8 @@ function modelLine(m){
 function renderEnginePickerSummary(ms, room){
   const cur = ms.find(x => x.cap === STATE.cap && x.mode === STATE.mode);
   const label = (room && room.name ? room.name + ' · ' : '') + (cur ? cur.info.label : '');
-  $('#enginePickerCurrent').textContent = label;
+  $('#enginePickerCurrent').textContent = label
+    + (cur && cur.info.available === false && activeLaneChecking() ? ' · checking…' : '');
   const multi = ms.length >= 2;
   $('#engineChipCaret').hidden = !multi;
   const btn = $('#engineChipBtn');
@@ -2146,9 +2174,9 @@ function renderEnginePickerSummary(ms, room){
     btn.setAttribute('aria-haspopup', 'false');
     setEngineChipOpen(false);
   }
-  // A picked engine this machine cannot run opens the popover on its own,
-  // so its "needs" line and the other engines are never hidden.
-  if(multi && cur && cur.info.available === false) setEngineChipOpen(true);
+  // RS1: the popover opens ONLY on the user's click (setEngineChipOpen via
+  // #engineChipBtn) -- never by itself, least of all while discovery is still
+  // running. A picked engine this machine cannot run says so in the lane note.
 }
 function renderEnginePicker(force){
   const room = currentRoom();
@@ -2176,12 +2204,14 @@ function renderEnginePicker(force){
     // picking it moves the active lane there. Only a kind with no machine
     // at all is a dead end -- and the row says so in plain words.
     const off = foreign ? !home : m.available === false;
+    const checking = !foreign && activeLaneChecking();
     const missing = foreign
       ? (home ? 'runs on ' + home.name : 'needs a ' + mk + ' machine; none is set up')
+      : checking ? 'checking…'
       : ((m.missing && m.missing.length) ? 'needs ' + m.missing.join(', ')
          : 'not available on ' + activeLaneName());
-    // "runs on <machine>" is information, not an error: the muted tier.
-    const missingCls = (foreign && home) ? 'erow-runs' : 'erow-missing';
+    // "runs on <machine>" and "checking..." are information, not errors: the muted tier.
+    const missingCls = ((foreign && home) || checking) ? 'erow-runs' : 'erow-missing';
     return '<label class="engine-row" for="' + id + '" data-disabled="' + off + '">'
       + '<input type="radio" name="engine" id="' + id + '" data-cap="' + esc(x.cap) + '" data-mode="' + esc(x.mode) + '"'
       + (x.cap === STATE.cap && x.mode === STATE.mode ? ' checked' : '') + (off ? ' disabled' : '') + '>'
@@ -2617,6 +2647,8 @@ function renderLaneNote(mode){
   if(!STATE.lanes.length){ el.textContent = 'No machines configured.'; return; }
   const lane = STATE.lanes.find(l => l.id === STATE.activeLane);
   if(!mode || !lane || mode.available !== false){ el.textContent = ''; return; }
+  // RS1: no verdict before discovery has answered.
+  if(laneChecking(lane)){ el.textContent = 'Checking what ' + lane.name + ' has…'; return; }
   // A process lane runs ON this machine: it is up whenever this app
   // answers (the machine module's state says the same), so "asleep"
   // can never be its story.
@@ -5484,6 +5516,36 @@ function songTitle(seq){
   const words = String((job && (job.title || job.prompt)) || 'the song').trim();
   return words.length > 60 ? words.slice(0, 59) + '…' : words;
 }
+// RS2: "Kind of shot" -- the modes of this shot's kind, in the engines' own
+// words (the same list the Video room's engine picker shows). Changing it is
+// update_slot {mode}: the server prunes values the new mode does not declare
+// and resets recipe/quality. Locked once the shot has takes -- those were made
+// by the old mode.
+function renderSlotKind(slot){
+  const el = $('#slotKind');
+  if(!el) return;
+  const modes = slot && (slot.lane === 'video' || slot.lane === 'picture')
+    ? (((STATE.engines || {})[slot.cap] || {}).modes || []) : [];
+  if(modes.length < 2){ setHTML(el, ''); el.hidden = true; return; }
+  const locked = (slot.takes || []).length > 0;
+  let html = '<div class="field-row"><label class="field-label" for="kindSelect">Kind of shot</label>'
+    + '<select id="kindSelect" data-kind-slot="' + esc(slot.id) + '"' + (locked ? ' disabled' : '') + '>'
+    + modes.map(m => '<option value="' + esc(m.id) + '"' + (m.id === slot.mode ? ' selected' : '') + '>'
+      + esc(m.label) + '</option>').join('')
+    + '</select>'
+    + (locked ? '<p class="hint" id="kindLockNote">Make a new shot to change its kind</p>' : '')
+    + '</div>';
+  el.hidden = false;
+  if(!setHTML(el, html)) return;
+  const sel = $('#kindSelect'), slotId = sel.dataset.kindSlot;
+  sel.onchange = async () => {
+    const before = slot.mode;
+    await saveSlotNow();   // flush what was typed under the old kind first
+    if(await seqOp('update_slot', {slot_id: slotId, mode: sel.value})) await selectSlot(slotId);
+    else sel.value = before;
+  };
+}
+
 function renderSlotSing(slot){
   const el = $('#slotSing');
   if(!el) return;
@@ -5495,9 +5557,17 @@ function renderSlotSing(slot){
   if(span && span.head)
     html += '<div class="field-row"><label class="field-label" for="singStart">Starts at (seconds)</label>'
       + '<input type="number" id="singStart" min="0" step="0.1" value="' + esc(String(span.start)) + '"></div>';
-  if(span)
-    html += '<p class="hint" id="singLine">Sings ' + singTime(span.heard_start) + ' – ' + singTime(span.end)
-      + ' of ' + esc(songTitle(STATE.seq)) + '</p>';
+  if(span){
+    // RS3: the server knows the song's length once it has probed it; a shot
+    // that sings past the end says so here, next to the numbers.
+    const songLen = STATE.seq && STATE.seq.song_seconds;
+    if(typeof songLen === 'number' && span.end > songLen + 1 / (span.fps || 24))
+      html += '<p class="hint warn" id="singLine">Sings ' + singTime(span.heard_start) + ' – ' + singTime(span.end)
+        + ', past the end of the song (' + singTime(songLen) + '). Start it earlier or make it shorter.</p>';
+    else
+      html += '<p class="hint" id="singLine">Sings ' + singTime(span.heard_start) + ' – ' + singTime(span.end)
+        + ' of ' + esc(songTitle(STATE.seq)) + '</p>';
+  }
   el.hidden = false;
   if(!setHTML(el, html)) return;
   const toggle = $('#singToggle'), start = $('#singStart'), slotId = toggle.dataset.singSlot;
@@ -5546,6 +5616,7 @@ function renderSlotAdopt(slot){
 
 function renderSlotMeta(slot){
   $('#slotTools').hidden = !slot;
+  renderSlotKind(slot);
   renderSlotSing(slot);
   renderSlotAdopt(slot);
   if(!slot) return;
@@ -6564,11 +6635,19 @@ function renderActivity(){
 async function pollLanes(){
   try{
     const d = await getJSON('/api/lanes');
+    const wasChecking = activeLaneChecking();
     STATE.lanes = d.lanes || [];
     if(!STATE.activeLane || !STATE.lanes.some(l => l.id === STATE.activeLane)){
       STATE.activeLane = (STATE.lanes.find(l => l.up) || STATE.lanes[0] || {}).id || null;
     }
     renderMachineModules();
+    // RS1: discovery just answered for the active lane -- fetch the verdict now
+    // rather than up to 8 s later, so "checking..." never lingers or goes stale.
+    if(wasChecking && !activeLaneChecking()){
+      await loadEnginesFor();
+      renderEnginePicker(false);
+      if(STATE.room && !isCutting(currentRoom())) renderLaneNote(currentMode());
+    }
   } catch(e){ /* transient -- next poll retries */ }
 }
 async function pollJobs(){

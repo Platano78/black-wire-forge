@@ -419,6 +419,8 @@ try:
                         if back is None:
                             check("a comfy mode exists in the room to click back to", False)
                         else:
+                            # RS1: the menu no longer opens by itself, so open it as a user would.
+                            page.evaluate(OPEN_PICKER)
                             page.query_selector(
                                 '#enginePicker input[data-cap="%s"][data-mode="%s"]'
                                 % (back["cap"], back["mode"])).check()

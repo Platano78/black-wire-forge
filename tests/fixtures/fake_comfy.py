@@ -17,6 +17,8 @@ hardware:
                            harmless: pick_model finds no candidate and the
                            mode stays unavailable. --pools FILE (same shape)
                            replaces both, for a test that needs an exact pool.
+  --object-info-gate FILE  every /object_info* GET waits (up to 7 s) until FILE exists:
+                           discovery that is deliberately slow, released by touching FILE.
   POST /prompt             500 by default -- this lane can never render
                            anything, so a job can never be started
                            end-to-end here UNLESS told otherwise (below).
@@ -77,6 +79,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.parse
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -147,6 +150,18 @@ ACCEPT_OUTPUTS = None   # None = /prompt always 500 (default); a list = ACCEPT m
 HISTORY = {}             # prompt_id -> the /history/<id> entry once accepted
 
 
+OBJECT_INFO_GATE = None   # --object-info-gate FILE: /object_info* answers only once FILE exists
+
+
+def _wait_for_gate(limit=7.0):
+    """Hold a /object_info answer until the gate file exists (or `limit` seconds:
+    server.py gives up on a node after 8), so a test can watch the page while
+    discovery is genuinely still running."""
+    end = time.time() + limit
+    while OBJECT_INFO_GATE and not os.path.exists(OBJECT_INFO_GATE) and time.time() < end:
+        time.sleep(0.05)
+
+
 def _log_request(method, path, filename=None, length=None):
     entry = {"method": method, "path": path}
     if filename is not None:
@@ -168,6 +183,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = self.path.split("?", 1)[0]
         _log_request("GET", path)
+        if path.startswith("/object_info"):
+            _wait_for_gate()
         if path == "/system_stats":
             self._send(200, SYSTEM_STATS)
         elif path == "/queue":
@@ -289,7 +306,11 @@ def main():
     ap.add_argument("--port", type=int, required=True)
     ap.add_argument("--store", default=None, help="dir for uploads/outputs/requests.log (default: a temp dir)")
     ap.add_argument("--pools", default=None, help="serve exactly these pools (pools_extra.json's shape) instead")
+    ap.add_argument("--object-info-gate", default=None,
+                    help="hold every /object_info* answer until this file exists (RS1's slow discovery)")
     args = ap.parse_args()
+    global OBJECT_INFO_GATE
+    OBJECT_INFO_GATE = args.object_info_gate
     if args.pools:
         global NODES
         NODES = _object_info((args.pools,))
