@@ -117,7 +117,10 @@ will override the carry-through, then STOP and ASK whether to keep it as a true 
 shot, carrying on) or treat this as a fresh, non-continue shot instead — do NOT write the
 new-composition prompt in the same turn as the warning; wait for the user's answer to that one
 question before writing anything. `prev_video` on this mode is a cable plugged in from the timeline,
-never a file the user picks or types.
+never a file the user picks or types. Write it as a continuous take in so many words: "Continuous take:
+the same shot simply keeps going, with no cut and no new camera angle", the same framing, subject and
+light named again, and "the camera barely moves" (measured: a prompt asking the camera to circle made
+H3 cut to a new framing right after the carried frames; this wording carried straight on).
 SING ALONG (ticked in the Cutting Room, never a field here): an `fl2va` or `continue` shot that
 sings the sequence's song keeps the look's style line first in its prompt — without it a cartoon
 shot turned photoreal.

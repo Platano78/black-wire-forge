@@ -116,7 +116,11 @@ exist at cut time, burned in, never on a render. One music bed plays under the c
 mixed in before a single loudness pass over the whole finished film (never per shot — that would
 flatten the difference between a quiet bed and a loud line). True peak stays at or below -1 dBTP.
 Only picked video slots go into the cut, in timeline order; an unpicked slot is simply left out.
-Every cut in this app is hard cuts only.
+Every cut in this app is a hard cut, with one exception: a `continue` shot made in the Cutting Room
+blends into the shot before it across the frames it carried over ("Blend into the previous shot", on by
+default there). That only looks seamless when the continue shot's prompt is a continuous take: "the
+same shot simply keeps going, with no cut and no new camera angle", same framing, "the camera barely
+moves" — ask the camera to move and H3 cuts to a new framing anyway. Want a cut? Use a new shot instead.
 Sing along: a video shot ticked "Sing along" sings the song (the first picked sound shot) in sync,
 the song itself plays under it in the cut, and its prompt keeps the look's style line first (without
 it a cartoon shot turned photoreal).
