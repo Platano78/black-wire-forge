@@ -255,31 +255,34 @@ def _serve_bytes(body):
 
 
 RO_DIR = tempfile.mkdtemp(prefix="bwf_sec3_")
-os.chmod(RO_DIR, 0o500)   # read-only: writing the .part file fails
-try:
-    httpd3, u3 = _serve_bytes(b"x" * 100)
-    lane_red3 = make_lane(red, "l3red", RO_DIR)
-    _old_run_lora_download(lane_red3, u3, os.path.join(RO_DIR, "style.safetensors"), 1 << 20,
-                           "owner/pack", "style.safetensors")
-    with red.DOWNLOAD_LOCK:
-        err_red = red.DOWNLOADS["l3red"]["error"]
-    check("RED (pre-fix): the absolute loras_dir path IS present in the client-visible error",
-          RO_DIR in err_red, err_red)
-    httpd3.shutdown()
+# The write must fail with a filesystem error whose own message carries the
+# path. A read-only folder (chmod 0o500) does NOT fail for root -- the usual
+# user in a container -- so the trigger is a file name over the 255-byte
+# NAME_MAX instead: open() raises "File name too long: '<full path>'" for
+# every user, and the folder itself exists, so it fails inside the download's
+# own try, exactly where a permission error would.
+F3_DEST = os.path.join(RO_DIR, "s" * 300 + ".safetensors")
+httpd3, u3 = _serve_bytes(b"x" * 100)
+lane_red3 = make_lane(red, "l3red", RO_DIR)
+_old_run_lora_download(lane_red3, u3, F3_DEST, 1 << 20,
+                       "owner/pack", "style.safetensors")
+with red.DOWNLOAD_LOCK:
+    err_red = red.DOWNLOADS["l3red"]["error"]
+check("RED (pre-fix): the absolute loras_dir path IS present in the client-visible error",
+      RO_DIR in err_red, err_red)
+httpd3.shutdown()
 
-    httpd3b, u3b = _serve_bytes(b"x" * 100)
-    lane_green3 = make_lane(srv, "l3green", RO_DIR)
-    srv._run_lora_download(lane_green3, u3b, os.path.join(RO_DIR, "style.safetensors"), 1 << 20,
-                           "owner/pack", "style.safetensors")
-    with srv.DOWNLOAD_LOCK:
-        err_green = srv.DOWNLOADS["l3green"]["error"]
-    check("GREEN (fixed): the absolute loras_dir path is NOT in the error",
-          RO_DIR not in err_green, err_green)
-    check("GREEN: the error still names the file, so the message stays useful",
-          "style.safetensors" in err_green, err_green)
-    httpd3b.shutdown()
-finally:
-    os.chmod(RO_DIR, 0o700)   # scripts/run-tests.sh's own cleanup can delete it again
+httpd3b, u3b = _serve_bytes(b"x" * 100)
+lane_green3 = make_lane(srv, "l3green", RO_DIR)
+srv._run_lora_download(lane_green3, u3b, F3_DEST, 1 << 20,
+                       "owner/pack", "style.safetensors")
+with srv.DOWNLOAD_LOCK:
+    err_green = srv.DOWNLOADS["l3green"]["error"]
+check("GREEN (fixed): the absolute loras_dir path is NOT in the error",
+      RO_DIR not in err_green, err_green)
+check("GREEN: the error still names the file, so the message stays useful",
+      "style.safetensors" in err_green, err_green)
+httpd3b.shutdown()
 
 
 # ── Finding 4: a pre-existing .part symlink must be refused, never followed ─

@@ -43,7 +43,11 @@ def check(name, cond, detail=""):
 
 
 import _scratch_config  # noqa: E402 -- must run before server.py's own exec_module below
-import numpy as np  # noqa: E402 -- TEST-ONLY numeric verification
+try:
+    import numpy as np  # noqa: E402 -- TEST-ONLY numeric verification
+except ImportError:
+    print("SKIP: numpy is not installed (requirements.txt) -- this suite's exactness check needs it")
+    sys.exit(0)
 
 
 def load_module_from_source(tag, source_path):
