@@ -8,7 +8,7 @@ these. numpy is used ONLY here, to independently verify the merge is exact;
 production code (engines/audio.py, server.py) needs no numpy at all -- see
 their own module comments.
 
-RED reproduces the exact pre-slice absence against 60426db's own server.py/
+RED reproduces the exact pre-slice absence against 72dd41c's own server.py/
 engines/audio.py (loaded via `git show`, never a copy on disk); GREEN runs
 the same checks against the real, current modules.
 
@@ -62,26 +62,33 @@ sys.path.insert(0, ROOT)
 import engines  # noqa: E402
 import engines.audio as audio_pack  # noqa: E402
 
-base_src = subprocess.run(["git", "show", "60426db:server.py"], cwd=ROOT, capture_output=True,
-                          text=True, check=True).stdout
-red_dir = tempfile.mkdtemp(prefix="bwf_lora2e_red_")
-red_path = os.path.join(red_dir, "server_60426db.py")
-open(red_path, "w").write(base_src)
-red = load_module_from_source("m3red", red_path)
+RED_COMMIT = "72dd41c"   # the LORA-2B merge, the commit before LORA-2E
+HAVE_RED = subprocess.run(["git", "cat-file", "-e", RED_COMMIT + ":server.py"], cwd=ROOT,
+                          capture_output=True).returncode == 0
+if HAVE_RED:
+    base_src = subprocess.run(["git", "show", "72dd41c:server.py"], cwd=ROOT, capture_output=True,
+                              text=True, check=True).stdout
+    red_dir = tempfile.mkdtemp(prefix="bwf_lora2e_red_")
+    red_path = os.path.join(red_dir, "server_72dd41c.py")
+    open(red_path, "w").write(base_src)
+    red = load_module_from_source("m3red", red_path)
 
-print("RED (60426db): no safetensors read/write/convert machinery exists yet")
-check("RED: no _read_safetensors_file()", not hasattr(red, "_read_safetensors_file"))
-check("RED: no _convert_lora_file()", not hasattr(red, "_convert_lora_file"))
-# engines/audio.py reads a sibling audio_writers/*.txt relative to its own
-# file at import time, so the git-show copy (no sibling dir) can't be
-# exec'd the way server.py's copy above is -- a source-text check is exact
-# enough for "this string is/isn't declared yet" and avoids that trap.
-red_audio_src = subprocess.run(["git", "show", "60426db:engines/audio.py"], cwd=ROOT, capture_output=True,
-                               text=True, check=True).stdout
-check("RED: 60426db's engines/audio.py declares no 'music3_fused_qkv' convert name",
-      "music3_fused_qkv" not in red_audio_src)
-check("RED: 60426db's engines/audio.py declares no 'lora_converters'",
-      "lora_converters" not in red_audio_src)
+    print("RED (72dd41c): no safetensors read/write/convert machinery exists yet")
+    check("RED: no _read_safetensors_file()", not hasattr(red, "_read_safetensors_file"))
+    check("RED: no _convert_lora_file()", not hasattr(red, "_convert_lora_file"))
+    # engines/audio.py reads a sibling audio_writers/*.txt relative to its own
+    # file at import time, so the git-show copy (no sibling dir) can't be
+    # exec'd the way server.py's copy above is -- a source-text check is exact
+    # enough for "this string is/isn't declared yet" and avoids that trap.
+    red_audio_src = subprocess.run(["git", "show", "72dd41c:engines/audio.py"], cwd=ROOT, capture_output=True,
+                                   text=True, check=True).stdout
+    check("RED: 72dd41c's engines/audio.py declares no 'music3_fused_qkv' convert name",
+          "music3_fused_qkv" not in red_audio_src)
+    check("RED: 72dd41c's engines/audio.py declares no 'lora_converters'",
+          "lora_converters" not in red_audio_src)
+else:
+    print("  SKIP  RED half: commit %s is not in this checkout (a ZIP download or a shallow clone);"
+          " the GREEN checks below still run" % RED_COMMIT)
 
 print()
 print("GREEN (this branch): the real modules have it all")

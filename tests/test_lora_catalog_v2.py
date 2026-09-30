@@ -1,7 +1,7 @@
 """LORA-2B acceptance gate: multi-family catalog, README-derived description/
 trigger/strength/preview, per-family download folder, and family-based
 download refusals (unknown family / traversal). RED reproduces the exact
-pre-slice absence against 4df0f2b's own server.py (loaded via `git show`,
+pre-slice absence against 7a42083's own server.py (loaded via `git show`,
 never a copy on disk); GREEN runs the same checks against the real, current
 module.
 
@@ -43,22 +43,29 @@ def load_module_from_source(tag, source_path):
 
 srv = load_module_from_source("v2fixed", os.path.join(ROOT, "server.py"))
 
-base_src = subprocess.run(["git", "show", "4df0f2b:server.py"], cwd=ROOT, capture_output=True,
-                          text=True, check=True).stdout
-red_dir = tempfile.mkdtemp(prefix="bwf_lora2_red_")
-red_path = os.path.join(red_dir, "server_4df0f2b.py")
-open(red_path, "w").write(base_src)
-red = load_module_from_source("v2red", red_path)
+RED_COMMIT = "7a42083"   # LORA-1, the commit before LORA-2B
+HAVE_RED = subprocess.run(["git", "cat-file", "-e", RED_COMMIT + ":server.py"], cwd=ROOT,
+                          capture_output=True).returncode == 0
+if HAVE_RED:
+    base_src = subprocess.run(["git", "show", "7a42083:server.py"], cwd=ROOT, capture_output=True,
+                              text=True, check=True).stdout
+    red_dir = tempfile.mkdtemp(prefix="bwf_lora2_red_")
+    red_path = os.path.join(red_dir, "server_7a42083.py")
+    open(red_path, "w").write(base_src)
+    red = load_module_from_source("v2red", red_path)
 
-print("RED (4df0f2b): none of LORA-2B's multi-family/description machinery exists yet")
-check("RED: no style_families()", not hasattr(red, "style_families"))
-check("RED: no _first_prose_sentence()", not hasattr(red, "_first_prose_sentence"))
-check("RED: no _families_for_lane()", not hasattr(red, "_families_for_lane"))
-check("RED: _lora_download_target takes the OLD (lane, repo, filename) shape, no family arg",
-      red._lora_download_target.__code__.co_argcount == 3)
-check("RED: catalog entries carry no \"name\"/\"description\" field (old _build_catalog shape)",
-      "name" not in red._build_catalog.__code__.co_names
-      or "description" not in red._build_catalog.__code__.co_names)
+    print("RED (7a42083): none of LORA-2B's multi-family/description machinery exists yet")
+    check("RED: no style_families()", not hasattr(red, "style_families"))
+    check("RED: no _first_prose_sentence()", not hasattr(red, "_first_prose_sentence"))
+    check("RED: no _families_for_lane()", not hasattr(red, "_families_for_lane"))
+    check("RED: _lora_download_target takes the OLD (lane, repo, filename) shape, no family arg",
+          red._lora_download_target.__code__.co_argcount == 3)
+    check("RED: catalog entries carry no \"name\"/\"description\" field (old _build_catalog shape)",
+          "name" not in red._build_catalog.__code__.co_names
+          or "description" not in red._build_catalog.__code__.co_names)
+else:
+    print("  SKIP  RED half: commit %s is not in this checkout (a ZIP download or a shallow clone);"
+          " the GREEN checks below still run" % RED_COMMIT)
 
 print()
 print("GREEN (this branch): the real module has it all")
