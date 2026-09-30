@@ -60,7 +60,8 @@ hardware:
                            other suite sees exactly the lane it always did):
     GET /templates/index.json          DIR/index.json
     GET /templates/<name>.json         DIR/templates/<name>.json
-    GET /templates/<name>-1.webp|png   a tiny image/webp; a name containing "thumb_html"
+    GET /templates/<name>-1.webp|png   a tiny webp sent as application/octet-stream (as
+                                       ComfyUI 0.37 does); a name containing "thumb_html"
                                        answers text/html, "thumb_big" a 3 MiB image/webp
     GET /models, /models/<folder>      DIR/models.json ({folder: [file, ...]})
     GET /api/userdata?dir=workflows    [{path, size, modified, created}] under DIR2/userdata/workflows
@@ -279,7 +280,8 @@ class Handler(BaseHTTPRequestHandler):
             elif m and "thumb_big" in m.group(1):
                 self._blob(200, b"\0" * (3 * 1024 * 1024), "image/webp")
             elif m:
-                self._blob(200, TINY_WEBP, "image/" + m.group(2))
+                # as ComfyUI 0.37's /templates route answers a real thumbnail
+                self._blob(200, TINY_WEBP, "application/octet-stream")
             elif name.endswith(".json") and os.path.isfile(src):
                 with open(src, "rb") as f:
                     self._blob(200, f.read(), "application/json")

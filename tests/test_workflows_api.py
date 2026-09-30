@@ -13,7 +13,7 @@ folders and userdata), with server.py as a subprocess. No browser.
 (3) POST /api/workflows/open saves a template into the fake's userdata under its
     sanitised title, then " (2)"; a name not in the lane's listing is a 400; the fake
     records no other write.
-(4) GET /api/workflows/thumb passes a webp; a text/html answer, a 3 MiB image or a
+(4) GET /api/workflows/thumb passes a webp (sent as application/octet-stream, as ComfyUI 0.37 does); a text/html answer, a 3 MiB image or a
     template without an image thumbnail is a 404.
 
 Run: python3 tests/test_workflows_api.py
@@ -283,7 +283,7 @@ try:
 
     print("(4) thumbnails")
     code, body, ctype = call("GET", "/api/workflows/thumb?lane=wb&name=wf_ready_image")
-    check("a webp passes", code == 200 and ctype == "image/webp" and body[:4] == b"RIFF", (code, ctype))
+    check("a webp passes, typed from its bytes (the lane says application/octet-stream, as ComfyUI does)", code == 200 and ctype == "image/webp" and body[:4] == b"RIFF", (code, ctype))
     code, body, ctype = call("GET", "/api/workflows/thumb?lane=wb&name=wf_thumb_html")
     check("a text/html answer -> 404", code == 404, (code, ctype))
     code, body, ctype = call("GET", "/api/workflows/thumb?lane=wb&name=wf_thumb_big")

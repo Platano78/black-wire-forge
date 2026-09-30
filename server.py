@@ -8756,7 +8756,6 @@ WF_TIMEOUT = 10.0
 WF_LIST_LIMIT = 16 * 1024 * 1024        # the lane's index is ~0.7 MB today
 WF_WORKFLOW_LIMIT = 16 * 1024 * 1024
 WF_THUMB_LIMIT = 2 * 1024 * 1024
-WF_THUMB_TYPES = ("image/webp", "image/png")
 WF_READY_MAX = 24
 WF_MEDIA = ("image", "video", "audio", "3d")
 # Nodes that live only in the ComfyUI page, never in /object_info: core's own, and
@@ -9115,12 +9114,19 @@ def workflows_thumb(q):
         entry = _wf_templates(lane).get((q.get("name") or [""])[0])
         if not entry or not entry["thumb_ext"]:
             return None
-        data, ctype = _wf_get_bytes(lane, "/templates/%s-1.%s" % (urllib.parse.quote(entry["name"], safe=""),
+        data, _ = _wf_get_bytes(lane, "/templates/%s-1.%s" % (urllib.parse.quote(entry["name"], safe=""),
                                                                    entry["thumb_ext"]), WF_THUMB_LIMIT)
     except Exception:
         return None
-    ctype = ctype.split(";")[0].strip().lower()
-    return (data, ctype) if ctype in WF_THUMB_TYPES and data else None
+    # The type comes from the bytes, never from the lane's header: ComfyUI's own
+    # /templates route answers application/octet-stream for a real webp/png.
+    # Served only when the bytes are the image the index said (HTML, or any
+    # other file, stays a 404).
+    for ctype, ext, magic in (("image/webp", "webp", lambda b: b[:4] == b"RIFF" and b[8:12] == b"WEBP"),
+                              ("image/png", "png", lambda b: b[:8] == b"\x89PNG\r\n\x1a\n")):
+        if entry["thumb_ext"] == ext and data and magic(data):
+            return data, ctype
+    return None
 
 
 def _wf_file_name(title, n):
