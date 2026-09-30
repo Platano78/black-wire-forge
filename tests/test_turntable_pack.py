@@ -214,6 +214,12 @@ compiled = subprocess.run([sys.executable, "-m", "py_compile", script])
 check("blender script compiles", compiled.returncode == 0)
 src = open(script).read()
 check("blender script is pinned to the CPU", 'scene.cycles.device = "CPU"' in src)
+# A Blender build without OpenImageDenoise (some distro packages) accepts the
+# denoiser setting and then fails EVERY frame ("Failed to denoise, build has no
+# OpenImageDenoise support"), so the script must ask the build first.
+check("blender script turns denoising on only when the build has OpenImageDenoise",
+      "bpy.app.build_options" in src and "openimagedenoise" in src
+      and "scene.cycles.use_denoising = True" not in src)
 check("blender script names no GPU device",
       re.search(r'device\s*=\s*["\'](?:GPU|CUDA|OPTIX|HIP|METAL)["\']',
                 src, re.IGNORECASE) is None)

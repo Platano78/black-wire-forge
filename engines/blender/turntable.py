@@ -100,9 +100,14 @@ def main():
     except Exception:
         pass
     scene.cycles.samples = max(1, a.samples)
-    try:  # OpenImageDenoise when the build has it
-        scene.cycles.use_denoising = True
-        scene.cycles.denoiser = "OPENIMAGEDENOISE"
+    # OpenImageDenoise only when this Blender build has it: setting it on a build
+    # without it (e.g. some distro packages) is accepted here and then fails
+    # every render with "Failed to denoise, build has no OpenImageDenoise support".
+    try:
+        has_oidn = bool(getattr(bpy.app.build_options, "openimagedenoise", False))
+        scene.cycles.use_denoising = has_oidn
+        if has_oidn:
+            scene.cycles.denoiser = "OPENIMAGEDENOISE"
     except Exception:
         pass
 
