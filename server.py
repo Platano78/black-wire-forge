@@ -1684,6 +1684,8 @@ def _process_media(name):
         return "audio"
     if ext in (".glb", ".gltf", ".obj", ".ply"):
         return "3d"
+    if ext in (".json", ".txt", ".csv"):
+        return "file"      # the page has no renderer for it: a named tile with a Download link
     return "image"
 
 
@@ -1843,7 +1845,9 @@ def run_process_job(lane, jid):
     except ValueError as e:
         _finish_process_job(jid, "error", "%s" % e, tail)
         return
-    _finish_process_job(jid, "done", None, None, outs)
+    # A pack prints its one-line result last (grid check): keep just that line as the notes.
+    last = [t for t in tail if t.strip()][-1:]
+    _finish_process_job(jid, "done", None, last, outs)
 
 
 def dispatch_process(lane, plan, kind, mode, meta, values=None):

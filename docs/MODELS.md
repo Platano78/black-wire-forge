@@ -353,6 +353,31 @@ render with it. Not a Hugging Face download: install Blender from
 `command -v blender; command -v ffmpeg`); see AGENTS.md's "Decide the path" and the
 `engines/turntable.py` pack for the `"bins"` it needs.
 
+## beat_this and Demucs (`engines/producer.py`, grid mode) — audio (process lane, no ComfyUI model)
+
+| Tool | Licence | Used for |
+|---|---|---|
+| [beat_this](https://github.com/CPJKU/beat_this) (`final0` checkpoint) | **MIT** — code *and* the published weights (LICENSE file and README "License" section, read 2026-09-30) | every beat and downbeat time |
+| [Demucs](https://github.com/facebookresearch/demucs) (`htdemucs`; optional) | **MIT** (LICENSE file and README, read 2026-09-30); the repository is no longer maintained by Meta, with a fork at `adefossez/demucs` | the drum stem, only when "Use the drum stem" is ticked |
+
+Not a ComfyUI download: they are Python packages you install into any Python (a virtual environment is
+best) and point BWF at. CPU is the intended path. Install (PyTorch first, from its CPU index):
+`pip install torch --index-url https://download.pytorch.org/whl/cpu`, then
+`pip install git+https://github.com/CPJKU/beat_this`, and `pip install demucs` if you want the drum stem.
+Make that Python visible to BWF by putting a program called `bwf-producer-python` on `PATH` (a one-line
+wrapper, `exec /path/to/venv/bin/python "$@"`; a bare symlink to a venv's python loses the venv), or by
+setting `BWF_PRODUCER_PYTHON` to its full path before starting BWF. Both tools fetch their weights from
+the internet the first time they run. `ffmpeg` must be on `PATH` too. Run it as a `"kind": "process"`
+lane that lists `"audio"` in its `caps`.
+
+beat_this's README adds that some of its training recordings are fully copyrighted or under limited
+Creative Commons licences and that assessing whether that affects your use is up to you. Measured
+limits: beat times are dependable on synthetic click tracks, but its downbeat (bar-start) output is
+not, so the meter and bar numbers in `grid.json` are a reading to check by ear, not a fact. On 5/4 the
+bar start is a guess (margin 0.4-0.7 against 18-20 when right, measured 2026-09-30); the optional
+"A bar starts at" time (`first_downbeat`) fixes it, and `grid.json`'s `meter.source` says whether bars
+came from the `model`, the `phase-logit` guess or your `anchor`.
+
 ## Custom-node packages
 
 Every node class not listed here is **core ComfyUI** (`comfy_extras/`, bundled with ComfyUI
@@ -403,5 +428,7 @@ ComfyUI-LTXVideo-only: `LTXVContextWindows`, `LTXVLoopingSampler`, `LTXVLatentUp
 - **No stated licence — ask first**: the 8-step MiniMax-H3 speed-pack alternative
   (`TenStrip/MinimaxH3-Turbo_Shenanigans`) — its author states no licence for the LoRA file
   itself; the recommended default is the 4-step LoRA above instead.
+- **MIT tools, no gate**: beat_this (code and weights) and Demucs, both run as local programs on this
+  machine; see their section above for the training-data note.
 - **Program vs. output**: Blender is GPL-2.0-or-later, covering the program only — not what you
   render with it.
