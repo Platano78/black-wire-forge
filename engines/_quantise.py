@@ -12,6 +12,11 @@ a byte-comparison of quantise_and_dither's own output against the original
 script on a fixed input, so any future drift between the two copies is caught,
 not assumed away.
 
+Changed since the copy (PA-1): target_size may be (width, height); the render is
+centre-cropped to that aspect first; _modal_downscale takes any integer target and an
+optional opaque mask. For a square sprite from a square render the nearest path is
+still byte-identical to the original (same gate).
+
 Deterministic 8-colour quantise -> ordered (Bayer) dither -> 64x64 downscale.
 
 Route ruled by an internal decision: quantise/dither is a deterministic transform, not a
@@ -25,6 +30,7 @@ guidance says NOT to dither hard metal vehicle hulls (see report) — the ruled
 route keeps the step, this just lets a caller turn it down without deleting it.
 """
 import pathlib
+import re
 import sys
 
 try:
@@ -66,12 +72,20 @@ def load_locked_palette(path):
     against a LOCKED input palette, which is a different and much stronger claim.
     """
     cols = []
-    for line in pathlib.Path(path).read_text().splitlines():
-        line = line.split("#")[0].strip() if not line.strip().startswith("#") else ""
+    for n, raw in enumerate(pathlib.Path(path).read_text().splitlines(), 1):
+        line = raw.strip()
         if not line:
             continue
-        h = line.lstrip("#").strip()
-        cols.append([int(h[i:i + 2], 16) for i in (0, 2, 4)])
+        # a colour is "#rrggbb" or "rrggbb", optionally followed by a "# note" / "; note";
+        # any other line that starts with "#" or ";" is a comment
+        m = re.match(r"^#?([0-9a-fA-F]{6})(?:\s+[#;].*)?$", line)
+        if m:
+            h = m.group(1)
+            cols.append([int(h[i:i + 2], 16) for i in (0, 2, 4)])
+        elif line[0] in "#;":
+            continue
+        else:
+            raise ValueError(f"{path}: line {n} is not a colour (expected #rrggbb): {raw.strip()[:40]!r}")
     if not cols:
         raise ValueError(f"no colours parsed from {path}")
     return np.array(cols, dtype=np.float32)
@@ -110,19 +124,39 @@ def build_palette(rgb, n_colors, bg_mask=None, palette_mode="population"):
     return np.array(pal, dtype=np.float32).reshape(-1, 3)
 
 
-def _modal_downscale(arr, target):
-    """Per-block most-common value. arr: (H,W,C) uint8, H==W divisible by target."""
-    h, w = arr.shape[:2]
-    n = h // target
-    if n * target != h or w != h:
-        raise ValueError(f"modal downscale needs a square canvas divisible by {target}; got {w}x{h}")
-    c = arr.shape[2]
-    blocks = arr.reshape(target, n, target, n, c).transpose(0, 2, 1, 3, 4).reshape(target, target, n * n, c)
-    out = np.empty((target, target, c), dtype=arr.dtype)
-    for y in range(target):
-        for x in range(target):
-            vals, counts = np.unique(blocks[y, x], axis=0, return_counts=True)
-            out[y, x] = vals[int(np.argmax(counts))]
+def _modal_downscale(arr, target, opaque=None):
+    """Per-box most-common value. arr: (H,W,C) uint8; target: an int (square) or
+    (width, height) of any size -- it need not divide the source.
+
+    Box edges are floor(i * src / target), so the boxes tile the source with every
+    source pixel in exactly one box. `opaque` (H,W bool, optional): when given, a
+    box votes only among its opaque pixels -- transparent ones never outvote opaque
+    ones -- and falls back to all its pixels only when the whole box is transparent.
+    Ties go to the smallest value (np.unique's sorted order), as before.
+    """
+    tw, th = (target, target) if isinstance(target, int) else (int(target[0]), int(target[1]))
+    h, w, c = arr.shape
+    # one integer per pixel so np.unique runs on a 1-D array, same order as axis=0
+    key = np.zeros((h, w), dtype=np.int64)
+    for k in range(c):
+        key = (key << 8) | arr[..., k].astype(np.int64)
+    xe = [min(max(i * w // tw, 0), w - 1) for i in range(tw)] + [w]
+    ye = [min(max(i * h // th, 0), h - 1) for i in range(th)] + [h]
+    out = np.empty((th, tw, c), dtype=arr.dtype)
+    for y in range(th):
+        y0, y1 = ye[y], max(ye[y + 1], ye[y] + 1)
+        for x in range(tw):
+            x0, x1 = xe[x], max(xe[x + 1], xe[x] + 1)
+            box = key[y0:y1, x0:x1]
+            if opaque is not None:
+                ob = opaque[y0:y1, x0:x1]
+                if ob.any():
+                    box = box[ob]
+            vals, counts = np.unique(box, return_counts=True)
+            v = int(vals[int(np.argmax(counts))])
+            for k in range(c - 1, -1, -1):
+                out[y, x, k] = v & 255
+                v >>= 8
     return out
 
 
@@ -136,8 +170,9 @@ def nearest_palette_index(rgb, palette):
 def quantise_and_dither(src_path, out_path, target_size=64, n_colors=8,
                          dither_strength=0.0, alpha_path=None, palette_mode="population",
                          downscale="nearest", palette_file=None):
+    # target_size: an int (square sprite) or (width, height)
+    tw, th = (target_size, target_size) if isinstance(target_size, int) else (int(target_size[0]), int(target_size[1]))
     im = Image.open(src_path).convert("RGB")
-    rgb = np.array(im, dtype=np.float32)
 
     alpha = None
     bg_mask = None
@@ -154,6 +189,22 @@ def quantise_and_dither(src_path, out_path, target_size=64, n_colors=8,
             a = np.array(src.convert("L"))
         bg_mask = a < 8
         alpha = a
+
+    # Centre-crop the render to the sprite's aspect BEFORE anything else, so the
+    # palette, the dither and the downscale all see only the picture that is kept.
+    # Same aspect (every square sprite from a square render) = no crop at all.
+    W, H = im.size
+    if W * th != H * tw:
+        if W * th > H * tw:
+            cw, ch = max(1, H * tw // th), H
+        else:
+            cw, ch = W, max(1, W * th // tw)
+        x0, y0 = (W - cw) // 2, (H - ch) // 2
+        im = im.crop((x0, y0, x0 + cw, y0 + ch))
+        if alpha is not None:
+            alpha = alpha[y0:y0 + ch, x0:x0 + cw]
+            bg_mask = bg_mask[y0:y0 + ch, x0:x0 + cw]
+    rgb = np.array(im, dtype=np.float32)
 
     if palette_file:
         palette = load_locked_palette(palette_file)
@@ -180,18 +231,19 @@ def quantise_and_dither(src_path, out_path, target_size=64, n_colors=8,
         # random. Taking the block's MOST COMMON colour is deterministic, introduces
         # no colour that was not already in the palette, and cannot miss a feature
         # that dominates its own block.
-        quant = _modal_downscale(quant, target_size)
+        opaque = None if alpha is None else ~bg_mask
+        quant = _modal_downscale(quant, (tw, th), opaque)
         if alpha is not None:
-            alpha = _modal_downscale(alpha[..., None], target_size)[..., 0]
+            alpha = _modal_downscale(alpha[..., None], (tw, th), opaque)[..., 0]
         out = Image.fromarray(quant, "RGB")
         if alpha is not None:
             out.putalpha(Image.fromarray(alpha))
     elif alpha is not None:
-        out = out.resize((target_size, target_size), Image.NEAREST)
-        a_small = Image.fromarray(alpha).resize((target_size, target_size), Image.NEAREST)
+        out = out.resize((tw, th), Image.NEAREST)
+        a_small = Image.fromarray(alpha).resize((tw, th), Image.NEAREST)
         out.putalpha(a_small)
     else:
-        out = out.resize((target_size, target_size), Image.NEAREST)
+        out = out.resize((tw, th), Image.NEAREST)
 
     out.save(out_path)
     used_colors = len(np.unique(idx))

@@ -2542,6 +2542,11 @@ function fieldRowHTML(f, values, carry){
     + (isCheckbox
         ? (fieldControlHTML(f, carry) + '<label class="field-label" style="margin:0" for="f_' + esc(f.id) + '">' + esc(f.label) + '</label>')
         : ('<label class="field-label" for="f_' + esc(f.id) + '">' + esc(f.label) + unit + '</label>' + fieldControlHTML(f, carry)))
+    + (f.helper === 'colours_from_picture'
+        ? '<button type="button" class="btn pick-picture-btn" data-colours-from="' + esc(f.id) + '" data-colours-count="' + esc(f.helper_count || '') + '">Take colours from a picture\u2026</button>'
+          + '<input type="file" accept="image/*" hidden data-colours-file="' + esc(f.id) + '">'
+          + '<p class="hint" data-colours-status="' + esc(f.id) + '"></p>'
+        : '')
     + (f.hint ? '<p class="hint">' + esc(f.hint) + '</p>' : '')
     + (!enabled && f.disabled_reason ? '<p class="hint">' + esc(f.disabled_reason) + '</p>' : '')
     + '</div>';
@@ -6232,6 +6237,54 @@ document.addEventListener('keydown', e => {
     STATE.cablePending = null;
     msgCable('', '');
     refreshCableLayer();
+  }
+});
+// "Take colours from a picture...": the page reads a local image with a canvas (nothing is
+// uploaded), counts its exact colours (fully transparent pixels ignored) and fills the palette
+// field with the most common ones, as many as the Colours setting.
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-colours-from]');
+  if(!b) return;
+  const inp = document.querySelector('[data-colours-file="' + b.dataset.coloursFrom + '"]');
+  if(inp) inp.click();
+});
+document.addEventListener('change', async e => {
+  const inp = e.target.closest && e.target.closest('[data-colours-file]');
+  if(!inp || !inp.files || !inp.files[0]) return;
+  const id = inp.dataset.coloursFile;
+  const status = document.querySelector('[data-colours-status="' + id + '"]');
+  const btn = document.querySelector('[data-colours-from="' + id + '"]');
+  const field = document.getElementById('f_' + id);
+  const say = t => { if(status) status.textContent = t; };
+  try {
+    const bmp = await createImageBitmap(inp.files[0]);
+    let w = bmp.width, h = bmp.height;
+    const big = w * h > 16e6 ? Math.sqrt(16e6 / (w * h)) : 1;   // very large: shrink without smoothing
+    w = Math.max(1, Math.floor(w * big)); h = Math.max(1, Math.floor(h * big));
+    const cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    const cx = cv.getContext('2d', {willReadFrequently: true});
+    cx.imageSmoothingEnabled = false;
+    cx.drawImage(bmp, 0, 0, w, h);
+    const px = cx.getImageData(0, 0, w, h).data;
+    const counts = new Map();
+    for(let i = 0; i < px.length; i += 4){
+      if(px[i + 3] === 0) continue;
+      const k = (px[i] << 16) | (px[i + 1] << 8) | px[i + 2];
+      counts.set(k, (counts.get(k) || 0) + 1);
+    }
+    const cEl = btn && btn.dataset.coloursCount ? document.getElementById('f_' + btn.dataset.coloursCount) : null;
+    const want = Math.min(256, Math.max(2, parseInt(cEl && cEl.value, 10) || 8));
+    const top = Array.from(counts.entries()).sort((a, b) => (b[1] - a[1]) || (a[0] - b[0])).slice(0, want);
+    if(!top.length){ say('That picture has no visible colours.'); return; }
+    field.value = top.map(t => '#' + t[0].toString(16).padStart(6, '0')).join(', ');
+    field.dispatchEvent(new Event('input', {bubbles: true}));
+    field.dispatchEvent(new Event('change', {bubbles: true}));
+    say('Took ' + top.length + ' of ' + counts.size + ' colours from the picture.');
+  } catch(err) {
+    say('That file could not be read as a picture.');
+  } finally {
+    inp.value = '';
   }
 });
 document.addEventListener('click', e => {
