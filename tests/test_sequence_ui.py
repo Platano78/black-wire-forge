@@ -478,6 +478,10 @@ try:
             fake_procs.append(fake)
             wait_true("the fake lane is back up (retry)",
                       lambda: http_json("http://127.0.0.1:%d/system_stats" % fake_port), 15)
+            # ...and the SERVER has seen it back: until its lane poll does, a
+            # shot's Make is refused (409 "No lane that can make a picture shot
+            # is online right now") and the retry below would fail on that.
+            wait_true("the server sees the fake lane up again (retry)", lambda: not fake_lane_down(), 15)
             http_json("http://127.0.0.1:%d/_control/accept" % fake_port, data=ACCEPT_PAYLOAD)
 
         # The kill has to land AFTER the job left the client (a job the lane
