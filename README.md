@@ -36,7 +36,7 @@ never clobbers a real one.
 
 ## What it looks like
 
-Each clip is a short loop; click it for the full video.
+Each clip is a short loop; click one to download its full video (mp4).
 
 | | |
 |---|---|
