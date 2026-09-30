@@ -48,12 +48,41 @@ from . import _quantise
 from .qwen_image import STYLE_FIELDS, qwen_edit_graph, qwen_t2i_graph
 
 
+_HEX_RE = re.compile(r"^#?([0-9a-fA-F]{6})$")
+GRID_NEAREST = "Sharp (nearest)"
+GRID_MODAL = "Cleanest (most common colour)"
+
+
+def parse_palette(text):
+    """The Palette field's text -> ["rrggbb", ...] (lower case, no #), or [] when
+    empty. Entries are split on commas, spaces or new lines. Raises ValueError with
+    a plain sentence for a bad entry or a count outside 2-256."""
+    toks = [t for t in re.split(r"[\s,;]+", (text or "").strip()) if t]
+    if not toks:
+        return []
+    cols = []
+    for t in toks:
+        mt = _HEX_RE.match(t)
+        if not mt:
+            raise ValueError("The palette has \"%s\", which is not a colour. Write each colour "
+                             "as six hex digits such as #1a1c2c, separated by commas." % t[:24])
+        cols.append(mt.group(1).lower())
+    if not 2 <= len(cols) <= 256:
+        raise ValueError("The palette has %d colours; it needs between 2 and 256." % len(cols))
+    return cols
+
+
 def pixelart_graph(p, m):
     """Qwen 2.1 (reusing qwen_image's own graph builders, not a copy of them)
     plus a background-removal chain appended in place of its SaveImage --
     the RGBA result is this mode's PRIMARY output, and the pack's `post`
     entry (below) is what turns it into a sprite.
     """
+    # a bad palette or height is refused now, not after the render
+    parse_palette(p.get("pixel_palette"))
+    ph = int(p.get("pixel_height", 0) or 0)
+    if ph and not 16 <= ph <= 256:
+        raise ValueError("Sprite height needs to be 0 (as tall as wide) or between 16 and 256.")
     shape = p.get("shape_image")
     if shape:
         # The user's own prompt describes WHAT to draw; this wraps it into the
@@ -86,18 +115,29 @@ def _post_quantise(input_bytes, filename, args):
     `alpha_path=src`).
     """
     size = int(args.get("pixel_size", 64))
+    height = int(args.get("pixel_height", 0) or 0) or size
     colors = int(args.get("pixel_colors", 8))
     dither = float(args.get("pixel_dither", 0.0))
+    grid = "modal" if args.get("pixel_grid") == GRID_MODAL else "nearest"
+    palette = parse_palette(args.get("pixel_palette"))
     with tempfile.TemporaryDirectory() as td:
         src = os.path.join(td, filename or "render.png")
         with open(src, "wb") as f:
             f.write(input_bytes)
         out = os.path.join(td, "sprite.png")
-        _quantise.quantise_and_dither(src, out, target_size=size, n_colors=colors,
-                                       dither_strength=dither, alpha_path=src)
+        kw = {}
+        if palette:
+            # the chosen colours ARE the locked palette: hand them to the vendored
+            # loader as a palette file, one #rrggbb per line
+            pal_path = os.path.join(td, "palette.txt")
+            with open(pal_path, "w") as f:
+                f.write("".join("#%s\n" % c for c in palette))
+            kw["palette_file"] = pal_path
+        _quantise.quantise_and_dither(src, out, target_size=(size, height), n_colors=colors,
+                                       dither_strength=dither, alpha_path=src, downscale=grid, **kw)
         with open(out, "rb") as f:
             data = f.read()
-    return data, "sprite_%dx%d.png" % (size, size)
+    return data, "sprite_%dx%d.png" % (size, height)
 
 
 # ── sprite writer (the Pixel Art room guide's skill; engines/__init__.py "writers") ──
@@ -314,15 +354,30 @@ ENGINE = {
             {"id": "cfg", "label": "Guidance strength", "type": "number", "default": 2.5,
              "tier": "advanced", "group": "Quality", "order": 3,
              "units": "strength", "range": [1, 10], "ui_range": [1.5, 4]},
-            {"id": "pixel_size", "label": "Sprite size", "type": "int", "default": 64,
+            {"id": "pixel_size", "label": "Sprite width", "type": "int", "default": 64,
              "tier": "primary", "group": "Sprite", "order": 1,
              "units": "px", "range": [16, 256], "ui_range": [32, 128],
-             "hint": "The final square size after the colours are locked down."},
+             "hint": "The final width after the colours are locked down."},
+            {"id": "pixel_height", "label": "Sprite height", "type": "int", "default": 0,
+             "tier": "primary", "group": "Sprite", "order": 2,
+             "units": "px", "range": [0, 256], "ui_range": [0, 128],
+             "hint": "0 makes the sprite as tall as it is wide. The picture is cropped to this "
+                     "shape from the middle."},
             {"id": "pixel_colors", "label": "Colours", "type": "int", "default": 8,
-             "tier": "advanced", "group": "Sprite", "order": 2,
-             "units": "colours", "range": [2, 32], "ui_range": [4, 16]},
-            {"id": "pixel_dither", "label": "Dither", "type": "number", "default": 0.0,
              "tier": "advanced", "group": "Sprite", "order": 3,
+             "units": "colours", "range": [2, 32], "ui_range": [4, 16]},
+            {"id": "pixel_palette", "label": "Palette (hex colours)", "type": "text", "default": "",
+             "tier": "advanced", "group": "Sprite", "order": 4,
+             "helper": "colours_from_picture", "helper_count": "pixel_colors",
+             "hint": "Optional, for example #1a1c2c, #5d275d, #b13e53. When filled in, the sprite uses "
+                     "exactly these colours and the Colours setting is ignored."},
+            {"id": "pixel_grid", "label": "Pixel grid", "type": "select", "default": GRID_NEAREST,
+             "options": [GRID_NEAREST, GRID_MODAL],
+             "tier": "advanced", "group": "Sprite", "order": 5,
+             "hint": "Sharp takes one point from each square of the picture. Cleanest takes the "
+                     "colour that fills most of it, so small features survive."},
+            {"id": "pixel_dither", "label": "Dither", "type": "number", "default": 0.0,
+             "tier": "advanced", "group": "Sprite", "order": 6,
              "units": "strength", "range": [0, 1], "ui_range": [0, 0.3],
              "hint": "0 keeps flat, crisp colour edges. Raising it adds a fine dotted "
                      "texture; a hard metal surface usually looks better with it off."},
