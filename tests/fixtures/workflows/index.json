@@ -1,0 +1,175 @@
+[
+ {
+  "moduleName": "default",
+  "category": "Foundation",
+  "title": "Image",
+  "type": "image",
+  "templates": [
+   {
+    "name": "wf_ready_image",
+    "title": "Ready: Text to Image [Base]",
+    "mediaType": "image",
+    "mediaSubtype": "webp",
+    "description": "Makes a picture from words; its loaders live in a subgraph.",
+    "tags": [
+     "Image",
+     "Text to Image"
+    ],
+    "models": [
+     "Fixture UNet"
+    ],
+    "date": "2026-01-01",
+    "size": 2147483648,
+    "usage": 50,
+    "openSource": true,
+    "minComfyUIVersion": "0.3.0",
+    "tutorialUrl": "https://example.com/tutorial"
+   },
+   {
+    "name": "wf_cloud_api",
+    "title": "Cloud: Paid Image",
+    "mediaType": "image",
+    "mediaSubtype": "webp",
+    "description": "A partner API node template.",
+    "tags": [
+     "Image",
+     "API"
+    ],
+    "models": [],
+    "date": "2026-01-01",
+    "size": null,
+    "usage": 5000,
+    "openSource": false,
+    "minComfyUIVersion": "0.3.0",
+    "logos": [
+     {
+      "provider": "Example"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "moduleName": "default",
+  "category": "Foundation",
+  "title": "Video",
+  "type": "video",
+  "templates": [
+   {
+    "name": "wf_needs_model_video",
+    "title": "Needs Model: Picture to Video",
+    "mediaType": "image",
+    "mediaSubtype": "webp",
+    "description": "Needs one model file this lane does not have.",
+    "tags": [
+     "Video"
+    ],
+    "models": [],
+    "date": "2026-01-01",
+    "size": 5368709120,
+    "usage": 900,
+    "openSource": true,
+    "minComfyUIVersion": "0.3.0"
+   }
+  ]
+ },
+ {
+  "moduleName": "default",
+  "category": "Foundation",
+  "title": "Audio",
+  "type": "audio",
+  "templates": [
+   {
+    "name": "wf_needs_node_audio",
+    "title": "Needs Node: Song",
+    "mediaType": "audio",
+    "mediaSubtype": "mp3",
+    "description": "Uses a node from a pack this lane does not have.",
+    "tags": [
+     "Audio"
+    ],
+    "models": [],
+    "date": "2026-01-01",
+    "size": null,
+    "usage": 300,
+    "openSource": true,
+    "minComfyUIVersion": "0.3.0",
+    "requiresCustomNodes": [
+     "comfyui-wf-fixture-pack"
+    ]
+   }
+  ]
+ },
+ {
+  "moduleName": "default",
+  "category": "Foundation",
+  "title": "3D Model",
+  "type": "3d",
+  "templates": [
+   {
+    "name": "wf_xss",
+    "title": "<img src=x onerror=\"window.__wfXss=1\">Tricky <b>title</b>",
+    "mediaType": "image",
+    "mediaSubtype": "webp",
+    "description": "A title that is not markup.",
+    "tags": [],
+    "models": [],
+    "date": "2026-01-01",
+    "size": null,
+    "usage": 10,
+    "openSource": true,
+    "minComfyUIVersion": "0.3.0"
+   }
+  ]
+ },
+ {
+  "moduleName": "default",
+  "category": "Foundation",
+  "title": "LLM",
+  "type": "llm",
+  "templates": [
+   {
+    "name": "wf_newer",
+    "title": "Newer: Needs a Newer ComfyUI",
+    "mediaType": "image",
+    "mediaSubtype": "webp",
+    "description": "Asks for a ComfyUI newer than this lane's.",
+    "tags": [],
+    "models": [],
+    "date": "2026-01-01",
+    "size": null,
+    "usage": 20,
+    "openSource": true,
+    "minComfyUIVersion": "99.0.0"
+   },
+   {
+    "name": "wf_thumb_html",
+    "title": "Thumb HTML",
+    "mediaType": "image",
+    "mediaSubtype": "webp",
+    "description": "Its thumbnail answer is a web page.",
+    "tags": [],
+    "models": [],
+    "date": "2026-01-01",
+    "size": null,
+    "usage": 1,
+    "openSource": true,
+    "minComfyUIVersion": "0.3.0"
+   },
+   {
+    "name": "wf_thumb_big",
+    "title": "Thumb Big",
+    "mediaType": "image",
+    "mediaSubtype": "webp",
+    "description": "Its thumbnail is 3 MiB.",
+    "tags": [],
+    "models": [],
+    "date": "2026-01-01",
+    "size": null,
+    "usage": 1,
+    "openSource": true,
+    "minComfyUIVersion": "0.3.0"
+   }
+  ]
+ }
+]

@@ -56,6 +56,19 @@ hardware:
                            serves DIR/outputs/X if present, else 404. type=input
                            serves DIR/inputs/X instead (what an uploaded file
                            lands under, real ComfyUI's own type split).
+  --workflows DIR          also serve the Workflows tab's slice (off by default, so every
+                           other suite sees exactly the lane it always did):
+    GET /templates/index.json          DIR/index.json
+    GET /templates/<name>.json         DIR/templates/<name>.json
+    GET /templates/<name>-1.webp|png   a tiny image/webp; a name containing "thumb_html"
+                                       answers text/html, "thumb_big" a 3 MiB image/webp
+    GET /models, /models/<folder>      DIR/models.json ({folder: [file, ...]})
+    GET /api/userdata?dir=workflows    [{path, size, modified, created}] under DIR2/userdata/workflows
+    GET /api/userdata/workflows%2F<f>  that file
+    POST /api/userdata/workflows%2F<f>?overwrite=false
+                                       writes it (409 if it exists), logged with its length
+    and DIR/nodes.json ({class: {field: dropdown}}) is merged into /object_info.
+  --comfy-version V        /system_stats' comfyui_version (default "fake")
   anything else            404
 
 Every request is appended as one JSON line to DIR/requests.log (method,
@@ -150,7 +163,29 @@ ACCEPT_OUTPUTS = None   # None = /prompt always 500 (default); a list = ACCEPT m
 HISTORY = {}             # prompt_id -> the /history/<id> entry once accepted
 
 
+VIEW_GATE = None          # --view-gate FILE: /view of a slow_* file answers only once FILE exists
 OBJECT_INFO_GATE = None   # --object-info-gate FILE: /object_info* answers only once FILE exists
+WORKFLOWS_DIR = None      # --workflows DIR: serve the Workflows tab's slice (see the docstring)
+TINY_WEBP = b"RIFF\x1a\x00\x00\x00WEBPVP8L\x0d\x00\x00\x00\x2f\x00\x00\x00\x10\x07\x10\x11\x11\x88\x88\xfe\x07\x00"
+
+
+def _wf_file(*parts):
+    return os.path.join(WORKFLOWS_DIR, *parts)
+
+
+def _userdata_dir():
+    return os.path.join(STORE_DIR, "userdata", "workflows")
+
+
+def _userdata_target(raw_path):
+    """/api/userdata/workflows%2F<file> -> (the decoded file name, its path), or (None, None)."""
+    rel = urllib.parse.unquote(raw_path[len("/api/userdata/"):])
+    if not rel.startswith("workflows/"):
+        return None, None
+    name = rel[len("workflows/"):]
+    if not name or ".." in name.split("/") or name.startswith("/"):
+        return None, None
+    return name, os.path.join(_userdata_dir(), name)
 
 
 def _wait_for_gate(limit=7.0):
@@ -197,6 +232,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, {node: {"input": {"required": NODES[node]}}})
             else:
                 self._send(404, {"error": "no such node"})
+        elif WORKFLOWS_DIR and self._workflows_get(path):
+            pass
         elif path.startswith("/history/"):
             pid = path[len("/history/"):].strip("/")
             self._send(200, {pid: HISTORY[pid]} if pid in HISTORY else {})
@@ -206,6 +243,9 @@ class Handler(BaseHTTPRequestHandler):
             kind = "inputs" if (qs.get("type") or ["output"])[0] == "input" else "outputs"
             src = os.path.join(STORE_DIR, kind, os.path.basename(filename))
             if filename and os.path.isfile(src):
+                end = time.time() + 20.0
+                while VIEW_GATE and filename.startswith("slow_") and not os.path.exists(VIEW_GATE) and time.time() < end:
+                    time.sleep(0.02)
                 with open(src, "rb") as f:
                     data = f.read()
                 self.send_response(200)
@@ -218,11 +258,81 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self._send(404, {"error": "not found"})
 
+    def _blob(self, code, data, ctype):
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _workflows_get(self, path):
+        """--workflows: True when this GET was one of the Workflows tab's endpoints."""
+        if path == "/templates/index.json":
+            with open(_wf_file("index.json"), "rb") as f:
+                self._blob(200, f.read(), "application/json")
+        elif path.startswith("/templates/"):
+            name = os.path.basename(urllib.parse.unquote(path[len("/templates/"):]))
+            m = re.match(r"^(.*)-1\.(webp|png)$", name)
+            src = _wf_file("templates", name)
+            if m and "thumb_html" in m.group(1):
+                self._blob(200, b"<html><body>not an image</body></html>", "text/html")
+            elif m and "thumb_big" in m.group(1):
+                self._blob(200, b"\0" * (3 * 1024 * 1024), "image/webp")
+            elif m:
+                self._blob(200, TINY_WEBP, "image/" + m.group(2))
+            elif name.endswith(".json") and os.path.isfile(src):
+                with open(src, "rb") as f:
+                    self._blob(200, f.read(), "application/json")
+            else:
+                self._send(404, {"error": "no such template"})
+        elif path == "/models" or path.startswith("/models/"):
+            with open(_wf_file("models.json")) as f:
+                folders = json.load(f)
+            folder = urllib.parse.unquote(path[len("/models/"):]) if path != "/models" else None
+            if folder is None:
+                self._send(200, sorted(folders))
+            elif folder in folders:
+                self._send(200, folders[folder])
+            else:
+                self._send(404, {"error": "no such folder"})
+        elif path == "/api/userdata":
+            out, root = [], _userdata_dir()
+            for dirpath, _, files in os.walk(root):
+                for fn in sorted(files):
+                    full = os.path.join(dirpath, fn)
+                    st = os.stat(full)
+                    out.append({"path": os.path.relpath(full, root).replace(os.sep, "/"), "size": st.st_size,
+                                "modified": st.st_mtime, "created": st.st_ctime})
+            self._send(200, out)
+        elif path.startswith("/api/userdata/"):
+            name, full = _userdata_target(path)
+            if full and os.path.isfile(full):
+                with open(full, "rb") as f:
+                    self._blob(200, f.read(), "application/json")
+            else:
+                self._send(404, {"error": "no such file"})
+        else:
+            return False
+        return True
+
     def do_POST(self):
         global ACCEPT_OUTPUTS
         length = int(self.headers.get("Content-Length") or 0)
         body = self.rfile.read(length) if length else b""
-        if self.path.startswith("/_control/accept"):
+        if WORKFLOWS_DIR and self.path.startswith("/api/userdata/"):
+            path = self.path.split("?", 1)[0]
+            name, full = _userdata_target(path)
+            _log_request("POST", path, filename=name, length=len(body))
+            if not full:
+                self._send(400, {"error": "bad path"})
+            elif os.path.exists(full) and "overwrite=false" in self.path:
+                self._send(409, {"error": "file exists"})
+            else:
+                os.makedirs(os.path.dirname(full), exist_ok=True)
+                with open(full, "wb") as f:
+                    f.write(body)
+                self._send(200, "workflows/" + name)
+        elif self.path.startswith("/_control/accept"):
             data = json.loads(body) if body else {}
             ACCEPT_OUTPUTS = data.get("outputs")
             self._send(200, {"accept": ACCEPT_OUTPUTS is not None})
@@ -308,12 +418,24 @@ def main():
     ap.add_argument("--pools", default=None, help="serve exactly these pools (pools_extra.json's shape) instead")
     ap.add_argument("--object-info-gate", default=None,
                     help="hold every /object_info* answer until this file exists (RS1's slow discovery)")
+    ap.add_argument("--workflows", default=None, help="serve the Workflows tab's slice from this fixture dir")
+    ap.add_argument("--view-gate", default=None,
+                    help="hold every /view of a file named slow_* until this file exists (a slow song copy)")
+    ap.add_argument("--comfy-version", default=None, help="/system_stats' comfyui_version")
     args = ap.parse_args()
-    global OBJECT_INFO_GATE
+    global OBJECT_INFO_GATE, WORKFLOWS_DIR, VIEW_GATE
+    VIEW_GATE = args.view_gate
     OBJECT_INFO_GATE = args.object_info_gate
+    if args.comfy_version:
+        SYSTEM_STATS["system"]["comfyui_version"] = args.comfy_version
     if args.pools:
         global NODES
         NODES = _object_info((args.pools,))
+    if args.workflows:
+        WORKFLOWS_DIR = args.workflows
+        with open(_wf_file("nodes.json")) as f:
+            for cls, fields in json.load(f).items():
+                NODES.setdefault(cls, {}).update(fields)
     if args.store:
         STORE_DIR = args.store
         os.makedirs(STORE_DIR, exist_ok=True)

@@ -1,0 +1,29 @@
+{
+ "SaveImage": {},
+ "SaveVideo": {},
+ "SaveAudio": {},
+ "KSampler": {},
+ "CLIPTextEncode": {},
+ "VAELoader": {
+  "vae_name": [
+   [
+    "minimax_h3/vae/minimax_h3_video_vae_int8_convrot.safetensors",
+    "wf_vae.safetensors"
+   ],
+   {}
+  ]
+ },
+ "H3MotionContextClipStitcher -noEmbryo": {
+  "clip_pattern": [
+   "STRING",
+   {}
+  ],
+  "stitch_mode": [
+   [
+    "overlap",
+    "hard cut"
+   ],
+   {}
+  ]
+ }
+}

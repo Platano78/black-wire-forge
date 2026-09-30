@@ -1,0 +1,10 @@
+{
+ "diffusion_models": [
+  "wf_ready_unet.safetensors",
+  "sub/wf_other.safetensors"
+ ],
+ "vae": [
+  "wf_vae.safetensors"
+ ],
+ "text_encoders": []
+}

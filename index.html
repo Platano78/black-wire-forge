@@ -131,13 +131,13 @@
   .room-tab-dim:hover{color:var(--text-disabled)}
   .room-divider{width:1px; align-self:stretch; margin:6px 0; background:var(--divider); flex:none}
   .room-spacer{flex:1}
-  .room-cutting{
+  .room-cutting, .room-workflows{
     border:1px solid var(--divider); background:var(--surface3); margin:6px 8px 6px 0;
     padding:0 12px; min-height:32px; color:var(--text-hi); font-size:13px;
     letter-spacing:.04em; text-transform:uppercase;
     position:sticky; right:0; z-index:2;
   }
-  .room-cutting[aria-pressed="true"]{border-color:var(--accent); color:var(--accent)}
+  .room-cutting[aria-pressed="true"], .room-workflows[aria-pressed="true"]{border-color:var(--accent); color:var(--accent)}
 
   /* ---- layout ---- */
   #layout{flex:1; display:grid;
@@ -807,6 +807,54 @@
   #shareActions{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px}
   .fixture-badge{font-family:var(--mono); font-size:10px; color:var(--accent); border:1px dashed var(--accent);
     padding:1px 6px; margin-left:6px; text-transform:uppercase}
+
+  /* ---- WB: the Workflows tab (built by renderWorkflows(); lane text only ever via textContent) ---- */
+  .room-end{position:sticky; right:0; z-index:2; display:flex; flex:none; background:var(--surface3)}
+  .room-end > .room-cutting, .room-end > .room-workflows{position:static}
+  @media (max-width:600px){ .room-end{position:static; order:99} }
+  body.wf-open #layout, body.wf-open #timelinePanel{display:none !important}
+  #workflowsView{flex:1; padding:12px 16px 24px; min-width:0; overflow-wrap:anywhere}
+  #workflowsView h2{font-size:13px; letter-spacing:.1em; text-transform:uppercase; margin-bottom:4px}
+  #workflowsView .wf-intro{margin:0 0 10px; font-size:13px}
+  .wf-row{display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:0 0 10px}
+  .wf-row label{display:inline-flex; align-items:center; gap:6px; font-size:13px}
+  .wf-row select, .wf-row input[type="search"]{min-height:36px; background:var(--surface3); color:var(--text-hi);
+    border:1px solid var(--divider); padding:4px 8px; max-width:100%}
+  .wf-row input[type="search"]{width:220px}
+  .wf-row input[type="checkbox"]{width:18px; height:18px}
+  .wf-tabs{max-width:360px; flex:1 1 240px}
+  .wf-media{display:flex; flex-wrap:wrap; gap:0; border:1px solid var(--divider)}
+  .wf-media button{min-height:36px; padding:0 10px; background:var(--surface2); color:var(--text-mid); border:none;
+    border-right:1px solid var(--divider); font-size:12px; text-transform:uppercase; letter-spacing:.03em}
+  .wf-media button:last-child{border-right:none}
+  .wf-media button[aria-pressed="true"]{background:var(--panel); color:var(--accent); outline:1px solid var(--accent);
+    outline-offset:-1px}
+  #wfLaneNote, #wfError{font-size:13px; margin:0 0 10px}
+  #wfGrid{display:grid; grid-template-columns:repeat(auto-fill, minmax(min(100%, 220px), 1fr)); gap:10px}
+  .wf-card{display:flex; flex-direction:column; width:100%; min-width:0; text-align:left; padding:0;
+    background:var(--panel); border:1px solid var(--divider); color:var(--text-hi)}
+  .wf-card:hover{border-color:var(--text-mid)}
+  .wf-thumb{display:flex; align-items:center; justify-content:center; aspect-ratio:16/10; width:100%;
+    background:var(--surface3); overflow:hidden; color:var(--text-disabled); font-size:12px}
+  .wf-thumb img{width:100%; height:100%; object-fit:cover; display:block}
+  .wf-body{display:flex; flex-direction:column; gap:4px; padding:8px 10px 10px; min-width:0}
+  .wf-title{font-weight:600; font-size:14px}
+  .wf-desc{font-size:12px; color:var(--text-mid); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .wf-meta{display:flex; flex-wrap:wrap; gap:6px; align-items:center; font-size:11px; color:var(--text-mid)}
+  .wf-badge{font-family:var(--mono); font-size:11px; padding:1px 6px; border:1px solid var(--divider);
+    color:var(--text-mid)}
+  .wf-badge[data-state="ready"]{border-color:var(--ready); color:var(--ready)}
+  .wf-badge[data-state="needs_models"], .wf-badge[data-state="needs_nodes"],
+  .wf-badge[data-state="needs_version"]{border-color:var(--stale); color:var(--stale)}
+  #wfMore{margin-top:12px}
+  #wfDialog ul{margin:4px 0 10px; padding-left:18px; font-size:13px}
+  #wfDialog .wf-section{margin:10px 0 4px; font-size:12px; letter-spacing:.06em; text-transform:uppercase;
+    color:var(--text-mid)}
+  #wfDialog p{font-size:13px; margin:0 0 8px}
+  #wfDialogBody{overflow-wrap:anywhere}
+  #wfOpenResult{margin-top:10px}
+  #wfDialog a{color:var(--accent)}
+  #wfOpenResult .err{color:var(--error)}
 </style>
 </head>
 <body>
@@ -1048,6 +1096,43 @@
   </section>
 </main>
 
+<!-- WB: the Workflows tab. A lane's own templates and saved workflows, what each
+     still needs there, and "Save to ComfyUI and open". Built by renderWorkflows()
+     with createElement/textContent only: every title and name comes from a lane. -->
+<section id="workflowsView" aria-labelledby="wfHeading" hidden>
+  <h2 id="wfHeading">Workflows</h2>
+  <p class="wf-intro muted">What each ComfyUI machine can open right now. Nothing here is installed or downloaded:
+    opening one saves a copy into ComfyUI's own Workflows panel.</p>
+  <div class="wf-row" id="wfLanePick" hidden>
+    <label for="wfLane">Machine</label>
+    <select id="wfLane"></select>
+  </div>
+  <p id="wfLaneNote" class="muted" role="status" hidden></p>
+  <div class="wf-row">
+    <div class="history-toggle wf-tabs" id="wfTabs" role="group" aria-label="Which workflows to show">
+      <button type="button" data-wf-tab="templates" aria-pressed="true">Templates</button>
+      <button type="button" data-wf-tab="mine" aria-pressed="false">Your workflows</button>
+    </div>
+  </div>
+  <div class="wf-row">
+    <div class="wf-media" id="wfMedia" role="group" aria-label="Kind of media">
+      <button type="button" data-wf-media="all" aria-pressed="true">All</button>
+      <button type="button" data-wf-media="image" aria-pressed="false">Image</button>
+      <button type="button" data-wf-media="video" aria-pressed="false">Video</button>
+      <button type="button" data-wf-media="audio" aria-pressed="false">Audio</button>
+      <button type="button" data-wf-media="3d" aria-pressed="false">3D</button>
+      <button type="button" data-wf-media="other" aria-pressed="false">Other</button>
+    </div>
+    <label for="wfSearch">Search</label>
+    <input type="search" id="wfSearch" placeholder="Title, description or tag" autocomplete="off">
+    <label id="wfCloudWrap"><input type="checkbox" id="wfCloud"> Show cloud (paid API) workflows</label>
+  </div>
+  <p id="wfError" role="alert" hidden></p>
+  <p id="wfCount" class="muted" role="status"></p>
+  <div id="wfGrid" role="list" aria-label="Workflows"></div>
+  <button type="button" class="btn" id="wfMore" hidden>Show more</button>
+</section>
+
 <!-- Cutting Room shell (SEQUENCE). Built live by renderTimeline()/renderRefRoom()
      once a sequence is open (C3.3); the tracks below are empty containers
      until then. -->
@@ -1087,6 +1172,15 @@
     <div id="activityLog"></div>
   </details>
 </footer>
+
+<!-- WB: one workflow's details (built by openWfDetails(), textContent only). -->
+<dialog id="wfDialog" aria-labelledby="wfDialogTitle">
+  <div class="dialog-head">
+    <h2 id="wfDialogTitle">Workflow</h2>
+    <button class="close-x" type="button" data-close="wfDialog" aria-label="Close">&times;</button>
+  </div>
+  <div class="dialog-body" id="wfDialogBody"></div>
+</dialog>
 
 <dialog id="creditsDialog">
   <div class="dialog-head">
@@ -2051,8 +2145,11 @@ function renderRoomStrip(){
         + '<span class="dot" hidden></span>' + esc(r.name) + '<span class="sr-only room-state"></span></button>').join('')
       + '</div>').join('')
     + '<div class="room-spacer"></div>'
+    + '<div class="room-end">'
     + (cutting ? '<button type="button" class="room-tab room-cutting" data-room-id="' + esc(cutting.id)
-      + '" aria-pressed="false">[ ] ' + esc(cutting.name) + '</button>' : '');
+      + '" aria-pressed="false">[ ] ' + esc(cutting.name) + '</button>' : '')
+    + '<button type="button" class="room-tab room-workflows" id="workflowsBtn" aria-pressed="false">Workflows</button>'
+    + '</div>';
   refreshRoomStrip();
 }
 // Same availability rule the engine picker uses: a mode that belongs on
@@ -2072,10 +2169,12 @@ function refreshRoomStrip(){
   const busy = new Set(STATE.jobs
     .filter(j => j.status === 'queued' || j.status === 'running').map(jobRoom).filter(Boolean));
   const lane = activeLaneName();
+  const wfb = $('#workflowsBtn');
+  if(wfb) wfb.setAttribute('aria-pressed', String(WF.open));
   $$('#roomStrip [data-room-id]').forEach(b => {
     const room = roomById(b.dataset.roomId);
     if(!room) return;
-    b.setAttribute('aria-pressed', String(room.id === STATE.room));
+    b.setAttribute('aria-pressed', String(room.id === STATE.room && !WF.open));
     if(isCutting(room)) return;
     const ms = roomModes(room);
     const nothing = ms.length === 0;
@@ -6630,6 +6729,319 @@ function renderActivity(){
 }
 
 /* ---------------------------------------------------------------------
+   Workflows tab (WB): a ComfyUI lane's own templates and saved workflows
+   (GET /api/workflows), what each still needs there (GET /api/workflows/ready,
+   asked only for the cards on screen, <= 24 names a call), and "Save to
+   ComfyUI and open" (POST /api/workflows/open). Every string from a lane goes
+   onto the page through textContent / attributes -- never innerHTML.
+--------------------------------------------------------------------- */
+const WF_PAGE = 24;
+const WF_BATCH = 24;
+const WF_NODES_SENTENCE = ' — not found on this ComfyUI. If the workflow opens and runs fine there, these are '
+  + 'screen-only helper nodes and nothing is missing; otherwise install them with ComfyUI-Manager.';
+const WF = {open: false, lane: null, tab: 'templates', media: 'all', q: '', cloud: false, shown: WF_PAGE,
+            data: null, err: '', ready: {}, asking: new Set(), token: 0, lanesKey: ''};
+
+function wfEl(tag, props, kids){
+  const el = document.createElement(tag);
+  Object.entries(props || {}).forEach(([k, v]) => {
+    if(v == null) return;
+    if(k === 'text') el.textContent = v;
+    else if(k === 'class') el.className = v;
+    else el.setAttribute(k, v);
+  });
+  (kids || []).forEach(c => { if(c) el.appendChild(c); });
+  return el;
+}
+function wfLink(href, text){
+  return wfEl('a', {href, text, target: '_blank', rel: 'noopener noreferrer'});
+}
+function wfComfyLanes(){ return STATE.lanes.filter(l => laneKindOf(l) === 'comfy'); }
+function wfKey(kind, name){ return kind + '\u0000' + name; }
+function wfGB(bytes){ return bytes ? (bytes / 1e9).toFixed(bytes < 1e10 ? 1 : 0) + ' GB of model files' : ''; }
+function wfFileSize(bytes){
+  if(!bytes) return '';
+  return bytes < 1e6 ? Math.max(1, Math.round(bytes / 1e3)) + ' KB' : (bytes / 1e6).toFixed(1) + ' MB';
+}
+function wfBadgeText(r){
+  if(!r) return 'Checking…';
+  if(r.state === 'ready') return 'Ready';
+  if(r.state === 'needs_models'){
+    const n = (r.missing_models || []).length;
+    return 'Needs ' + n + ' model file' + (n === 1 ? '' : 's');
+  }
+  if(r.state === 'needs_nodes') return 'Needs nodes';
+  if(r.state === 'needs_version') return 'Needs a newer ComfyUI';
+  return "Can't tell right now";
+}
+function wfRank(r){ return !r ? 2 : r.state === 'ready' ? 0 : r.state === 'unknown' ? 2 : 1; }
+
+// The items the current tab + filters select, Ready first, then usage (templates)
+// or newest (saved workflows). Unchecked cards sort with "can't tell".
+function wfItems(){
+  const d = WF.data;
+  if(!d) return [];
+  const q = WF.q.trim().toLowerCase();
+  if(WF.tab === 'mine'){
+    return (d.mine || [])
+      .filter(m => !q || m.file.toLowerCase().includes(q))
+      .map(m => ({kind: 'mine', name: m.file, title: m.file.replace(/\.json$/i, ''), m}))
+      .sort((a, b) => wfRank(WF.ready[wfKey('mine', a.name)]) - wfRank(WF.ready[wfKey('mine', b.name)])
+        || (b.m.modified || 0) - (a.m.modified || 0));
+  }
+  return (d.templates || [])
+    .filter(t => WF.cloud || t.local)
+    .filter(t => WF.media === 'all' || t.type === WF.media)
+    .filter(t => !q || [t.title, t.description].concat(t.tags || []).some(s => String(s || '').toLowerCase().includes(q)))
+    .map(t => ({kind: 'template', name: t.name, title: t.title, t}))
+    .sort((a, b) => wfRank(WF.ready[wfKey('template', a.name)]) - wfRank(WF.ready[wfKey('template', b.name)])
+      || (b.t.usage || 0) - (a.t.usage || 0));
+}
+
+function wfCard(it){
+  const r = WF.ready[wfKey(it.kind, it.name)];
+  const thumb = wfEl('span', {class: 'wf-thumb', 'aria-hidden': 'true'});
+  if(it.kind === 'template' && it.t.thumb){
+    const img = wfEl('img', {alt: '', loading: 'lazy',
+      src: '/api/workflows/thumb?lane=' + encodeURIComponent(WF.lane) + '&name=' + encodeURIComponent(it.name)});
+    img.addEventListener('error', () => { img.remove(); thumb.textContent = 'No picture'; });
+    thumb.appendChild(img);
+  } else {
+    thumb.textContent = it.kind === 'mine' ? 'Your workflow' : 'No picture';
+  }
+  const meta = wfEl('span', {class: 'wf-meta'});
+  meta.appendChild(wfEl('span', {class: 'wf-badge', 'data-state': r ? r.state : 'checking', text: wfBadgeText(r)}));
+  if(it.kind === 'template'){
+    if(it.t.size) meta.appendChild(wfEl('span', {class: 'num', text: wfGB(it.t.size)}));
+    if(!it.t.local) meta.appendChild(wfEl('span', {text: 'Cloud (paid API)'}));
+  } else {
+    if(it.m.modified) meta.appendChild(wfEl('span', {text: 'saved ' + ago(it.m.modified)}));
+    if(it.m.size) meta.appendChild(wfEl('span', {class: 'num', text: wfFileSize(it.m.size)}));
+  }
+  const btn = wfEl('button', {type: 'button', class: 'wf-card', 'data-wf-kind': it.kind, 'data-wf-name': it.name,
+                              'aria-label': it.title + ' - ' + wfBadgeText(r) + '. Details'}, [
+    thumb,
+    wfEl('span', {class: 'wf-body'}, [
+      wfEl('span', {class: 'wf-title', text: it.title}),
+      it.kind === 'template' && it.t.description ? wfEl('span', {class: 'wf-desc', text: it.t.description}) : null,
+      meta])]);
+  btn.addEventListener('click', () => openWfDetails(it));
+  return wfEl('div', {role: 'listitem'}, [btn]);
+}
+
+function renderWfLanes(){
+  const comfy = wfComfyLanes(), up = comfy.filter(l => l.up), down = comfy.filter(l => !l.up);
+  const key = comfy.map(l => l.id + ':' + (l.up ? 1 : 0)).join(',');
+  if(key !== WF.lanesKey){
+    WF.lanesKey = key;
+    const sel = $('#wfLane');
+    sel.replaceChildren(...up.map(l => wfEl('option', {value: l.id, text: l.name})));
+  }
+  $('#wfLanePick').hidden = up.length < 2;
+  if(WF.lane) $('#wfLane').value = WF.lane;
+  const note = !comfy.length ? 'No ComfyUI machine is set up in config.json, so there are no workflows to show.'
+    : !up.length ? 'No ComfyUI machine is answering right now. Start one, and its workflows show up here.'
+    : down.map(l => l.name + " isn't answering right now, so its workflows aren't listed.").join(' ');
+  $('#wfLaneNote').textContent = note;
+  $('#wfLaneNote').hidden = !note;
+}
+// Which lane to show: the one already picked while it is up, else the active
+// machine when it is an up ComfyUI lane, else the first up one.
+function wfPickLane(){
+  const up = wfComfyLanes().filter(l => l.up);
+  if(up.some(l => l.id === WF.lane)) return WF.lane;
+  const act = up.find(l => l.id === STATE.activeLane);
+  return (act || up[0] || {}).id || null;
+}
+
+function renderWorkflows(){
+  renderWfLanes();
+  $$('#wfTabs [data-wf-tab]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.wfTab === WF.tab)));
+  $$('#wfMedia [data-wf-media]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.wfMedia === WF.media)));
+  $('#wfMedia').hidden = WF.tab !== 'templates';
+  $('#wfCloudWrap').hidden = WF.tab !== 'templates';
+  const errs = WF.err ? [WF.err] : (WF.data ? [WF.data[WF.tab === 'mine' ? 'mine_error' : 'templates_error']] : []);
+  $('#wfError').textContent = errs.filter(Boolean).join(' ');
+  $('#wfError').hidden = !$('#wfError').textContent;
+  const items = wfItems(), shown = items.slice(0, WF.shown);
+  const focused = document.activeElement && document.activeElement.closest && document.activeElement.closest('.wf-card');
+  const refocus = focused ? wfKey(focused.dataset.wfKind, focused.dataset.wfName) : null;
+  $('#wfGrid').replaceChildren(...shown.map(wfCard));
+  if(refocus){
+    const again = $$('#wfGrid .wf-card').find(b => wfKey(b.dataset.wfKind, b.dataset.wfName) === refocus);
+    if(again) again.focus({preventScroll: true});
+  }
+  const what = WF.tab === 'mine' ? 'saved workflows' : 'templates';
+  $('#wfCount').textContent = !WF.lane || !WF.data ? (WF.lane && !WF.err ? 'Loading…' : '')
+    : !items.length ? (WF.tab === 'mine' ? 'No saved workflows match.' : 'No templates match.')
+    : 'Showing ' + shown.length + ' of ' + items.length + ' ' + what + '.';
+  $('#wfMore').hidden = shown.length >= items.length;
+  wfAskReadiness(shown);
+}
+
+// Readiness for the cards on screen that have none yet, in batches of <= 24.
+async function wfAskReadiness(shown){
+  const lane = WF.lane, token = WF.token;
+  const byKind = {};
+  shown.forEach(it => {
+    const k = wfKey(it.kind, it.name);
+    if(WF.ready[k] || WF.asking.has(k)) return;
+    WF.asking.add(k);
+    (byKind[it.kind] = byKind[it.kind] || []).push(it.name);
+  });
+  for(const [kind, names] of Object.entries(byKind)){
+    for(let i = 0; i < names.length; i += WF_BATCH){
+      const part = names.slice(i, i + WF_BATCH);
+      let d = null;
+      try{
+        d = await getJSON('/api/workflows/ready?lane=' + encodeURIComponent(lane) + '&kind=' + kind
+                          + '&names=' + part.map(encodeURIComponent).join(','));
+      } catch(e){ /* left unchecked: the next render asks again */ }
+      if(token !== WF.token) return;
+      part.forEach(n => WF.asking.delete(wfKey(kind, n)));
+      if(d && d.ready) part.forEach(n => { if(d.ready[n]) WF.ready[wfKey(kind, n)] = d.ready[n]; });
+      if(d && d.ready) renderWorkflows();
+    }
+  }
+}
+
+async function loadWorkflows(){
+  WF.lane = wfPickLane();
+  const token = ++WF.token;
+  WF.data = null; WF.err = ''; WF.ready = {}; WF.asking = new Set(); WF.shown = WF_PAGE;
+  renderWorkflows();
+  if(!WF.lane) return;
+  try{
+    const r = await fetch('/api/workflows?lane=' + encodeURIComponent(WF.lane));
+    const d = await r.json();
+    if(token !== WF.token) return;
+    if(!r.ok || !d.ok) WF.err = d.error || "That machine didn't list its workflows.";
+    else WF.data = d;
+  } catch(e){
+    if(token !== WF.token) return;
+    WF.err = "That machine didn't list its workflows. Try again in a moment.";
+  }
+  renderWorkflows();
+}
+
+function openWorkflows(){
+  WF.open = true;
+  document.body.classList.add('wf-open');
+  $('#workflowsView').hidden = false;
+  try{ history.replaceState(null, '', '#workflows'); } catch(e){ /* sandboxed */ }
+  refreshRoomStrip();
+  loadWorkflows();
+}
+function closeWorkflows(){
+  if(!WF.open) return;
+  WF.open = false;
+  document.body.classList.remove('wf-open');
+  $('#workflowsView').hidden = true;
+  refreshRoomStrip();
+}
+// Called from pollLanes: a lane coming up or going down re-picks, never mid-read otherwise.
+function wfLanesPolled(){
+  if(!WF.open) return;
+  if(wfPickLane() !== WF.lane) loadWorkflows();
+  else renderWfLanes();
+}
+
+function openWfDetails(it){
+  const r = WF.ready[wfKey(it.kind, it.name)];
+  const body = $('#wfDialogBody');
+  $('#wfDialogTitle').textContent = it.title;
+  const kids = [];
+  if(it.kind === 'template'){
+    if(it.t.description) kids.push(wfEl('p', {text: it.t.description}));
+    const bits = [it.t.category, it.t.size ? wfGB(it.t.size) : '', it.t.local ? '' : 'Cloud (paid API): runs on a paid service, not on this machine']
+      .filter(Boolean);
+    if(bits.length) kids.push(wfEl('p', {class: 'muted', text: bits.join(' · ')}));
+  } else {
+    kids.push(wfEl('p', {class: 'muted', text: 'Saved in ComfyUI as ' + it.name
+      + (it.m.modified ? ', ' + ago(it.m.modified) : '') + (it.m.size ? ', ' + wfFileSize(it.m.size) : '') + '.'}));
+  }
+  kids.push(wfEl('p', {}, [wfEl('span', {class: 'wf-badge', 'data-state': r ? r.state : 'checking', text: wfBadgeText(r)})]));
+  if(r && r.state === 'needs_version'){
+    kids.push(wfEl('p', {text: 'This needs ComfyUI ' + r.min_version + ' or newer; this machine runs '
+      + ((WF.data && WF.data.version) || 'an older one') + '.'}));
+  }
+  if(r && (r.missing_models || []).length){
+    kids.push(wfEl('p', {class: 'wf-section', text: 'Missing model files'}));
+    // REV-1: a file named only in a node's widget has no folder: say whose list it is missing from.
+    kids.push(wfEl('ul', {}, r.missing_models.map(m => wfEl('li', {}, m.directory == null ? [
+      wfEl('span', {class: 'num', text: m.name}),
+      document.createTextNode(" - not in this ComfyUI's list for " + m.node)] : [
+      wfEl('span', {class: 'num', text: m.directory + '/' + m.name}),
+      m.url ? document.createTextNode(' - ') : null,
+      m.url ? wfLink(m.url, 'source') : null]))));
+  }
+  if(r && (r.missing_nodes || []).length){
+    kids.push(wfEl('p', {class: 'wf-section', text: 'Missing nodes'}));
+    kids.push(wfEl('p', {class: 'wf-nodes-note', text: r.missing_nodes.join(', ') + WF_NODES_SENTENCE}));
+    if((r.packs || []).length) kids.push(wfEl('p', {text: 'From: ' + r.packs.join(', ')}));
+  }
+  if(it.kind === 'template' && it.t.tutorial){
+    kids.push(wfEl('p', {}, [wfLink(it.t.tutorial, 'How to use it (tutorial)')]));
+  }
+  const open = wfEl('button', {type: 'button', class: 'btn btn-primary', id: 'wfOpenBtn',
+    text: it.kind === 'template' ? 'Save to ComfyUI and open' : 'Open in ComfyUI'});
+  const result = wfEl('div', {id: 'wfOpenResult', role: 'status'});
+  open.addEventListener('click', () => wfOpen(it, open, result));
+  kids.push(wfEl('p', {}, [open]), result);
+  body.replaceChildren(...kids);
+  const dlg = $('#wfDialog');
+  if(!dlg.open) dlg.showModal();
+}
+
+async function wfOpen(it, btn, result){
+  btn.disabled = true;
+  result.replaceChildren(wfEl('p', {class: 'muted', text: it.kind === 'template' ? 'Saving…' : 'Opening…'}));
+  let d = null;
+  try{
+    d = await postJSON('/api/workflows/open', {lane: WF.lane, kind: it.kind, name: it.name});
+  } catch(e){ d = null; }
+  btn.disabled = false;
+  if(!d || !d.ok){
+    result.replaceChildren(wfEl('p', {class: 'err', role: 'alert',
+      text: (d && d.error) || "That didn't reach the machine. Try again in a moment."}));
+    return;
+  }
+  const kids = [];
+  if(d.saved){
+    kids.push(wfEl('p', {text: 'Saved as “' + d.saved + '” in ComfyUI\'s Workflows panel.'}));
+    if(WF.data){   // the saved-workflow list is stale now: re-read it in the background
+      const token = WF.token;
+      getJSON('/api/workflows?lane=' + encodeURIComponent(WF.lane)).then(x => {
+        if(token === WF.token && x && x.ok){ WF.data = x; renderWorkflows(); }
+      }).catch(() => {});
+    }
+  } else {
+    kids.push(wfEl('p', {text: 'It is in ComfyUI\'s Workflows panel.'}));
+  }
+  kids.push(wfEl('p', {}, [wfLink(d.url, 'Open ComfyUI')]));
+  result.replaceChildren(...kids);
+}
+
+function bindWorkflowsUI(){
+  $('#wfTabs').addEventListener('click', e => {
+    const b = e.target.closest('[data-wf-tab]');
+    if(!b || b.dataset.wfTab === WF.tab) return;
+    WF.tab = b.dataset.wfTab; WF.shown = WF_PAGE;
+    renderWorkflows();
+  });
+  $('#wfMedia').addEventListener('click', e => {
+    const b = e.target.closest('[data-wf-media]');
+    if(!b) return;
+    WF.media = b.dataset.wfMedia; WF.shown = WF_PAGE;
+    renderWorkflows();
+  });
+  $('#wfSearch').addEventListener('input', e => { WF.q = e.target.value; WF.shown = WF_PAGE; renderWorkflows(); });
+  $('#wfCloud').addEventListener('change', e => { WF.cloud = e.target.checked; WF.shown = WF_PAGE; renderWorkflows(); });
+  $('#wfMore').addEventListener('click', () => { WF.shown += WF_PAGE; renderWorkflows(); });
+  $('#wfLane').addEventListener('change', e => { WF.lane = e.target.value; loadWorkflows(); });
+}
+
+/* ---------------------------------------------------------------------
    Polling
 --------------------------------------------------------------------- */
 async function pollLanes(){
@@ -6641,6 +7053,7 @@ async function pollLanes(){
       STATE.activeLane = (STATE.lanes.find(l => l.up) || STATE.lanes[0] || {}).id || null;
     }
     renderMachineModules();
+    wfLanesPolled();
     // RS1: discovery just answered for the active lane -- fetch the verdict now
     // rather than up to 8 s later, so "checking..." never lingers or goes stale.
     if(wasChecking && !activeLaneChecking()){
@@ -6726,8 +7139,9 @@ function bindStaticUI(){
   });
   // Delegated: the strip is rebuilt whenever the room list changes.
   $('#roomStrip').addEventListener('click', e => {
+    if(e.target.closest('#workflowsBtn')){ openWorkflows(); return; }
     const b = e.target.closest('[data-room-id]');
-    if(b) selectRoom(b.dataset.roomId);
+    if(b){ closeWorkflows(); selectRoom(b.dataset.roomId); }
   });
   // Delegated: chip buttons survive polls (see renderMachineModules), so a
   // per-button closure would be re-attached on a rebuild that never happens.
@@ -6750,7 +7164,8 @@ function bindStaticUI(){
     const tryId = tryIdFromHash();
     // A try id must still apply even when the hash's room half is unchanged
     // (a "Make one in <room>" link back to the room already on screen).
-    if(id && roomById(id) && (id !== STATE.room || tryId)) selectRoom(id, {tryId});
+    if(/^#workflows\b/.test(location.hash)){ openWorkflows(); return; }
+    if(id && roomById(id) && (id !== STATE.room || tryId)){ closeWorkflows(); selectRoom(id, {tryId}); }
   });
   $('#creditsBtn').onclick = openCredits;
   $('#browseStylesBtn').onclick = openLoraDrawer;
@@ -6780,12 +7195,15 @@ function bindStaticUI(){
 }
 
 async function init(){
+  const wantWorkflows = /^#workflows\b/.test(location.hash);
   bindStaticUI();
+  bindWorkflowsUI();
   await pollLanes();
   await loadEnginesFor();
   renderRoomStrip();
   // #room=<id> survives a reload; #room=<id>&try=<example id> also survives one.
   await selectRoom(roomFromHash(), {force: true, tryId: tryIdFromHash()});
+  if(wantWorkflows) openWorkflows();
   // Prompt-first: the box everyone understands gets focus on first load
   // (UX review #1/#4) -- but only if it's actually the mode's first field;
   // renderModeFields() already redirects focus to an upload picker instead

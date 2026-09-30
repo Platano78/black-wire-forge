@@ -7947,6 +7947,448 @@ SETUP_POSTS = {"/api/setup/probe-comfy": setup_probe_comfy, "/api/setup/probe-he
 SETUP_UNFINISHED = {"ok": False, "setup": True, "error": "Finish Setup first."}
 
 
+# ---------------------------------------------------------------------------
+# WB: the Workflows tab. Every ComfyUI lane serves its own template library
+# (GET /templates/index.json, /templates/<name>.json, /templates/<name>-1.webp)
+# and the workflows saved in its own Workflows panel (/api/userdata?dir=workflows).
+# This lists both, says what each still needs on that lane, and saves a template
+# into that panel. Nothing is bundled, installed or fetched from the internet:
+# every address is a config.json lane, every name one the lane itself listed,
+# and every read is bounded through Setup's no-redirect opener (_setup_get_json).
+# ---------------------------------------------------------------------------
+
+WF_CACHE_SECONDS = 60.0
+WF_NODES_SECONDS = DISCOVER_SECONDS     # the whole /object_info: big, so read rarely
+WF_TIMEOUT = 10.0
+WF_LIST_LIMIT = 16 * 1024 * 1024        # the lane's index is ~0.7 MB today
+WF_WORKFLOW_LIMIT = 16 * 1024 * 1024
+WF_THUMB_LIMIT = 2 * 1024 * 1024
+WF_THUMB_TYPES = ("image/webp", "image/png")
+WF_READY_MAX = 24
+WF_MEDIA = ("image", "video", "audio", "3d")
+# Nodes that live only in the ComfyUI page, never in /object_info: core's own, and
+# (REV-2) well-known packs' frontend-only nodes, confirmed from each pack's source as
+# registered in its web JS with no Python NODE_CLASS_MAPPINGS entry: KJNodes
+# (GetNode, SetNode), Easy-Use (easy bookmark), rgthree (every "(rgthree)" name below;
+# its "Display Any" is a Python node and is NOT here). Their JSON carries no marker.
+WF_UI_ONLY_NODES = frozenset({
+    "Note", "MarkdownNote", "Reroute", "PrimitiveNode",
+    "GetNode", "SetNode", "easy bookmark",
+    "Fast Groups Bypasser (rgthree)", "Fast Groups Muter (rgthree)", "Fast Muter (rgthree)",
+    "Fast Bypasser (rgthree)", "Label (rgthree)", "Bookmark (rgthree)", "Fast Actions Button (rgthree)",
+    "Node Collector (rgthree)", "Mute / Bypass Repeater (rgthree)", "Mute / Bypass Relay (rgthree)",
+    "Reroute (rgthree)", "Random Unmuter (rgthree)", "Power Conductor (rgthree)"})
+WF_MODEL_EXTS = (".safetensors", ".gguf", ".ckpt", ".pt", ".pth", ".bin", ".sft", ".onnx")
+# REV-2: a widget value that names a model file looks like a path: no pattern characters,
+# no whitespace, and a name before the extension.
+_WF_FILE_VALUE = re.compile(r"^[^*?\[\]\s]*[^*?\[\]\s/\\.][^*?\[\]\s]*$")
+
+
+def _wf_file_value(v):
+    return (isinstance(v, str) and len(v) <= 300 and v.lower().endswith(WF_MODEL_EXTS)
+            and bool(_WF_FILE_VALUE.match(v)) and not v.replace("\\", "/").rsplit("/", 1)[-1].startswith("."))
+
+
+def _wf_base(v):
+    return v.replace("\\", "/").rsplit("/", 1)[-1]
+_WF_FILE_BAD = re.compile(r"[^A-Za-z0-9 ._()\-]")
+_WF_LOCK = threading.Lock()
+_WF_CACHE = {}         # (lane id, key) -> (fetched at, value)
+_WF_FETCHING = {}      # (lane id, key) -> Lock: one outbound read per key at a time
+
+
+class WorkflowError(Exception):
+    def __init__(self, code, sentence):
+        super().__init__(sentence)
+        self.code, self.sentence = code, sentence
+
+
+def _wf_answer(fn, *args):
+    try:
+        return fn(*args)
+    except WorkflowError as e:
+        return {"ok": False, "error": e.sentence}, e.code
+
+
+def _wf_cached(lane, key, ttl, fetch):
+    k = (lane["id"], key)
+    with _WF_LOCK:
+        hit = _WF_CACHE.get(k)
+        if hit and time.time() - hit[0] < ttl:
+            return hit[1]
+        gate = _WF_FETCHING.setdefault(k, threading.Lock())
+    with gate:
+        with _WF_LOCK:
+            hit = _WF_CACHE.get(k)
+            if hit and time.time() - hit[0] < ttl:
+                return hit[1]
+        value = fetch()
+        with _WF_LOCK:
+            _WF_CACHE[k] = (time.time(), value)
+        return value
+
+
+def _wf_forget(lane, key):
+    with _WF_LOCK:
+        _WF_CACHE.pop((lane["id"], key), None)
+
+
+def _wf_get_bytes(lane, path, limit):
+    """GET a lane path -> (bytes, content type): at most `limit` bytes, within
+    WF_TIMEOUT, never following a redirect (the reader _setup_get_json uses)."""
+    deadline = time.monotonic() + WF_TIMEOUT
+    with _SETUP_OPENER.open(urllib.request.Request(lane_url(lane, path)), timeout=WF_TIMEOUT) as r:
+        return _read_by(r, deadline, limit), (r.headers.get("Content-Type") or "")
+
+
+def _wf_json(lane, path, limit=WF_LIST_LIMIT, timeout=WF_TIMEOUT):
+    return _setup_get_json(lane_url(lane, path), timeout, limit)
+
+
+def _wf_userdata_path(file):
+    return "/api/userdata/" + urllib.parse.quote("workflows/" + file, safe="")
+
+
+def _wf_str(v, n):
+    return v[:n] if isinstance(v, str) else ""
+
+
+def _wf_strs(v, count, n):
+    return [x[:n] for x in v if isinstance(x, str) and x][:count] if isinstance(v, list) else []
+
+
+def _wf_num(v):
+    return v if isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0 else None
+
+
+def _wf_link(v):
+    """An http(s) address from a lane's file, for the page to show as a link -- or None."""
+    if not isinstance(v, str) or len(v) > 2000:
+        return None
+    return v if urllib.parse.urlsplit(v).scheme in ("http", "https") else None
+
+
+def _wf_version(v):
+    m = re.match(r"^\D*(\d+(?:\.\d+)*)", v or "")
+    return tuple(int(x) for x in m.group(1).split(".")) if m else None
+
+
+def _wf_lane(lane_id):
+    """-> (lane, its latest poll state), or raises: an unknown or non-ComfyUI lane
+    is a 400; a lane whose latest poll found it down says so in a sentence."""
+    lane = LANE_BY_ID.get(lane_id if isinstance(lane_id, str) else "")
+    if not lane or lane_kind(lane) != "comfy":
+        raise WorkflowError(400, "Pick one of this app's ComfyUI machines.")
+    with STATE_LOCK:
+        st = dict(LANE_STATE.get(lane["id"]) or {})
+    if st.get("checked") and not st.get("up"):
+        raise _wf_down(lane)
+    return lane, st
+
+
+def _wf_down(lane):
+    return WorkflowError(502, "%s is not answering right now. Start its ComfyUI, then look again." % lane["name"])
+
+
+def _wf_templates(lane):
+    """The lane's own template index, flattened: name -> the fields the page shows."""
+    def fetch():
+        raw = _wf_json(lane, "/templates/index.json")
+        out = {}
+        for cat in raw if isinstance(raw, list) else []:
+            if not isinstance(cat, dict):
+                continue
+            ctype = cat.get("type") if cat.get("type") in WF_MEDIA else "other"
+            for t in cat.get("templates") if isinstance(cat.get("templates"), list) else []:
+                name = t.get("name") if isinstance(t, dict) else None
+                if not isinstance(name, str) or not name or len(name) > 200 or name in out:
+                    continue
+                sub = t.get("mediaSubtype")
+                out[name] = {
+                    "name": name, "title": _wf_str(t.get("title"), 200) or name,
+                    "description": _wf_str(t.get("description"), 1000),
+                    "tags": _wf_strs(t.get("tags"), 12, 60), "models": _wf_strs(t.get("models"), 12, 100),
+                    "size": _wf_num(t.get("size")), "usage": _wf_num(t.get("usage")) or 0,
+                    "date": _wf_str(t.get("date"), 20),
+                    "local": t.get("openSource") is not False,   # false = a cloud (paid API) template
+                    "packs": _wf_strs(t.get("requiresCustomNodes"), 20, 100),
+                    "min_version": _wf_str(t.get("minComfyUIVersion"), 20) or None,
+                    "tutorial": _wf_link(t.get("tutorialUrl")),
+                    "thumb_ext": sub if t.get("mediaType") == "image" and sub in ("webp", "png") else None,
+                    "category": _wf_str(cat.get("title"), 80), "type": ctype,
+                }
+        return out
+    return _wf_cached(lane, "index", WF_CACHE_SECONDS, fetch)
+
+
+def _wf_mine(lane):
+    """The workflows saved in the lane's own Workflows panel: file -> {file, size, modified}."""
+    def fetch():
+        raw = _wf_json(lane, "/api/userdata?dir=workflows&full_info=true")
+        out = {}
+        for e in raw if isinstance(raw, list) else []:
+            path = e.get("path") if isinstance(e, dict) else None
+            if isinstance(path, str) and path.lower().endswith(".json") and len(path) <= 400:
+                out[path] = {"file": path, "size": _wf_num(e.get("size")), "modified": _wf_num(e.get("modified"))}
+        return out
+    return _wf_cached(lane, "mine", WF_CACHE_SECONDS, fetch)
+
+
+def _wf_listing(lane, kind):
+    try:
+        return _wf_templates(lane) if kind == "template" else _wf_mine(lane)
+    except Exception:
+        raise _wf_down(lane)
+
+
+def _wf_combo_files(spec):
+    """One /object_info node entry -> the model-file options of its required/optional
+    COMBO inputs (both dropdown shapes pool_names reads), or None when it has no COMBO."""
+    inputs = spec.get("input") if isinstance(spec, dict) else None
+    found, files = False, set()
+    for section in ("required", "optional"):
+        fields = inputs.get(section) if isinstance(inputs, dict) else None
+        for opts in fields.values() if isinstance(fields, dict) else []:
+            if not (isinstance(opts, list) and opts):
+                continue
+            if isinstance(opts[0], list):
+                candidates = opts[0]
+            elif opts[0] == "COMBO" and len(opts) > 1 and isinstance(opts[1], dict):
+                candidates = opts[1].get("options") or []
+            else:
+                continue
+            found = True
+            files.update(o for o in candidates if isinstance(o, str) and o.lower().endswith(WF_MODEL_EXTS))
+    return frozenset(files) if found else None
+
+
+def _wf_nodes(lane):
+    """ONE bounded /object_info per lane (the read W2's Setup does) -> {node class: the
+    model files its dropdowns list, or None when it has no dropdown}."""
+    def fetch():
+        info = _wf_json(lane, "/object_info", SETUP_POOLS_READ_LIMIT, SETUP_POOLS_TIMEOUT)
+        if not isinstance(info, dict):
+            raise ValueError("/object_info is not a node list")
+        return {cls: _wf_combo_files(spec) for cls, spec in info.items()}
+    return _wf_cached(lane, "nodes", WF_NODES_SECONDS, fetch)
+
+
+def _wf_folders(lane):
+    raw = _wf_cached(lane, "folders", WF_CACHE_SECONDS, lambda: _wf_json(lane, "/models", SETUP_READ_LIMIT))
+    return {x for x in raw if isinstance(x, str)} if isinstance(raw, list) else set()
+
+
+def _wf_folder_files(lane, folder):
+    """A model folder the lane listed -> its file names, with and without subfolders."""
+    raw = _wf_cached(lane, "models:" + folder, WF_CACHE_SECONDS,
+                     lambda: _wf_json(lane, "/models/" + urllib.parse.quote(folder, safe="")))
+    names = set()
+    for x in raw if isinstance(raw, list) else []:
+        if isinstance(x, str):
+            names.add(x)
+            names.add(x.replace("\\", "/").rsplit("/", 1)[-1])
+    return names
+
+
+def _wf_needs(wf):
+    """A workflow's JSON -> (node class names, [{directory, name, url}], [(node class,
+    file)]), over its nodes and every subgraph's. A subgraph's own id appears as a node
+    type and is not a class; neither are the page's own UI-only nodes. The last list is
+    every widget value that ends in a model extension (REV-1: hand-saved workflows name
+    their files only there)."""
+    if not isinstance(wf, dict):
+        raise ValueError("not a workflow")
+    defs = wf.get("definitions") if isinstance(wf.get("definitions"), dict) else {}
+    subs = [s for s in (defs.get("subgraphs") or []) if isinstance(s, dict)] \
+        if isinstance(defs.get("subgraphs"), list) else []
+    sub_ids = {s.get("id") for s in subs}
+    types, models, seen, widget_files = set(), [], set(), []
+    for g in [wf] + subs:
+        for n in g.get("nodes") if isinstance(g.get("nodes"), list) else []:
+            if not isinstance(n, dict):
+                continue
+            t = n.get("type")
+            wv = n.get("widgets_values")
+            loads = [v for v in (wv if isinstance(wv, list) else (wv.values() if isinstance(wv, dict) else []))
+                     if _wf_file_value(v)]
+            if isinstance(t, str) and t and t not in sub_ids and t not in WF_UI_ONLY_NODES:
+                types.add(t)
+                widget_files += [(t, v) for v in loads if (t, v) not in widget_files]
+            # REV-2: what a node LOADS is its widget value; properties.models is the
+            # author's hint, so it counts only for a node with no file widget, or
+            # when it names the same file the widget does.
+            loaded = {_wf_base(v) for v in loads}
+            props = n.get("properties") if isinstance(n.get("properties"), dict) else {}
+            for m in props.get("models") if isinstance(props.get("models"), list) else []:
+                if not (isinstance(m, dict) and isinstance(m.get("name"), str) and m["name"]
+                        and isinstance(m.get("directory"), str) and m["directory"]):
+                    continue
+                if loads and _wf_base(m["name"]) not in loaded:
+                    continue
+                key = (m["directory"], m["name"])
+                if key not in seen:
+                    seen.add(key)
+                    models.append({"directory": m["directory"][:200], "name": m["name"][:300],
+                                   "url": _wf_link(m.get("url"))})
+    return sorted(types), models, widget_files
+
+
+def _wf_readiness(lane, st, kind, name, entry):
+    packs = entry.get("packs") or [] if kind == "template" else []
+    min_version = entry.get("min_version") if kind == "template" else None
+    out = {"state": "unknown", "missing_models": [], "missing_nodes": [], "packs": packs, "min_version": min_version}
+    path = ("/templates/%s.json" % urllib.parse.quote(name, safe="") if kind == "template"
+            else _wf_userdata_path(name))
+    try:
+        types, models, widget_files = _wf_cached(lane, "needs:%s:%s" % (kind, name), WF_CACHE_SECONDS,
+                                                 lambda: _wf_needs(_wf_json(lane, path, WF_WORKFLOW_LIMIT)))
+        known, folders = _wf_nodes(lane), _wf_folders(lane)
+        missing_models = [m for m in models
+                          if m["directory"] not in folders or m["name"] not in _wf_folder_files(lane, m["directory"])]
+        # REV-1: a file named only in a widget must be one of the lane's own dropdown
+        # options for that class (exact: ComfyUI stores the path as it lists it). A
+        # file properties.models already names is judged there; a class this lane
+        # lacks is a missing node; a class with no dropdown has no list to be in.
+        listed = {_wf_base(m["name"]) for m in models}
+        missing_models += [{"directory": None, "name": v, "node": cls, "url": None}
+                           for cls, v in widget_files
+                           if _wf_base(v) not in listed and known.get(cls) is not None and v not in known[cls]]
+    except Exception:
+        return out     # the lane did not answer one of these reads: say "can't tell", never "ready"
+    out["missing_nodes"] = [t for t in types if t not in known]
+    out["missing_models"] = missing_models
+    have, need = _wf_version(st.get("comfy")), _wf_version(min_version)
+    if have and need and have < need:
+        out["state"] = "needs_version"
+    elif out["missing_nodes"]:
+        out["state"] = "needs_nodes"
+    elif missing_models:
+        out["state"] = "needs_models"
+    else:
+        out["state"] = "ready"
+    return out
+
+
+def workflows_list(lane_id):
+    """GET /api/workflows?lane= -> the lane's templates and saved workflows."""
+    lane, st = _wf_lane(lane_id)
+    out = {"ok": True, "lane": lane["id"], "templates": [], "mine": [], "version": st.get("comfy") or None}
+    fails = 0
+    try:
+        out["templates"] = [dict({k: v for k, v in t.items() if k != "thumb_ext"}, thumb=bool(t["thumb_ext"]))
+                            for t in _wf_templates(lane).values()]
+    except Exception:
+        fails += 1
+        out["templates_error"] = "%s did not list its templates." % lane["name"]
+    try:
+        out["mine"] = list(_wf_mine(lane).values())
+    except Exception:
+        fails += 1
+        out["mine_error"] = "%s did not list its saved workflows." % lane["name"]
+    if fails == 2:
+        raise _wf_down(lane)
+    with _WF_LOCK:
+        hit = _WF_CACHE.get((lane["id"], "nodes"))
+    out["nodes_known"] = bool(hit and time.time() - hit[0] < WF_NODES_SECONDS)
+    return out, 200
+
+
+def workflows_ready(q, raw_query):
+    """GET /api/workflows/ready?lane=&kind=template|mine&names=a,b,c -> per name
+    what it still needs on that lane. Names are sent comma-joined, each
+    percent-encoded, so a saved file with a comma in its name survives."""
+    lane, st = _wf_lane((q.get("lane") or [""])[0])
+    kind = (q.get("kind") or [""])[0]
+    if kind not in ("template", "mine"):
+        raise WorkflowError(400, "Say which list: template or mine.")
+    m = re.search(r"(?:^|&)names=([^&]*)", raw_query or "")
+    names = [urllib.parse.unquote_plus(x) for x in m.group(1).split(",")] if m and m.group(1) else []
+    if not names:
+        raise WorkflowError(400, "Name at least one workflow.")
+    if len(names) > WF_READY_MAX:
+        raise WorkflowError(400, "Ask about at most %d workflows at a time." % WF_READY_MAX)
+    listing = _wf_listing(lane, kind)
+    if any(n not in listing for n in names):
+        raise WorkflowError(400, "That workflow is not on %s. Refresh the list." % lane["name"])
+    return {"ok": True, "lane": lane["id"], "kind": kind,
+            "ready": {n: _wf_readiness(lane, st, kind, n, listing[n]) for n in names}}, 200
+
+
+def workflows_thumb(q):
+    """GET /api/workflows/thumb?lane=&name= -> (bytes, content type) of a template's
+    own thumbnail on that lane, or None (webp/png only, at most 2 MiB)."""
+    try:
+        lane, _ = _wf_lane((q.get("lane") or [""])[0])
+        entry = _wf_templates(lane).get((q.get("name") or [""])[0])
+        if not entry or not entry["thumb_ext"]:
+            return None
+        data, ctype = _wf_get_bytes(lane, "/templates/%s-1.%s" % (urllib.parse.quote(entry["name"], safe=""),
+                                                                   entry["thumb_ext"]), WF_THUMB_LIMIT)
+    except Exception:
+        return None
+    ctype = ctype.split(";")[0].strip().lower()
+    return (data, ctype) if ctype in WF_THUMB_TYPES and data else None
+
+
+def _wf_file_name(title, n):
+    base = re.sub(r"\s+", " ", _WF_FILE_BAD.sub("", title or "")).strip(" .")[:120].strip(" .") or "Workflow"
+    return "%s%s.json" % (base, "" if n == 1 else " (%d)" % n)
+
+
+def _wf_post(lane, path, data):
+    """POST bytes to a lane path -> the status code (a redirect is refused, not followed)."""
+    req = urllib.request.Request(lane_url(lane, path), data=data, method="POST",
+                                 headers={"Content-Type": "application/json"})
+    deadline = time.monotonic() + WF_TIMEOUT
+    try:
+        with _SETUP_OPENER.open(req, timeout=WF_TIMEOUT) as r:
+            _read_by(r, deadline, SETUP_READ_LIMIT)
+            return r.status
+    except urllib.error.HTTPError as e:
+        return e.code
+
+
+def workflows_open(body):
+    """POST /api/workflows/open {lane, kind, name}: a template is saved (never
+    overwriting) into the lane's own Workflows panel as "<its title>.json", then
+    " (2)", " (3)"...; a saved workflow is already there. -> the lane's address."""
+    if not isinstance(body, dict):
+        raise WorkflowError(400, "Send a JSON object.")
+    lane, _ = _wf_lane(body.get("lane"))
+    kind, name = body.get("kind"), body.get("name")
+    if kind not in ("template", "mine") or not isinstance(name, str) or not name:
+        raise WorkflowError(400, "Say which workflow to open.")
+    entry = _wf_listing(lane, kind).get(name)
+    if entry is None:
+        raise WorkflowError(400, "That workflow is not on %s. Refresh the list." % lane["name"])
+    url = "http://%s:%d/" % (lane["host"], lane["port"])
+    if kind == "mine":
+        return {"ok": True, "url": url}, 200
+    try:
+        data, _ = _wf_get_bytes(lane, "/templates/%s.json" % urllib.parse.quote(name, safe=""), WF_WORKFLOW_LIMIT)
+        if not isinstance(json.loads(data.decode("utf-8")), dict):
+            raise ValueError("not a workflow")
+        _wf_forget(lane, "mine")
+        taken = {f.lower() for f in _wf_mine(lane)}
+    except Exception:
+        raise _wf_down(lane)
+    for n in range(1, 100):
+        fname = _wf_file_name(entry["title"], n)
+        if fname.lower() in taken:
+            continue
+        try:
+            code = _wf_post(lane, _wf_userdata_path(fname) + "?overwrite=false", data)
+        except Exception:
+            raise _wf_down(lane)
+        if code == 409:
+            continue
+        _wf_forget(lane, "mine")
+        if 200 <= code < 300:
+            return {"ok": True, "url": url, "saved": fname}, 200
+        raise WorkflowError(502, "%s did not save the workflow (it answered %d)." % (lane["name"], code))
+    raise WorkflowError(409, "There are already 99 copies of this template on %s." % lane["name"])
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     server_version = "GenerationCenter/1.0"
@@ -8139,6 +8581,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(*self.api_catalog_loras(q))
             if u.path == "/api/lora/download":
                 return self.send_json(*self.api_lora_download_status(q))
+            if u.path == "/api/workflows":
+                return self.send_json(*_wf_answer(workflows_list, (q.get("lane") or [""])[0]))
+            if u.path == "/api/workflows/ready":
+                return self.send_json(*_wf_answer(workflows_ready, q, u.query))
+            if u.path == "/api/workflows/thumb":
+                thumb = workflows_thumb(q)
+                return self.send_blob(*thumb) if thumb else self.send_json({"error": "not found"}, 404)
             self.send_json({"error": "not found"}, 404)
         except BrokenPipeError:
             pass
@@ -8607,6 +9056,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(*self.api_lora_download_start(self.read_json()))
             if u.path == "/api/lora/download/cancel":
                 return self.send_json(*self.api_lora_download_cancel(self.read_json()))
+            if u.path == "/api/workflows/open":
+                return self.send_json(*_wf_answer(workflows_open, self.read_json()))
             self.send_json({"error": "not found"}, 404)
         except BrokenPipeError:
             pass
