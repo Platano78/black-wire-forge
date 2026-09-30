@@ -352,6 +352,24 @@ harvested_path = os.path.join(new_srv.SEQ_MEDIA_DIR, sid5, "takes", "%s.mp4" % O
 with open(harvested_path, "rb") as f:
     check("the harvested bytes match the source", f.read() == CLIP_BYTES)
 
+# A job finishing while the page holds its rev: the harvest only records the file,
+# so an op on the rev read BEFORE it must not 409.
+with open(os.path.join(STORE_T, "outputs", "harvest_race.mp4"), "wb") as f:
+    f.write(CLIP_BYTES)
+RACE_JOB = {"id": "harvrace1", "lane": "t", "kind": "video", "status": "done",
+            "sequence_id": sid5, "slot_id": slot5,
+            "outputs": [{"filename": "harvest_race.mp4", "subfolder": "", "type": "output", "media": "video"}]}
+with new_srv.JOBS_LOCK:
+    new_srv.JOBS[RACE_JOB["id"]] = dict(RACE_JOB)
+new_srv.seq_add_take(sid5, slot5, RACE_JOB["id"])
+rev_held = new_srv.seq_get(sid5)[0]["rev"]
+new_srv.seq_harvest(new_srv.LANE_BY_ID["t"], new_srv.JOBS[RACE_JOB["id"]])
+b_race, c_race = new_srv.seq_op({"id": sid5, "rev": rev_held, "op": "set_title", "title": "after harvest"})
+check("a harvest that only records the file does not 409 an op on the rev read before it",
+      c_race == 200, (c_race, b_race.get("error")))
+take_race = next(t for t in new_srv.seq_get(sid5)[0]["slots"][0]["takes"] if t["job_id"] == RACE_JOB["id"])
+check("...and the take's file is recorded", take_race["file"] == "takes/harvrace1.mp4", take_race)
+
 FAIL_JOB = {"id": "harvfail1", "lane": "t", "kind": "video", "status": "done",
             "sequence_id": sid5, "slot_id": slot5,
             "outputs": [{"filename": "does_not_exist.mp4", "subfolder": "", "type": "output", "media": "video"}]}

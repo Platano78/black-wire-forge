@@ -132,7 +132,8 @@ STORE = os.path.join(SCRATCH, "store_t")
 os.makedirs(os.path.join(STORE, "outputs"))
 PORT_T = free_port()
 FAKE_T = subprocess.Popen([sys.executable, os.path.join(HERE, "fixtures", "fake_comfy.py"),
-                           "--port", str(PORT_T), "--store", STORE],
+                           "--port", str(PORT_T), "--store", STORE,
+                           "--view-gate", os.path.join(SCRATCH, "view.gate")],
                           cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 for _ in range(100):
     try:
@@ -576,6 +577,30 @@ if HEAD_MODE and CONT_MODE and JACK:
     check("F5: the fake lane's captured prompt carries sing_audio = the adopted song", len(up) == 1 and why is None, (why, up))
     check("F5: the shot's take records the adopted song",
           slot_of(sid, h1)["takes"][-1]["inputs"].get("sing", {}).get("song") == "made_earlier", slot_of(sid, h1)["takes"][-1]["inputs"])
+
+    # -----------------------------------------------------------------------
+    print("\nRS3 race: the background song-length copy must not 409 the person's next op")
+    seq, _ = mod.seq_create({"title": "race", "mode": "sequence"})
+    sid = seq["id"]
+    b, c = op(sid, "add_slot", lane="sound", cap="audio", mode="sfx", values={"prompt": "the song"})
+    r_slot = b["added_slot_id"]
+    DUR["slow_song"] = DUR_LONG
+    make_job("slow_song", "slow_song.flac", b"fLaC" + os.urandom(512), "audio", "sfx", "audio")
+    b, c = op(sid, "adopt_take", slot_id=r_slot, job_id="slow_song")   # starts the probe; its copy is held at /view
+    check("race: adopting the song -> 200", c == 200, b)
+    rev_read = get(sid)["rev"]
+    open(os.path.join(SCRATCH, "view.gate"), "w").close()               # the lane serves the file now
+    end = time.time() + 15
+    def _rec():
+        s_ = mod._seq_read(sid)
+        return next((t.get("file") for sl in s_["slots"] if sl["id"] == r_slot for t in sl["takes"]
+                     if t["job_id"] == "slow_song"), None)
+    while time.time() < end and not _rec():
+        time.sleep(0.02)
+    check("race: the background copy recorded the take's file", bool(_rec()), _rec())
+    b, c = mod.seq_op({"id": sid, "rev": rev_read, "op": "set_title", "title": "after the pick"})
+    check("race: an op on the rev read BEFORE the copy -> 200, not 409", c == 200, (c, b.get("error")))
+    check("race: the take's file is still recorded after that op", bool(_rec()), _rec())
 
 FAKE_T.terminate()
 print()

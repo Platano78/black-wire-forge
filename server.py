@@ -3757,7 +3757,11 @@ def seq_harvest(lane, job):
                         found = True
             if not found:
                 return
-            seq["rev"] += 1
+            # The write above only records the take's local cache path -- not a
+            # user-visible change (the take, its pick and its stale reasons were all
+            # set earlier, by ops that did bump rev), so NO rev bump: this runs from
+            # job_poller, and a bump 409s the op a person sends on the rev they
+            # already read. Every op re-reads from disk under SEQ_LOCK.
             seq["updated"] = time.time()
             _seq_write(seq)
     except SeqDamaged as e:
@@ -6721,7 +6725,11 @@ def _cut_ensure_take_file(sid, slot_id, job_id):
                         t["file"] = "takes/%s%s" % (job_id, ext)
                         found = True
             if found:
-                seq["rev"] += 1
+                # Recording a take's local cache path is not a user-visible change,
+                # so NO rev bump: this runs in the background (RS3's song probe),
+                # and a bump here 409s whatever op the person sends next on the rev
+                # they already read. Every op re-reads the sequence from disk under
+                # SEQ_LOCK, so the field cannot be lost.
                 seq["updated"] = time.time()
                 _seq_write(seq)
     return dest
