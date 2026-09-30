@@ -23,6 +23,9 @@ installing, and verifying each piece is actually working.
 Runs in the foreground; leave it running and use a second terminal for anything else.
 Or skip the copy: started with no `config.json`, the app opens a Setup page at
 http://127.0.0.1:3998 (this computer only) that finds ComfyUI, shows the file and writes it.
+If you tell it ComfyUI runs on the same computer and where its models folder is, each room can
+download its model files there in one click (sizes and licences shown first; set `HF_TOKEN` for
+gated repos); otherwise it shows an `hf download` command per file.
 `requirements.txt` is optional (see "Install" below) and, on modern distro Python, needs its
 own virtual environment rather than a global `pip install` — same command either way.
 

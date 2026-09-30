@@ -82,6 +82,14 @@
   code.cmd{display:block; background:var(--surface3); border:1px solid var(--divider); padding:8px;
     font-family:var(--mono); font-size:12px; overflow-wrap:anywhere; white-space:pre-wrap; margin:4px 0}
   details.alt > summary{cursor:pointer; color:var(--text-mid); font-size:13px}
+  /* W3: one-click downloads; the progress bar is index.html's UX-2 widget */
+  .dl{border-top:1px solid var(--hairline); padding:8px 0}
+  .dl-files{font-size:13px}
+  .dl-dests{font-size:12px; overflow-wrap:anywhere}
+  .progress-bar{position:relative; height:6px; border-radius:3px; background:var(--surface3); overflow:hidden;
+    margin:6px 0 0}
+  .progress-fill{position:absolute; top:0; bottom:0; left:0; width:0; background:var(--accent)}
+  .progress-label{font-family:var(--mono); font-size:11px; color:var(--text-mid); margin-top:2px}
 </style>
 </head>
 <body>
@@ -113,6 +121,21 @@
         <div class="field">
           <label for="c-name">Its name in Black Wire Forge (you can change it)</label>
           <input type="text" id="c-name" maxlength="80" autocomplete="off">
+        </div>
+        <div class="check">
+          <input type="checkbox" id="m-same">
+          <label for="m-same">ComfyUI runs on this computer</label>
+        </div>
+        <div id="m-box" hidden>
+          <p class="muted">Then Black Wire Forge can download a room's model files straight into ComfyUI's models
+            folder. Leave this off and each file shows a command to get it instead.</p>
+          <div class="row">
+            <div class="field grow"><label for="m-path">Its models folder</label>
+              <input type="text" id="m-path" placeholder="/home/you/ComfyUI/models" autocomplete="off"
+                spellcheck="false"></div>
+            <button type="button" class="btn" id="m-check">Use this folder</button>
+          </div>
+          <p id="m-status" role="status" aria-live="polite"></p>
         </div>
       </div>
       <p class="muted">Running somewhere else, or on another port? Type where it is.</p>
@@ -160,8 +183,8 @@
     <h1 id="h2" tabindex="-1">What do you want to make first?</h1>
     <p>Each room needs its own model files in ComfyUI. Open a room to see the files, their sizes and their
       licences, with a command to get each one.</p>
-    <p class="muted">Nothing downloads from here, and nothing here is saved. You can look now or later: press Next
-      when you are ready.</p>
+    <p class="muted" id="r-note">Nothing downloads from here, and nothing here is saved. You can look now or later:
+      press Next when you are ready.</p>
     <p id="r-status" role="status" aria-live="polite"></p>
     <div id="r-list"></div>
   </section>
@@ -202,6 +225,9 @@
       <input type="radio" name="who" id="who-network" value="network">
       <label for="who-network">Other devices on my home network</label>
     </div>
+    <p id="who-dl" class="panel warn" hidden>Model downloads carry on only while Black Wire Forge is open to this
+      computer alone. With other devices allowed, they stop when you press Save and start; what has arrived stays,
+      and they carry on if you set it back to this computer only.</p>
     <div id="who-warn" class="panel warn" hidden>
       <p>Black Wire Forge has no password. Anyone who can reach this computer on your network can see everything
         you make and start new work.</p>
@@ -227,7 +253,7 @@
   "use strict";
   var $ = function(id){ return document.getElementById(id); };
   var S = {step: 1, path: null, comfy: null, process: false, tools: {}, guide: null,
-           guideTested: null, skip: false, who: "local", saving: false};
+           guideTested: null, skip: false, who: "local", saving: false, models: null, dl: null, dlTimer: null};
 
   function post(path, body){
     return fetch(path, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body || {})})
@@ -258,7 +284,8 @@
     $("progress").textContent = "Step " + n + " of 5";
     refresh();
     $("h" + n).focus();
-    if (n === 2) loadRooms();
+    if (n === 2) { loadRooms(); watchDownloads(true); } else watchDownloads(false);
+    if (n === 4) $("who-dl").hidden = !(S.who === "network" && S.dl && S.dl.running);
     if (n === 3 && !S.looked) { S.looked = true; lookForGuides(); }
     if (n === 5) preview();
   }
@@ -316,6 +343,26 @@
   $("c-again").onclick = function(){ findComfy({}, $("c-again-status")); };
   $("c-name").oninput = refresh;
 
+  // W3: "ComfyUI runs on this computer" + its models folder (declared, never guessed)
+  function useModels(path){
+    S.models = path;
+    say($("m-status"), path ? "Using " + path + ". Each room in the next step can download its files into it." : "",
+        path ? "ok" : "");
+  }
+  $("m-same").onchange = function(){
+    $("m-box").hidden = !this.checked;
+    if (!this.checked && S.models) post("/api/setup/models-folder", {path: null}).then(function(j){
+      if (j.ok) useModels(null); else { $("m-same").checked = true; $("m-box").hidden = false; say($("m-status"), j.error, "bad"); }
+    });
+  };
+  $("m-check").onclick = function(){
+    if (!$("m-path").value.trim()) { say($("m-status"), "Type the path of ComfyUI's models folder.", "bad"); $("m-path").focus(); return; }
+    say($("m-status"), "Checking the folder…");
+    post("/api/setup/models-folder", {path: $("m-path").value.trim()}).then(function(j){
+      if (j.ok) useModels(j.path); else { S.models = null; say($("m-status"), j.error, "bad"); }
+    }).catch(function(){ say($("m-status"), "Setup could not reach its own server. Is it still running?", "bad"); });
+  };
+
   function loadTools(){
     return fetch("/api/setup/state").then(function(r){ return r.json(); }).then(function(j){
       var t = j.tools || {};
@@ -366,7 +413,7 @@
     line.appendChild(el("span", "num", base(s.file)));
     line.appendChild(document.createTextNode(" \u00b7 " + gb(s.size) + " \u00b7 folder " + s.folder +
       (s.subdir ? "/" + s.subdir : "")));
-    if (installed) line.appendChild(el("span", "ok", " \u00b7 already in your ComfyUI"));
+    if (installed) line.appendChild(el("span", "ok", S.models ? " \u00b7 already installed" : " \u00b7 already in your ComfyUI"));
     box.appendChild(line);
     box.appendChild(el("div", "muted", s.licence ? "Licence: " + s.licence : "No stated licence: ask its author first."));
     var cmd = el("code", "cmd", command(s));
@@ -433,20 +480,135 @@
     });
     if (r.roles.length) body.appendChild(el("p", "muted",
       "<ComfyUI> in each command is your ComfyUI folder. The hf command comes with the huggingface_hub Python package."));
+    if (S.models && r.download) body.insertBefore(dlPanel(r), body.firstChild);
     d.appendChild(body);
     return d;
+  }
+
+  // ---- W3: a room's files in one click ----------------------------------
+  function dlPanel(r){
+    var box = el("div", "dl");
+    box.dataset.dlRoom = r.id;
+    var n = r.download.files;
+    if (n) {
+      box.appendChild(el("p", null, "Download " + n + " file" + (n === 1 ? "" : "s") + " (" + gb(r.download.bytes) +
+        "). Where each one will be saved:"));
+      var dests = el("ul", "dl-dests");
+      (r.download.to || []).forEach(function(t){ dests.appendChild(el("li", "num", t.file + " \u2192 " + t.dest)); });
+      box.appendChild(dests);
+      r.licences.forEach(function(l){
+        var p = el("p", "muted lic-line", l.name + ": " + l.summary + " ");
+        if (l.url) { var a = el("a", null, "Read it"); a.href = l.url; a.target = "_blank"; a.rel = "noopener"; p.appendChild(a); }
+        box.appendChild(p);
+      });
+      var go = el("button", "btn btn-primary dl-go", "Download " + n + " file" + (n === 1 ? "" : "s") + " (" +
+        gb(r.download.bytes) + ")");
+      go.type = "button";
+      go.onclick = function(){ startDownload(r, go, box); };
+      box.appendChild(go);
+    } else if (r.roles.length) box.appendChild(el("p", "ok", "Nothing left to download for this room."));
+    var msg = el("p");                 // say() sets className, so this is found by data-msg
+    msg.dataset.msg = "";
+    msg.setAttribute("role", "status");
+    box.appendChild(msg);
+    box.appendChild(el("div", "dl-prog"));
+    if (S.dl) paintRoom(box, S.dl);
+    return box;
+  }
+  function startDownload(r, btn, box){
+    btn.disabled = true;
+    var body = {room: r.id, bytes: r.download.bytes};
+    if (S.path === "yes" && S.comfy) { body.host = S.comfy.host; body.port = S.comfy.port; }
+    say(box.querySelector("[data-msg]"), "Starting…");
+    post("/api/downloads/start", body).then(function(j){
+      if (!j.ok) { btn.disabled = false; say(box.querySelector("[data-msg]"), j.error, "bad"); return; }
+      say(box.querySelector("[data-msg]"), j.queued ? "" : "Nothing left to download for this room.", j.queued ? "" : "ok");
+      btn.hidden = true;
+      pollDownloads();
+    }).catch(function(){ btn.disabled = false; say(box.querySelector("[data-msg]"), "Setup could not reach its own server. Is it still running?", "bad"); });
+  }
+  function stateWords(f){
+    return {queued: "waiting", running: gb(f.bytes) + " of " + gb(f.expected), done: "installed",
+            failed: f.error, skipped: f.error, cancelled: f.error || "cancelled"}[f.state] || f.state;
+  }
+  function paintRoom(box, d){
+    var prog = box.querySelector(".dl-prog"), mine = d.files.filter(function(f){ return f.room === box.dataset.dlRoom; });
+    prog.textContent = "";
+    if (!mine.length && !(d.parts && !d.running)) return;
+    if (mine.length) {   // the bar counts files still coming or landed; cancelled/failed ones are in the list only
+      var live = mine.filter(function(f){ return ["skipped", "failed", "cancelled"].indexOf(f.state) < 0; });
+      var tot = live.reduce(function(a, f){ return a + f.expected; }, 0), got = live.reduce(function(a, f){ return a + f.bytes; }, 0);
+      var pct = tot ? Math.floor(100 * got / tot) : 0, left = live.filter(function(f){ return f.state !== "done"; }).length;
+      if (tot) {
+        var bar = el("div", "progress-bar"), fill = el("div", "progress-fill");
+        fill.style.width = pct + "%";
+        bar.appendChild(fill);
+        bar.setAttribute("role", "progressbar");
+        bar.setAttribute("aria-valuenow", pct); bar.setAttribute("aria-valuemin", "0"); bar.setAttribute("aria-valuemax", "100");
+        bar.setAttribute("aria-label", "Download progress");
+        prog.appendChild(bar);
+        prog.appendChild(el("div", "progress-label", (left && d.running ? "Downloading: " : "Downloaded: ") + pct + "% (" +
+          gb(got) + " of " + gb(tot) + ")"));
+      }
+      var ul = el("ul", "dl-files");
+      mine.forEach(function(f){ ul.appendChild(el("li", f.state === "done" ? "ok" : (f.state === "failed" || f.state === "skipped") ? "bad" : "",
+        f.file + " (" + f.where + "): " + stateWords(f))); });
+      prog.appendChild(ul);
+    }
+    if (d.running) {
+      var c = el("button", "btn dl-cancel", "Cancel");
+      c.type = "button";
+      c.onclick = function(){ c.disabled = true; post("/api/downloads/cancel", {}).then(pollDownloads); };
+      prog.appendChild(c);
+    } else if (d.parts) {
+      var x = el("button", "btn dl-discard", "Discard partial files");
+      x.type = "button";
+      x.onclick = function(){
+        x.disabled = true;
+        post("/api/downloads/discard", {}).then(function(j){
+          say(box.querySelector("[data-msg]"), j.ok ? "Removed " + j.removed + " partial file" + (j.removed === 1 ? "" : "s") + "." +
+            (j.left ? " Left " + j.left + " alone: changed since Black Wire Forge wrote " + (j.left === 1 ? "it" : "them") +
+             ". Remove by hand only if you are sure." : "") : j.error, j.ok ? "ok" : "bad");
+          pollDownloads();
+        });
+      };
+      prog.appendChild(x);
+    }
+  }
+  function pollDownloads(){
+    return fetch("/api/downloads", {cache: "no-store"}).then(function(r){ return r.json(); }).then(function(d){
+      var before = S.dl;
+      S.dl = d;
+      if (!S.models && d.models && !before) {   // after a Setup restart: the folder the queue writes to
+        $("m-same").checked = true; $("m-box").hidden = false; $("m-path").value = d.models; useModels(d.models);
+      }
+      document.querySelectorAll("#r-list .dl[data-dl-room]").forEach(function(box){ paintRoom(box, d); });
+      // a file landed, or the queue stopped: refresh the Installed badges and the buttons
+      if (before && S.step === 2 && (before.done !== d.done || (before.running && !d.running))) loadRooms();
+    }).catch(function(){});
+  }
+  function watchDownloads(on){
+    if (S.dlTimer) { clearInterval(S.dlTimer); S.dlTimer = null; }
+    if (on) { pollDownloads(); S.dlTimer = setInterval(pollDownloads, 1000); }
   }
   function loadRooms(){
     var q = S.path === "yes" && S.comfy ? "?host=" + encodeURIComponent(S.comfy.host) + "&port=" + S.comfy.port : "";
     say($("r-status"), "Reading what each room needs…");
     return fetch("/api/setup/rooms" + q, {cache: "no-store"}).then(function(r){ return r.json(); }).then(function(j){
       var list = $("r-list"), group = null;
+      var open = [].map.call(list.querySelectorAll("details.room[open]"), function(d){ return d.dataset.room; });
       list.textContent = "";
+      $("r-note").textContent = S.models ? "Nothing downloads until you press a room's Download button, which shows " +
+        "the size and licences first. You can also press Next now and come back later." :
+        "Nothing downloads from here, and nothing here is saved. You can look now or later: press Next when you are ready.";
       j.rooms.forEach(function(r){
         if (r.group && r.group !== group) { group = r.group; list.appendChild(el("h2", "group", group)); }
-        list.appendChild(roomCard(r));
+        var card = roomCard(r);
+        if (open.indexOf(r.id) >= 0) card.open = true;
+        list.appendChild(card);
       });
-      say($("r-status"), j.comfy ? "Checked against your ComfyUI." :
+      say($("r-status"), j.comfy ? "Checked against your ComfyUI" + (j.models ? " and its models folder." : ".") :
+        j.models ? "Checked against your models folder." :
         "No ComfyUI to check against yet, so nothing is marked installed.");
     }).catch(function(){ say($("r-status"), "Setup could not reach its own server. Is it still running?", "bad"); });
   }
@@ -516,7 +678,11 @@
 
   // ---- step 4: who ----------------------------------------------------
   document.querySelectorAll("input[name=who]").forEach(function(r){
-    r.onchange = function(){ S.who = this.value; $("who-warn").hidden = S.who !== "network"; };
+    r.onchange = function(){
+      S.who = this.value;
+      $("who-warn").hidden = S.who !== "network";
+      $("who-dl").hidden = !(S.who === "network" && S.dl && S.dl.running);
+    };
   });
 
   // ---- step 5: the file -----------------------------------------------
@@ -553,6 +719,7 @@
   $("next").onclick = function(){ if (S.step === 5) save(); else show(S.step + 1); };
   $("back").onclick = function(){ if (S.step > 1) show(S.step - 1); };
   show(1);
+  pollDownloads();
 })();
 </script>
 </body>
