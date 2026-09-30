@@ -11,8 +11,8 @@ All notable changes to Black Wire Forge are recorded here.
   switch on a guide (an OpenAI-compatible chat endpoint, with a one-line "Test it"), choose who
   can open the app (this computer, or your home network with a plain warning), then read the
   exact `config.json` it will write. "Save and start" writes it (never over an existing file) and
-  restarts the app. Every other API answers 503 until then, and the `/api/setup/*` routes are gone
-  (404) once a config exists.
+  restarts the app. Until then the other APIs answer 503 (`/api/health` and the Setup routes
+  still answer), and the `/api/setup/*` routes are gone (404) once a config exists.
 
 - One box per room: the room's guide is where you say what you want. It fills the mode's real,
   editable fields under "What the guide filled in"; you still press Make. A question gets an
