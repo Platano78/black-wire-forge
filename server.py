@@ -8122,7 +8122,7 @@ def _models_folder_check(path):
     if len(path) > 4096 or "\x00" in path:
         return None, "That is not a folder path."
     if not os.path.isabs(path):
-        return None, ("Type the whole path, from the top of the drive (like /home/you/ComfyUI/models "
+        return None, ("Type the whole path, from the top of the drive (like /path/to/ComfyUI/models "
                       "or C:\\ComfyUI\\models).")
     if not os.path.exists(path):
         return None, "Nothing is at that path. Check the spelling."
