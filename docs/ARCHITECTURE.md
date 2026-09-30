@@ -56,10 +56,11 @@ prompts), `knowledge`, `caps` (per projection: `max_tokens` sent to the helper, 
 returns the guide, each projection's size (chars/4) and the helper's reported context;
 `POST /api/guide/chat` takes the room, the verbosity and the whole conversation, keeps the
 newest turns within a size budget (reporting how many it dropped), and returns the reply
-with `truncated` set when the helper stopped for length or the answer passed its cap. The
-server keeps no conversation: the page stores it per room (per sequence in the Cutting
-Room). `/api/helper` stays for API users, but the page no longer calls it: the prompt box's
-writing actions go to the room's guide (below).
+with `truncated` set when the helper stopped for length or the answer passed its cap. The page
+keeps the conversation per room (per sequence in the Cutting Room) and syncs it to the server,
+which stores it under `data/guide_history/` so it survives a reload or another device.
+`/api/helper` stays for API users, but the page no longer calls it: the prompt box's writing
+actions go to the room's guide (below).
 
 Every room names a guide: Sound (Music, Cover, Sound FX), Picture (Picture, Pixel Art,
 Clean-up, Textures), Characters (its own), Motion (Video, Talking Head), Object (3D) and Film

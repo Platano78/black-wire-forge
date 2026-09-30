@@ -13,9 +13,9 @@ run** — proved by a byte-size match against the copy on a working ComfyUI inst
 `models/` tree (checked directly with `stat`, 2026-09-24). A file that install has never
 run is marked **"not run by us"** and is not the recommended
 download, even when its Hub listing looks like a plausible match. Every "Source" repo/file was
-also confirmed live on the Hugging Face Hub (repo exists, file exists, size as shown) with the
-`hub_repo_details` / `hf_fs` MCP tools. Anything that could not be confirmed live says so
-instead of a URL. For GitHub node packages, existence was checked with `gh repo view`.
+also confirmed live on the Hugging Face Hub (repo exists, file exists, size as shown).
+Anything that could not be confirmed live says so instead of a URL. Every GitHub node package
+listed was checked to exist.
 
 **Discovery match**: each pack's `roles` dict (`engines/<pack>.py`) tells `server.py`'s
 `pick_model()` which filenames it will accept for a role (`engines/__init__.py`'s
@@ -99,7 +99,7 @@ converting by hand first.
 ### Remove deleting the file, not just the History entry
 
 Off by default: Remove only ever drops BWF's own History record — the picture/clip stays on the
-lane's own disk, same as always (AGENTS.md's "this app never deletes your files"). Three setups,
+lane's own disk, same as always. Three setups,
 opt-in per lane via `outputs.dir` in `config.json` (same shape as `downloads.loras_dir` above):
 
 - **Not set at all (the default).** Remove behaves exactly as before; its tooltip says the file

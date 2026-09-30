@@ -58,6 +58,17 @@ must not be relied on to make an internet-exposed deployment safe**:
   cap. A reachable client can consume server memory, local disk, lane storage, and
   rendering capacity just by sending large or many requests. If you share this app with
   others, put a reverse proxy with body-size and rate limits in front of it.
+- **Opt-in file actions are open to anyone who can reach the app.** With `"downloads"` set
+  on a lane, anyone who can reach the app can make it download a style pack into that lane's
+  `loras_dir`: only a `.safetensors` file listed in the app's own Hugging Face catalog, over
+  HTTPS from Hugging Face hosts, at most `max_bytes` (4 GiB by default), one at a time per
+  lane. With `"outputs"` set, anyone who can reach the app can delete a finished job's output
+  file in that folder with Remove (never one a Cutting Room sequence still uses). Both are off
+  in a fresh config.
+- **Guide conversations are kept on disk.** Each room's guide conversation is saved as plain
+  JSON under `data/guide_history/` on the machine running the app (not encrypted by the app),
+  and anyone who can reach the app can read it back. **New song** (the word follows the room)
+  clears it.
 - **The optional prompt helper is a third party.** If `"helper"` is configured in
   `config.json`, "Help me write this", "Describe this picture", the room guides and
   "Not right? Tell the guide" send your text (and, for "Describe this picture" and "Not

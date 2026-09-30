@@ -21,6 +21,8 @@ installing, and verifying each piece is actually working.
     python3 server.py                                            # http://127.0.0.1:3998
 
 Runs in the foreground; leave it running and use a second terminal for anything else.
+Or skip the copy: started with no `config.json`, the app opens a Setup page at
+http://127.0.0.1:3998 (this computer only) that finds ComfyUI, shows the file and writes it.
 `requirements.txt` is optional (see "Install" below) and, on modern distro Python, needs its
 own virtual environment rather than a global `pip install` — same command either way.
 
@@ -159,8 +161,9 @@ own.
   text-only), so it never has to take your word for either. A **Compact / Verbose** toggle picks how much the guide knows; Compact is the
   default and suits small models, and if the helper reports a context too small for your
   choice the panel says so but never switches it for you. A reply cut short by its length
-  limit is flagged, never silently trimmed. The conversation stays in your browser (per
-  sequence in the Cutting Room) and is sent with each turn. With no `helper` configured the
+  limit is flagged, never silently trimmed. The conversation is kept per room (per sequence
+  in the Cutting Room) in your browser and, so it survives a reload or another device, on the
+  app's own machine under `data/guide_history/`; it is sent with each turn. With no `helper` configured the
   panel still shows the guide's plain guidance and how to add a helper. Guide chat waits up
   to `timeout_s` (120 seconds when unset), since a verbose guide is slow on a small box. The
   panel states how much context each choice needs (the guide plus 4,096 tokens for the

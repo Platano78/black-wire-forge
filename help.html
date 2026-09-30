@@ -170,7 +170,11 @@
       from what is there now. <strong>Start over</strong> begins again. It never starts a job: you still press Make.</li>
     <li><strong>Talking to it:</strong> ask it a question instead ("what's the difference between these two
       engines?") and it just answers, filling nothing. In a mode it does not write for (a clean-up tool, the
-      Cutting Room), its box is for questions. The conversation stays in your browser.</li>
+      Cutting Room), its box is for questions. The conversation is kept for each room, in your browser and on
+      the machine running the app, so it is still there after a reload or on another device.</li>
+    <li><strong>New song</strong> (New picture, New video... the word follows the room) clears the
+      conversation and puts the room's fields and added files back to how they start, for a fresh start;
+      History is untouched. <strong>Undo</strong> brings it all back for 10 seconds.</li>
     <li><strong>Words for another room:</strong> the 3D room's picture mode has no prompt of its own. Say what the
       model should be of in its box, press <strong>Help me write this</strong>, check what the guide wrote,
       and <strong>Use these</strong> takes the words to the Picture room.</li>
@@ -207,7 +211,10 @@
       Picking something from another room takes you to that room.</li>
     <li><strong>Use again</strong> puts that job's settings back in the inspector.</li>
     <li><strong>Stop</strong> ends a job that is still going.</li>
-    <li><strong>Forget</strong> removes the record from History. The file itself is never deleted by this app.</li>
+    <li><strong>Remove</strong> (press it twice to confirm) takes the record out of History. The file itself stays
+      where the machine saved it, unless whoever runs the app has turned on file removal for that machine
+      (<code>"outputs"</code> in config.json); then Remove deletes the file too, but never one a Cutting Room
+      sequence still uses.</li>
   </ul>
 
   <h2 id="sharing-and-licences">Sharing and licences</h2>
@@ -261,6 +268,17 @@
       kept. A shot you opened and never touched is not kept, and an empty shot has a × to remove it.</li>
     <li><strong>Add sound.</strong> <strong>+ generate here</strong> on the SOUND lane starts at the length of the cut
       so far. Pick its take and it becomes the music bed under the whole film.</li>
+    <li><strong>Already made it?</strong> Any open shot has <strong>Use one I already made</strong>: it lists the
+      finished things of that kind in History, newest first by file name, and makes the one you choose that
+      shot's picked take. A song you made in the Music room can be the film's sound this way.</li>
+    <li><strong>Sing along (optional).</strong> Once the film has a picked sound take, a MiniMax-H3 video shot
+      made from a starting picture, or one that continues the shot before it, shows <strong>Sing along</strong>.
+      Tick it and that shot's next take is made to its part of the song, and the cut plays the song as one
+      track under the singing shots. The first singing shot has <strong>Starts at</strong> (seconds into the
+      song); a shot that continues it follows on by itself. The line under it says which part it sings. A shot
+      that would run past the end of the song is refused when you press Make. A new shot starts on the first
+      video engine the Video room lists, so to sing along with H3, make that shot in the Video room and bring
+      it in with <strong>Use one I already made</strong>.</li>
     <li><strong>Cut it.</strong> <strong>Cut the sequence</strong> joins every picked video shot in timeline order,
       with the music bed under them and one loudness pass over the whole film. Each video shot's Cut settings
       trim its length and add a title card. <strong>Watch the cut</strong> plays it in the monitor, and
@@ -279,7 +297,8 @@
   <ul>
     <li><strong>config.json</strong> lives next to <code>server.py</code> (or wherever
       <code>GENCENTER_CONFIG</code> points). It is not in the repo -- start from
-      <code>config.example.json</code>. There must be at least one lane; an empty
+      <code>config.example.json</code>, or start the app without one: it then opens a Setup page, on this
+      computer only, that finds ComfyUI, offers a guide and writes the file. There must be at least one lane; an empty
       <code>"lanes"</code> list is refused at startup, with a message saying so.</li>
     <li><strong>A lane</strong> is usually one machine running its own ComfyUI: an <code>id</code>, a
       <code>name</code> shown in the UI, and <code>host</code>/<code>port</code> for its ComfyUI API.

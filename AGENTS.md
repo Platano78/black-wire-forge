@@ -54,7 +54,8 @@ Ask, in this order, and stop at the first one that applies:
    ```
 
    It needs no `host`/`port` but **must** declare a non-empty `caps` (nothing about it is
-   discoverable until its binaries are). With the app running, the whole render is:
+   discoverable until its binaries are). The config is read once at start: restart the server
+   after editing it, and check `/api/lanes` lists `cpu` with `"up": true`. Then the whole render is:
 
    ```
    # 1. upload; keep the "name" it answers with
@@ -91,7 +92,7 @@ python3 -m venv .venv
 ```
 
 - Use the venv, never a global `pip install`: modern distro Python refuses a bare one (PEP 668
-  "externally managed environment"; confirmed on a stock Ubuntu 26.04/Python 3.14 box, exit 1).
+  "externally managed environment").
   **Once `.venv/` exists, use `.venv/bin/python` for everything** — including any one-off
   script YOU write to check or poll something: system `python3` does not see
   `requirements.txt`'s packages and hits `ModuleNotFoundError: PIL` (or numpy).
@@ -122,8 +123,8 @@ Against the running server (port 3998 by default; use the `"port"` in `config.js
 - `curl -s http://127.0.0.1:3998/api/health` → `{"ok": true, "port": 3998, "lanes": N}` (N =
   lane count): the app is up, not any lane.
 - `curl -s http://127.0.0.1:3998/api/lanes` → `{"lanes": [...], "title": ..., "fleet_llm": ...}`.
-  Per lane: `"up"` — whether its latest poll reached the lane's ComfyUI `/system_stats`
-  (`"checked"`: that poll's time; when `false`, `"err"` has the raw connection error).
+  Per lane: `"up"` — a ComfyUI lane's latest poll reached its `/system_stats` (a process lane:
+  its programs are on `PATH`); `"checked"`: that poll's time; when `false`, `"err"` says why.
   `"caps"` — the capabilities (`"image"`, `"video"`, `"audio"`, `"3d"`) it offers after
   discovery; `"declared_caps"` — what `config.json` asked for. `"able"` — keyed by
   **mode/ability name** (`"t2i"`, `"song"`, `"fl2va"`...), not capability: whether the found
@@ -154,8 +155,6 @@ Against the running server (port 3998 by default; use the `"port"` in `config.js
   gives the room's mode and values (`400` if it names a mode or field the room lacks).
 
 ## Make something and get the file
-
-Shapes from `server.py`'s `generate()`, `jobs_payload()`, `proxy_view()`.
 
 **1. Submit** — `POST /api/generate`, JSON, at minimum `lane`, `kind`, `mode`, `prompt`
 (everything else has a default):

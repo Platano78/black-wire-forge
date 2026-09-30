@@ -6,6 +6,43 @@ All notable changes to Black Wire Forge are recorded here.
 
 ### Added
 
+- A first-run **Setup** page. Started with no `config.json`, the app listens on `127.0.0.1:3998`
+  only and opens four steps: find ComfyUI (this machine's usual ports, or an address you type),
+  switch on a guide (an OpenAI-compatible chat endpoint, with a one-line "Test it"), choose who
+  can open the app (this computer, or your home network with a plain warning), then read the
+  exact `config.json` it will write. "Save and start" writes it (never over an existing file) and
+  restarts the app. Every other API answers 503 until then, and the `/api/setup/*` routes are gone
+  (404) once a config exists.
+
+- One box per room: the room's guide is where you say what you want. It fills the mode's real,
+  editable fields under "What the guide filled in"; you still press Make. A question gets an
+  answer instead of a draft, including a plain prose reply from a small model that ignores the
+  reply format. "Fix it" on a check before Make sends the problems to the guide for a corrected
+  draft.
+
+- The engine picker names the model each mode uses and, once the lane has it, the file it loads
+  (e.g. "ACE-Step song model · acestep_v1.5_turbo.safetensors"). `/api/engines` carries both per
+  mode (`model`, `model_file`). A Cutting Room shot's Make gets the same "that's the same as the
+  one still rendering" check as a room's Make.
+
+- Songs for two voices: the Music3 writer puts the singers in the caption and short
+  `[rap vocal]`/`[sung vocal]` role tags in the lyrics; ACE-Step, YuE2 and Cover say they sing
+  with one voice and point to Music3. Every song mode now flags a lyric line that is a stage
+  direction (a whole line in parentheses, or a leading "(Rap) ") before it gets sung; "Make anyway"
+  still works.
+
+- **New song** (New picture, New video... per room) clears the guide conversation and puts the
+  room's fields and added files back to how they start, with a 10-second Undo.
+
+- The Cutting Room's **Use one I already made**: any shot can take a finished job from History
+  as its picked take (a song made in the Music room can be the film's sound). **Sing along**: once
+  the film has a picked sound take, a MiniMax-H3 shot made from a starting picture, or one that
+  continues it, can be made to its part of the song, and the cut plays the song as one track under
+  the singing shots. A shot that would run past the end of the song is refused at Make.
+
+- The Video guide (and the Film Room guide) can write one MiniMax-H3 reference render as a small
+  multi-cut scene: 8-15 seconds with 3-7 timed hard cuts.
+
 - A **Characters** room: one picture of a character and a name become one design sheet (a title
   column, a large hero pose, front/side/back views, three action angles, three silhouettes, three
   expressions and a grid of close-up details) on the Qwen-Image 2.1 edit encoder. The Characters
@@ -16,7 +53,7 @@ All notable changes to Black Wire Forge are recorded here.
   it does not. A pack can now declare `optional_nodes` and `generic_modes`, and a writer a
   `topic_default`, so a writer needs no words of its own once its picture is attached.
 
-- UX flow pass (owner rulings, 2026-09-28): the picked engine is now a chip beside the room
+- UX flow pass: the picked engine is now a chip beside the room
   heading ("Music · Background music ▾"), always visible (no caret/popover for a single-engine
   room); Style and Lyrics (or any pack's own Content-group pair) sit directly under the prompt
   box, before Quality/Sound; a sound room's empty state explains what Style vs Lyrics are;
@@ -32,18 +69,6 @@ All notable changes to Black Wire Forge are recorded here.
   catalog entry already on the lane's disk shows "Installed" instead of Get it. Remove can now
   also delete the lane's own output file, opt-in per lane (`"outputs": {"dir": "..."}` in
   config.json, same shape as LoRA downloads) and off by default.
-
-### Fixed
-
-- UX-2 #11's "Installed" badge never showed: ComfyUI's lora pool lists names WITH their
-  subfolder (`minimax_h3/x.safetensors`, possibly backslash-separated on Windows hosts), but
-  catalog filenames are bare, so nothing ever matched -- now compared by basename, split on
-  both `/` and `\`.
-
-- Field GROUPS (Content/Sound/Quality/...) were sorted by their per-group `order` number
-  globally across the whole form, so a later group whose first field happened to carry a lower
-  `order` (e.g. Sound's bpm:1) rendered before an earlier-declared group (Content's lyrics:2) --
-  the underlying mechanism behind "the YuE2 job ran with no lyrics".
 
 - Style packs (LoRAs) for the Picture room (t2i, edit) and Pixel Art: pick up to two style LoRAs
   already installed on the lane, each with its own strength (0-1.5), chained after the model
@@ -73,10 +98,12 @@ All notable changes to Black Wire Forge are recorded here.
   is unchanged (the existing "this helper can't see pictures" note). H3's ref2v and continue
   writers are unchanged: ref2v's own prompt is written around not seeing its references, and
   continue has no picture field at all (it carries the previous shot over a video jack).
+
 - The guide conversation (including guide actions and their done markers) is now also saved on
   the server, per room or per open sequence, so it survives a reload on another device, a
   blocked-storage browser, or clearing site data. The browser's own copy is still the fast,
   immediate cache; the server copy is a best-effort background sync, last write wins.
+
 - Style packs (LoRAs) extended to every video and music engine: LTX-2.5 (all three modes,
   chained once and shared across two-stage/windowed sampling), MiniMax-H3 (fl2va, ref2v,
   continue -- chained after the turbo speed LoRA when one is on), ACE-Step 1.5 and MiniMax-Music3
@@ -84,6 +111,7 @@ All notable changes to Black Wire Forge are recorded here.
   room; picking none leaves every graph byte-for-byte the same as before. The "Browse styles"
   catalog contract (`engines.style_catalogs()`) now carries a family per engine (id, label, cap,
   modes, the pool-match rule, and the Hugging Face base-model id) instead of one Qwen-only entry.
+
 - MiniMax-Music3 LoRAs downloaded through "Browse styles" are now converted automatically after
   the download, before they're ever listed: every Music3 LoRA on the Hub is trained against
   separate q/k/v attention projections, but the engine's attention is one fused matrix, so a
@@ -99,11 +127,22 @@ All notable changes to Black Wire Forge are recorded here.
 
 ### Fixed
 
+- UX-2 #11's "Installed" badge never showed: ComfyUI's lora pool lists names WITH their
+  subfolder (`minimax_h3/x.safetensors`, possibly backslash-separated on Windows hosts), but
+  catalog filenames are bare, so nothing ever matched -- now compared by basename, split on
+  both `/` and `\`.
+
+- Field GROUPS (Content/Sound/Quality/...) were sorted by their per-group `order` number
+  globally across the whole form, so a later group whose first field happened to carry a lower
+  `order` (e.g. Sound's bpm:1) rendered before an earlier-declared group (Content's lyrics:2) --
+  the underlying mechanism behind "the YuE2 job ran with no lyrics".
+
 - The Talking Head Line writer no longer overwrites a Length you set yourself in the form. It
   used to derive Length from the written line's word count on every write, even when the current
   form already carried a Length you had changed by hand. It now leaves Length alone once it
   differs from the field's own default (97 frames), and still derives it from the line when
   Length is at that default or the form's current values aren't available to it.
+
 - The Picture guide (and every room guide) no longer offers "Help me write this" in a room with
   no available engine. The offer now checks the room has at least one installed, reachable mode
   before showing; a room with none keeps showing its existing "nothing installed" / "no machine
@@ -115,38 +154,47 @@ All notable changes to Black Wire Forge are recorded here.
   `UNETLoader` or `UnetLoaderGGUF` from the file type, and YuE2 takes the bf16 or int8
   checkpoint. A lane holding only a native LTX build, or only the int8 YuE2 file, now shows
   those modes as available instead of missing.
+
 - Music (MiniMax-Music3) songs end when the words end. The model fills whatever length it is given
   and does not stop early, so a length longer than the lyrics played the last minutes as wandering
   music. The music writer now sizes the length to its words (about 7 seconds a sung line, about 3 a
   rapped one), and the check before a render names a length that leaves more than a minute after the
   last line, or cuts the words off, with a length that fits.
+
 - MiniMax-H3 no longer reaches for the nvfp4 text encoder first. With both encoder files on a lane
   it now uses the int8 one, which any card can run (nvfp4 needs a GPU with FP4 support); the
   "Text encoder override" field still picks either. A lane with one encoder is unchanged.
+
 - A job is labelled with the engine it actually runs. Every Sound job said "ACE-Step 1.5" (and
   every H3 video "LTX-2.5"), because the label was the lane's first engine, not the job's.
+
 - Each finished History row now has its own small "Remove from History" button (hover or
   keyboard focus reveals it; always on at phone width), so removing a bad result no longer
   requires selecting the row first and finding the Monitor's own button, which was renamed
   "Forget" -> "Remove" for the same reason ("I cannot delete anything I have generated from the
   interface" -- the control existed, but two steps and one unlikely word away). Both use the
   same two-click confirm; the file itself still stays where the lane saved it.
+
 - A History row's title no longer wraps a 250-450 word caption into 15-20 lines and pushes
   every other row far down the list. It clamps to two lines; the full text still reaches a
   hover, in the row's own title attribute.
+
 - The label above the prompt box now names the field it is really bound to (e.g. "Style /
   genre" for a song, instead of the constant "Prompt"), and "Help me write this" now says which
   fields it fills for the current mode (e.g. "Writes: Style / genre, Lyrics"), so a mode whose
   writer also fills a field further down the form -- Lyrics, for YuE2 -- doesn't look like it
   only writes the box it sits under.
+
 - Switching engines inside a room now resets every field to the new engine's own default, except
   a field you actually typed or chose since the last switch -- which now survives one switch
   instead of silently resetting to blank when the new mode happens to reuse the same field id.
   The room also remembers the last engine you picked and restores it the next time you open that
   room (or reload), instead of always defaulting back to the first one.
+
 - The room tab row now scrolls properly at phone width instead of the Cutting Room button
   floating on top of whatever tab happened to be underneath it; every tab is reachable by
   scrolling to it.
+
 - Time estimates now expire. They used to be the all-time median of every finished job, so one
   slow first-load job (or a runtime change that made a mode faster) could stay baked into the
   number indefinitely -- Music3 was showing "about 12 min" from three-day-old jobs long after
