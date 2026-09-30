@@ -174,7 +174,7 @@ try:
           found.get("gpu") == "fake gpu" and found.get("vram_gb") == 16.0 and found.get("version") == "fake",
           found)
     check("only the shown fields come back (no raw body)",
-          set(found) == {"host", "port", "gpu", "vram_gb", "version", "name"} and "ram_free" not in json.dumps(body),
+          set(found) == {"host", "port", "gpu", "vram_gb", "version", "name", "this_computer"} and "ram_free" not in json.dumps(body),
           body)
     code, body = fx.http("POST", "/api/setup/probe-comfy", {"host": "127.0.0.1", "port": fx.free_port()})
     check("a closed port -> one plain sentence", code == 200 and body.get("ok") is False

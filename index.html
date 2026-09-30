@@ -2119,6 +2119,15 @@ function roomCapNoteText(room){
   }
   return 'No ' + cap + ' machine is reachable right now. Check that it is running, or the lanes in config.json.';
 }
+// The room's plain-sentence note (nothing installed / no reachable machine). Re-run whenever
+// the room changes OR a lane's state does (pollLanes), so it never outlives what it says.
+function renderRoomPlainNote(room){
+  const cutting = isCutting(room);
+  const nothing = !cutting && roomModes(room).length === 0;
+  const capNote = !cutting && !nothing ? roomCapNoteText(room) : '';
+  $('#roomPlainNote').hidden = !(!cutting && (nothing || capNote));
+  $('#roomPlainNote').textContent = nothing ? 'Nothing installed makes this yet.' : capNote;
+}
 function jobRoom(job){
   const r = STATE.rooms.find(r => (r.modes || []).some(x => x.cap === job.kind && x.mode === job.mode));
   return r ? r.id : null;
@@ -2445,9 +2454,7 @@ async function selectRoom(id, opts){
   // P2/D2 fix: "nothing installed" (no engine pack at all) and "no reachable
   // machine for this room" are different refusals -- the second only
   // applies once the room DOES have a mode, just no lane to run it on.
-  const capNote = !cutting && !nothing ? roomCapNoteText(room) : '';
-  $('#roomPlainNote').hidden = !(!cutting && (nothing || capNote));
-  $('#roomPlainNote').textContent = nothing ? 'Nothing installed makes this yet.' : capNote;
+  renderRoomPlainNote(room);
   $('#seqPicker').hidden = !cutting;
   $('#timelinePanel').hidden = !cutting;
   renderEnginePicker(true);
@@ -7106,10 +7113,15 @@ function bindWorkflowsUI(){
 /* ---------------------------------------------------------------------
    Polling
 --------------------------------------------------------------------- */
+// What the page's messages depend on in /api/lanes: which lanes answer, have been read, offer what.
+function laneStateSig(){
+  return JSON.stringify(STATE.lanes.map(l => [l.id, !!l.up, !!l.discovered, l.caps || []]));
+}
 async function pollLanes(){
   try{
     const d = await getJSON('/api/lanes');
     const wasChecking = activeLaneChecking();
+    const sigBefore = STATE.lanes.length ? laneStateSig() : null;   // null: the first read, init() renders it
     STATE.lanes = d.lanes || [];
     if(!STATE.activeLane || !STATE.lanes.some(l => l.id === STATE.activeLane)){
       STATE.activeLane = (STATE.lanes.find(l => l.up) || STATE.lanes[0] || {}).id || null;
@@ -7118,10 +7130,15 @@ async function pollLanes(){
     wfLanesPolled();
     // RS1: discovery just answered for the active lane -- fetch the verdict now
     // rather than up to 8 s later, so "checking..." never lingers or goes stale.
-    if(wasChecking && !activeLaneChecking()){
+    const laneChanged = sigBefore !== null && sigBefore !== laneStateSig();   // checking -> up, down -> up, ...
+    if((wasChecking && !activeLaneChecking()) || laneChanged){
+      const room = STATE.room && !isCutting(currentRoom()) ? currentRoom() : null;
+      // A lane that just came up may be the one this room needs: follow it, as opening the room does.
+      if(room && ensureLaneForRoom(room)) renderMachineModules();
       await loadEnginesFor();
       renderEnginePicker(false);
-      if(STATE.room && !isCutting(currentRoom())) renderLaneNote(currentMode());
+      if(room) renderLaneNote(currentMode());
+      if(STATE.room) renderRoomPlainNote(currentRoom());
     }
   } catch(e){ /* transient -- next poll retries */ }
 }
