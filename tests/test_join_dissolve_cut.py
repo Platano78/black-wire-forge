@@ -163,15 +163,20 @@ def pattern_clip(name, first, n):
     """testsrc2 frames [first, first+n) and the same span of one seeded noise --
     so a later clip whose first frames repeat an earlier one's last frames is the
     render's overlap, pictures AND (correlated) sound."""
-    ff(["-f", "lavfi", "-i", "testsrc2=size=%dx%d:rate=24" % (W, H), "-f", "lavfi", "-i",
-        "anoisesrc=color=white:amplitude=0.25:seed=11:sample_rate=32000",
+    # Picture and sound are encoded apart, then muxed without re-encoding: in one
+    # pass, ffmpeg 7.1's mp4 muxer writes an edit list that hides the clip's last
+    # frame (70 frames decode as 69) and trims the sound short, so the "render"
+    # would not be the frames it claims to be. The mux keeps every frame.
+    v, a = os.path.join(OUT, name + ".v.mp4"), os.path.join(OUT, name + ".a.m4a")
+    ff(["-f", "lavfi", "-i", "testsrc2=size=%dx%d:rate=24" % (W, H),
         "-vf", "trim=start_frame=%d:end_frame=%d,setpts=PTS-STARTPTS" % (first, first + n),
+        "-frames:v", str(n), "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "10", v])
+    ff(["-f", "lavfi", "-i", "anoisesrc=color=white:amplitude=0.25:seed=11:sample_rate=32000",
         # band-limited, so a shot starting between two audio samples (26/24 s at
         # 32 kHz) still repeats the same sound (white noise would decorrelate)
         "-af", "lowpass=f=2000,lowpass=f=2000,atrim=start=%.6f:duration=%.6f,asetpts=PTS-STARTPTS"
-        % (first / 24.0, n / 24.0),
-        "-frames:v", str(n), "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "10", "-c:a", "aac",
-        os.path.join(OUT, name)])
+        % (first / 24.0, n / 24.0), "-c:a", "aac", a])
+    ff(["-i", v, "-i", a, "-map", "0:v", "-map", "1:a", "-c", "copy", os.path.join(OUT, name)])
     return name
 
 
