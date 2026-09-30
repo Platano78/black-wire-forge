@@ -366,9 +366,21 @@ if MODE and FIELD and JACK:
         check("correlated overlap: the midpoint level within 1 dB of the sides (equal gain; equal power swells ~+3)",
               abs(mid - side) <= 1.0 and abs(left - right) <= 1.0, (left, mid, right))
         win = 960   # 20 ms
-        seg = [rms_db(a[k:k + win]) for k in range(int((t0 - 0.1) * 48000), int((t1 + 0.1) * 48000) - win, win)]
-        check("correlated overlap: no gap or click -- every 20 ms window across the seam within 2 dB of the sides "
-              "(%.2f..%.2f)" % (min(seg), max(seg)), min(seg) > side - 2 and max(seg) < side + 2)
+        wins = lambda x, y: [rms_db(a[k:k + win]) for k in range(int(x * 48000), int(y * 48000) - win + 1, win)]
+        seg = wins(t0 - 0.1, t1 + 0.1)
+        # The 20 ms windows of this noise-like audio spread naturally by a few dB, so the band is measured on the
+        # same clip AWAY from the seam (equal-length stretches just before and after the seam's own windows, as
+        # long as the overlap itself), not fixed at +/-2 dB.
+        span = t1 - t0
+        away = wins(t0 - 0.1 - span, t0 - 0.1) + wins(t1 + 0.1, t1 + 0.1 + span)
+        lo, hi, am = min(away), max(away), sum(away) / len(away)
+        sm = sum(seg) / len(seg)
+        print("     seam windows %.2f..%.2f (mean %.2f dB); away windows %.2f..%.2f (mean %.2f dB)"
+              % (min(seg), max(seg), sm, lo, hi, am))
+        check("correlated overlap: no gap or click -- every 20 ms window across the seam within 1 dB of the away "
+              "windows' range, and the seam's mean level within 1 dB of the away mean (%.2f..%.2f vs %.2f..%.2f)"
+              % (min(seg), max(seg), lo, hi),
+              len(away) > 0 and min(seg) >= lo - 1 and max(seg) <= hi + 1 and abs(sm - am) <= 1.0)
 
     print("\ngate 4: Sing along -- a singing head + a singing continue that kept its overlap")
     SONG = os.path.join(OUT, "song.flac")
