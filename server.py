@@ -2385,6 +2385,43 @@ def _resolved_sing_use(seq, slot):
     return {"song": seq_song_slot(seq)["pick"], "start": entry["start"], "lead_in": entry["lead_in"]}
 
 
+# -- E2 "join: dissolve" -------------------------------------------------------
+# A mode whose pack declares `joins` can keep its carried frames (the shot
+# before's last frames, re-rendered) instead of trimming them; the cut then
+# cross-dissolves across them. The take records what its render did.
+
+def _join_spec(cap, mode):
+    """The owning pack's `joins` entry for this mode, or None."""
+    for pack in engines.packs():
+        if pack["cap"] == cap and mode in pack["graphs"]:
+            return (pack.get("joins") or {}).get(mode)
+    return None
+
+
+def _join_seq_defaults(cap, mode):
+    """{join field: the Cutting Room's default} for a mode whose pack declares
+    a `sequence_default` for its join field, else {}. A sequence shot that has
+    never set the field takes it; any other request takes the field's own."""
+    spec = _join_spec(cap, mode)
+    return {spec["field"]: bool(spec["sequence_default"])} if spec and "sequence_default" in spec else {}
+
+
+def _join_kept(cap, mode, values):
+    """How many carried frames a render from these request values keeps: the
+    pack's overlap when its join field is on (the field's own default when
+    unset) AND a video jack is filled, else 0."""
+    spec = _join_spec(cap, mode)
+    if not spec:
+        return 0
+    fields = engines.fields(cap, mode)
+    on = values.get(spec["field"])
+    if on is None:
+        on = next((f.get("default") for f in fields if f.get("id") == spec["field"]), False)
+    if not on or not any(values.get(f["id"]) for f in fields if f.get("type") == "video"):
+        return 0
+    return int(spec["overlap_frames"])
+
+
 def slot_stale_inputs(seq, slot, take):
     """The inputs half of STALE: "room plate changed" arrives with refs
     (C3.2b); "<jack label, lower-cased> changed" arrives with cables (C3.4);
@@ -2563,6 +2600,10 @@ def seq_derive(seq):
         slot["warnings"] = slot_warnings(out, slot)
         slot["jacks"] = slot_jacks(slot)
         slot["trim_effective"] = slot_trim_effective(out["id"], slot)
+        # E2: what an unset field means on this shot (the page shows it so).
+        seq_defaults = _join_seq_defaults(slot.get("cap"), slot.get("mode"))
+        if seq_defaults:
+            slot["seq_defaults"] = seq_defaults
     out["can_cut"] = CAN_CUT
     out["cut_reason"] = CUT_REASON
     out["can_title"] = CAN_TITLE
@@ -2830,8 +2871,11 @@ def _op_adopt_take(seq, p):
         slot["values"] = {k: v for k, v in (slot.get("values") or {}).items() if k in known}
         slot["recipe"] = slot["quality"] = None   # both belong to the old mode
         _check_slot(seq, slot)
+    inputs = {"refs": [], "cables": {}, "adopted": True}
+    if isinstance(job.get("join"), dict):
+        inputs["join"] = job["join"]   # E2: its first frames are the overlap; the cut drops them
     slot["takes"].append({"job_id": jid, "made": time.time(), "beat_rev": None,
-                          "inputs": {"refs": [], "cables": {}, "adopted": True}, "file": None})
+                          "inputs": inputs, "file": None})
     slot["pick"] = jid
 
 
@@ -5943,6 +5987,10 @@ def _generate_video(p, lane, m, able, mode, qmode, prompt, seed, steps):
                 or not math.isfinite(start) or start < 0):
             return {"ok": False, "error": "The song's start must be a number of seconds, zero or more."}, 400
         args["sing_audio"], args["sing_start"] = str(p["sing_audio"]), float(start)
+    # E2: the pack's join field (on by default), only ever on with a clip to join.
+    join, kept = _join_spec("video", mode), _join_kept("video", mode, p)
+    if join:
+        args[join["field"]] = bool(kept)
     if mode == "ref2v":
         if not able["ref2v"]:
             return {"ok": False, "error":
@@ -5988,6 +6036,8 @@ def _generate_video(p, lane, m, able, mode, qmode, prompt, seed, steps):
             "model_file": m.get(engines.primary_role("video", qmode), ""),
             "refs": len(args["ref_images"]), "ref_videos": len(args["ref_videos"]),
             "chained_from": p.get("chained_from"), "quality": p.get("quality")}
+    if kept:
+        meta["join"] = {"dissolve": True, "overlap": kept}
     meta.update(_seq_meta_extra(p))
     return dispatch(lane, graph, "video", qmode, meta), 200
 
@@ -6424,6 +6474,10 @@ def seq_generate(payload):
     # collides with a dispatch key (yue2/cover's own "mode") survives past
     # the dispatch-key assignments below, the same rule
     # _field_request_value applies to a plain API body's `values`.
+    # E2: a shot that never set the pack's join field takes the Cutting Room's default.
+    for k, v in _join_seq_defaults(slot.get("cap"), slot.get("mode")).items():
+        if slot_values.get(k) is None:
+            slot_values[k] = v
     p = dict(slot_values)
     p["values"] = dict(slot_values)
     p["lane"] = lane["id"]
@@ -6458,6 +6512,10 @@ def seq_generate(payload):
     inputs = {"refs": ref_uses, "cables": cable_uses}
     if sing_use:
         inputs["sing"] = sing_use
+    # E2 (R2): only when the render kept the overlap (join field on + cabled).
+    overlap = _join_kept(slot.get("cap"), slot.get("mode"), p)
+    if overlap:
+        inputs["join"] = {"dissolve": True, "overlap": overlap}
     seq_add_take(sid, slot_id, job["id"], beat_rev=beat.get("rev") if beat else None, inputs=inputs)
     return {"ok": True, "job": job}, code
 
@@ -6671,7 +6729,7 @@ def seq_cut_start(payload):
     # scaled to it; a different aspect ratio is still refused, naming the
     # shot and both sizes. The sequence canvas still governs the cable
     # crop and default_canvas() -- untouched here.
-    shots, probed, sung = [], [], []
+    shots, probed, sung, joined = [], [], [], []
     for slot in picked:
         job_id = slot["pick"]
         try:
@@ -6708,6 +6766,14 @@ def seq_cut_start(payload):
             vdur = None
         sung.append({"sing": made.get("sing") if isinstance(made, dict) else None,
                      "whole": slot.get("trim") is None, "vdur": vdur})
+        # E2: what this take's render did at its join (its own record).
+        try:
+            num, den = (vstream.get("r_frame_rate") or "24/1").split("/")
+            fps = float(num) / float(den)
+        except (ValueError, ZeroDivisionError):
+            fps = 24.0
+        joined.append({"slot": slot, "made": made if isinstance(made, dict) else {}, "dur": duration,
+                       "vdur": vdur, "fps": fps if fps > 0 else 24.0})
 
     # Aspect is checked against the SEQUENCE CANVAS (as R5 always has), not
     # against the largest take -- a pack that delivers a multiple of its
@@ -6725,6 +6791,7 @@ def seq_cut_start(payload):
                     "sequence's %sx%s canvas; the cut never rescales across a different aspect ratio."
                     % (clip["slot_id"], clip["w"], clip["h"], cw, ch)}, 400
         clip_plans.append(clip)
+    dissolves, join_notes = _cut_join_plan(seq, clip_plans, joined, sung)
 
     bed_path = None
     # The bed is the first SOUND-lane slot (timeline order) with a pick --
@@ -6771,6 +6838,11 @@ def seq_cut_start(payload):
     elif song_note:
         entry["soundtrack"] = "clips"
         entry["soundtrack_note"] = song_note
+    if dissolves or join_notes:
+        entry["dissolves"] = dissolves
+        entry["join_note"] = " ".join(
+            (["%d shot join%s blended across the shared frames." % (dissolves, "" if dissolves == 1 else "s")]
+             if dissolves else []) + join_notes)
     with SEQ_LOCK:
         seq2 = _seq_read(sid)
         if seq2 is None:
@@ -6789,6 +6861,64 @@ def seq_cut_start(payload):
 CUT_SING_TOLERANCE = 1.0 / 48   # half a frame at 24 fps
 
 
+def _cut_join_plan(seq, clip_plans, joined, sung):
+    """E2 (R3): per seam, from the PICKED take's own `inputs.join` (never the
+    slot's current field). A take that kept its overlap and follows, in the
+    cut, the very take its video jack was cabled from cross-dissolves over the
+    overlap: clip["xfade"] = the overlap in seconds (the timeline stays the
+    hard join of the trimmed take). Any other such take -- first in the cut,
+    not following its source take, or trims that leave less than the whole
+    overlap -- joins with a straight cut and its overlap frames are dropped,
+    with one sentence per seam. -> (dissolves, notes)."""
+    dissolves, notes = 0, []
+    for i, (clip, j) in enumerate(zip(clip_plans, joined)):
+        rec = j["made"].get("join")
+        if not (isinstance(rec, dict) and rec.get("dissolve") and rec.get("overlap")):
+            continue
+        fps, frames = j["fps"], int(rec["overlap"])
+        over, half = frames / fps, 0.5 / fps
+        sung[i]["join_over"] = over
+        slot, reason = j["slot"], None
+        if i == 0:
+            reason = ("Shot %s starts the cut, so its first %d frames (the end of the shot it continues) "
+                      "are left out." % (slot["id"], frames))
+        else:
+            prev, pj = clip_plans[i - 1], joined[i - 1]
+            jacks = {x["field"] for x in slot_jacks(slot) if x.get("type") == "video"}
+            cabled = any(c.get("to") == slot["id"] and c.get("from") == pj["slot"]["id"] and c.get("field") in jacks
+                         for c in seq.get("cables") or [])
+            used = j["made"].get("cables") or {}
+            if not (cabled and any(used.get(f) == pj["slot"].get("pick") for f in jacks)):
+                reason = ("Shot %s was not made from the take of shot %s before it in the cut, so they join "
+                          "with a straight cut and its first %d frames are left out."
+                          % (slot["id"], pj["slot"]["id"], frames))
+            elif (pj["dur"] - (prev["in"] + prev["len"]) > half or clip["in"] > half
+                  or prev["len"] - prev.get("xfade", 0.0) < over - half or clip["len"] < over + 1.0 / fps - half):
+                reason = ("Shot %s joins shot %s with a straight cut: the trims leave less than the %d frames "
+                          "they share to blend across, so its first %d frames are left out."
+                          % (slot["id"], pj["slot"]["id"], frames, frames))
+        if reason is None:
+            # The seam is 22 FRAMES of pictures: the shot before ends at its
+            # pictures' own end, not an audio tail past it, so the overlap's
+            # sound lines up with the sound it repeats.
+            if pj["vdur"] and prev["in"] + prev["len"] > pj["vdur"]:
+                prev["len"] = pj["vdur"] - prev["in"]
+            clip["xfade"] = over
+            dissolves += 1
+            continue
+        drop = max(0.0, over - clip["in"])
+        if drop >= clip["len"] - half:
+            notes.append("Shot %s's trim sits inside the %d frames it shares with the shot before, so it "
+                         "plays as trimmed." % (slot["id"], frames))
+            continue
+        clip["in"] += drop
+        clip["len"] -= drop
+        if sung[i]["vdur"]:
+            sung[i]["vdur"] -= drop
+        notes.append(reason)
+    return dissolves, notes
+
+
 def _cut_song_plan(clip_plans, sung, song_job):
     """R4: where the song sits under the cut. A shot made singing `song_job`
     shows song time (its start + lead_in + its own trim in-point) at its first
@@ -6801,8 +6931,11 @@ def _cut_song_plan(clip_plans, sung, song_job):
         rec = made["sing"]
         on = bool(rec and rec.get("song") == song_job)
         length = made["vdur"] if on and made["whole"] and made["vdur"] else clip["len"]
+        # E2 (R4): a dissolve seam overlaps the shot before by its overlap, and
+        # a take that kept its overlap starts that much earlier in its slice.
+        t -= clip.get("xfade", 0.0)
         if on:
-            d = rec["start"] + rec.get("lead_in", 0.0) + clip["in"] - t
+            d = rec["start"] + rec.get("lead_in", 0.0) - made.get("join_over", 0.0) + clip["in"] - t
             if offset is None:
                 offset = d
             elif abs(d - offset) > CUT_SING_TOLERANCE:
@@ -6826,6 +6959,7 @@ def _song_track_chain(clip_plans, song_plan):
         parts.append("adelay=delays=%d|%d" % (ms, ms))
     spans, t = [], 0.0
     for clip, on in zip(clip_plans, song_plan["sing"]):
+        t -= clip.get("xfade", 0.0)
         if on:
             spans.append("between(t,%.6f,%.6f)" % (t, t + clip["len"]))
         t += clip["len"]
@@ -6884,6 +7018,11 @@ def _title_filter(title):
 
 def _clip_video_chain(i, clip, out_w, out_h):
     parts = ["trim=start=%.6f:duration=%.6f" % (clip["in"], clip["len"]), "setpts=PTS-STARTPTS"]
+    if clip.get("dissolve"):
+        # E2: xfade needs one frame rate and time base on both sides, and each
+        # side exactly its cut length (a last frame held, as concat's cfr does),
+        # so the seams sit where the timeline says and never drift.
+        parts += ["fps=24", "tpad=stop_mode=clone:stop=-1", "trim=duration=%.6f" % clip["len"]]
     # R5 (revised): a same-aspect take that isn't already the cut's own
     # output size is scaled to it here, BEFORE the title -- so a title's
     # own sizing (a fraction of the frame) follows the output, not the
@@ -6902,6 +7041,8 @@ def _clip_audio_chain(i, clip):
     if clip["has_audio"]:
         parts = ["atrim=start=%.6f:duration=%.6f" % (clip["in"], clip["len"]), "asetpts=PTS-STARTPTS",
                   "aformat=sample_rates=%d:channel_layouts=%s" % (CUT_SAMPLE_RATE, CUT_CHANNEL_LAYOUT)]
+        if clip.get("dissolve"):
+            parts.append("apad=whole_dur=%.6f" % clip["len"])   # E2: exactly its cut length, as above
         return "[%d:a]%s[a%d]" % (i, ",".join(parts), i)
     # R5: a clip with no audio stream gets silence, so `concat` never fails.
     return "anullsrc=r=%d:cl=%s:d=%.6f[a%d]" % (CUT_SAMPLE_RATE, CUT_CHANNEL_LAYOUT, clip["len"], i)
@@ -6976,6 +7117,8 @@ def _run_cut(sid, cut_id, clip_plans, bed_path, out_path, out_w, out_h, song_pla
             input_args += ["-i", bed_path]
         v_chains, a_chains = [], []
         for i, clip in enumerate(clip_plans):
+            if clip.get("xfade") or (i + 1 < n and clip_plans[i + 1].get("xfade")):
+                clip = dict(clip, dissolve=True)
             vchain, ttmp = _clip_video_chain(i, clip, out_w, out_h)
             if ttmp:
                 title_tmps.append(ttmp)
@@ -6984,8 +7127,22 @@ def _run_cut(sid, cut_id, clip_plans, bed_path, out_path, out_w, out_h, song_pla
             # the song track below plays under it instead.
             sings = bool(song_plan and song_plan["sing"][i])
             a_chains.append(_clip_audio_chain(i, dict(clip, has_audio=False) if sings else clip))
-        concat_inputs = "".join("[v%d][a%d]" % (i, i) for i in range(n))
-        graph = v_chains + a_chains + ["%sconcat=n=%d:v=1:a=1[vcat][acat]" % (concat_inputs, n)]
+        # E2 (R3): a dissolve seam joins its clip onto the run before it (xfade +
+        # an equal-gain acrossfade over the overlap); runs are then concatenated.
+        runs, xv, xa, run_len = [], [], [], 0.0
+        for i, clip in enumerate(clip_plans):
+            if clip.get("xfade") and runs:
+                d, off = clip["xfade"], run_len - clip["xfade"]
+                xv.append("[%s][v%d]xfade=transition=fade:duration=%.6f:offset=%.6f[vx%d]" % (runs[-1][0], i, d, off, i))
+                # equal GAIN (tri): the overlap's sound is the shot before's own
+                # tail re-rendered, i.e. correlated; equal power would swell ~3 dB.
+                xa.append("[%s][a%d]acrossfade=d=%.6f:c1=tri:c2=tri[ax%d]" % (runs[-1][1], i, d, i))
+                runs[-1], run_len = ("vx%d" % i, "ax%d" % i), off + clip["len"]
+            else:
+                runs.append(("v%d" % i, "a%d" % i))
+                run_len = clip["len"]
+        concat_inputs = "".join("[%s][%s]" % r for r in runs)
+        graph = v_chains + a_chains + xv + xa + ["%sconcat=n=%d:v=1:a=1[vcat][acat]" % (concat_inputs, len(runs))]
         # A second, AUDIO-ONLY concat (never producing [vcat]) for the
         # measurement pass below: on ffmpeg 4.4.2, a filter_complex output
         # pad that is built but never `-map`ped ("Filter concat:out:v0 has
@@ -6994,7 +7151,7 @@ def _run_cut(sid, cut_id, clip_plans, bed_path, out_path, out_w, out_h, song_pla
         # never [vcat] -- needs a graph that never creates an unmapped
         # video pad in the first place. Bonus: ffmpeg then never decodes
         # the video streams for this pass at all.
-        audio_graph = a_chains + ["%sconcat=n=%d:v=0:a=1[acat]" % ("".join("[a%d]" % i for i in range(n)), n)]
+        audio_graph = a_chains + xa + ["%sconcat=n=%d:v=0:a=1[acat]" % ("".join("[%s]" % r[1] for r in runs), len(runs))]
 
         def _mix_bed(stmts, acat_label):
             stmts = list(stmts)

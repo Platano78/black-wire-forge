@@ -5671,6 +5671,8 @@ function applySlotValues(slot){
     if($('#recipeSelect').onchange) $('#recipeSelect').onchange();
   }
   if(slot.quality) selectQualityTier(slot.quality);
+  // E2: what an unset field means on this shot (the server's seq_defaults), then its own values.
+  Object.entries(slot.seq_defaults || {}).forEach(([k, v]) => setFieldValue(k, v));
   Object.entries(slot.values || {}).forEach(([k, v]) => setFieldValue(k, v));
   refreshEnabled(fieldsFor(currentMode()));
   // A saved picture is a file that lives on the lane, not a form value: put
@@ -5807,7 +5809,7 @@ function peakNoteText(entry){
   return entry && entry.peak_unverified ? 'true peak could not be measured' : '';
 }
 function cutNotesText(entry){
-  return [loudnessNoteText(entry.loudness), peakNoteText(entry), entry.soundtrack_note].filter(Boolean).join(' · ');
+  return [loudnessNoteText(entry.loudness), peakNoteText(entry), entry.soundtrack_note, entry.join_note].filter(Boolean).join(' · ');
 }
 /* The CUT bar's own one-line summary of the latest cut -- the actual
    video plays in the MONITOR (renderMonitorCut, F4), never a second copy

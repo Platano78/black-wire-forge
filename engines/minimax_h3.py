@@ -198,11 +198,16 @@ def h3_continue_graph(p, m):
             "context_length": "22", "audio_context_length": 24,
             "context_frames": ["221", 0], "context_audio": ["221", 1], "audio_vae": ["24", 0]}}
         g["16"]["inputs"]["conditioning"] = ["222", 0]
-        g["223"] = {"class_type": "MiniMaxH3MotionContextTrim", "inputs": {
-            "images": ["10", 0], "trim_frames": ["222", 1], "audio": ["23", 0],
-            "fps": 24.0, "match_tail": True}}
-        g["91"]["inputs"]["images"] = ["223", 0]
-        g["91"]["inputs"]["audio"] = ["223", 1]
+        # E2 "join: dissolve": keep the carried frames (no Trim) -- the take is
+        # the full length, its first 22 frames the overlap the Cutting Room
+        # cross-dissolves with the shot before it. CreateVideo already reads
+        # the untrimmed ["10",0]/["23",0].
+        if not p.get("join_dissolve"):
+            g["223"] = {"class_type": "MiniMaxH3MotionContextTrim", "inputs": {
+                "images": ["10", 0], "trim_frames": ["222", 1], "audio": ["23", 0],
+                "fps": 24.0, "match_tail": True}}
+            g["91"]["inputs"]["images"] = ["223", 0]
+            g["91"]["inputs"]["audio"] = ["223", 1]
     apply_sing_along(g, p)
     return g
 
@@ -622,6 +627,14 @@ ENGINE = {
         "fl2va": {"fps": 24, "length_field": "length", "carried_frames": 0},
         "continue": {"fps": 24, "length_field": "length", "carried_frames": 22},
     },
+    # E2: a continue take made with `field` on and a cabled previous shot keeps
+    # its first `overlap_frames` (the shot before's last frames, re-rendered),
+    # which the Cutting Room cross-dissolves instead of the Trim dropping them.
+    # The field is off by default (a Video room clip stays trimmed); a sequence
+    # shot that has never set it takes `sequence_default` (the Cutting Room's).
+    "joins": {
+        "continue": {"field": "join_dissolve", "overlap_frames": 22, "sequence_default": True},
+    },
     # This engine's own task-type prefix (see _TASK_PREFIX_RE): a beat written
     # for an H3 shot keeps it; copied into another engine's shot, the core
     # takes it off (engines/__init__.py "task_prefix").
@@ -724,6 +737,13 @@ ENGINE = {
             {"id": "prev_video", "label": "Previous shot", "type": "video",
              "tier": "primary", "group": "Content", "order": 2,
              "hint": "Plug in the shot before this one on the timeline."},
+            # E2: on, the carried frames stay in the take and the cut blends
+            # across them; off, they are trimmed off as before (a hard cut).
+            # Off by default; the Cutting Room's own default is on (ENGINE["joins"]).
+            {"id": "join_dissolve", "label": "Blend into the previous shot", "type": "checkbox",
+             "default": False, "tier": "primary", "group": "Content", "order": 3,
+             "hint": "The shot keeps the last moment of the shot before it, and the cut "
+                     "blends the two there. Off: a straight cut."},
             # Frame grid is 17n+5; 362 = 15.1s trained max, 124 = ~5s min.
             # The delivered clip is 22 frames shorter than this: the join
             # keeps the previous shot's last frames, then trims them back
