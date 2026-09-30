@@ -42,6 +42,7 @@ import random
 import re
 import shutil
 import socket
+import stat
 import struct
 import subprocess
 import sys
@@ -1122,14 +1123,124 @@ class _PinnedRedirectHandler(urllib.request.HTTPRedirectHandler):
     resolve response can't make the server fetch-and-write bytes from an
     attacker-controlled host."""
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        u = urllib.parse.urlparse(newurl)
-        if u.scheme != "https" or not _allowed_download_host(u.hostname):
+        if not _download_url_ok(newurl):
             raise ValueError("The download redirected to an untrusted address; refused.")
-        return urllib.request.HTTPRedirectHandler.redirect_request(
+        new = urllib.request.HTTPRedirectHandler.redirect_request(
             self, req, fp, code, msg, headers, newurl)
+        # W3: a Hugging Face token rides only as an UNREDIRECTED header, so
+        # urllib never copies it to the CDN; it is put back only for a hop that
+        # lands on huggingface.co itself (a renamed repo, say).
+        token = req.unredirected_hdrs.get("Authorization")
+        if new is not None and token and _hf_token_host(newurl):
+            new.add_unredirected_header("Authorization", token)
+        return new
+
+
+def _test_origin(name):
+    """Test-only (same pattern as BWF_TEST_HF_API): a plain-http stand-in for
+    a Hugging Face host. Pinned: honoured only as exactly
+    http://127.0.0.1:<port>, anything else in the variable is ignored."""
+    m = re.match(r"^http://127\.0\.0\.1:(\d{1,5})$", os.environ.get(name) or "")
+    return ("127.0.0.1", int(m.group(1))) if m else None
+
+
+_TEST_HF_DOWNLOAD = _test_origin("BWF_TEST_HF_DOWNLOAD")   # stands in for huggingface.co
+_TEST_HF_CDN = _test_origin("BWF_TEST_HF_CDN")             # stands in for its file CDN
+MODEL_DL_BASE = ("http://127.0.0.1:%d" % _TEST_HF_DOWNLOAD[1]) if _TEST_HF_DOWNLOAD else "https://huggingface.co"
+
+
+def _url_origin(url):
+    u = urllib.parse.urlparse(url)
+    try:
+        return u.scheme, (u.hostname or "").lower(), u.port
+    except ValueError:
+        return u.scheme, "", None
+
+
+def _download_url_ok(url):
+    """Where a download may be fetched from, redirects included: https on a
+    Hugging Face host, or the test-only pinned stand-ins above."""
+    scheme, host, port = _url_origin(url)
+    if scheme == "https":
+        return _allowed_download_host(host)
+    return scheme == "http" and (host, port) in [o for o in (_TEST_HF_DOWNLOAD, _TEST_HF_CDN) if o]
+
+
+def _hf_token_host(url):
+    """W3: the only host HF_TOKEN is ever sent to -- huggingface.co itself
+    (its CDN serves signed URLs and never needs it), or its test stand-in."""
+    scheme, host, port = _url_origin(url)
+    if scheme == "https":
+        return host == "huggingface.co"
+    return scheme == "http" and _TEST_HF_DOWNLOAD is not None and (host, port) == _TEST_HF_DOWNLOAD
 
 
 _DOWNLOAD_OPENER = urllib.request.build_opener(_PinnedRedirectHandler)
+# Windows has neither flag: 0 there, and the lstat/fstat checks around every
+# open stay the guard (security review 2026-09-30, finding 4).
+_O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
+_O_NONBLOCK = getattr(os, "O_NONBLOCK", 0)
+
+
+class _Cancelled(ValueError):
+    pass
+
+
+class _SizeRefused(ValueError):
+    """The server's size disagrees with the size the download may have."""
+    pass
+
+
+class _Short(ValueError):
+    """The stream ended before the expected size (the .part is resumable)."""
+    pass
+
+
+def _download_body(r, open_part, limit, exact=False, have=0, cancelled=None, progress=None):
+    """The download core Build C's LoRA download and W3's model downloads
+    share: copy the open response `r` into the file `open_part()` returns
+    (called only after the size checks pass, so a refused answer never
+    creates a .part), starting at byte `have`.
+
+    exact=False (LoRA): `limit` is a cap -- a Content-Length over it is
+    refused, and so is the stream once it passes it.
+    exact=True (W3): `limit` IS the file's size -- Content-Length must say
+    exactly the bytes still missing, writing stops at `limit`, and one more
+    byte from the server refuses the file (_SizeRefused); a stream that ends
+    early raises _Short. -> the bytes now in the file."""
+    total = r.headers.get("Content-Length")
+    total = int(total) if total and total.isdigit() else None
+    if progress:
+        progress(have, total)
+    if exact:
+        if total != limit - have:
+            raise _SizeRefused("the server said %s bytes, not the %d expected"
+                               % ("no size" if total is None else "%d" % (have + total), limit))
+    elif total and total > limit:
+        raise ValueError("That file is %d bytes, over the %d byte limit." % (total, limit))
+    got = have
+    with open_part() as f:
+        while not exact or got < limit:
+            if cancelled and cancelled():
+                raise _Cancelled("Cancelled.")
+            # read1: whatever has arrived, up to 64 KiB -- a slow drip must not
+            # hold Cancel back for a whole MiB (security review finding 3).
+            chunk = getattr(r, "read1", r.read)(min(1 << 16, limit - got) if exact else 1 << 16)
+            if not chunk:
+                if exact:
+                    raise _Short("stopped at %d of %d bytes" % (got, limit))
+                break
+            got += len(chunk)
+            if not exact and got > limit:
+                raise ValueError("That file is over the %d byte limit." % limit)
+            f.write(chunk)
+            if progress:
+                progress(got, total)
+        if exact and r.read(1):
+            raise _SizeRefused("the server sent more than the %d bytes expected" % limit)
+        f.flush()
+        os.fsync(f.fileno())
+    return got
 
 
 def _run_lora_download(lane, url, dest, max_bytes, repo, filename, convert_name=None):
@@ -1140,30 +1251,22 @@ def _run_lora_download(lane, url, dest, max_bytes, repo, filename, convert_name=
     part = dest + ".part"
     os.makedirs(os.path.dirname(dest), exist_ok=True)
     try:
-        with _DOWNLOAD_OPENER.open(urllib.request.Request(url), timeout=60.0) as r:
-            total = r.headers.get("Content-Length")
-            state["total"] = int(total) if total and total.isdigit() else None
-            if state["total"] and state["total"] > max_bytes:
-                raise ValueError("That file is %d bytes, over the %d byte limit."
-                                 % (state["total"], max_bytes))
-            got = 0
+        def open_part():
             # Security review Finding 4: O_EXCL|O_NOFOLLOW refuses a
             # pre-existing ".part" path outright -- a real file OR a
             # symlink -- instead of writing through it.
-            fd = os.open(part, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o644)
-            with os.fdopen(fd, "wb") as f:
-                while True:
-                    with DOWNLOAD_LOCK:
-                        if DOWNLOADS.get(lane["id"], {}).get("cancel"):
-                            raise ValueError("Cancelled.")
-                    chunk = r.read(1 << 20)
-                    if not chunk:
-                        break
-                    got += len(chunk)
-                    if got > max_bytes:
-                        raise ValueError("That file is over the %d byte limit." % max_bytes)
-                    f.write(chunk)
-                    state["bytes"] = got
+            fd = os.open(part, os.O_CREAT | os.O_EXCL | os.O_WRONLY | _O_NOFOLLOW, 0o644)
+            return os.fdopen(fd, "wb")
+
+        def cancelled():
+            with DOWNLOAD_LOCK:
+                return bool(DOWNLOADS.get(lane["id"], {}).get("cancel"))
+
+        def progress(got, total):
+            state["bytes"], state["total"] = got, total
+
+        with _DOWNLOAD_OPENER.open(urllib.request.Request(url), timeout=60.0) as r:
+            _download_body(r, open_part, max_bytes, cancelled=cancelled, progress=progress)
         os.replace(part, dest)
         if convert_name:
             # LORA-2E #1: the pack declared a conversion for this family --
@@ -7895,6 +7998,8 @@ def setup_rooms(query):
             host = ""
         if host and (host, port) in SETUP_COMFY_SEEN:
             pools = _setup_pools(host, port)
+    with MODEL_DL_LOCK:
+        models_root = MODEL_DL["models"]
     out = []
     for room in engines.rooms():
         entries, nodes, programs, licences, modes = [], [], [], [], []
@@ -7920,6 +8025,8 @@ def setup_rooms(query):
             srcs.sort(key=lambda s: not s["run_by_us"])          # the recommended file first
             installed = (None if pools is None else
                          any(pick_model(pools.get(ROLE_POOL[r], []), ROLE_RULES[r], False) for r in group))
+            if models_root and not installed:   # W3: a file in the declared models folder, at its exact size
+                installed = any(_model_on_disk(models_root, s) for s in srcs)
             role = {"role": group[0], "label": words.get(group[0], group[0]), "sources": srcs, "installed": installed}
             if len(group) > 1:
                 role["any_of"] = group
@@ -7937,13 +8044,691 @@ def setup_rooms(query):
                     "blurb": room.get("blurb", ""), "kind": room.get("kind") or "modes", "modes": modes,
                     "roles": roles, "nodes": nodes, "programs": programs, "licences": licences,
                     "total_bytes": total, "needs": {"files": len(need_files), "bytes": need_bytes},
-                    "installed": None if pools is None or not roles else all(r["installed"] for r in roles)})
-    return {"ok": True, "comfy": pools is not None, "rooms": out}, 200
+                    "installed": None if (pools is None and not models_root) or not roles
+                    else all(r["installed"] for r in roles)})
+        if models_root:   # W3: what "Download" would fetch, shown on its button before anything starts
+            plan = _room_plan(out[-1])
+            to = []
+            for x in plan:
+                try:            # REV-A: the REAL destination, through any subfolder link, shown before Download
+                    to.append({"file": _model_dest(models_root, x)[1].rsplit(os.sep, 1)[-1],
+                               "where": "/".join(p for p in (x["folder"], x.get("subdir")) if p),
+                               "dest": os.path.realpath(_model_dest(models_root, x)[1])})
+                except ValueError:
+                    pass
+            out[-1]["download"] = {"files": len(plan), "bytes": sum(x["size"] for x in plan), "to": to}
+    return {"ok": True, "comfy": pools is not None, "models": models_root, "rooms": out}, 200
+
+
+# ---------------------------------------------------------------------------
+# W3: one-click model downloads. Setup's step 1 lets the user DECLARE that
+# ComfyUI runs on this computer and name its models folder (never guessed);
+# a room card then fetches the room's files into it, one file at a time,
+# through the LoRA download's core (_download_body: .part O_EXCL|O_NOFOLLOW,
+# cancel) and its pinned-host opener. Each file's size is the one the packs'
+# sources state (docs/MODELS.md): the server may send exactly that and no
+# more. The queue lives in <data>/downloads.json and resumes with a Range
+# request after the Setup re-exec or any restart. Only ever on a server bound
+# to this computer alone. Nothing here runs a model or talks to ComfyUI.
+# ---------------------------------------------------------------------------
+
+MODELS_SUBFOLDERS = ("checkpoints", "diffusion_models", "loras", "vae", "text_encoders", "unet", "clip",
+                     "upscale_models")
+MODEL_DL_FILE = os.path.join(DATA_DIR, "downloads.json")
+MODEL_DL_MARGIN = 2 * 1024 ** 3        # R3: room to spare on the models folder's drive
+MODEL_DL_STALL = 30.0                  # no bytes for this long -> that file fails (security review finding 3)
+MODEL_DL_STATES = ("queued", "running", "done", "failed", "skipped", "cancelled")
+MODEL_DL_LOCK = threading.Lock()
+MODEL_DL = {"models": None, "queue": [], "parts": []}   # what downloads.json holds
+MODEL_DL_RUN = {"thread": None, "cancel": False, "bytes": 0}
+_MODEL_NAME_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.+-]*$")
+DOWNLOADS_LOCAL_ONLY = ("Model downloads work only when Black Wire Forge is open to this computer alone "
+                        "(\"bind\": \"127.0.0.1\" in %s)." % os.path.basename(CONFIG_FILE))
+
+
+def _downloads_here():
+    """R5: downloads are a same-machine, local-user feature."""
+    return SETUP_MODE or BIND in ("127.0.0.1", "::1", "localhost")
+
+
+def _gb(n):
+    return "%.1f GB" % (n / 1e9)
+
+
+def _models_folder_check(path):
+    """R1: the models folder the user typed -> (its real path, None), or
+    (None, the sentence saying which check failed)."""
+    if not isinstance(path, str) or not path.strip():
+        return None, "Type the path of ComfyUI's models folder."
+    path = path.strip()
+    if len(path) > 4096 or "\x00" in path:
+        return None, "That is not a folder path."
+    if not os.path.isabs(path):
+        return None, ("Type the whole path, from the top of the drive (like /home/you/ComfyUI/models "
+                      "or C:\\ComfyUI\\models).")
+    if not os.path.exists(path):
+        return None, "Nothing is at that path. Check the spelling."
+    real = os.path.realpath(path)
+    if not os.path.isdir(real):
+        return None, "That is a file, not a folder. Give the models folder itself."
+    found = [n for n in MODELS_SUBFOLDERS if os.path.isdir(os.path.join(real, n))]
+    if len(found) < 3:
+        return None, ("That does not look like ComfyUI's models folder: it holds %d of ComfyUI's usual folders "
+                      "(%s), and needs at least 3. It is the folder called models inside your ComfyUI folder."
+                      % (len(found), ", ".join(MODELS_SUBFOLDERS)))
+    probe = os.path.join(real, ".bwf-write-check-%s" % uuid.uuid4().hex[:12])
+    try:
+        os.close(os.open(probe, os.O_CREAT | os.O_EXCL | os.O_WRONLY | _O_NOFOLLOW, 0o600))
+        os.unlink(probe)
+    except OSError as e:
+        return None, ("Black Wire Forge cannot write to that folder (%s). Run it as a user who can, or use the "
+                      "command under each file instead." % e.__class__.__name__)
+    return real, None
+
+
+def _model_dest(root, src):
+    """R2: -> (folder, file) where one source lands:
+    <models>/<folder>[/<subdir>]/<basename(file)>, contained by the same
+    commonpath check as the LoRA download. Raises ValueError otherwise."""
+    f, folder, subdir = src.get("file"), src.get("folder"), src.get("subdir") or ""
+    if not all(isinstance(x, str) for x in (f, folder, subdir)):
+        raise ValueError("That file's entry is not in the expected shape.")
+    name = f.replace("\\", "/").rsplit("/", 1)[-1]
+    if not _MODEL_NAME_RE.match(name) or name.endswith(".part"):
+        raise ValueError("%r is not a file name Black Wire Forge will write." % name[:80])
+    target = os.path.abspath(os.path.join(root, folder, subdir))
+    if not folder or target == root or os.path.commonpath([target, root]) != root:
+        raise ValueError("The folder for %s would land outside the models folder; refused." % name)
+    return target, os.path.join(target, name)
+
+
+def _model_url(src):
+    """R2: https://huggingface.co/<repo>/resolve/main/<file>, from the manifest only."""
+    repo, f = src.get("repo"), src.get("file")
+    if not isinstance(repo, str) or not REPO_ID_RE.match(repo) or not isinstance(f, str) \
+            or not all(_MODEL_NAME_RE.match(seg) for seg in f.split("/")):
+        raise ValueError("That file's source is not a Hugging Face repo and file.")
+    return "%s/%s/resolve/main/%s" % (MODEL_DL_BASE, urllib.parse.quote(repo, safe="/"),
+                                      urllib.parse.quote(f, safe="/"))
+
+
+def _model_on_disk(root, src):
+    """Already present with the exact expected size -> Installed."""
+    try:
+        dest = _model_dest(root, src)[1]
+        st = os.lstat(dest)
+    except (ValueError, OSError):
+        return False
+    return stat.S_ISREG(st.st_mode) and st.st_size == src.get("size")
+
+
+def _manifest_sources():
+    """(repo, file) -> the recommended ("run by us") source; "not run by us"
+    alternatives are never downloaded, so they are not in here."""
+    out = {}
+    for p in engines.packs():
+        for lst in (p.get("sources") or {}).values():
+            for s in lst:
+                if s.get("run_by_us"):
+                    out.setdefault((s["repo"], s["file"]), s)
+    return out
+
+
+def _dl_save():
+    """Persist the queue (caller holds MODEL_DL_LOCK): temp file + rename."""
+    os.makedirs(DATA_DIR, exist_ok=True)
+    tmp = MODEL_DL_FILE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(MODEL_DL, f, indent=1)
+    os.replace(tmp, MODEL_DL_FILE)
+
+
+def _dl_load():
+    """R4: read downloads.json at start. Every entry is re-derived from the
+    packs' own sources (repo + file must be a "run by us" source, its size
+    the manifest's), so an edited file can never widen what is fetched."""
+    try:
+        with open(MODEL_DL_FILE) as f:
+            d = json.load(f)
+    except FileNotFoundError:
+        return
+    except (OSError, ValueError):
+        log("downloads.json could not be read, so no model download resumes.", "warn")
+        return
+    if not isinstance(d, dict) or not d.get("models"):
+        return
+    root, why = _models_folder_check(d.get("models"))
+    if why:
+        log("Model downloads are not resumed: the models folder they were going to cannot be used now. " + why,
+            "warn")
+        return
+    known, queue = _manifest_sources(), []
+    for e in d.get("queue") if isinstance(d.get("queue"), list) else []:
+        s = known.get((e.get("repo"), e.get("file"))) if isinstance(e, dict) else None
+        if not s or e.get("expected") != s["size"]:
+            continue
+        try:
+            dest = _model_dest(root, s)[1]
+        except ValueError:
+            continue
+        state = e.get("state") if e.get("state") in MODEL_DL_STATES else "failed"
+        queue.append({"room": str(e.get("room") or "")[:80], "repo": s["repo"], "file": s["file"],
+                      "folder": s["folder"], "subdir": s.get("subdir") or "", "dest": os.path.relpath(dest, root),
+                      "expected": s["size"], "state": state, "error": str(e.get("error") or "")[:400]})
+    # A .part record is kept only while the file is still exactly the one this
+    # app wrote (device, inode, size, mtime), at a manifest file's .part name,
+    # reached from the declared folder through validated folders only. After
+    # a kill mid-write the record lags the last second of writes: for a file
+    # that was running then, same device+inode and size/mtime no smaller is
+    # trusted to RESUME -- never to delete (security review finding 2).
+    running = {x["dest"] + ".part" for x in queue if x["state"] == "running"}
+    parts = []
+    for p in d.get("parts") if isinstance(d.get("parts"), list) else []:
+        if not isinstance(p, dict):
+            continue
+        rec = dict({k: p.get(k) for k in _PART_KEYS}, rel=p.get("rel"))
+        if _part_checked(root, rec):
+            parts.append(rec)
+        elif rec["rel"] in running and _part_checked(root, rec, grown=True):
+            parts.append(dict(rec, grown_ok=True))
+    with MODEL_DL_LOCK:
+        MODEL_DL.update(models=root, queue=queue, parts=parts)
+
+
+_PART_KEYS = ("dev", "ino", "size", "mtime_ns")
+
+
+class _NotOurs(ValueError):
+    """The .part at the path is no longer the file this app wrote: never unlinked, never written."""
+    pass
+
+
+def _part_id(st):
+    return {"dev": st.st_dev, "ino": st.st_ino, "size": st.st_size, "mtime_ns": st.st_mtime_ns}
+
+
+def _same_file(a, b):
+    """Two stat results of the same, unchanged regular file."""
+    return a is not None and b is not None and stat.S_ISREG(a.st_mode) and stat.S_ISREG(b.st_mode) and \
+        (a.st_dev, a.st_ino, a.st_size, a.st_mtime_ns) == (b.st_dev, b.st_ino, b.st_size, b.st_mtime_ns)
+
+
+def _part_matches(rec, st, grown=False):
+    """Is `st` (an lstat) still the .part this app recorded in `rec`? Exact:
+    device, inode, size and mtime. grown=True (resume after a kill only):
+    device and inode, and size and mtime no smaller than recorded."""
+    if not rec or st is None or not stat.S_ISREG(st.st_mode) or \
+            not all(isinstance(rec.get(k), int) for k in _PART_KEYS):
+        return False
+    if hasattr(os, "getuid") and st.st_uid != os.getuid():
+        return False
+    if (st.st_dev, st.st_ino) != (rec["dev"], rec["ino"]):
+        return False
+    if grown:
+        return st.st_size >= rec["size"] and st.st_mtime_ns >= rec["mtime_ns"]
+    return (st.st_size, st.st_mtime_ns) == (rec["size"], rec["mtime_ns"])
+
+
+def _part_names(root):
+    """The only .part paths this app ever writes: one per manifest file."""
+    out = set()
+    for src in _manifest_sources().values():
+        try:
+            out.add(os.path.relpath(_model_dest(root, src)[1], root) + ".part")
+        except ValueError:
+            pass
+    return out
+
+
+def _part_checked(root, rec, grown=False):
+    """A recorded .part -> its path if it is at a manifest file's .part name,
+    reached from the declared folder through validated folders only, and
+    still the file this app wrote; else None."""
+    if not root or not isinstance(rec, dict) or rec.get("rel") not in _part_names(root):
+        return None
+    path = os.path.join(root, rec["rel"])
+    if _dl_folder(root, os.path.dirname(path), rec["rel"], create=False):
+        return None
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return None
+    return path if _part_matches(rec, st, grown) else None
+
+
+def _part_rec(rel):
+    """Caller holds MODEL_DL_LOCK."""
+    return next((p for p in MODEL_DL["parts"] if isinstance(p, dict) and p.get("rel") == rel), None)
+
+
+def _part_set(rel, st):
+    """Record (or refresh) the identity of a .part this app is writing."""
+    with MODEL_DL_LOCK:
+        rec = _part_rec(rel)
+        if rec is None:
+            MODEL_DL["parts"].append(dict(_part_id(st), rel=rel))
+        else:
+            rec.clear()
+            rec.update(_part_id(st), rel=rel)
+        _dl_save()
+
+
+def _dl_busy():
+    """Caller holds MODEL_DL_LOCK."""
+    return MODEL_DL_RUN["thread"] is not None
+
+
+def _dl_kick():
+    """Start the one download worker unless it runs (caller holds MODEL_DL_LOCK)."""
+    if MODEL_DL_RUN["thread"] is not None:
+        return
+    if not any(e["state"] in ("queued", "running") for e in MODEL_DL["queue"]):
+        return
+    MODEL_DL_RUN["cancel"] = False
+    MODEL_DL_RUN["thread"] = t = threading.Thread(target=_dl_worker, daemon=True)
+    t.start()
+
+
+def _dl_worker():
+    """R4: one file at a time, in queue order, until none is left or Cancel."""
+    while True:
+        with MODEL_DL_LOCK:
+            e = None if MODEL_DL_RUN["cancel"] else next(
+                (x for x in MODEL_DL["queue"] if x["state"] in ("running", "queued")), None)
+            if e is None:
+                MODEL_DL_RUN["thread"] = None
+                return
+            e["state"], e["error"] = "running", ""
+            MODEL_DL_RUN["bytes"] = 0
+            root = MODEL_DL["models"]
+            _dl_save()
+        try:
+            state, error = _dl_one(root, e)
+        except Exception as x:   # never let one file stop the queue silently
+            traceback.print_exc()
+            state, error = "failed", "Could not download %s (%s)." % (os.path.basename(e["dest"]),
+                                                                     x.__class__.__name__)
+        with MODEL_DL_LOCK:
+            e["state"], e["error"] = state, error
+            _dl_save()
+        if state == "done" and not SETUP_MODE:
+            # Installed badges: the lane pollers re-read ComfyUI's model list
+            # on their next pass (they do this every few minutes anyway).
+            with DISCOVERY_LOCK:
+                for disc in DISCOVERY.values():
+                    disc["checked"] = 0
+
+
+def _dl_folder(root, target, where, create=True):
+    """REV-A: make <target> by walking down from the declared models folder,
+    one name at a time (never through anything but the declared folder).
+    A name that already exists as a link is the user's own layout (a big
+    models subfolder moved to another drive) and is used only if its real
+    path is an existing folder this user owns and can write to (an O_EXCL
+    probe); this app only ever creates plain folders, never links.
+    -> None, or the sentence saying why not."""
+    cur = root
+    for part in os.path.relpath(target, root).split(os.sep):
+        cur = os.path.join(cur, part)
+        try:
+            st = os.lstat(cur)
+        except FileNotFoundError:
+            if not create:
+                return "The folder %s is not there." % where
+            os.mkdir(cur, 0o755)
+            continue
+        if stat.S_ISLNK(st.st_mode):
+            real = os.path.realpath(cur)
+            try:
+                rst = os.stat(real)
+            except OSError:
+                rst = None
+            if rst is None or not stat.S_ISDIR(rst.st_mode):
+                return "The folder %s is a link to something that is not a folder." % where
+            if hasattr(os, "getuid") and rst.st_uid != os.getuid():
+                return "The folder %s is a link to a folder that belongs to another user." % where
+            probe = os.path.join(real, ".bwf-write-check-%s" % uuid.uuid4().hex[:12])
+            try:
+                os.close(os.open(probe, os.O_CREAT | os.O_EXCL | os.O_WRONLY | _O_NOFOLLOW, 0o600))
+                os.unlink(probe)
+            except OSError as e:
+                return "Black Wire Forge cannot write to the folder %s links to (%s)." % (where, e.__class__.__name__)
+        elif not stat.S_ISDIR(st.st_mode):
+            return "%s in the models folder is not a folder." % where
+    return None
+
+
+def _dl_forget_part(rel):
+    with MODEL_DL_LOCK:
+        rec = _part_rec(rel)
+        if rec is not None:
+            MODEL_DL["parts"].remove(rec)
+            _dl_save()
+
+
+def _dl_drop_part(part, rel, ident):
+    """Remove our .part only while the path still holds exactly `ident`."""
+    try:
+        if _same_file(os.lstat(part), ident):
+            os.unlink(part)
+            _dl_forget_part(rel)
+    except OSError:
+        pass
+
+
+def _dl_one(root, e):
+    """Fetch one queued file. -> (state, sentence)."""
+    try:
+        target, dest = _model_dest(root, e)
+        url = _model_url(e)
+    except ValueError as x:
+        return "failed", str(x)
+    name, expected = os.path.basename(dest), e["expected"]
+    where = "/".join(x for x in (e["folder"], e["subdir"]) if x)
+    if os.path.lexists(dest):
+        if _model_on_disk(root, {"file": e["file"], "folder": e["folder"], "subdir": e["subdir"], "size": expected}):
+            return "done", ""
+        return "failed", ("A different file named %s is already in %s. Black Wire Forge leaves it alone: move it "
+                          "away to download this one." % (name, where))
+    why = _dl_folder(root, target, where)
+    if why:
+        return "failed", why + " So %s is not downloaded; use the command under the file instead." % name
+    part = dest + ".part"
+    rel_part = os.path.relpath(part, root)
+    try:
+        st = os.lstat(part)
+    except FileNotFoundError:
+        st = None
+    if st is not None:
+        if not stat.S_ISREG(st.st_mode):
+            return "failed", ("Something that is not a plain file (a link, say) is at %s.part in %s, so %s is not "
+                              "downloaded. Remove it first." % (name, where, name))
+        with MODEL_DL_LOCK:
+            rec = dict(_part_rec(rel_part) or {})
+        if not (_part_matches(rec, st) or (rec.get("grown_ok") and _part_matches(rec, st, grown=True))):
+            return "failed", ("%s.part in %s was not left by Black Wire Forge, so it is not touched. Move it away "
+                              "to download %s." % (name, where, name))
+    have = [st.st_size if st is not None and st.st_size <= expected else 0]
+    mine = [st]      # the identity of what this app wrote: from its own descriptor once it writes
+    keep = [None]    # a second descriptor on our .part, so that identity holds whatever the path holds later
+    saved_at = [0.0]
+    not_ours = ("%s.part in %s was replaced by something else during the download, so it is left alone. Move it "
+                "away to download %s." % (name, where, name))
+
+    def open_part():
+        if st is not None and not have[0]:
+            # Starting again from byte 0: a fresh .part. The old one goes only
+            # while the path still holds exactly the file checked above.
+            try:
+                now = os.lstat(part)
+            except FileNotFoundError:
+                now = None
+            if now is not None:
+                if not _same_file(now, st):
+                    raise _NotOurs(not_ours)
+                os.unlink(part)
+        if st is None or not have[0]:
+            fd = os.open(part, os.O_CREAT | os.O_EXCL | os.O_WRONLY | _O_NOFOLLOW, 0o644)
+        else:
+            # Resume: never creates, never follows a link, and O_NONBLOCK so a
+            # FIFO swapped in fails at once (ENXIO) instead of hanging here.
+            try:
+                fd = os.open(part, os.O_WRONLY | _O_NOFOLLOW | _O_NONBLOCK)
+            except OSError:
+                raise _NotOurs(not_ours)
+            if not _same_file(os.fstat(fd), st):
+                os.close(fd)
+                raise _NotOurs(not_ours)
+            if _O_NONBLOCK:
+                os.set_blocking(fd, True)
+        keep[0] = os.dup(fd)
+        mine[0] = os.fstat(fd)
+        _part_set(rel_part, mine[0])
+        f = os.fdopen(fd, "wb")
+        f.truncate(have[0])
+        f.seek(have[0])
+        return f
+
+    def progress(got, total):
+        MODEL_DL_RUN["bytes"] = got
+        if keep[0] is not None and time.monotonic() - saved_at[0] > 1.0:   # a kill leaves the record ~1 s behind
+            saved_at[0] = time.monotonic()
+            _part_set(rel_part, os.fstat(keep[0]))
+
+    try:
+        try:
+            if have[0] < expected:
+                token = (os.environ.get("HF_TOKEN") or "").strip()
+                for attempt in (1, 2):
+                    req = urllib.request.Request(url)
+                    if have[0]:
+                        req.add_header("Range", "bytes=%d-" % have[0])
+                    if token and _hf_token_host(url):
+                        req.add_unredirected_header("Authorization", "Bearer " + token)
+                    try:
+                        r = _DOWNLOAD_OPENER.open(req, timeout=MODEL_DL_STALL)
+                    except urllib.error.HTTPError as x:
+                        if x.code == 416 and have[0] and attempt == 1:
+                            have[0] = 0      # REV-B: the server will not resume this: once more, from byte 0
+                            continue
+                        raise
+                    break
+                with r:
+                    if have[0] and r.status != 206:
+                        have[0] = 0          # the server sent the whole file: start again from byte 0
+                    elif have[0] and (r.headers.get("Content-Range") or "").strip() != "bytes %d-%d/%d" % (
+                            have[0], expected - 1, expected):
+                        raise _SizeRefused("the server resumed at a different place")
+                    _download_body(r, open_part, expected, exact=True, have=have[0],
+                                   cancelled=lambda: MODEL_DL_RUN["cancel"], progress=progress)
+            elif st is None:
+                return "failed", "%s has no size to download." % name
+        finally:
+            if keep[0] is not None:
+                mine[0] = os.fstat(keep[0])
+                os.close(keep[0])
+                keep[0] = None
+                _part_set(rel_part, mine[0])
+        try:
+            now = os.lstat(part)
+        except FileNotFoundError:
+            now = None
+        if not _same_file(now, mine[0]):
+            raise _NotOurs(not_ours)
+        if mine[0].st_size != expected:
+            raise _SizeRefused("the finished file is %d bytes, not %d" % (mine[0].st_size, expected))
+        try:
+            os.link(part, dest)          # never replaces a file that appeared meanwhile
+        except FileExistsError:
+            return "failed", "A file named %s appeared in %s meanwhile; it is left alone." % (name, where)
+        except OSError:
+            if os.path.lexists(dest):
+                return "failed", "A file named %s appeared in %s meanwhile; it is left alone." % (name, where)
+            os.replace(part, dest)       # a drive without hard links
+            _dl_forget_part(rel_part)
+        else:
+            _dl_drop_part(part, rel_part, mine[0])
+        return "done", ""
+    except urllib.error.HTTPError as x:
+        page = "https://huggingface.co/" + e["repo"]
+        if x.code in (401, 403):
+            return "skipped", ("Skipped %s: %s needs a Hugging Face login. Accept its terms on that page, then start "
+                               "Black Wire Forge with HF_TOKEN set to a token from your Hugging Face account."
+                               % (name, page))
+        if x.code == 404:
+            return "failed", "%s is not at %s any more (404)." % (name, page)
+        return "failed", "Hugging Face answered %d for %s. Try again later." % (x.code, name)
+    except _Cancelled:
+        return "cancelled", "Cancelled. What already arrived is kept for next time."
+    except _Short as x:
+        return "failed", ("The download of %s %s; press Download again to carry on from there." % (name, x))
+    except _NotOurs as x:
+        return "failed", str(x)                  # never unlinks: it is not ours any more
+    except _SizeRefused as x:
+        _dl_drop_part(part, rel_part, mine[0])
+        return "failed", "%s was refused: %s." % (name, x)
+    except TimeoutError:
+        return "failed", ("The download of %s stalled (nothing arrived for %d seconds); press Download again to "
+                          "carry on from there." % (name, MODEL_DL_STALL))
+    except OSError as x:
+        # Security review Finding 3: the error's class, never its message
+        # (which embeds the absolute path).
+        return "failed", ("Could not finish %s (%s); press Download again to carry on from there."
+                          % (name, x.__class__.__name__))
+    except ValueError as x:
+        return "failed", "%s: %s" % (name, x)
+
+
+def _room_plan(room):
+    """R3: the files a room (one entry of setup_rooms) still needs: each
+    role's recommended file unless the role is installed, each file once,
+    none already queued. -> [source]."""
+    with MODEL_DL_LOCK:
+        queued = {(x["repo"], x["file"]) for x in MODEL_DL["queue"] if x["state"] in ("queued", "running")}
+    out, seen = [], set()
+    for role in room["roles"]:
+        main = next((s for s in role["sources"] if s["run_by_us"]), None)
+        if role["installed"] or not main or (main["repo"], main["file"]) in seen | queued:
+            continue
+        seen.add((main["repo"], main["file"]))
+        out.append(main)
+    return out
+
+
+def setup_models_folder(body):
+    """R1: POST /api/setup/models-folder {path} (null forgets it)."""
+    with MODEL_DL_LOCK:
+        if _dl_busy():
+            return {"ok": False, "error": "Cancel the downloads first, then change the folder."}, 409
+    path = body.get("path")
+    real = None
+    if path is not None:
+        real, why = _models_folder_check(path)
+        if why:
+            return {"ok": False, "error": why}, 400
+    with MODEL_DL_LOCK:
+        if real != MODEL_DL["models"]:
+            MODEL_DL.update(models=real, queue=[], parts=[])
+        _dl_save()
+    return {"ok": True, "path": real}, 200
+
+
+def downloads_start(body):
+    """R3: POST /api/downloads/start {room, bytes, host?, port?}. `bytes` is
+    what the page showed on the button: more than that is never queued."""
+    with MODEL_DL_LOCK:
+        root = MODEL_DL["models"]
+        if MODEL_DL_RUN["thread"] is not None and MODEL_DL_RUN["cancel"]:
+            return {"ok": False, "error": "Still stopping the last download. Try again in a moment."}, 409
+    if not root:
+        return {"ok": False, "error": "Tell step 1 where ComfyUI's models folder is first."}, 400
+    _, why = _models_folder_check(root)
+    if why:
+        return {"ok": False, "error": why}, 400
+    rooms = setup_rooms({"host": [str(body.get("host") or "")], "port": [str(body.get("port") or "")]})[0]["rooms"]
+    room = next((r for r in rooms if r["id"] == body.get("room")), None)
+    if room is None:
+        return {"ok": False, "error": "There is no room by that name."}, 400
+    plan = _room_plan(room)
+    need = sum(s["size"] for s in plan)
+    try:
+        dests = [os.path.relpath(_model_dest(root, s)[1], root) for s in plan]
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}, 400
+    if not plan:
+        return {"ok": True, "queued": 0, "bytes": 0}, 200
+    said = body.get("bytes")
+    if not isinstance(said, int) or isinstance(said, bool) or need > said:
+        return {"ok": False, "error": "What this room needs changed since the page showed it. Look at the room "
+                                      "again."}, 409
+    with MODEL_DL_LOCK:
+        pending = sum(x["expected"] for x in MODEL_DL["queue"] if x["state"] in ("queued", "running"))
+        free = shutil.disk_usage(root).free
+        if free < pending + need + MODEL_DL_MARGIN:
+            return {"ok": False, "error": "These downloads need %s, plus %s to spare, but the drive with the models "
+                                          "folder has only %s free." % (_gb(pending + need), _gb(MODEL_DL_MARGIN),
+                                                                        _gb(free))}, 400
+        if MODEL_DL_RUN["thread"] is None:          # a new batch: forget the finished one
+            MODEL_DL["queue"] = [x for x in MODEL_DL["queue"] if x["state"] in ("queued", "running")]
+        for s, dest in zip(plan, dests):
+            MODEL_DL["queue"].append({"room": room["id"], "repo": s["repo"], "file": s["file"],
+                                      "folder": s["folder"], "subdir": s.get("subdir") or "",
+                                      "dest": dest, "expected": s["size"], "state": "queued", "error": ""})
+        _dl_save()
+        _dl_kick()
+    return {"ok": True, "queued": len(plan), "bytes": need}, 200
+
+
+def downloads_status():
+    """R4: GET /api/downloads -- every file of the current batch, its state
+    and bytes, and the batch's totals."""
+    with MODEL_DL_LOCK:
+        q = [dict(x) for x in MODEL_DL["queue"]]
+        running, now = MODEL_DL_RUN["thread"] is not None, MODEL_DL_RUN["bytes"]
+        root, parts = MODEL_DL["models"], len(MODEL_DL["parts"])
+    files, total, got, finished = [], 0, 0, 0
+    for x in q:
+        b = x["expected"] if x["state"] == "done" else now if x["state"] == "running" and running else 0
+        files.append({"room": x["room"], "repo": x["repo"], "file": os.path.basename(x["dest"]),
+                      "where": "/".join(p for p in (x["folder"], x["subdir"]) if p), "expected": x["expected"],
+                      "bytes": b, "state": x["state"], "error": x["error"]})
+        if x["state"] in ("skipped", "failed", "cancelled"):
+            continue
+        total += x["expected"]
+        got += b
+        finished += x["state"] == "done"
+    counted = sum(1 for f in files if f["state"] not in ("skipped", "failed", "cancelled"))
+    return {"ok": True, "models": root, "running": running, "files": files, "done": finished, "total": counted,
+            "position": min(finished + 1, counted), "bytes": got, "total_bytes": total,
+            "percent": int(100 * got / total) if total else None, "parts": parts}, 200
+
+
+def downloads_cancel(body):
+    """R4: stop the current file (its .part stays) and clear the queue."""
+    with MODEL_DL_LOCK:
+        MODEL_DL["queue"] = [x for x in MODEL_DL["queue"] if x["state"] != "queued"]
+        if MODEL_DL_RUN["thread"] is not None:
+            MODEL_DL_RUN["cancel"] = True
+        else:
+            for x in MODEL_DL["queue"]:
+                if x["state"] == "running":
+                    x["state"], x["error"] = "cancelled", "Cancelled. What already arrived is kept for next time."
+        _dl_save()
+    return {"ok": True}, 200
+
+
+def downloads_discard(body):
+    """R4: remove only this app's own .part files: at a manifest file's .part
+    name, reached from the declared folder through validated folders, and
+    still exactly the file it wrote (device, inode, size, mtime)."""
+    removed = left = 0
+    with MODEL_DL_LOCK:
+        if MODEL_DL_RUN["thread"] is not None:
+            return {"ok": False, "error": "Cancel the downloads first."}, 409
+        root = MODEL_DL["models"]
+        for rec in MODEL_DL["parts"]:
+            path = _part_checked(root, rec)
+            try:
+                if path:
+                    os.unlink(path)
+                    removed += 1
+                elif root and isinstance(rec, dict) and isinstance(rec.get("rel"), str) and \
+                        os.path.lexists(os.path.join(root, rec["rel"])):
+                    left += 1
+            except OSError:
+                pass
+        MODEL_DL["parts"] = []
+        _dl_save()
+    return {"ok": True, "removed": removed, "left": left}, 200
+
+
+DOWNLOAD_POSTS = {"/api/downloads/start": downloads_start, "/api/downloads/cancel": downloads_cancel,
+                  "/api/downloads/discard": downloads_discard}
 
 
 SETUP_POSTS = {"/api/setup/probe-comfy": setup_probe_comfy, "/api/setup/probe-helper": setup_probe_helper,
                "/api/setup/test-helper": setup_test_helper, "/api/setup/preview": setup_preview,
-               "/api/setup/write": setup_write}
+               "/api/setup/write": setup_write, "/api/setup/models-folder": setup_models_folder}
 SETUP_UNFINISHED = {"ok": False, "setup": True, "error": "Finish Setup first."}
 
 
@@ -8009,8 +8794,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def setup_route(self, u):
         """W1: True when this request was answered here. In Setup mode only the
-        Setup page, /help, the favicon, /api/health and /api/setup/* answer;
-        every other API is 503. Once a config exists, /api/setup/* is 404."""
+        Setup page, /help, the favicon, /api/health, /api/setup/* and (W3)
+        /api/downloads* answer; every other API is 503. Once a config exists,
+        /api/setup/* is 404."""
         is_setup = u.path.startswith("/api/setup/")
         if not SETUP_MODE and not is_setup:
             return False
@@ -8033,11 +8819,13 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(*setup_state())
             elif self.command == "GET" and u.path == "/api/setup/rooms":
                 self.send_json(*setup_rooms(urllib.parse.parse_qs(u.query)))
-            elif self.command == "POST" and u.path in SETUP_POSTS:
+            elif self.command == "GET" and u.path == "/api/downloads":
+                self.send_json(*downloads_status())
+            elif self.command == "POST" and (u.path in SETUP_POSTS or u.path in DOWNLOAD_POSTS):
                 if not body_ok:
                     self.send_json({"ok": False, "error": "Send a JSON object."}, 400)
                 else:
-                    self.send_json(*SETUP_POSTS[u.path](body))
+                    self.send_json(*(SETUP_POSTS.get(u.path) or DOWNLOAD_POSTS[u.path])(body))
             elif u.path.startswith("/api/"):
                 self.send_json(SETUP_UNFINISHED, 503)
             elif self.command == "POST":
@@ -8104,6 +8892,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.proxy_view(q)
             if u.path == "/api/health":
                 return self.send_json({"ok": True, "port": PORT, "lanes": len(LANES), "setup": SETUP_MODE})
+            if u.path == "/api/downloads":   # W3 R5: status, on a server bound to this computer only
+                if not _downloads_here():
+                    return self.send_json({"ok": False, "error": DOWNLOADS_LOCAL_ONLY}, 403)
+                return self.send_json(*downloads_status())
             if u.path == "/api/engines":
                 return self.send_json(self.engines_payload(q))
             if u.path == "/api/credits":
@@ -8567,6 +9359,12 @@ class Handler(BaseHTTPRequestHandler):
         if self.setup_route(u):
             return
         try:
+            if u.path in DOWNLOAD_POSTS:     # W3 R5: only Cancel outlives Setup, and only bound locally
+                if u.path != "/api/downloads/cancel":
+                    return self.send_json({"error": "not found"}, 404)
+                if not _downloads_here():
+                    return self.send_json({"ok": False, "error": DOWNLOADS_LOCAL_ONLY}, 403)
+                return self.send_json(*downloads_cancel(self.read_json()))
             if u.path == "/api/upload":
                 return self.api_upload()
             if u.path == "/api/generate":
@@ -8820,6 +9618,13 @@ def main():
         raise
     srv.daemon_threads = True
 
+    _dl_load()   # W3 R4: a model download queue survives the Setup re-exec and any restart
+    with MODEL_DL_LOCK:
+        pending = any(e["state"] in ("queued", "running") for e in MODEL_DL["queue"])
+        if pending and _downloads_here():
+            _dl_kick()
+    if pending and not _downloads_here():
+        log("Model downloads are waiting, not running. " + DOWNLOADS_LOCAL_ONLY, "warn")
     if SETUP_MODE:
         # Basename only, like below: the full path is how a home directory
         # ends up in a screenshot. No lanes, no pollers, no jobs to load.

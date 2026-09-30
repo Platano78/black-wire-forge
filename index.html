@@ -807,6 +807,11 @@
   #shareActions{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px}
   .fixture-badge{font-family:var(--mono); font-size:10px; color:var(--accent); border:1px dashed var(--accent);
     padding:1px 6px; margin-left:6px; text-transform:uppercase}
+  /* W3: one small line while model downloads run */
+  #dlLine{font-size:12px; color:var(--text-mid); padding:4px 16px; border-bottom:1px solid var(--hairline)}
+  #dlLine details{display:inline; margin-left:8px}
+  #dlLine summary{display:inline; cursor:pointer; color:var(--accent)}
+  #dlLine ul{margin:4px 0 0; padding-left:20px}
 </style>
 </head>
 <body>
@@ -817,6 +822,10 @@
   <button class="btn" id="creditsBtn" type="button">Credits</button>
   <a class="btn" id="helpBtn" href="/help">Help</a>
 </header>
+
+<!-- W3: while model downloads (started in Setup) run: one line, and a plain list behind "Details". -->
+<div id="dlLine" role="status" hidden><span id="dlText"></span>
+  <details id="dlMore"><summary>Details</summary><ul id="dlList"></ul></details></div>
 
 <!-- Rooms by task: built from /api/engines "rooms" (rooms.json + what each
      pack declares), never a fixed list in this markup. -->
@@ -6779,6 +6788,35 @@ function bindStaticUI(){
   window.addEventListener('resize', () => $$('#monitorStage img.px').forEach(fitPixels));
 }
 
+/* W3: model downloads started in Setup -- one line while they run. A 403/404
+   (a server open beyond this computer) or an idle queue stops the polling. */
+async function pollDownloads(){
+  let d;
+  try{
+    const r = await fetch('/api/downloads', {cache:'no-store'});
+    if(r.status === 403 || r.status === 404){ clearInterval(STATE.dlTimer); return; }
+    d = await r.json();
+  } catch(e){ return; }
+  const line = document.getElementById('dlLine');
+  line.hidden = !d.running;
+  if(d.running){
+    document.getElementById('dlText').textContent = 'Downloading models: ' + d.position + ' of ' + d.total
+      + (d.percent != null ? ', ' + d.percent + '%' : '');
+    const words = {queued:'waiting', running:'downloading', done:'installed', cancelled:'cancelled'};
+    document.getElementById('dlList').replaceChildren(...d.files.map(f => {
+      const li = document.createElement('li');
+      li.textContent = f.file + ' (' + f.where + '): ' + (f.error || words[f.state] || f.state);
+      return li;
+    }));
+  }
+  if(STATE.dlDone != null && d.done !== STATE.dlDone){   // a file landed: refresh the Installed badges
+    const changed = await loadEnginesFor();
+    if(changed) renderRoomStrip(); else refreshRoomStrip();
+  }
+  STATE.dlDone = d.done;
+  if(!d.running) clearInterval(STATE.dlTimer);   // only Setup starts downloads: stopped stays stopped
+}
+
 async function init(){
   bindStaticUI();
   await pollLanes();
@@ -6799,6 +6837,8 @@ async function init(){
     renderEnginePicker(false);
   }, 8000);
   setInterval(pollJobs, 2000);
+  pollDownloads();
+  STATE.dlTimer = setInterval(pollDownloads, 3000);
 }
 init();
 </script>

@@ -306,6 +306,14 @@ can read (a network share mounted on both — how you share it is your call). Ei
 only picks up a new file on its next rescan; refresh the lane if a just-downloaded pack isn't
 listed yet.
 
+**Base models from Setup, same rule.** When the user tells Setup that ComfyUI runs on this computer
+and names its models folder (checked: exists, writable, holds ComfyUI's usual subfolders), each
+room card can download that room's files into it: size, destination and licences are shown first,
+and the user's click on "Download N files" is the yes. One file at a time, exact manifest sizes,
+Hugging Face hosts only (`HF_TOKEN` for gated repos, sent only to huggingface.co); the queue is
+`data/downloads.json` and resumes after a restart. `GET /api/downloads` shows it; on a server
+bound beyond localhost the downloads routes answer 403.
+
 ## Where to read further
 
 - `README.md` — full install/config reference
