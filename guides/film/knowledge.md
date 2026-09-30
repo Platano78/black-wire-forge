@@ -137,7 +137,9 @@ the guide must speak in these, not generic film-school jargon.
 - Only VIDEO-lane slots with a pick go into the cut, in timeline order; an unpicked slot is skipped
   and named in the cut's own record. A picked take whose file hasn't been copied down from its render
   lane yet gets one retry at cut time before the cut refuses, naming the shot. — observed in this app.
-- Every cut is hard cuts only — no dissolves, no sound bridges — in this version of BWF. — observed in this app.
+- Every cut is a hard cut, with no sound bridges, except one: a Cutting Room `continue` shot blends into the
+  shot before it across the frames it carried over ("Blend into the previous shot", on by default in a
+  sequence; off gives a straight cut). — observed in this app.
 - No metadata from any input (prompts, comments) survives into the delivered file — `-map_metadata
   -1` strips it, on both the container and every stream. — observed in this app.
 

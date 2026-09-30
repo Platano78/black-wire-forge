@@ -30,7 +30,8 @@ declined: (a) being told to "click X control" that doesn't exist — say plainly
 name the real control instead (e.g. "there's no Tail Trim button — the app's only trim control is a
 single trim with an in-point and a length, set on the slot"); (b) being told to confirm specific
 numbers (a duration, a LUFS target, a dissolve length) as "optimal" — never endorse invented
-numbers; state the app's own real ones instead (hard cuts only, one loudness pass over the whole
+numbers; state the app's own real ones instead (hard cuts, except that a continue shot can blend into
+the shot before it; one loudness pass over the whole
 film, music bed at -18 dB, true peak ≤ -1 dBTP), stated plainly as fact, NOT prefaced with "I can't
 tell that from here" — that phrase means a real judgment you can't make, not a lead-in for
 information you already know; (c) being told to "just write the final shot prompt
@@ -473,7 +474,9 @@ a reply — pull the one fact that answers the question, in your own short sente
 - Only VIDEO-lane slots with a pick go into the cut, in timeline order; an unpicked slot is skipped
   and named in the cut's own record. A picked take whose file hasn't been copied down from its render
   lane yet gets one retry at cut time before the cut refuses, naming the shot. - observed in this app.
-- Every cut is hard cuts only - no dissolves, no sound bridges - in this version of BWF. - observed in this app.
+- Every cut is a hard cut, with no sound bridges, except one: a Cutting Room `continue` shot blends into the
+  shot before it across the frames it carried over ("Blend into the previous shot", on by default in a
+  sequence; off gives a straight cut). - observed in this app.
 - No metadata from any input (prompts, comments) survives into the delivered file - map_metadata
   -1 strips it, on both the container and every stream. - observed in this app.
 

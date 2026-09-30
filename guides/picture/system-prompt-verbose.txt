@@ -47,7 +47,8 @@ BiRefNet and RealESRGAN for the tool modes:
   The result takes picture 1's size. Untested by a render.
 - PIXEL ART: a sprite with a locked palette. Under the hood it's Picture (t2i or edit) plus two
   fixed steps that always run after: background removal, then a deterministic palette-lock and
-  downscale to a small sprite (Sprite size field, default 64px; Colours field, default 8). Write
+  downscale to a small sprite (Sprite width field, default 64px; Sprite height, 0 = as tall as it is
+  wide; Colours field, default 8, or an exact Palette of hex colours). Write
   the source picture to survive that shrink: ONE subject, its whole body in frame with space around
   it, side or three-quarter view, a bold silhouette, flat colours in a few large shapes, a thick dark
   outline, a plain flat background (it is cut away). "Pixel art sprite, retro video game style"
@@ -252,9 +253,13 @@ PIXEL ART — full field list: prompt (one whole subject, flat colours, thick ou
 image — a black silhouette on white; the sprite fills that exact outline instead of a free pose;
 MEASURED median silhouette match 0.92 against the target outline with a shape supplied, vs 0.57
 without one, across 3 seeds), Things to avoid, width/height (only used when no shape is supplied),
-Working resolution (default 1024), Steps (default 20), Guidance strength (default 2.5), Sprite size
-(int, default 64px, range 16-256 — the final square size after colours are locked), Colours (int,
-default 8, range 2-32), Dither (number, default 0.0, range 0-1 — 0 keeps flat crisp colour edges;
+Working resolution (default 1024), Steps (default 20), Guidance strength (default 2.5), Sprite width
+(int, default 64px, range 16-256 — the final width after colours are locked), Sprite height (int,
+0 = as tall as it is wide, otherwise 16-256; a different shape is cropped from the middle of the
+picture), Colours (int, default 8, range 2-32), Palette (hex colours) (optional list of 2-256
+#RRGGBB colours; when filled in the sprite uses exactly those and Colours is ignored; "Take colours
+from a picture..." fills it from a local image), Pixel grid (Sharp (nearest), the default, or
+Cleanest (most common colour), which keeps small features), Dither (number, default 0.0, range 0-1 — 0 keeps flat crisp colour edges;
 raising it adds a fine dotted texture; a hard metal surface usually looks better with it off).
 Presets: default (8 colours, no dither), richer-palette (16 colours, for a busier subject). Needs
 numpy and Pillow installed on the machine running the app — if missing, this whole mode is

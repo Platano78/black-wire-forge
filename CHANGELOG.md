@@ -7,12 +7,41 @@ All notable changes to Black Wire Forge are recorded here.
 ### Added
 
 - A first-run **Setup** page. Started with no `config.json`, the app listens on `127.0.0.1:3998`
-  only and opens four steps: find ComfyUI (this machine's usual ports, or an address you type),
-  switch on a guide (an OpenAI-compatible chat endpoint, with a one-line "Test it"), choose who
+  only and opens five steps: find ComfyUI (this machine's usual ports, or an address you type),
+  see what each room needs (step 2, below), switch on a guide (an OpenAI-compatible chat endpoint, with a one-line "Test it"), choose who
   can open the app (this computer, or your home network with a plain warning), then read the
   exact `config.json` it will write. "Save and start" writes it (never over an existing file) and
   restarts the app. Until then the other APIs answer 503 (`/api/health` and the Setup routes
   still answer), and the `/api/setup/*` routes are gone (404) once a config exists.
+
+- Setup's step 2, "What do you want to make first?": every room as a card with its model files,
+  their total size, each licence's own terms and an Installed / Needs N files badge checked against
+  the ComfyUI found in step 1, plus a copyable `hf download` command per file. Nothing is required
+  here. If you tick "ComfyUI runs on this computer" and name its models folder, each card can
+  download that room's files into it with one click: every file's destination, size and licence is
+  shown first, Hugging Face hosts only, exact sizes checked, resumable after a restart, `HF_TOKEN`
+  for gated repos (sent only to huggingface.co). The main page shows one progress line; the
+  download routes answer only on a server bound to this computer.
+
+- A **Workflows** tab beside the Cutting Room: the templates your ComfyUI ships and the workflows
+  saved in its Workflows panel, each marked Ready or with the model files, nodes or ComfyUI
+  version it still needs. Cloud (paid API) templates are hidden unless you tick the box. "Save to
+  ComfyUI and open" saves a copy of a template into ComfyUI (never over an existing one). Nothing
+  is installed or downloaded from here.
+
+- Seamless joins in the Cutting Room: a shot that continues the shot before it blends into it
+  across the frames it carried over ("Blend into the previous shot", on by default in a sequence,
+  off in the Video room). Every other join is still a straight cut, and sing-along timing is
+  unchanged.
+
+- A Cutting Room shot has **Kind of shot**, so a new shot can use any of its engine's modes
+  (including the ones that sing along) without a detour through the Video room; it locks once the
+  shot has a take. The "Sings …" line warns as soon as a shot runs past the end of the song.
+
+- Pixel Art: **Sprite width** and **Sprite height** (0 = square; another shape is cropped from the
+  middle), a **Pixel grid** choice (Sharp, or Cleanest: each pixel takes its square's most common
+  colour) and an exact **Palette** of 2-256 hex colours, which "Take colours from a picture…" can
+  fill from a local image (nothing is uploaded).
 
 - One box per room: the room's guide is where you say what you want. It fills the mode's real,
   editable fields under "What the guide filled in"; you still press Make. A question gets an
@@ -126,6 +155,15 @@ All notable changes to Black Wire Forge are recorded here.
   the README front matter's own `instance_prompt:` field).
 
 ### Fixed
+
+- After Setup's "Save and start" the engine menu no longer opens by itself; while a lane is still
+  being checked its engines read "checking…" instead of a red "needs …".
+- A failed process job (the 3D turntable) shows the last lines of its output under the error.
+- Recording where a take's file was copied no longer makes a Cutting Room edit bounce with "This
+  sequence changed somewhere else".
+- Pixel Art's palette-file loader read no colours from a file in its own `#rrggbb` format.
+- The Workflows tab shows template pictures from a real ComfyUI (it sends them as
+  `application/octet-stream`).
 
 - UX-2 #11's "Installed" badge never showed: ComfyUI's lora pool lists names WITH their
   subfolder (`minimax_h3/x.safetensors`, possibly backslash-separated on Windows hosts), but

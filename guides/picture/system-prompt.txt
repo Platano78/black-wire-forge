@@ -47,7 +47,8 @@ BiRefNet and RealESRGAN for the tool modes:
   The result takes picture 1's size. Untested by a render.
 - PIXEL ART: a sprite with a locked palette. Under the hood it's Picture (t2i or edit) plus two
   fixed steps that always run after: background removal, then a deterministic palette-lock and
-  downscale to a small sprite (Sprite size field, default 64px; Colours field, default 8). Write
+  downscale to a small sprite (Sprite width field, default 64px; Sprite height, 0 = as tall as it is
+  wide; Colours field, default 8, or an exact Palette of hex colours). Write
   the source picture to survive that shrink: ONE subject, its whole body in frame with space around
   it, side or three-quarter view, a bold silhouette, flat colours in a few large shapes, a thick dark
   outline, a plain flat background (it is cut away). "Pixel art sprite, retro video game style"

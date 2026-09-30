@@ -175,8 +175,11 @@ card, then general web craft — see "Research log" for what came from where.
   `quality.edit`.
 - `pixelart` fields: `prompt`, optional `shape_image` (a black silhouette on white — the sprite is
   drawn to fill that exact outline instead of a free pose), `negative`, `width`/`height` (only used
-  without a shape image), `resolution`, `steps`, `cfg`, then the sprite-specific trio: `pixel_size`
-  (default 64px final square), `pixel_colors` (default 8), `pixel_dither` (default 0 — flat crisp
+  without a shape image), `resolution`, `steps`, `cfg`, then the sprite fields: `pixel_size`
+  (Sprite width, default 64px), `pixel_height` (Sprite height, default 0 = as tall as it is wide; another
+  shape is cropped from the middle), `pixel_colors` (default 8), `pixel_palette` (optional exact hex
+  colours; when set, Colours is ignored), `pixel_grid` (Sharp, the default, or Cleanest: each pixel takes
+  its square's most common colour), `pixel_dither` (default 0 — flat crisp
   edges; a hard metal surface usually looks better with it off, raising it adds a fine dotted
   texture). — observed, `engines/pixelart.py` `fields.pixelart`.
 - `shape_image` measurably matters: held-shape renders hit a median silhouette match of 0.92 against
