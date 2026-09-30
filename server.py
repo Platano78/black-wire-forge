@@ -6812,10 +6812,20 @@ def _cut_ensure_take_file(sid, slot_id, job_id):
     except Exception:
         raise ValueError("Shot %s's take is not copied yet — is its lane off?" % slot_id)
     os.makedirs(os.path.dirname(dest), exist_ok=True)
-    tmp = dest + ".tmp"
-    with open(tmp, "wb") as f:
-        f.write(data)
-    os.replace(tmp, dest)
+    # A temp file of its own: the background Sing along probe and a Make can
+    # copy the same take at once, and a shared "<dest>.tmp" made the second
+    # rename fail. Same bytes either way; the last rename wins.
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(dest), prefix=os.path.basename(dest) + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+        os.replace(tmp, dest)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
     with SEQ_LOCK:
         seq = _seq_read(sid)
         found = False
