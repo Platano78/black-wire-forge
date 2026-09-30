@@ -305,6 +305,16 @@ try:
 
         print("a forced 409: bump the sequence's rev behind the page's back, then edit")
         seq_id = h.split("seq=")[1].split("&")[0]
+        # The page's 2 s poll re-reads the open sequence and adopts a newer rev,
+        # so a poll landing between the bump and the debounced save would send
+        # that save on the new rev and no 409 would happen (seen on a second
+        # host). Until the 409 is seen, the page's own sequence reads get the
+        # pre-bump copy (a fulfilled 200, so no console error); the 409 path
+        # itself refreshes from the op's own response.
+        pre_bump = json.dumps(http_json(URL + "api/sequence?id=" + seq_id))
+        hold_seq_reads = lambda url: "/api/sequence?id=" in url
+        page.route(hold_seq_reads, lambda route: route.fulfill(status=200, content_type="application/json",
+                                                               body=pre_bump))
         cur = http_json(URL + "api/sequence?id=" + seq_id)
         bumped = http_json(URL + "api/sequence/op",
                             data=json.dumps({"id": seq_id, "rev": cur["rev"], "op": "set_title",
@@ -317,6 +327,7 @@ try:
         page.wait_for_timeout(400)   # inside the 600ms autosave debounce
         wait_true("409 message shown after the debounced save collides",
                   lambda: "changed elsewhere" in page.inner_text("#seqMsg"), 3)
+        page.unroute(hold_seq_reads)
         check("the user's just-typed text was never silently lost",
               page.input_value("#promptBox") == stale_text, page.input_value("#promptBox"))
         page.wait_for_timeout(600)
