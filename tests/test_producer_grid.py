@@ -250,6 +250,8 @@ check("process lane, producer cap", pack["lane_kind"] == "process" and pack["cap
 check("mode id grid, words, room", list(pack["graphs"]) == ["grid"]
       and pack["mode_words"]["grid"] == "Grid check (beats and bars)"
       and engines.mode_room("producer", "grid") == "cover")
+check("the room's 'Which one?' list gets a one-line note for grid, as every other mode does",
+      bool(engines.mode_note("producer", "grid")), engines.mode_note("producer", "grid"))
 fids = [f["id"] for f in engines.fields("producer", "grid")]
 check("fields: audio input (cover's own id), drum stem, beats per bar, bar-start anchor, expected bpm",
       fids == ["source_audio_name", "use_drum_stem", "beats_per_bar", "first_downbeat", "expected_bpm"], fids)

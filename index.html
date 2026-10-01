@@ -387,6 +387,9 @@
   #singLine.warn{color:var(--stale)}
   .job-tail{margin:6px 0 0; padding:6px 8px; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-size:12px; color:var(--text-mid); background:var(--surface3); white-space:pre-wrap; word-break:break-word}
+  .job-extras{margin:10px 0 0; text-align:center}
+  .job-summary{margin:0 0 8px; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:13px;
+    color:var(--text-hi); word-break:break-word}
   #guideLog{margin-top:6px; max-height:40vh; overflow-y:auto; overflow-x:hidden; background:var(--surface3);
     border:1px solid var(--divider); padding:8px; display:flex; flex-direction:column; gap:8px}
   .guide-msg{min-width:0}
@@ -1285,6 +1288,21 @@ function processTailHTML(job){
   if(!lines.length) return '';
   return '<pre class="job-tail" id="jobTail">' + esc(lines.join('\n').slice(-400)) + '</pre>';
 }
+// A finished process job's one-line result (a pack whose plan prints one: Grid check's
+// "4/4, 111.5 BPM, drift +0.4%") and every output the stage has no player for (grid.json),
+// each with its own Download. Without this the summary and the data file never reach the page.
+function jobExtrasHTML(job, o){
+  if(job.status !== 'done') return '';
+  const proc = laneKindOf(STATE.lanes.find(l => l.id === job.lane)) === 'process';
+  const line = proc ? (job.notes || []).map(x => String(x).trim()).filter(Boolean).slice(-1)[0] : '';
+  const files = (job.outputs || []).filter(x => x !== o && x.media === 'file');
+  if(!line && !files.length) return '';
+  return '<div class="job-extras" id="jobExtras">'
+    + (line ? '<p class="job-summary" id="jobSummary">' + esc(line) + '</p>' : '')
+    + files.map(f => '<a class="btn" href="' + viewURL(job.lane, f, true) + '" download>Download '
+                     + esc(f.filename) + '</a>').join(' ')
+    + '</div>';
+}
 function jobProgressPercent(p){
   if(!p || p.state === 'loading') return null;   // indeterminate while loading
   return p.percent;
@@ -1745,6 +1763,7 @@ function renderMonitor(){
       || (job.status === 'interrupted' ? 'That one was interrupted.' : 'That one failed.')) + '</p>'
       + processTailHTML(job);
   }
+  media += jobExtrasHTML(job, o);
   const finished = job.status === 'done' || job.status === 'error' || job.status === 'interrupted';
   const chips = [
     ['machine', job.lane_name], ['model', job.model],

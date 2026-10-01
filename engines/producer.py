@@ -101,6 +101,7 @@ def grid_plan(args, models):
         "steps": [{"argv": argv, "timeout_s": _STEP_TIMEOUT_S}],
         "outputs": ["grid-check.mp3", "grid.json"],   # the playable one first: it is what the page shows
         "progress": r"PROGRESS (\d+)/(\d+)",
+        "summary": True,      # grid_check.py prints its one-line result last: the job keeps it as its notes
     }
 
 
@@ -126,6 +127,10 @@ ENGINE = {
         "grid": "Grid check (beats and bars)",
     },
     "mode_rooms": {"grid": "cover"},
+    "mode_notes": {
+        "grid": "finds every beat and bar start in a song and gives you a click track to check them by ear; "
+                "runs on the processor",
+    },
     "fields": {
         "grid": [
             {"id": "source_audio_name", "label": "Song to check", "type": "audio",

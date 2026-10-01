@@ -336,6 +336,8 @@ def sample(j):
 j = wait_status(jid, {"done", "error", "interrupted"}, sample=sample)
 check("process job finished done", j.get("status") == "done",
       repr((j.get("status"), j.get("notes"))))
+check("a done job whose plan declares no summary keeps no notes (its last line is program output)",
+      not j.get("notes"), repr(j.get("notes")))
 outs = j.get("outputs") or []
 check("the declared output is listed", bool(outs) and outs[0].get("filename") == "result.mp4",
       repr(outs))

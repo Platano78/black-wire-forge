@@ -1846,8 +1846,10 @@ def run_process_job(lane, jid):
     except ValueError as e:
         _finish_process_job(jid, "error", "%s" % e, tail)
         return
-    # A pack prints its one-line result last (grid check): keep just that line as the notes.
-    last = [t for t in tail if t.strip()][-1:]
+    # A plan with "summary": true prints its one-line result last (grid check): keep just that
+    # line as the notes. Any other program's last line is its own output, not a result.
+    last = ([t for t in tail if t.strip()][-1:]
+            if isinstance(plan, dict) and plan.get("summary") else None)
     _finish_process_job(jid, "done", None, last, outs)
 
 
