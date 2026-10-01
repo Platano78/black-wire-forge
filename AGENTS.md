@@ -316,22 +316,27 @@ Hugging Face hosts only (`HF_TOKEN` for gated repos, sent only to huggingface.co
 bound beyond localhost the downloads routes answer 403.
 
 **Grid check (Cover room) uses no ComfyUI, same rule.** It runs on a process lane under a
-separate Python that has beat_this (and Demucs, only for "Use the drum stem"). The first run
-downloads weights: beat_this `final0` (81 MB, MIT) and, with the drum stem, Demucs `htdemucs`
-(84 MB); the installs fetch CPU PyTorch (about 190 MB). Ask first, then:
+separate Python that has beat_this. The first run downloads beat_this `final0` (81 MB, MIT); the
+installs fetch CPU PyTorch (about 190 MB). Its "Use the drum stem" option also needs Demucs, whose
+`htdemucs` weights (84 MB, MIT code, no licence stated on the weights' own card) download on first
+use: ask about that separately. After a yes:
 
 ```
 python3 -m venv ~/bwf-producer
 ~/bwf-producer/bin/python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
 ~/bwf-producer/bin/python -m pip install git+https://github.com/CPJKU/beat_this   # needs git
-BWF_PRODUCER_PYTHON=$HOME/bwf-producer/bin/python .venv/bin/python server.py
+~/bwf-producer/bin/python -m pip install demucs      # only for the drum stem, after its own yes
 ```
 
-The lane: `{"id": "cpu", "name": "This machine", "kind": "process", "caps": ["producer"]}` (add
-`"3d"` only if Blender is installed too: a process lane missing any of its programs is down). `/api/engines?lane=cpu` → `producer` → mode `grid` `"available":
-true`. Upload the song to `lane=cpu`, then generate `{"lane": "cpu", "kind": "producer", "mode":
-"grid", "prompt": "", "source_audio_name": "<the name>"}`. A done job has `grid-check.mp3` and
-`grid.json` (`"type": "local"`) and the one-line summary in `"notes"`.
+Stop the running server. In `config.json`, add `"producer"` to the process lane's `caps`, or add
+the lane `{"id": "cpu", "name": "This machine", "kind": "process", "caps": ["producer"]}` (keep
+`"3d"` only if Blender is installed too: a process lane missing any of its programs is down).
+Start it again with the variable set, every time:
+`BWF_PRODUCER_PYTHON=$HOME/bwf-producer/bin/python .venv/bin/python server.py`.
+`/api/engines?lane=cpu` → `producer` → mode `grid` `"available": true`. Upload the song to
+`lane=cpu`, then generate `{"lane": "cpu", "kind": "producer", "mode": "grid", "prompt": "",
+"source_audio_name": "<the name>"}`. A done job has `grid-check.mp3` and `grid.json` (`"type":
+"local"`) and the one-line summary in `"notes"`.
 
 ## Where to read further
 
