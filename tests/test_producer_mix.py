@@ -127,6 +127,25 @@ ratio_db = 10.0 * math.log10(sum880 / sum440) if sum440 > 0 else float("nan")
 check("880 vs 440 level is -6 dB (within 1.0) over 2.5-3.5 s",
       abs(ratio_db - (-6.0)) <= 1.0, ratio_db)
 
+print("gains and offsets are given in track order; missing ones default to 0")
+OUT2 = os.path.join(WORK, "out2")
+r = subprocess.run([sys.executable, MIX,
+                    "--out", OUT2, "--ffmpeg", FFMPEG,
+                    "--track", A, "--track", B,
+                    "--gain", "3",
+                    "--lufs", "-14"], capture_output=True, text=True)
+check("2 tracks with 1 gain -> exit 0", r.returncode == 0,
+      "rc=%s stdout=%s stderr=%s" % (r.returncode, r.stdout[-300:], r.stderr[-300:]))
+doc2 = {}
+try:
+    doc2 = json.load(open(os.path.join(OUT2, "mix.json")))
+except Exception as e:
+    check("out2/mix.json parses", False, repr(e))
+check("mix.json shows the missing gain as 0 (gains [3, 0])",
+      [t.get("gain_db") for t in doc2.get("tracks", [])] == [3.0, 0.0], doc2)
+check("mix.json shows both offsets defaulted to 0",
+      [t.get("offset_s") for t in doc2.get("tracks", [])] == [0.0, 0.0], doc2)
+
 print("refusals: one sentence, exit 2, no traceback")
 
 
@@ -142,6 +161,10 @@ def refuse(label, argv):
 
 refuse("a 5th track", ["--track", A, "--track", B, "--track", A, "--track", B,
                         "--track", A, "--lufs", "-14"])
+refuse("3 gains for 2 tracks", ["--track", A, "--track", B, "--gain", "0", "--gain", "0",
+                                 "--gain", "0", "--lufs", "-14"])
+refuse("3 offsets for 2 tracks", ["--track", A, "--track", B, "--offset", "0", "--offset", "0",
+                                   "--offset", "1", "--lufs", "-14"])
 refuse("gain 20 dB", ["--track", A, "--track", B, "--gain", "20", "--gain", "0",
                        "--offset", "0", "--offset", "2", "--lufs", "-14"])
 refuse("offset -1 s", ["--track", A, "--track", B, "--gain", "0", "--gain", "0",

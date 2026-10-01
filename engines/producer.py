@@ -202,7 +202,7 @@ def mix_plan(args, models):
     for k in (1, 2, 3, 4):
         if not args.get("track_%d" % k):
             continue
-        argv += ["--track", "{in:track_%d" % k,
+        argv += ["--track", "{in:track_%d}" % k,
                  "--gain", "%g" % gains[k - 1],
                  "--offset", "%g" % offsets[k - 1]]
     return {

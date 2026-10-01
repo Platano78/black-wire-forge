@@ -44,11 +44,13 @@ def one_line(text):
 
 
 def per_track(values, what, lo, hi, n):
-    """One value per track (a track that was not named takes 0)."""
+    """One value per track, in track order (a track the list runs out before
+    takes 0)."""
     if values is None:
         return [0.0] * n
-    if len(values) != n:
-        fail("Every track needs a %s; got %d for %d tracks." % (what, len(values), n))
+    if len(values) > n:
+        fail("Every %s names a track; got %d for %d tracks." % (what, len(values), n))
+    values = list(values) + [0.0] * (n - len(values))
     for v in values:
         if not finite(v) or not lo <= v <= hi:
             fail("Every %s must be between %g and %g; got %g." % (what, lo, hi, v))
