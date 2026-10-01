@@ -84,7 +84,9 @@ def grid_plan(args, models):
     per_bar = _beats_per_bar(args.get("beats_per_bar"))
     anchor = _first_downbeat(args.get("first_downbeat"))
     python = (models or {}).get("producer_python")
-    if python:
+    # Discovery hands over which()'s path, always a real program; anything else (a placeholder
+    # in a test) is not run here, and the runner says what it could not start.
+    if python and os.path.isfile(python) and os.access(python, os.X_OK):
         _preflight(python, drum)
     argv = ["{bin:producer_python}", "{pack}/producer_tools/grid_check.py",
             "--in", "{in:source_audio_name}", "--out", "{job}",
