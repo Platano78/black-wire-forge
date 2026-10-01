@@ -406,9 +406,10 @@ try:
                         model_accept = page.evaluate(
                             "() => { const i = document.getElementById('upload_model');" +
                             " return i && i.type === 'file' ? i.accept : null; }")
-                        check("turntable model field: a file input with a .glb accept",
-                              model_accept is not None and "glb" in model_accept,
-                              repr(model_accept))
+                        if mm["mode"] == "turntable":     # Grid check, the other process mode, takes a song
+                            check("turntable model field: a file input with a .glb accept",
+                                  model_accept is not None and "glb" in model_accept,
+                                  repr(model_accept))
                         # Back to a comfy mode: the lane follows the pick.
                         back = None
                         for x in modes:
@@ -938,8 +939,18 @@ try:
         live_text2 = asleep_page.inner_text("#roomsLive")
         check("asleep lane: says asleep",
               "asleep" in live_text2, repr(live_text2[:500]))
+        # A mode whose cap NO lane here declares (Grid check: no producer lane in this fixture) is
+        # honestly "nothing set up"; the claim under test is about modes whose lane is asleep.
+        declared = {c for l in asleep_lanes["lanes"] for c in (l.get("declared_caps") or [])}
+        undeclared = [m["label"] for c, v in asleep_engines.items() if isinstance(v, dict) and c not in declared
+                      for m in v.get("modes", [])]
+        needs_lines = [ln for ln in live_text2.splitlines() if "(needs" in ln.lower()
+                       and not any(ln.startswith(lb) for lb in undeclared)]
         check("asleep lane: does NOT show a false '(needs ...)' missing-model claim",
-              "(needs" not in live_text2.lower(), repr(live_text2[:500]))
+              not needs_lines, repr(needs_lines[:3]))
+        garbled = [ln for ln in live_text2.splitlines() if "(needs this mode runs on" in ln]
+        check("a mode on the wrong kind of lane reads its sentence as is, not '(needs this mode runs on ...)'",
+              not garbled, repr(garbled[:2]))
         asleep_page.close()
 
         print()

@@ -456,7 +456,10 @@ async function renderRoomsLive(){
             machineText = 'the machine that makes this is asleep right now: '
               + esc(asleepLanes.map(l => l.name + ' (' + laneStateWord(l) + ')').join(', '));
           } else {
-            machineText = 'nothing set up can make this yet' + (missing.length ? ' (needs ' + esc(missing.join(', ')) + ')' : '');
+            // a wrong-kind lane's one sentence ("this mode runs on a process lane, ...") reads as is
+            const said = missing.length && /^this mode runs on /.test(missing[0]);
+            machineText = 'nothing set up can make this yet'
+              + (said ? ' (' + esc(missing[0]) + ')' : missing.length ? ' (needs ' + esc(missing.join(', ')) + ')' : '');
           }
         }
         return '<li><strong>' + esc(info.label) + '</strong>' + (info.note ? ' — ' + esc(info.note) : '')
