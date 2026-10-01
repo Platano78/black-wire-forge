@@ -315,6 +315,20 @@ try:
                         check("%s/%s unavailable on this lane: its row names what is missing" % (mm["cap"], mm["mode"]),
                               "needs" in (row_text or ""), repr(row_text))
                         continue
+                    if mk != "comfy" and radio.is_checked():
+                        # A room default: check() on the already-picked row
+                        # fires no change event, and by design the UI leaves
+                        # the active lane alone -- the row says where the
+                        # mode runs. Assert that state; the lane-follow is
+                        # exercised by the room's other (unpicked) rows.
+                        default_row = page.eval_on_selector(
+                            '#enginePicker input[data-cap="%s"][data-mode="%s"]'
+                            % (mm["cap"], mm["mode"]),
+                            "el => el.closest('label').innerText")
+                        check("default process mode %s/%s: its row says where it runs"
+                              % (mm["cap"], mm["mode"]),
+                              "runs on" in (default_row or ""), repr(default_row))
+                        continue
                     radio.check()
                     page.wait_for_timeout(400)
                     if mk != "comfy":
@@ -418,7 +432,20 @@ try:
                                 back = x
                                 break
                         if back is None:
-                            check("a comfy mode exists in the room to click back to", False)
+                            # A process-only room has no comfy row to click
+                            # back to, so press the fake lane's machine
+                            # module -- the user's own way back, always there.
+                            clicked = page.evaluate(
+                                "() => { const e = Array.prototype.find.call("
+                                "document.querySelectorAll('#machineModules .machine'), "
+                                "x => x.getAttribute('data-lane') === '" + LANE_ID + "');"
+                                " if(!e) return false; e.click(); return true; }")
+                            check("process-only room: the fake lane's machine module clicks back",
+                                  clicked)
+                            page.wait_for_timeout(400)
+                            check("back via the machine module: the active lane is the fake lane again",
+                                  page.evaluate("STATE.activeLane") == LANE_ID,
+                                  page.evaluate("STATE.activeLane"))
                         else:
                             # RS1: the menu no longer opens by itself, so open it as a user would.
                             page.evaluate(OPEN_PICKER)

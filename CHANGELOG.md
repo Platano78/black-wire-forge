@@ -103,6 +103,10 @@ Not checked on Windows: cutting with ffmpeg (ffmpeg was not installed on the tes
   drums alone; it is about five times slower and was no better on the song we measured, so try it
   only when the full mix confuses the beat.
 
+- **Mix** (Producer room): lay up to four tracks over each other, each with its own gain and start time,
+  levelled to a loudness target (default -14 LUFS, true peak about -1 dBTP), as `mix.mp3` and `mix.wav`. Runs
+  on the processor with ffmpeg; no model.
+
 - A first-run **Setup** page. Started with no `config.json`, the app listens on `127.0.0.1:3998`
   only and opens five steps: find ComfyUI (this machine's usual ports, or an address you type),
   see what each room needs (step 2, below), switch on a guide (an OpenAI-compatible chat endpoint, with a one-line "Test it"), choose who

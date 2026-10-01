@@ -1,9 +1,10 @@
 """Gate: a process lane is UP when at least one of its packs has every program
 it needs, and down only when none can run. A lane declaring ["3d","producer"]
-on a box with ffmpeg and a producer Python but no Blender is up: Grid check is
-available, the turntable mode is unavailable and names Blender, and the lane's
-notes still say Blender is needed. Nothing satisfied is down as before;
-everything satisfied is up with no notes. No browser, no network.
+on a box with ffmpeg, Python 3 and a producer Python but no Blender is up:
+Grid check and Mix are available, the turntable mode is unavailable and names
+Blender, and the lane's notes still say Blender is needed. Nothing satisfied
+is down as before; everything satisfied is up with no notes. No browser, no
+network.
 
 Run: python3 tests/test_process_lane_per_pack.py
 """
@@ -59,10 +60,12 @@ def poll(present):
 
 
 print("producer programs present, Blender missing")
-st, modes = poll({producer["bins"]["producer_python"], producer["bins"]["ffmpeg"]})
+st, modes = poll({producer["bins"]["producer_python"], producer["bins"]["ffmpeg"],
+                 producer["bins"]["python3"]})
 check("lane is up", st["up"] is True, st)
 check("lane notes name Blender", "Blender" in st["err"], st["err"])
 check("grid mode is available", modes[("producer", "grid")]["available"], modes[("producer", "grid")])
+check("mix mode is available", modes[("producer", "mix")]["available"], modes[("producer", "mix")])
 tt = modes[("3d", "turntable")]
 check("turntable mode is unavailable", tt["available"] is False, tt)
 check("turntable's missing list names Blender", "Blender" in tt["missing"], tt["missing"])
@@ -75,11 +78,13 @@ check("lane notes name Blender", "Blender" in st["err"], st["err"])
 check("grid mode is unavailable", not modes[("producer", "grid")]["available"])
 
 print("every program present")
-st, modes = poll({BLENDER, "ffmpeg", producer["bins"]["producer_python"]})
+st, modes = poll({BLENDER, "ffmpeg", producer["bins"]["producer_python"],
+                 producer["bins"]["python3"]})
 check("lane is up", st["up"] is True, st)
 check("lane has no notes", st["err"] == "", st["err"])
 check("turntable available", modes[("3d", "turntable")]["available"])
 check("grid available", modes[("producer", "grid")]["available"])
+check("mix available", modes[("producer", "mix")]["available"])
 
 if FAILED:
     print("FAILED: %d checks: %s" % (len(FAILED), ", ".join(FAILED)))

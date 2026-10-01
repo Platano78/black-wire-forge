@@ -1,4 +1,5 @@
-"""Engine pack: "Grid check" in the Producer room (process lane, no ComfyUI graph).
+"""Engine pack: the Producer room's process modes (process lane, no ComfyUI graph):
+Grid check (beat_this) and Mix tracks (a plain system python3 with ffmpeg).
 
 Where every beat and bar of a song actually sits, and a click track to hear it:
 the mode's "graph" is a one-step run plan for runner.py that calls
@@ -108,32 +109,122 @@ def grid_plan(args, models):
     }
 
 
+def _mix_number(args, name, label, lo, hi, units, default=0.0):
+    """One per-track mix number, validated the way _expected_bpm validates BPM:
+    a real number inside a plain range, or one sentence naming the field."""
+    value = args.get(name, default)
+    if value in ("", None):
+        value = default
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        raise ValueError("%s must be a number, got %s."
+                         % (label, "'" + str(value) + "'" if not isinstance(value, (int, float)) else "%g" % value))
+    if not math.isfinite(v) or v < lo or v > hi:
+        raise ValueError("%s must be between %g and %g %s, got %s."
+                         % (label, lo, hi, units,
+                            "'" + str(value) + "'" if not isinstance(value, (int, float)) else "%g" % value))
+    return v
+
+
+def mix_plan(args, models):
+    """The process run plan for the producer's "mix" mode: lay up to four
+    tracks over each other with a per-track gain and start, then two-pass
+    loudness-normalise. mix.py drives ffmpeg; it needs no models, only the
+    uploaded track names ({in:track_N})."""
+    if not args.get("track_1"):
+        raise ValueError("Mix needs a first track: upload the main track, for example the beat or the first part.")
+    gains = [_mix_number(args, "gain_%d" % k, "Gain %d" % k, -24, 12, "dB") for k in (1, 2, 3, 4)]
+    offsets = [_mix_number(args, "offset_%d" % k, "Start %d" % k, 0, 600, "s") for k in (1, 2, 3, 4)]
+    lufs = _mix_number(args, "lufs", "Loudness target", -30, -6, "LUFS", default=-14.0)
+    argv = ["{bin:python3}", "{pack}/producer_tools/mix.py",
+            "--out", "{job}", "--ffmpeg", "{bin:ffmpeg}", "--lufs", "%g" % lufs]
+    for k in (1, 2, 3, 4):
+        if not args.get("track_%d" % k):
+            continue
+        argv += ["--track", "{in:track_%d" % k,
+                 "--gain", "%g" % gains[k - 1],
+                 "--offset", "%g" % offsets[k - 1]]
+    return {
+        "steps": [{"argv": argv, "timeout_s": _STEP_TIMEOUT_S}],
+        "outputs": ["mix.mp3", "mix.wav", "mix.json"],   # the playable one first: it is what the page shows
+        "progress": r"PROGRESS (\d+)/(\d+)",
+        "summary": True,      # mix.py prints its one-line result last: the job keeps it as its notes
+    }
+
+
 ENGINE = {
     "id": "producer",
     "cap": "producer",
     "lane_kind": "process",
     "bins": {"producer_python": os.environ.get("BWF_PRODUCER_PYTHON") or "bwf-producer-python",
-             "ffmpeg": "ffmpeg"},
-    "provides": {"grid": ["producer_python", "ffmpeg"]},
+             "ffmpeg": "ffmpeg",
+             "python3": "python3"},
+    # Mix runs on the plain system python3; Grid check needs beat_this's own Python.
+    "provides": {"grid": ["producer_python", "ffmpeg"],
+                 "mix": ["python3", "ffmpeg"]},
     "words": {
         "producer_python": "a Python with beat_this installed (put a program called bwf-producer-python "
                            "on PATH, or set BWF_PRODUCER_PYTHON to its full path)",
         "ffmpeg": "ffmpeg",
+        "python3": "Python 3",
     },
     "graphs": {
         "grid": grid_plan,
+        "mix": mix_plan,
     },
     "describe": lambda models: (
         "beat_this (beats and bars, processor)"
         if models.get("producer_python") and models.get("ffmpeg") else ""),
     "mode_words": {
         "grid": "Grid check (beats and bars)",
+        "mix": "Mix tracks",
     },
-    "mode_rooms": {"grid": "producer"},
+    "mode_rooms": {"grid": "producer", "mix": "producer"},
     "mode_notes": {
         "grid": "finds every beat and bar start in a song and gives you a click track to check them by ear; runs on the processor",  # source: engines/producer_tools/grid_check.py (module docstring: steps 3 and 5)
+        "mix": "lays up to four tracks over each other with a gain and a start time for each, then levels the loudness; runs on the processor",  # source: engines/producer_tools/mix.py (module docstring)
     },
     "fields": {
+        "mix": [
+            {"id": "track_1", "label": "Track 1", "type": "audio",
+             "tier": "primary", "group": "Tracks", "order": 1,
+             "hint": "the main track, for example the beat or the first part"},
+            {"id": "track_2", "label": "Track 2", "type": "audio", "optional": True,
+             "tier": "primary", "group": "Tracks", "order": 2,
+             "hint": "up to three more tracks can go over the first"},
+            {"id": "track_3", "label": "Track 3", "type": "audio", "optional": True,
+             "tier": "advanced", "group": "Tracks", "order": 3},
+            {"id": "track_4", "label": "Track 4", "type": "audio", "optional": True,
+             "tier": "advanced", "group": "Tracks", "order": 4},
+            {"id": "gain_1", "label": "Gain 1", "type": "number",
+             "default": 0, "range": [-24, 12], "ui_range": [-12, 6], "units": "dB",
+             "tier": "advanced", "group": "Levels", "order": 1},
+            {"id": "gain_2", "label": "Gain 2", "type": "number",
+             "default": 0, "range": [-24, 12], "ui_range": [-12, 6], "units": "dB",
+             "tier": "advanced", "group": "Levels", "order": 2},
+            {"id": "gain_3", "label": "Gain 3", "type": "number",
+             "default": 0, "range": [-24, 12], "ui_range": [-12, 6], "units": "dB",
+             "tier": "advanced", "group": "Levels", "order": 3},
+            {"id": "gain_4", "label": "Gain 4", "type": "number",
+             "default": 0, "range": [-24, 12], "ui_range": [-12, 6], "units": "dB",
+             "tier": "advanced", "group": "Levels", "order": 4},
+            {"id": "offset_1", "label": "Start 1", "type": "number",
+             "default": 0, "range": [0, 600], "ui_range": [0, 120], "units": "s",
+             "tier": "advanced", "group": "Starts", "order": 1},
+            {"id": "offset_2", "label": "Start 2", "type": "number",
+             "default": 0, "range": [0, 600], "ui_range": [0, 120], "units": "s",
+             "tier": "advanced", "group": "Starts", "order": 2},
+            {"id": "offset_3", "label": "Start 3", "type": "number",
+             "default": 0, "range": [0, 600], "ui_range": [0, 120], "units": "s",
+             "tier": "advanced", "group": "Starts", "order": 3},
+            {"id": "offset_4", "label": "Start 4", "type": "number",
+             "default": 0, "range": [0, 600], "ui_range": [0, 120], "units": "s",
+             "tier": "advanced", "group": "Starts", "order": 4},
+            {"id": "lufs", "label": "Loudness target", "type": "number",
+             "default": -14, "range": [-30, -6], "ui_range": [-24, -10], "units": "LUFS",
+             "tier": "advanced", "group": "Levels", "order": 9},
+        ],
         "grid": [
             {"id": "source_audio_name", "label": "Song to check", "type": "audio",
              "tier": "primary", "group": "Content", "order": 1,
@@ -156,6 +247,11 @@ ENGINE = {
         ],
     },
     "presets": {
+        "mix": [
+            {"id": "default", "label": "Default",
+             "note": "Every track at 0 dB from the start, levelled to -14 LUFS.",
+             "values": {}},
+        ],
         "grid": [
             {"id": "default", "label": "Default",
              "note": "Tracks the full mix; no tempo asked for.",
@@ -163,6 +259,11 @@ ENGINE = {
         ],
     },
     "quality": {
+        "mix": [
+            {"id": "standard", "label": "Standard", "default": True,
+             "why": "two-pass loudness levelling; a few seconds for a song",  # source: measured 2026-10-01, 6 s mix: 0.7 s wall
+             "values": {}},
+        ],
         "grid": [
             {"id": "mix", "label": "Full mix", "default": True,
              "why": "tracks the song as it is; a few seconds for a song on the processor",  # source: measured 2026-09-30, 110 s and 178 s songs: 3.8 s and 5 s wall
@@ -173,6 +274,13 @@ ENGINE = {
         ],
     },
     "examples": {
+        "mix": [
+            {"id": "mix-try", "label": "Layer two parts", "recipe": None,
+             "quality": None,
+             "values": {"gain_2": -3, "offset_2": 4},
+             "why": "a second part, 3 dB lower, coming in after the first bar",
+             "needs": "sound"},
+        ],
         "grid": [
             {"id": "grid-try", "label": "Check the beat grid", "recipe": None,
              "quality": None, "values": {},

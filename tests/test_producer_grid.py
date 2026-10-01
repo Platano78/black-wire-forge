@@ -246,12 +246,14 @@ def constant_grid(ons, dur, anchor="median"):
 
 
 # ── 1. pack shape (stdlib) ──────────────────────────────────────────────────
-print("the producer pack: one process-lane mode, grid, in the Cover room")
+print("the producer pack: two process-lane modes, grid and mix, in the Producer room")
 pack = next(p for p in engines.packs() if p["id"] == "producer")
 check("process lane, producer cap", pack["lane_kind"] == "process" and pack["cap"] == "producer")
-check("mode id grid, words, room", list(pack["graphs"]) == ["grid"]
+check("mode ids grid and mix, words, room", list(pack["graphs"]) == ["grid", "mix"]
       and pack["mode_words"]["grid"] == "Grid check (beats and bars)"
-      and engines.mode_room("producer", "grid") == "producer")
+      and pack["mode_words"]["mix"] == "Mix tracks"
+      and engines.mode_room("producer", "grid") == "producer"
+      and engines.mode_room("producer", "mix") == "producer")
 check("the room's 'Which one?' list gets a one-line note for grid, as every other mode does",
       bool(engines.mode_note("producer", "grid")), engines.mode_note("producer", "grid"))
 fids = [f["id"] for f in engines.fields("producer", "grid")]
