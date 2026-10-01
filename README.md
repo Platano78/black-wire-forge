@@ -142,11 +142,12 @@ read the relevant file under `engines/` for the exact roles it declares.
 
 ## GPU and no-GPU paths
 
-Most generation modes require a suitably configured ComfyUI GPU lane. A GPU-free path is
-available for one thing: turning an existing `.glb` file into an orbiting turntable video,
-using Blender (rendered on the CPU, `engines/turntable.py`) and `ffmpeg`, configured as a
-`"kind": "process"` lane (see "Advanced configuration" below). No cloud-backed generation
-lane is included.
+Most generation modes require a suitably configured ComfyUI GPU lane. Two things run without a
+GPU, each on a `"kind": "process"` lane (see "Advanced configuration" below): turning an existing
+`.glb` file into an orbiting turntable video, using Blender (rendered on the CPU,
+`engines/turntable.py`) and `ffmpeg`; and the Cover room's Grid check, which finds a song's beats
+and bars with beat_this (`engines/producer.py`; setup and downloads in `docs/MODELS.md`). No
+cloud-backed generation lane is included.
 
 ## Advanced configuration
 
@@ -160,7 +161,8 @@ own.
   something else also uses it.
 - **Process lane**: `{"id": ..., "name": ..., "kind": "process", "caps": ["3d"]}` -- runs a
   local program instead of ComfyUI (no `host`/`port`). The included turntable pack needs
-  Blender and `ffmpeg` on `PATH`.
+  Blender and `ffmpeg` on `PATH`. Grid check needs `"producer"` in `caps`, `ffmpeg`, and a
+  Python with beat_this that BWF is pointed at (`BWF_PRODUCER_PYTHON`; see `docs/MODELS.md`).
 - **Status-only tile**: `"status_only": {"name": ..., "host": ..., "port": ..., "path":
   "/v1/models", "gpu_label": ...}` -- a read-only strip tile (e.g. an LLM server), never
   dispatched to. Omit it and the tile does not appear.

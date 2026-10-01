@@ -77,7 +77,7 @@ at all.
 
 - **`id`** (`str`) — unique pack id, e.g. `"qwen-image"`.
 - **`cap`** (`str`) — the lane capability this pack needs, e.g. `"image"`, `"video"`,
-  `"audio"`, `"3d"`. A lane offers a pack's modes only if the lane declares this cap.
+  `"audio"`, `"3d"`, or `"producer"` (Grid check's process pack). A lane offers a pack's modes only if the lane declares this cap.
 - **`roles`** (`dict[str, (pool_name, rule_dict)]`) — required for a ComfyUI pack (the
   default `lane_kind`); a **process** pack (`"lane_kind": "process"`) has no `roles` at
   all and declares `"bins"` instead (see `lane_kind` below). What server-side discovery

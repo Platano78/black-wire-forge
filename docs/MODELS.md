@@ -353,27 +353,30 @@ render with it. Not a Hugging Face download: install Blender from
 `command -v blender; command -v ffmpeg`); see AGENTS.md's "Decide the path" and the
 `engines/turntable.py` pack for the `"bins"` it needs.
 
-## beat_this and Demucs (`engines/producer.py`, grid mode) — audio (process lane, no ComfyUI model)
+## beat_this and Demucs (`engines/producer.py`, grid mode) — Grid check (process lane, no ComfyUI model)
 
-| Tool | Licence | Used for |
-|---|---|---|
-| [beat_this](https://github.com/CPJKU/beat_this) (`final0` checkpoint) | **MIT** — code *and* the published weights (LICENSE file and README "License" section, read 2026-09-30) | every beat and downbeat time |
-| [Demucs](https://github.com/facebookresearch/demucs) (`htdemucs`; optional) | **MIT** (LICENSE file and README, read 2026-09-30); the repository is no longer maintained by Meta, with a fork at `adefossez/demucs` | the drum stem, only when "Use the drum stem" is ticked |
+| Tool | Weights it downloads on first run | Licence | Used for |
+|---|---|---|---|
+| [beat_this](https://github.com/CPJKU/beat_this) | `final0` checkpoint, 81,058,141 bytes, from `cloud.cp.jku.at` into `~/.cache/torch/hub/checkpoints/beat_this-final0.ckpt` | **MIT** — code *and* the published weights (LICENSE file and README "License" section, read 2026-09-30) | every beat and downbeat time |
+| [Demucs](https://github.com/facebookresearch/demucs) 4.1.0 (optional) | `htdemucs`, 84,025,440 bytes, from Hugging Face `adefossez/HTDemucs` · `955717e8.safetensors` | **MIT** for Demucs (LICENSE file and README, read 2026-09-30); the weights' Hugging Face card states no licence of its own. Meta's repository is no longer maintained; its author continues it at `adefossez/demucs` | the drum stem, only when "Use the drum stem" is ticked |
 
-Not a ComfyUI download: they are Python packages you install into any Python (a virtual environment is
-best) and point BWF at. CPU is the intended path. Install (PyTorch first, from its CPU index):
-`pip install torch --index-url https://download.pytorch.org/whl/cpu`, then
-`pip install git+https://github.com/CPJKU/beat_this`, and `pip install demucs` if you want the drum stem.
-Make that Python visible to BWF by putting a program called `bwf-producer-python` on `PATH` (a one-line
-wrapper, `exec /path/to/venv/bin/python "$@"`; a bare symlink to a venv's python loses the venv), or by
-setting `BWF_PRODUCER_PYTHON` to its full path before starting BWF. Both tools fetch their weights from
-the internet the first time they run. `ffmpeg` must be on `PATH` too. Run it as a `"kind": "process"`
-lane that lists `"audio"` in its `caps`.
+Both files above are the ones we ran (sizes checked against our working install; the Demucs file's
+SHA-256 matches the Hub). Not a ComfyUI download: they are Python packages you install into their own
+Python, a virtual environment (a bare `pip` on a modern distro's Python is refused), and point BWF at.
+CPU is the intended path. Create it with `python3 -m venv ~/bwf-producer`, then install PyTorch first,
+from its CPU index (about 190 MB): `~/bwf-producer/bin/python -m pip install torch --index-url
+https://download.pytorch.org/whl/cpu`, then `~/bwf-producer/bin/python -m pip install
+git+https://github.com/CPJKU/beat_this` (needs `git`), and `~/bwf-producer/bin/python -m pip install
+demucs` only if you want the drum stem. Make that Python visible to BWF by setting `BWF_PRODUCER_PYTHON` to its full path
+when you start BWF, or by putting a program called `bwf-producer-python` on `PATH` (a one-line wrapper,
+`exec /path/to/venv/bin/python "$@"`; a bare symlink to a venv's python loses the venv). `ffmpeg` must
+be on `PATH` too. Run it as a `"kind": "process"` lane that lists `"producer"` in its `caps`, e.g.
+`{"id": "cpu", "name": "This machine", "kind": "process", "caps": ["producer"]}`. AGENTS.md
+("Getting the models") has the whole path as commands.
 
 beat_this's README adds that some of its training recordings are fully copyrighted or under limited
 Creative Commons licences and that assessing whether that affects your use is up to you. Measured
-limits: beat times are dependable on synthetic click tracks, but its downbeat (bar-start) output is
-not, so the meter and bar numbers in `grid.json` are a reading to check by ear, not a fact. On 5/4 the
+limits: beat times are dependable, but its downbeat (bar-start) output is not, so the meter and bar numbers in `grid.json` are a reading to check by ear, not a fact. On 5/4 the
 bar start is a guess (margin 0.4-0.7 against 18-20 when right, measured 2026-09-30); the optional
 "A bar starts at" time (`first_downbeat`) fixes it, and `grid.json`'s `meter.source` says whether bars
 came from the `model`, the `phase-logit` guess or your `anchor`.

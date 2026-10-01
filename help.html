@@ -316,7 +316,7 @@
     <li><strong>A lane</strong> is usually one machine running its own ComfyUI: an <code>id</code>, a
       <code>name</code> shown in the UI, and <code>host</code>/<code>port</code> for its ComfyUI API.
       <code>caps</code> -- which kinds of job it's for (<code>image</code>, <code>video</code>,
-      <code>audio</code>, <code>3d</code>) -- is optional here: leave it out and the lane is considered
+      <code>audio</code>, <code>3d</code>, <code>producer</code>) -- is optional here: leave it out and the lane is considered
       for everything it can actually be shown to run. A <strong>process lane</strong> instead runs a local
       program on the app's own machine (no ComfyUI, no <code>host</code>/<code>port</code>) and must
       declare <code>caps</code>. To add a lane, add another entry to the
@@ -350,7 +350,7 @@
     <dt>Where are my files?</dt>
     <dd>On the machine that made them. A ComfyUI render stays in that ComfyUI's own output
     folder, even when ComfyUI runs on the app's own machine. Only a job the app runs itself
-    (turning a 3D model around) or a finishing step such as Pixel Art's keeps its file in the
+    (turning a 3D model around, a grid check) or a finishing step such as Pixel Art's keeps its file in the
     app's data folder. Download copies a file to you.</dd>
     <dt>Why is there no time estimate?</dt>
     <dd>It needs three finished jobs of the same engine and quality on that
@@ -359,7 +359,8 @@
     <dd>No. The page itself loads no fonts or scripts from anywhere. Rendering
     stays on your own configured machines. The one exception is the optional
     prompt helper (see below) — if it is set up, whatever you send it goes
-    wherever that helper's own endpoint is.</dd>
+    wherever that helper's own endpoint is. Model files only come from the internet when you ask:
+    a download from Setup, or the first Grid check, which fetches its beat-tracking weights once.</dd>
     <dt>Can I run two things at once?</dt>
     <dd>Each machine takes its own queue. A process lane (the app's own
     machine, or another one running a local program) runs up to its

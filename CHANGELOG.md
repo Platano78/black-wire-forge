@@ -6,22 +6,16 @@ All notable changes to Black Wire Forge are recorded here.
 
 ### Added
 
-- **Grid check** (beats and bars), a mode in the Cover room: give it a song and it finds where every
-  beat and bar sits, then hands back `grid.json` (beat and bar times, beats per bar, tempo per bar,
-  drift) and `grid-check.mp3`, your song with a click on every beat and a higher, louder click on
-  every bar start, plus a one-line summary such as "4/4, 111.5 BPM (asked 110), drift 0.4%". Ticking
-  "Use the drum stem" splits the drums out first, which usually reads better. It runs on this
-  computer's processor through a Python with beat_this (and Demucs, for the drum stem) installed, set
-  up as described in `docs/MODELS.md`; if they are missing the request is refused with one sentence
-  saying what to install and where to point BWF. Beat times are dependable; bar starts (so meter) come
-  from a part of the model that is unreliable on synthetic clicks and unproven on real 5-beat music,
-  so check them against the click track by ear. If you know the meter, "Beats per bar" (auto, 2 to 7)
-  searches only where the bars start for that length; it reports how clearly one position won, and on
-  odd meters that choice can still be wrong. For 5-beat (and other odd) meters, type one bar's start
-  time in "A bar starts at (seconds)" (advanced; heard on the click track): every bar is then placed
-  from that one time and the model's per-beat times, and the summary says "bars from 12.40 s". Without
-  it, a set meter whose bar start the model could not pick clearly ends the summary with "where bars
-  start is a guess".
+- **Grid check** (beats and bars), a new mode in the Cover room. Give it a song and get back
+  `grid.json` (every beat and bar start, beats per bar, tempo per bar, drift), `grid-check.mp3` (the
+  song with a click on each beat and a higher, louder click on each bar start) and a one-line summary
+  such as "4/4, 111.5 BPM (asked 110), drift +0.4%". It runs on this computer's processor, on a
+  process lane, through a Python with beat_this installed; `docs/MODELS.md` says how to set it up.
+  Beat times are dependable. Bar starts are not on odd meters such as 5/4, so check them by ear on
+  the click track: set "Beats per bar" and type one bar's start in "A bar starts at", and every bar
+  is placed from that time, which fixes 5-beat bars. "Use the drum stem" (needs Demucs) tracks the
+  drums alone; it is about five times slower and was no better on the song we measured, so try it
+  only when the full mix confuses the beat.
 
 - A first-run **Setup** page. Started with no `config.json`, the app listens on `127.0.0.1:3998`
   only and opens five steps: find ComfyUI (this machine's usual ports, or an address you type),

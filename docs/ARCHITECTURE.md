@@ -7,8 +7,8 @@ One page. For the pack contract (how to add an engine) see `docs/WRITING-A-PACK.
 A **lane** is one render backend the app can send a job to — almost always a ComfyUI
 instance (`host`/`port` in `config.json`), reached over its HTTP API and a websocket for
 live progress. A second kind of lane, the **process lane**, runs a local program instead
-(`runner.py`) — used today for the Blender turntable pack, which renders on the CPU and
-needs no ComfyUI at all. The core dispatches to either kind through the same job/poller
+(`runner.py`) — used today for the Blender turntable pack and the Grid check pack
+(`engines/producer.py`, beat_this), which run on the CPU and need no ComfyUI at all. The core dispatches to either kind through the same job/poller
 machinery; `engines.lane_kind(cap, mode)` is the only place that asks which one a mode needs.
 
 ## Discovery

@@ -38,10 +38,10 @@ Ask, in this order, and stop at the first one that applies:
 
 1. **They already run ComfyUI somewhere** (this machine or another on their network) → go to
    "Install + start" and point a lane at that ComfyUI's `host`/`port` in `config.json`.
-2. **They have no GPU at all** → only one path works: turning an existing `.glb` into an
-   orbiting turntable video on the Blender + `ffmpeg` **process lane** (`engines/turntable.py`,
-   CPU-only). Every other room needs a GPU-backed ComfyUI lane; do not try to make
-   image/video/audio/3D generation work without one. Check each binary on its own:
+2. **They have no GPU at all** → two things work, on a CPU-only **process lane**: an orbiting
+   turntable video of an existing `.glb` (Blender + `ffmpeg`, `engines/turntable.py`, below) and
+   Cover's Grid check (a song's beats; "Getting the models"). Everything else needs a GPU-backed
+   ComfyUI lane; don't attempt it without one. Check each binary on its own:
    `command -v blender; command -v ffmpeg` (each prints a path, or nothing if missing), and
    install what is missing (https://www.blender.org/download/, https://ffmpeg.org/download.html);
    a lane missing one reports itself down with a plain "needs ..." sentence. The lane is a **process** lane:
@@ -125,11 +125,11 @@ Against the running server (port 3998 by default; use the `"port"` in `config.js
 - `curl -s http://127.0.0.1:3998/api/lanes` → `{"lanes": [...], "title": ..., "fleet_llm": ...}`.
   Per lane: `"up"` — a ComfyUI lane's latest poll reached its `/system_stats` (a process lane:
   its programs are on `PATH`); `"checked"`: that poll's time; when `false`, `"err"` says why.
-  `"caps"` — the capabilities (`"image"`, `"video"`, `"audio"`, `"3d"`) it offers after
+  `"caps"` — the capabilities (`"image"`, `"video"`, `"audio"`, `"3d"`, `"producer"`) it offers after
   discovery; `"declared_caps"` — what `config.json` asked for. `"able"` — keyed by
   **mode/ability name** (`"t2i"`, `"song"`, `"fl2va"`...), not capability: whether the found
   model files satisfy that mode now (`cap_from` abilities are also OR'd onto the cap name, so
-  `able["image"]` exists; see `engines.abilities()`). `"missing_image"`/`_video`/`_audio`/`_3d`
+  `able["image"]` exists; see `engines.abilities()`). `"missing_<cap>"`
   — plain sentences (the pack's `words`) naming the model files still needed (a `"process"`
   lane: the programs, e.g. Blender), set when the lane declares the cap but `able` says no,
   recomputed every call (`lanes_payload()`). `"discovered"` — whether discovery has run once;
@@ -228,6 +228,7 @@ Every engine pack under `engines/` declares its own model **roles** and the Comf
 | `engines/pixelart.py` | image | the picture model (Qwen-Image), its text encoder, its image decoder, the background removal model | reuses `engines/qwen_image.py`'s graph plus `LoadBackgroundRemovalModel`, `RemoveBackground`, `InvertMask`, `JoinImageWithAlpha`, `SaveImage` |
 | `engines/mesh3d.py` | 3d | the TRELLIS2 model, its shape decoder, its texture decoder, its image encoder, the background removal model | `UNETLoader`, `VAELoader`, `CLIPVisionLoader`, `Trellis2Conditioning`, `Trellis2ShapeStage`, `Trellis2TextureStage`, `EmptyTrellis2LatentStructure`, `VaeDecodeShapeTrellis`, `VaeDecodeStructureTrellis2`, `VaeDecodeTextureTrellis`, `BakeTextureFromVoxel`, `ApplyTextureToMesh`, `MeshSmoothNormals`, `UnwrapMesh`, `GetMeshInfo`, `MeshToFile3D`, `Save3DAdvanced`, `KSampler`, `ModelSamplingSD3`, `RescaleCFG`, `CFGOverride`, `LoadBackgroundRemovalModel`, `RemoveBackground`, `ImageCropToMask`, `LoadImage` |
 | `engines/turntable.py` | 3d | **not ComfyUI nodes** — a `"process"` lane needing the `blender` and `ffmpeg` binaries on `PATH` (its own `"bins"` dict) | n/a (runs Blender via a CLI script + an `ffmpeg` encode step, `runner.py`) |
+| `engines/producer.py` | producer | **not ComfyUI nodes** — a `"process"` lane needing `ffmpeg` and a Python with beat_this (`"bins"`: `producer_python`, found as `BWF_PRODUCER_PYTHON` or `bwf-producer-python` on `PATH`) | n/a (runs `engines/producer_tools/grid_check.py` under that Python) |
 
 Model **filenames** discovery looks for are governed by each pack's `roles` dict (name
 fragments, e.g. `engines/qwen_image.py`'s UNet role wants a filename containing `qwen_image`, and
@@ -313,6 +314,24 @@ and the user's click on "Download N files" is the yes. One file at a time, exact
 Hugging Face hosts only (`HF_TOKEN` for gated repos, sent only to huggingface.co); the queue is
 `data/downloads.json` and resumes after a restart. `GET /api/downloads` shows it; on a server
 bound beyond localhost the downloads routes answer 403.
+
+**Grid check (Cover room) uses no ComfyUI, same rule.** It runs on a process lane under a
+separate Python that has beat_this (and Demucs, only for "Use the drum stem"). The first run
+downloads weights: beat_this `final0` (81 MB, MIT) and, with the drum stem, Demucs `htdemucs`
+(84 MB); the installs fetch CPU PyTorch (about 190 MB). Ask first, then:
+
+```
+python3 -m venv ~/bwf-producer
+~/bwf-producer/bin/python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+~/bwf-producer/bin/python -m pip install git+https://github.com/CPJKU/beat_this   # needs git
+BWF_PRODUCER_PYTHON=$HOME/bwf-producer/bin/python .venv/bin/python server.py
+```
+
+The lane: `{"id": "cpu", "name": "This machine", "kind": "process", "caps": ["producer"]}` (add
+`"3d"` only if Blender is installed too: a process lane missing any of its programs is down). `/api/engines?lane=cpu` → `producer` → mode `grid` `"available":
+true`. Upload the song to `lane=cpu`, then generate `{"lane": "cpu", "kind": "producer", "mode":
+"grid", "prompt": "", "source_audio_name": "<the name>"}`. A done job has `grid-check.mp3` and
+`grid.json` (`"type": "local"`) and the one-line summary in `"notes"`.
 
 ## Where to read further
 
