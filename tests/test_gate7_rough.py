@@ -138,6 +138,17 @@ def setup_section():
         check("this computer: the local address the page arrived on", here("192.0.2.77", "192.0.2.77") is True)
         for h in ("192.0.2.10", "studio-pc", "studio-pc.local", "10.0.0.5"):
             check("another machine: %s" % h, here(h) is False)
+        # this computer's own LAN address, typed in while the page was reached on 127.0.0.1
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as u:
+                u.connect(("192.0.2.1", 9))          # UDP connect sends nothing; it only picks the route's address
+                lan = u.getsockname()[0]
+        except OSError:
+            lan = None
+        if lan and not lan.startswith("127."):
+            check("this computer: its own LAN address %s, typed in" % lan, here(lan, "127.0.0.1") is True)
+        else:
+            print("  SKIP  this computer's own LAN address (no route to find one)")
 
     print("rough 1, 3, 5 (browser): Setup at 1280 wide")
     with sync_playwright() as pw:

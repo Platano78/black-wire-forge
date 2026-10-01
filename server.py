@@ -7610,13 +7610,22 @@ def own_host_names(local_ip=None):
 
 def host_is_this_computer(host, local_ip=None):
     """True when `host` (a typed address or computer name) is this computer by those names,
-    or any loopback address (127.x, ::1)."""
+    any loopback address (127.x, ::1), or any other address this computer holds (its LAN IP
+    typed in): only an address of this computer's own can be bound to."""
     h = str(host or "").strip().lower().strip("[]")
     if h in own_host_names(local_ip):
         return True
     try:
-        return ipaddress.ip_address(h).is_loopback
+        ip = ipaddress.ip_address(h)
     except ValueError:
+        return False
+    if ip.is_loopback:
+        return True
+    try:
+        with socket.socket(socket.AF_INET6 if ip.version == 6 else socket.AF_INET) as s:
+            s.bind((h, 0))
+        return True
+    except OSError:
         return False
 
 
