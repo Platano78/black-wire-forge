@@ -30,8 +30,9 @@ import sys
 import traceback
 
 SR = 44100
-BEAT_THIS_CMD = ("pip install torch --index-url https://download.pytorch.org/whl/cpu, "
-                 "then pip install git+https://github.com/CPJKU/beat_this")
+# %s is that Python: its own "-m pip", since a bare pip may belong to another Python
+BEAT_THIS_CMD = ("%s -m pip install torch --index-url https://download.pytorch.org/whl/cpu, "
+                 "then %s -m pip install git+https://github.com/CPJKU/beat_this")
 _MIN_BEATS = 8
 # A bar-start phase chosen from the model's downbeat logits is trusted only when
 # the best phase beats the runner-up by at least this much mean logit. Observed
@@ -54,10 +55,10 @@ def missing_tool_sentence(drum_stem):
     if importlib.util.find_spec("beat_this") is None:
         return ("Grid check needs beat_this, and the Python BWF is pointed at (%s) does not have it: "
                 "install it there (%s), or point BWF at a Python that has it with the "
-                "BWF_PRODUCER_PYTHON setting." % (py, BEAT_THIS_CMD))
+                "BWF_PRODUCER_PYTHON setting." % (py, BEAT_THIS_CMD % (py, py)))
     if drum_stem and importlib.util.find_spec("demucs") is None:
         return ("Using the drum stem needs Demucs, and the Python BWF is pointed at (%s) does not have it: "
-                "install it there (pip install demucs), or untick the drum stem." % py)
+                "install it there (%s -m pip install demucs), or untick the drum stem." % (py, py))
     return None
 
 
