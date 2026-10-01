@@ -345,5 +345,6 @@ it answers with, then generate `{"lane": "cpu", "kind": "producer", "mode": "gri
 - `README.md` — full install/config reference
 - `docs/MODELS.md` — where to get every built-in model, its licence, and its discovery-match check
 - `docs/ARCHITECTURE.md` — lanes, discovery, packs, rooms, jobs, sequences, the cut
+- `docs/API-EXAMPLES.md` — a worked song request (submit, poll, download) run on a real lane, and each Music room mode's fields
 - `docs/WRITING-A-PACK.md` — the engine-pack contract, for adding a new model family
 - `SECURITY.md` — exactly what the request guard does and does not protect against

@@ -105,6 +105,14 @@ Per-engine text shape, in the moment order a user actually fills them:
   was "garbled in some parts" on a duet; the same song without a pack was chosen) — **observed**,
   2026-09-29: for a duet or a long song, make it without a style pack first. ACE-Step and YuE2 sing
   with one voice: for a duet, suggest the Music3 mode ("Background music, with or without singing").
+  Two languages work in a Music3 duet (one singer in Spanish, the other in English): name each
+  singer's language in the caption's Vocal Details, never in a lyric section tag, because a tag such
+  as `[Verse 1: Singer A, in Spanish]` had its words rapped out loud ("…, in Spanish") on 2 of 2
+  takes, while the same song with tags that carry only the performer's name did not. Trading single
+  lines inside one section came out repeated and muddled; trading every 2 or more lines, or by
+  section, was clean. Even name-only tags were spoken on 1 of 2 full-length takes, so make two and
+  keep the cleaner one. — **observed**, the maintainer's renders and their transcripts, 2026-09-30
+  (four 50–55 s tests and two 3-minute takes).
 - **`yue2` (YuE2-3B, Music room).** `style` is ONE field carrying genre, instruments, voice,
   language, AND tempo together — this engine's own documented convention, not a limitation to work
   around. Vendor's own shipped example: `"English, warm piano pop, expressive female voice,
@@ -197,17 +205,20 @@ Per-engine text shape, in the moment order a user actually fills them:
   Guide only ever knows this status and the plain-English error sentence on failure — never a
   description of the audio itself. — **inferred**, generalising the app's own job model (same shape
   as every other room in this app) to this group; no group-specific job-status doc exists.
-- **Relative speed, if the user is choosing between Music-room engines:** YuE2 is fastest
-  (~0.5–0.8× real time), ACE-Step next (~0.3× real time), MiniMax-Music3 is far slower
-  (~6.7–6.9× real time — nearly 7 minutes of render for one minute of audio). Mention this if speed
-  matters to the user's choice; never refuse or discourage a choice on this basis alone, it's
-  theirs to make. — **observed**, measured directly against all three live engines by the
-  maintainer, 2026-09-21 ("Speed").
+- **Relative speed, if the user is choosing between Music-room engines:** ACE-Step is fastest
+  (~0.2× real time: 240 s of song in 48 s), YuE2 next (~0.3× real time with its int8 files), and
+  MiniMax-Music3 slowest (~0.7–1.6× real time: a 3-minute song takes about 3–4 minutes). Mention
+  this if speed matters to the user's choice; never refuse or discourage a choice on this basis
+  alone, it's theirs to make. — **observed**, measured on the maintainer's RTX 5080, 2026-09-27
+  (an earlier 2026-09-21 measurement put Music3 near 7× real time; that was an older CUDA build),
+  and Music3 again on 2026-09-30 (a 185 s song in about 222 s).
 - **How each engine ends, when it ends wrong:** ACE-Step resolves its ending cleanly every time
   measured (18/18). MiniMax-Music3 does not compose to fit the requested length — it stops when the
   clock runs out, which is why its `seconds` default matters so much (see "SETTINGS"). YuE2 can cut
   off short at a tight `max_duration` but ends cleanly once given room. — **observed**, same source,
-  "ACE composes to length. Music3 and a cramped YuE2 just stop."
+  "ACE composes to length. Music3 and a cramped YuE2 just stop." Music3 sings at its own
+  natural pace: too short a length cuts the song off, too long fills the rest with an extended jam,
+  so size it to the lyrics plus about 30 s. — **observed**, the maintainer, 2026-09-27.
 
 ## JUDGE THE RESULT — what I can't judge, say so, don't guess
 
