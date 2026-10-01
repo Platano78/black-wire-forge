@@ -246,16 +246,18 @@ def constant_grid(ons, dur, anchor="median"):
 
 
 # ── 1. pack shape (stdlib) ──────────────────────────────────────────────────
-print("the producer pack: two process-lane modes, grid and mix, in the Producer room")
+print("the producer pack: three process-lane modes, grid, fit and mix, in the Producer room")
 pack = next(p for p in engines.packs() if p["id"] == "producer")
 check("process lane, producer cap", pack["lane_kind"] == "process" and pack["cap"] == "producer")
-check("mode ids grid and mix, words, room", list(pack["graphs"]) == ["grid", "mix"]
+check("mode ids grid, fit and mix, words, room", list(pack["graphs"]) == ["grid", "fit", "mix"]
       and pack["mode_words"]["grid"] == "Grid check (beats and bars)"
+      and pack["mode_words"]["fit"] == "Fit a part onto another beat"
       and pack["mode_words"]["mix"] == "Mix tracks"
       and engines.mode_room("producer", "grid") == "producer"
+      and engines.mode_room("producer", "fit") == "producer"
       and engines.mode_room("producer", "mix") == "producer")
-check("the room's 'Which one?' list gets a one-line note for grid, as every other mode does",
-      bool(engines.mode_note("producer", "grid")), engines.mode_note("producer", "grid"))
+check("the room's 'Which one?' list gets a one-line note for each mode, as for every other mode",
+      all(bool(engines.mode_note("producer", m)) for m in ("grid", "fit", "mix")))
 fids = [f["id"] for f in engines.fields("producer", "grid")]
 check("fields: audio input (cover's own id), drum stem, beats per bar, bar-start anchor, expected bpm",
       fids == ["source_audio_name", "use_drum_stem", "beats_per_bar", "first_downbeat", "expected_bpm"], fids)

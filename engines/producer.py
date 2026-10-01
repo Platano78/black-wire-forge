@@ -1,12 +1,14 @@
 """Engine pack: the Producer room's process modes (process lane, no ComfyUI graph):
-Grid check (beat_this) and Mix tracks (a plain system python3 with ffmpeg).
+Grid check (beat_this), Fit (beat_this plus ffmpeg's atempo or Rubber Band),
+and Mix tracks (a plain system python3 with ffmpeg).
 
 Where every beat and bar of a song actually sits, and a click track to hear it:
 the mode's "graph" is a one-step run plan for runner.py that calls
 engines/producer_tools/grid_check.py under a Python that has beat_this (MIT
 code and weights) and, for the optional drum stem, Demucs (MIT) installed.
 beat_this gives per-beat times, so nothing downstream ever fits one constant
-period.
+period. Fit uses the same per-beat times of two songs and stretches a part
+beat by beat, so it follows a drifting tempo instead of one ratio.
 
 Pointing BWF at that Python is the same mechanism turntable uses for Blender:
 a declared bin, found by name. Put a program called `bwf-producer-python` on
@@ -16,6 +18,7 @@ starting BWF.
 """
 import math
 import os
+import shutil
 import subprocess
 
 _HELPER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "producer_tools", "grid_check.py")
@@ -127,6 +130,63 @@ def _mix_number(args, name, label, lo, hi, units, default=0.0):
     return v
 
 
+def _fit_bar(value, label):
+    if value in (None, ""):
+        return None
+    try:
+        t = float(value)
+    except (TypeError, ValueError):
+        raise ValueError("%s must be a time in seconds, got %s."
+                         % (label, "'" + str(value) + "'" if not isinstance(value, (int, float)) else "%g" % value))
+    if not math.isfinite(t) or t < 0:
+        raise ValueError("%s must be a finite time in seconds, zero or more."
+                         % ("'" + str(value) + "'" if not isinstance(value, (int, float)) else "%g" % value))
+    return t
+
+
+def fit_plan(args, models):
+    """The process run plan for the producer's "fit" mode: read the beats of
+    the song a part was made in and of the target song, then stretch the
+    part beat by beat onto the target's beats (engines/producer_tools/fit.py
+    under a Python that has beat_this; the stretch is ffmpeg atempo, or
+    Rubber Band when one is on PATH and not refused). The part is optional
+    and defaults to the source song itself."""
+    if not args.get("source_audio_name"):
+        raise ValueError("Fit needs the song the part was made in: upload it first.")
+    if not args.get("target_audio_name"):
+        raise ValueError("Fit needs the song to fit the part onto: upload it first.")
+    part = args.get("part_audio_name")
+    bar_s = _fit_bar(args.get("source_bar_at"), "the first-song anchor")
+    bar_t = _fit_bar(args.get("target_bar_at"), "the target anchor")
+    tool = args.get("stretch_tool")
+    if tool not in (None, "", "auto", "ffmpeg"):
+        raise ValueError("The stretch method must be auto or ffmpeg, got %s."
+                         % ("'" + str(tool) + "'" if not isinstance(tool, (int, float)) else "%g" % tool))
+    python = (models or {}).get("producer_python")
+    # Discovery hands over which()'s path, always a real program; anything else (a placeholder
+    # in a test) is not run here, and the runner says what it could not start.
+    if python and os.path.isfile(python) and os.access(python, os.X_OK):
+        _preflight(python, False)
+    argv = ["{bin:producer_python}", "{pack}/producer_tools/fit.py",
+            "--source", "{in:source_audio_name}", "--target", "{in:target_audio_name}",
+            "--out", "{job}", "--ffmpeg", "{bin:ffmpeg}"]
+    if part:
+        argv += ["--part", "{in:part_audio_name}"]
+    if bar_s is not None:
+        argv += ["--source-bar-at", "%g" % bar_s]
+    if bar_t is not None:
+        argv += ["--target-bar-at", "%g" % bar_t]
+    rb = shutil.which("rubberband")
+    if rb:
+        argv += ["--rubberband", rb]
+    return {
+        "steps": [{"argv": argv, "timeout_s": _STEP_TIMEOUT_S}],
+        "outputs": ["preview.mp3", "fitted.wav", "fit.json"],   # the playable one first: it is what the page shows
+        "progress": r"PROGRESS (\d+)/(\d+)",
+        "summary": True,      # fit.py prints its one-line result last: the job keeps it as its notes
+    }
+
+
 def mix_plan(args, models):
     """The process run plan for the producer's "mix" mode: lay up to four
     tracks over each other with a per-track gain and start, then two-pass
@@ -162,6 +222,7 @@ ENGINE = {
              "python3": "python3"},
     # Mix runs on the plain system python3; Grid check needs beat_this's own Python.
     "provides": {"grid": ["producer_python", "ffmpeg"],
+                 "fit": ["producer_python", "ffmpeg"],
                  "mix": ["python3", "ffmpeg"]},
     "words": {
         "producer_python": "a Python with beat_this installed (put a program called bwf-producer-python "
@@ -171,6 +232,7 @@ ENGINE = {
     },
     "graphs": {
         "grid": grid_plan,
+        "fit": fit_plan,
         "mix": mix_plan,
     },
     "describe": lambda models: (
@@ -178,14 +240,39 @@ ENGINE = {
         if models.get("producer_python") and models.get("ffmpeg") else ""),
     "mode_words": {
         "grid": "Grid check (beats and bars)",
+        "fit": "Fit a part onto another beat",
         "mix": "Mix tracks",
     },
-    "mode_rooms": {"grid": "producer", "mix": "producer"},
+    "mode_rooms": {"grid": "producer", "fit": "producer", "mix": "producer"},
     "mode_notes": {
         "grid": "finds every beat and bar start in a song and gives you a click track to check them by ear; runs on the processor",  # source: engines/producer_tools/grid_check.py (module docstring: steps 3 and 5)
+        "fit": "moves a part (for example a vocal) from the song it was made in onto another song's beats, stretching it beat by beat; runs on the processor",  # source: engines/producer_tools/fit.py (module docstring)
         "mix": "lays up to four tracks over each other with a gain and a start time for each, then levels the loudness; runs on the processor",  # source: engines/producer_tools/mix.py (module docstring)
     },
     "fields": {
+        "fit": [
+            {"id": "source_audio_name", "label": "The song the part was made in", "type": "audio",
+             "tier": "primary", "group": "Content", "order": 1,
+             "hint": "the song whose beats the part follows; without a separate part, this whole song is what gets fitted"},
+            {"id": "part_audio_name", "label": "The part to move", "type": "audio", "optional": True,
+             "tier": "primary", "group": "Content", "order": 2,
+             "hint": "optional; the part, cut out of the first song at the same length"},
+            {"id": "target_audio_name", "label": "The song to fit it onto", "type": "audio",
+             "tier": "primary", "group": "Content", "order": 3,
+             "hint": "the beat the part should sit on"},
+            {"id": "source_bar_at", "label": "A beat in the first song (seconds)", "type": "number",
+             "range": [0, 3600], "ui_range": [0, 300], "units": "s",
+             "tier": "advanced", "group": "Anchors", "order": 1,
+             "hint": "the time of a beat you can hear in the first song; without it, the first bar is used"},
+            {"id": "target_bar_at", "label": "The beat it should first land on (seconds)", "type": "number",
+             "range": [0, 3600], "ui_range": [0, 300], "units": "s",
+             "tier": "advanced", "group": "Anchors", "order": 2,
+             "hint": "without it, the target's first bar is used"},
+            {"id": "stretch_tool", "label": "Stretch method", "type": "select",
+             "default": "auto", "options": ["auto", "ffmpeg"],
+             "tier": "advanced", "group": "Stretch", "order": 1,
+             "hint": "auto uses Rubber Band when it is installed, otherwise ffmpeg (ffmpeg can sound phasey on big stretches)"},
+        ],
         "mix": [
             {"id": "track_1", "label": "Track 1", "type": "audio",
              "tier": "primary", "group": "Tracks", "order": 1,
@@ -247,6 +334,11 @@ ENGINE = {
         ],
     },
     "presets": {
+        "fit": [
+            {"id": "default", "label": "Default",
+             "note": "Lines the two songs up at their first bars; the stretch uses Rubber Band when installed, else ffmpeg.",
+             "values": {}},
+        ],
         "mix": [
             {"id": "default", "label": "Default",
              "note": "Every track at 0 dB from the start, levelled to -14 LUFS.",
@@ -259,6 +351,11 @@ ENGINE = {
         ],
     },
     "quality": {
+        "fit": [
+            {"id": "standard", "label": "Standard", "default": True,
+             "why": "beat by beat, with short crossfades; a minute or so for a song on the processor",
+             "values": {}},
+        ],
         "mix": [
             {"id": "standard", "label": "Standard", "default": True,
              "why": "two-pass loudness levelling; a few seconds for a song",  # source: measured 2026-10-01, 6 s mix: 0.7 s wall
@@ -274,6 +371,13 @@ ENGINE = {
         ],
     },
     "examples": {
+        "fit": [
+            {"id": "fit-try", "label": "Put a vocal on a new beat", "recipe": None,
+             "quality": None,
+             "values": {},
+             "why": "the whole song onto the new beat; upload just the vocal as the part to move only that",
+             "needs": "sound"},
+        ],
         "mix": [
             {"id": "mix-try", "label": "Layer two parts", "recipe": None,
              "quality": None,

@@ -353,7 +353,7 @@ render with it. Not a Hugging Face download: install Blender from
 `command -v blender; command -v ffmpeg`); see AGENTS.md's "Decide the path" and the
 `engines/turntable.py` pack for the `"bins"` it needs.
 
-## beat_this and Demucs (`engines/producer.py`, grid mode) — Grid check (process lane, no ComfyUI model)
+## beat_this and Demucs (`engines/producer.py`, grid and fit modes) — Grid check and Fit (process lane, no ComfyUI model)
 
 | Tool | Weights it downloads on first run | Licence | Used for |
 |---|---|---|---|
@@ -380,6 +380,14 @@ limits: beat times are dependable, but its downbeat (bar-start) output is not, s
 bar start is a guess (margin 0.4-0.7 against 18-20 when right, measured 2026-09-30); the optional
 "A bar starts at" time (`first_downbeat`) fixes it, and `grid.json`'s `meter.source` says whether bars
 came from the `model`, the `phase-logit` guess or your `anchor`.
+
+Fit (`engines/producer_tools/fit.py`) tracks the same model: it reads the beat grids of a source
+song and a target song, pairs the beats, and stretches a part beat by beat so each source beat
+lands on its paired target beat (it follows the target's tempo drift; a constant ratio would not).
+The stretch is ffmpeg `atempo` (a chain when the ratio leaves 0.5-2.0), or Rubber Band when the
+binary is on `PATH` and the field asks for it; segments under 0.1 s are resampled by hand because
+`atempo` drops inputs that short. Same setup as Grid check: the process lane, this Python, `ffmpeg`
+on `PATH`; no extra weights.
 
 ## Custom-node packages
 

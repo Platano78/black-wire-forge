@@ -103,6 +103,17 @@ Not checked on Windows: cutting with ffmpeg (ffmpeg was not installed on the tes
   drums alone; it is about five times slower and was no better on the song we measured, so try it
   only when the full mix confuses the beat.
 
+- **Fit** (Producer room): read the beat grids of a source song and a target song, pair the beats
+  (source beat *k* with target beat *k*, from the bar anchors down), and stretch a part beat by
+  beat so each source beat lands on its paired target beat. It follows the target's tempo drift; a
+  constant stretch would not. Out: `fitted.wav`, `preview.mp3`, `fit.json` (pairs, anchors, both
+  tempos, the stretch's min/median/max, the method used) and a one-line summary; a phasey fit
+  (median stretch far from 1.0) is flagged in that line. Runs on the same process lane as Grid
+  check (beat_this, no ComfyUI model); the stretch is ffmpeg `atempo`, or Rubber Band when the
+  binary is on `PATH` and the field asks for it. `docs/MODELS.md` (beat_this section) covers the
+  setup; the mode is listed in `engines/producer.py`'s `fit` entry with its own note and
+  `tests/test_producer_fit.py` holds the model-backed gate.
+
 - **Mix** (Producer room): lay up to four tracks over each other, each with its own gain and start time,
   levelled to a loudness target (default -14 LUFS, true peak about -1 dBTP), as `mix.mp3` and `mix.wav`. Runs
   on the processor with ffmpeg; no model.
