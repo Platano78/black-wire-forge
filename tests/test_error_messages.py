@@ -60,9 +60,9 @@ CONFIG = os.path.join(SCRATCH, "config.json")
 
 # One fake lane carrying every role every pack's `provides` names, so every
 # (cap, mode)'s ability reads true and the coercion/graph_for path runs for
-# all of them -- turntable's "roles" are the bare bin names "blender"/
-# "ffmpeg" (engines/turntable.py has no `roles` dict; `provides` names them
-# directly), everything else is a plain model filename.
+# all of them -- the process packs' "roles" are bare bin names ("blender",
+# "ffmpeg", "producer_python": turntable.py and producer.py have no `roles`
+# dict; `provides` names them directly), everything else is a plain model filename.
 MODELS = {
     "ace_unet": "a", "ace_clip1": "a", "ace_clip2": "a", "ace_vae": "a",
     "music3_unet": "a", "music3_clip": "a", "music3_vae": "a",
@@ -73,13 +73,13 @@ MODELS = {
     "h3_vae_video": "a", "h3_vae_audio": "a", "h3_turbo_lora": "a",
     "ltx_transformer": "a", "ltx_clip": "a", "ltx_vae_video": "a", "ltx_vae_audio": "a", "ltx_upscaler": "a",
     "trellis_unet": "a", "trellis_shape_vae": "a", "trellis_texture_vae": "a", "trellis_clip_vision": "a",
-    "blender": "a", "ffmpeg": "a",
+    "blender": "a", "ffmpeg": "a", "producer_python": "a",
 }
 
 json.dump({"port": 0, "bind": "127.0.0.1", "title": "e1",
            "timing": {"poll_seconds": 30, "job_poll_seconds": 30},
            "lanes": [{"id": "t", "name": "Test lane", "host": "127.0.0.1", "port": 1,
-                      "caps": ["image", "video", "audio", "3d"]}]}, open(CONFIG, "w"))
+                      "caps": ["image", "video", "audio", "3d", "producer"]}]}, open(CONFIG, "w"))
 os.environ["GENCENTER_CONFIG"] = CONFIG
 os.environ["GENCENTER_DATA"] = DATA
 

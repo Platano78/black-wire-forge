@@ -130,8 +130,7 @@ ENGINE = {
     },
     "mode_rooms": {"grid": "cover"},
     "mode_notes": {
-        "grid": "finds every beat and bar start in a song and gives you a click track to check them by ear; "
-                "runs on the processor",
+        "grid": "finds every beat and bar start in a song and gives you a click track to check them by ear; runs on the processor",  # source: engines/producer_tools/grid_check.py (module docstring: steps 3 and 5)
     },
     "fields": {
         "grid": [
