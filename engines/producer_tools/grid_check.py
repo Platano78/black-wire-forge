@@ -31,7 +31,7 @@ import traceback
 
 SR = 44100
 # %s is that Python: its own "-m pip", since a bare pip may belong to another Python
-BEAT_THIS_CMD = ("%s -m pip install torch --index-url https://download.pytorch.org/whl/cpu, "
+BEAT_THIS_CMD = ("%s -m pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu, "
                  "then %s -m pip install git+https://github.com/CPJKU/beat_this")
 _MIN_BEATS = 8
 # A bar-start phase chosen from the model's downbeat logits is trusted only when

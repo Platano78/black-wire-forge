@@ -318,13 +318,13 @@ bound beyond localhost the downloads routes answer 403.
 **Grid check (Cover room) uses no ComfyUI, same rule.** It runs on a process lane under a
 separate Python that has beat_this, and needs `ffmpeg` and `git`: `command -v ffmpeg; command -v
 git`, install what is missing. The first run downloads beat_this `final0` (81 MB, MIT); the
-installs fetch CPU PyTorch (about 190 MB, BSD-3-Clause plus bundled permissive licences). Its "Use the drum stem" option also needs Demucs, whose
+installs fetch CPU PyTorch and torchaudio (about 210 MB, BSD-style permissive licences). Its "Use the drum stem" option also needs Demucs, whose
 `htdemucs` weights (84 MB, MIT code, no licence stated on the weights' own card) download on first
 use: ask about that separately. After a yes:
 
 ```
 python3 -m venv ~/bwf-producer
-~/bwf-producer/bin/python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+~/bwf-producer/bin/python -m pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
 ~/bwf-producer/bin/python -m pip install git+https://github.com/CPJKU/beat_this   # needs git
 ~/bwf-producer/bin/python -m pip install demucs      # only for the drum stem, after its own yes
 ```

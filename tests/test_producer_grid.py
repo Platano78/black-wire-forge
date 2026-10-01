@@ -403,7 +403,7 @@ except ValueError as e:
           and "\n" not in msg and "Traceback" not in msg and msg.count(". ") == 0, msg)
     named = msg.split("pointed at (", 1)[-1].split(")", 1)[0]
     check("its install command uses that Python's own pip (a bare pip may be another Python's)",
-          "%s -m pip install torch" % named in msg and "%s -m pip install git+" % named in msg, msg)
+          "%s -m pip install torch torchaudio" % named in msg and "%s -m pip install git+" % named in msg, msg)
 
 # And the job itself (the run plan with no preflight), through the real runner:
 plan = engines.graph_for("producer", "grid", {}, {})
