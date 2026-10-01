@@ -106,7 +106,10 @@ Not checked on Windows: cutting with ffmpeg (ffmpeg was not installed on the tes
 - **Fit** (Producer room): read the beat grids of a source song and a target song, pair the beats
   (source beat *k* with target beat *k*, from the bar anchors down), and stretch a part beat by
   beat so each source beat lands on its paired target beat. It follows the target's tempo drift; a
-  constant stretch would not. Out: `fitted.wav`, `preview.mp3`, `fit.json` (pairs, anchors, both
+  constant stretch would not. Before pairing, both beat grids are repaired — a gap about twice the
+  local median (a beat the tracker missed) is filled in and one below half of it (an invented beat)
+  is dropped, so a single slip does not shift the rest of the part — and the summary line says so
+  when a repair happened. Out: `fitted.wav`, `preview.mp3`, `fit.json` (pairs, anchors, both
   tempos, the stretch's min/median/max, the method used) and a one-line summary; a phasey fit
   (median stretch far from 1.0) is flagged in that line. Runs on the same process lane as Grid
   check (beat_this, no ComfyUI model); the stretch is ffmpeg `atempo`, or Rubber Band when the

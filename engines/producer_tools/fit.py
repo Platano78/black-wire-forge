@@ -26,11 +26,14 @@ ratio and placed so the part starts and ends where the target does.
 Outputs in --out: fitted.wav (pcm_s16le, peak 0.98), preview.mp3 (target +
 fitted part at 0.7 each, peak 0.9, via grid_check.encode_mp3) and fit.json
 (pairs, the two anchor times, both songs' median BPM, per-segment ratio
-min/median/max, method). One PROGRESS n/5 line per stage; the final line is
-the summary, e.g.
+min/median/max, method, the repair counts of both beat grids). Before
+pairing, repair_grid() fills a beat the tracker missed and drops one it
+invented, so a single slip does not shift the rest of the part. One PROGRESS
+n/5 line per stage; the final line is the summary, e.g.
     fitted 74 beats onto the target: 112.0 -> 95.0 BPM (stretch 0.85x), ffmpeg atempo
-plus, for a big stretch done with ffmpeg (|1 - median| > 0.15), a plain note
-that big stretches can sound phasey and Rubber Band does better.
+plus, when a repair happened, a note of how many beats were added and
+removed, and, for a big stretch done with ffmpeg (|1 - median| > 0.15), a
+plain note that big stretches can sound phasey and Rubber Band does better.
 
 A bad argument or an impossible request is one plain sentence and exit code
 2, never a traceback (catch gc.GridError and ValueError in main()).
@@ -73,6 +76,46 @@ def nearest_beat(beats, t):
                          "to line up (the nearest is at %.2f s), so it cannot be used."
                          % (gc.ANCHOR_SNAP_S, t, beats[j]))
     return j
+
+
+def repair_grid(beats):
+    """A beat the tracker missed is a gap about twice the usual length; one it
+    invented is a gap far too short. Fill and drop such beats so that pairing
+    by index does not slip past them. Pure: a list of times in seconds, numpy
+    only. m(i) is the median of the up-to-16 gaps around gap i (8 on each
+    side, fewer near the ends). A gap below half of m(i) has its LATER beat
+    dropped (re-evaluated from the same position); a gap that is close to an
+    integer multiple n of m(i) (n >= 2, within 0.2 * m(i)) gets n-1 evenly
+    spaced beats inserted inside it. A gap that does not divide cleanly (for
+    example a real break in the music) is left alone. Fewer than 4 gaps: the
+    list is returned unchanged. -> (repaired beats, inserted, dropped), the
+    beats as plain Python floats."""
+    b = sorted(float(t) for t in beats)
+    if len(b) - 1 < 4:
+        return list(b), 0, 0
+    import numpy as np
+    inserted = 0
+    dropped = 0
+    i = 0
+    while i < len(b) - 1:
+        lo, hi = max(0, i - 8), min(len(b) - 2, i + 8)
+        window = [b[j + 1] - b[j] for j in range(lo, hi + 1)]
+        window.remove(b[i + 1] - b[i])  # the gap itself is not its own context
+        m = float(np.median(window))
+        gap = b[i + 1] - b[i]
+        if m <= 0:
+            i += 1
+            continue
+        if gap < 0.5 * m:
+            del b[i + 1]
+            dropped += 1
+            continue  # re-evaluate from the same position
+        n = int(round(gap / m))
+        if n >= 2 and abs(gap - n * m) <= 0.2 * m:
+            b[i + 1:i + 1] = [b[i] + gap * k / n for k in range(1, n)]
+            inserted += n - 1
+        i += 1
+    return b, inserted, dropped
 
 
 def anchor_index(beats, downbeats, bar_at):
@@ -232,9 +275,14 @@ def fit(args, out, progress):
             "(the part is %.1f s, the song is %.1f s)." % (len(part) / SR, len(src) / SR))
     progress(1)
 
-    # b. the beats of both songs
+    # b. the beats of both songs. repair_grid fills a beat the tracker missed
+    # and drops one it invented, so pairing by index does not slip (the model's
+    # downbeat times are kept as they are: the anchors snap to the nearest
+    # repaired beat by time, as before)
     beats_s, downs_s, _ = gc.track_beats(src.mean(axis=1).astype("float64"), "final0")
     beats_t, downs_t, _ = gc.track_beats(tgt.mean(axis=1).astype("float64"), "final0")
+    beats_s, ins_s, dro_s = repair_grid(beats_s)
+    beats_t, ins_t, dro_t = repair_grid(beats_t)
     progress(2)
 
     # c. where to start lining up
@@ -320,6 +368,8 @@ def fit(args, out, progress):
         "target_bpm": tbpm,
         "stretch": {"min": min(ratios), "median": statistics.median(ratios), "max": max(ratios)},
         "method": method,
+        "repaired": {"source": {"inserted": ins_s, "dropped": dro_s},
+                     "target": {"inserted": ins_t, "dropped": dro_t}},
     }
     with open(os.path.join(out, "fit.json"), "w", encoding="utf-8") as f:
         json.dump(doc, f, indent=2)
@@ -327,6 +377,8 @@ def fit(args, out, progress):
 
     line = "fitted %d beats onto the target: %.1f -> %.1f BPM (stretch %.2fx), %s" % (
         K, sbpm, tbpm, statistics.median(ratios), method)
+    if ins_s + ins_t + dro_s + dro_t:
+        line += "; repaired the beat grids (%d added, %d removed)" % (ins_s + ins_t, dro_s + dro_t)
     if method == "ffmpeg atempo" and abs(1.0 - statistics.median(ratios)) > PHASEY_LIMIT:
         line += "; big stretches can sound phasey with ffmpeg, Rubber Band does better"
     print(line, flush=True)

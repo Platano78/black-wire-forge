@@ -400,6 +400,134 @@ try:
 except Exception as e:
     check("engines.graph_for('producer', 'fit') plans the fit", False, repr(e))
 
+# ---------------------------------------------------------------------------
+# repair_grid (pure numpy, no model): a missed beat is filled, an invented
+# one is dropped; and a discriminating end-to-end (fake tracker, system
+# python -- no beat_this): the tracker misses one TARGET beat in the middle,
+# and the fit still puts every burst on its true target beat
+# ---------------------------------------------------------------------------
+print("repair_grid: a missed beat is filled in, an invented one is dropped")
+if not HAVE_NP:
+    skip("repair_grid and the missed-beat fit", "numpy not importable in this Python")
+else:
+    import argparse
+    import numpy as np
+
+    true_grid = [0.6 * k for k in range(30)]
+    hole = [b for k, b in enumerate(true_grid) if k != 12]
+    rep, ins, dro = _fit.repair_grid(hole)
+    check("a deleted beat is filled in (inserted 1, dropped 0)", ins == 1 and dro == 0, (ins, dro))
+    check("every repaired beat is within 0.01 s of the true grid",
+          len(rep) == len(true_grid) and all(abs(a - b) <= 0.01 for a, b in zip(rep, true_grid)),
+          [round(a - b, 4) for a, b in zip(rep, true_grid)])
+
+    # an invented beat sits 0.05 s before a real one: a gap below half the
+    # local median, the later beat dropped
+    extra = true_grid[:8] + [true_grid[7] + 0.05] + true_grid[8:]
+    rep, ins, dro = _fit.repair_grid(extra)
+    check("an invented beat is dropped (dropped 1, inserted 0)", ins == 0 and dro == 1, (ins, dro))
+    check("the repaired grid equals the true grid",
+          len(rep) == len(true_grid) and all(abs(a - b) <= 1e-9 for a, b in zip(rep, true_grid)),
+          [round(a - b, 9) for a, b in zip(rep, true_grid)])
+
+    # a 6.3x gap that does not divide cleanly: 5 beats deleted, the rest
+    # shifted by +0.18 s
+    broken = true_grid[:15] + [b + 0.18 for b in true_grid[20:]]
+    rep, ins, dro = _fit.repair_grid(broken)
+    check("a 6.3x gap that does not divide cleanly is left alone (inserted 0)", ins == 0,
+          (ins, dro, round(rep[15] - rep[14], 3)))
+
+    tiny = [0.0, 0.6, 1.2, 1.8]
+    rep, ins, dro = _fit.repair_grid(tiny)
+    check("fewer than 5 beats is returned unchanged", rep == tiny and ins == 0 and dro == 0,
+          (rep, ins, dro))
+
+    # the end-to-end: the fake tracker (keyed on the decoded length: the
+    # source is 45 s, the target 50.2 s) returns the generator's TRUE source
+    # beats and the TRUE target beats MINUS beat 41 (41 % 4 != 0, so no
+    # downbeat is lost), plus the first true beat of each bar as downbeats
+    if not (AUDIO and FFMPEG):
+        skip("the missed-beat fit (fake tracker)", "no audio could be built")
+    else:
+        S, P, T, _ = AUDIO
+        MISS = 41
+        SRC_DOWNS = [SRC_BEATS[k] for k in range(0, N_SRC, 4)]
+        TGT_DOWNS = [TGT_BEATS[k] for k in range(0, N_TGT, 4)]
+
+        def fake_track(audio, checkpoint):
+            if len(audio) / _fit.gc.SR < 47.6:  # the source (45 s)
+                return list(SRC_BEATS), SRC_DOWNS, [0.0] * N_SRC
+            return (TGT_BEATS[:MISS] + TGT_BEATS[MISS + 1:]), TGT_DOWNS, [0.0] * (N_TGT - 1)
+
+        fake_out = os.path.join(WORK, "out_missed")
+        real_track, real_tool = _fit.gc.track_beats, _fit.gc.missing_tool_sentence
+        _fit.gc.track_beats = fake_track
+        _fit.gc.missing_tool_sentence = lambda drum_stem: None  # the tracker is a fake
+        try:
+            ns = argparse.Namespace(source=S, part=P, target=T, out=fake_out, ffmpeg=FFMPEG,
+                                    source_bar_at=None, target_bar_at=None, rubberband=None)
+            _fit.fit(ns, fake_out, lambda k: None)
+        except Exception as e:
+            check("fit() ran with the missed target beat", False, repr(e))
+        finally:
+            _fit.gc.track_beats = real_track
+            _fit.gc.missing_tool_sentence = real_tool
+
+        doc = json.load(open(os.path.join(fake_out, "fit.json")))
+        check("fit.json records the target repair (1 inserted, 0 dropped) and a clean source",
+              doc.get("repaired") == {"source": {"inserted": 0, "dropped": 0},
+                                      "target": {"inserted": 1, "dropped": 0}}, doc.get("repaired"))
+        K = int(doc.get("pairs", 0))
+        check("the missed beat was filled, not the grid shifted (pairs unchanged)", K >= 74, K)
+
+        # onset detection in fitted.wav: the GREEN check's 5 ms 1 kHz Goertzel windows
+        raw = subprocess.run([FFMPEG, "-v", "error", "-i", os.path.join(fake_out, "fitted.wav"),
+                              "-f", "f32le", "-ac", "1", "-ar", str(SR), "-"], capture_output=True).stdout
+        x = np.frombuffer(raw, dtype="<f4")
+        WIN = int(round(0.005 * SR))
+        nw = (len(x) - WIN) // WIN
+
+        def goertzel_power(freq):
+            c = math.cos(2.0 * math.pi * freq / SR)
+            powers = []
+            for i in range(nw):
+                s1 = s2 = 0.0
+                for v in x[i * WIN:(i + 1) * WIN]:
+                    s0 = v + 2.0 * c * s1 - s2
+                    s2, s1 = s1, s0
+                powers.append(s1 * s1 + s2 * s2 - 2.0 * c * s1 * s2)
+            return powers
+
+        powers = goertzel_power(1000.0)
+        mx = max(powers) if powers else 0.0
+        THR = 0.3 * mx
+        onsets = []
+        for i in range(nw):
+            if powers[i] > THR and (i < 10 or max(powers[i - 10:i]) < THR):
+                onsets.append((i + 0.5) * (WIN / SR))
+        # the k-th burst must sit on the k-th TRUE target beat from the anchor;
+        # a min-distance to ANY true beat cannot see a one-beat slip (a late
+        # burst still sits on a true beat). Onsets < 0.3 s apart are one burst
+        # double-triggered (a stretched seam), keep the first.
+        dedup = []
+        for o in onsets:
+            if not dedup or o - dedup[-1] >= 0.3:
+                dedup.append(o)
+        onsets = dedup
+        anchor_t = float(doc.get("target_anchor_s", TGT_START))
+        j0 = min(range(N_TGT), key=lambda i: abs(TGT_BEATS[i] - anchor_t))
+        expected = [TGT_BEATS[j0 + k] for k in range(len(onsets))]
+        aligned = sorted(abs(o - e) for o, e in zip(onsets, expected))
+        min_any = sorted(min(abs(o - b) for b in TGT_BEATS) for o in onsets)
+        med = aligned[len(aligned) // 2] if aligned else float("inf")
+        p90 = aligned[min(len(aligned) - 1, int(0.9 * len(aligned)))] if aligned else float("inf")
+        a_med = min_any[len(min_any) // 2] if min_any else float("inf")
+        a_p90 = min_any[min(len(min_any) - 1, int(0.9 * len(min_any)))] if min_any else float("inf")
+        print("        missed-beat fit: %d onsets, k-th-vs-true median %.4f s, p90 %.4f s "
+              "(min-to-any: median %.4f s, p90 %.4f s)" % (len(onsets), med, p90, a_med, a_p90))
+        check("missed-beat fit: k-th burst vs k-th true beat, median <= 0.025 s", med <= 0.025, med)
+        check("missed-beat fit: k-th burst vs k-th true beat, p90 <= 0.05 s", p90 <= 0.05, p90)
+
 shutil.rmtree(WORK, ignore_errors=True)
 print()
 if FAILED:
