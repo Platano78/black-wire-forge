@@ -38,6 +38,20 @@ opus  -- rewrites the OpusTags page's comment list to empty (vendor string
          the comment header fits in a single page immediately following
          OpusHead; anything else bails out to (data, False) rather than
          guess at a multi-page rewrite.
+wav   -- keeps only the `fmt ` / `data` chunks (and `fact`, which non-PCM
+         formats need), in their original order, and recomputes the RIFF size
+         field. Every other chunk is dropped -- LIST/INFO, id3, bext, iXML,
+         cue, smpl, anything unknown -- those are where the text metadata
+         lives. The kept `fmt ` and `fact` chunks are cut to their DEFINED
+         length, so nothing can ride along inside them: a `fact` is exactly
+         its 4-byte sample count; a `fmt ` is its 16 standard bytes, plus
+         its cbSize extension when the cbSize field obeys the rule for its
+         tag (0 for PCM/float, 22 for EXTENSIBLE, <= 22 otherwise). A broken
+         cbSize in a chunk of exactly 18 bytes is refused outright; in a
+         longer PCM/float chunk the file falls back to the 16 standard
+         bytes (a complete definition on their own), any other tag is
+         refused. RF64 (64-bit) files and any chunk size past the end of
+         the file are refused too.
 mp4/webm/mov/mkv -- ffmpeg stream-copy remux (-c copy), container metadata
          and chapters dropped, decoded audio/video frames untouched.
 anything else, or any parse that does not match expectations -- (data, False).
@@ -253,6 +267,101 @@ def _strip_opus(data):
     return data[:p1["start"]] + page1 + data[p1_end:]
 
 
+# --- WAV -------------------------------------------------------------------
+_WAV_KEEP = {b"fmt ", b"data", b"fact"}
+
+
+def _wav_cb_ok(tag, cb_size):
+    if tag in (1, 3):                         # PCM, IEEE float
+        return cb_size == 0
+    if tag == 0xFFFE:                         # EXTENSIBLE
+        return cb_size == 22
+    return cb_size <= 22
+
+
+def _wav_defined_length(cid, body):
+    """The part of a kept chunk that is actually DEFINED by the format --
+    the rest, whatever it says, is dropped. Returns the kept bytes, or None
+    when the chunk is malformed and we must refuse the whole file rather
+    than guess.
+
+    `fmt `: the 16 standard bytes; with a cbSize field, 18 + cbSize, where
+    cbSize must be 0 for PCM (1) / IEEE float (3), 22 for EXTENSIBLE
+    (0xFFFE), and at most 22 for any other tag. A chunk of exactly 18 bytes
+    with a cbSize that breaks the rule is a broken extended header -- None.
+    A LONGER chunk with a broken cbSize keeps only the 16 standard bytes for
+    PCM / IEEE float (where those 16 bytes are the complete definition);
+    any other tag needs its extended bytes, so that is None as well.
+    `fact`: exactly 4 bytes (the sample count).
+    """
+    if cid == b"fmt ":
+        if len(body) < 16:
+            return None
+        if len(body) == 16:
+            return body
+        tag = int.from_bytes(body[0:2], "little")
+        if len(body) == 18:
+            cb_size = int.from_bytes(body[16:18], "little")
+            if not _wav_cb_ok(tag, cb_size):
+                return None
+            return body
+        cb_size = int.from_bytes(body[16:18], "little")
+        if _wav_cb_ok(tag, cb_size):
+            defined = 18 + cb_size
+            if len(body) < defined:
+                return None
+            return body[:defined]
+        # cbSize breaks the rule. For PCM / IEEE float the 16-byte header is
+        # the complete, self-contained definition -- keep just it. Any other
+        # tag needs its extended bytes to mean anything -- never guess.
+        if tag in (1, 3):
+            return body[:16]
+        return None
+    if cid == b"fact":
+        if len(body) < 4:
+            return None
+        return body[:4]
+    return body
+
+
+def _strip_wav(data):
+    if len(data) < 12 or data[:4] != b"RIFF" or data[8:12] != b"WAVE":
+        return None                           # RF64 or not a WAVE at all
+    pos = 12
+    n = len(data)
+    keep = []
+    have_fmt = have_data = False
+    while pos < n:
+        if pos + 8 > n:
+            return None                       # truncated chunk header
+        cid = data[pos:pos + 4]
+        size = int.from_bytes(data[pos + 4:pos + 8], "little")
+        start = pos + 8
+        if start + size > n:
+            return None                       # chunk size runs past the end (truncated file)
+        end = start + size
+        if size % 2 and end < n:
+            end += 1                          # the pad byte is part of the chunk
+        if cid in _WAV_KEEP:
+            body = _wav_defined_length(cid, data[start:start + size])
+            if body is None:
+                return None                   # malformed fmt/fact -- never guess
+            if cid in (b"fmt ", b"fact"):
+                chunk = cid + len(body).to_bytes(4, "little") + body
+                if len(body) % 2:
+                    chunk += b"\x00"          # keep the chunk on its byte boundary
+                keep.append(chunk)
+            else:
+                keep.append(data[pos:end])    # data: the audio itself, unchanged
+            have_fmt = have_fmt or cid == b"fmt "
+            have_data = have_data or cid == b"data"
+        pos = end
+    if not have_fmt or not have_data:
+        return None                           # no fmt or no data -- not a WAV we can trust
+    body = b"".join(keep)
+    return b"RIFF" + (len(body) + 4).to_bytes(4, "little") + b"WAVE" + body
+
+
 # --- dispatch ----------------------------------------------------------------
 def _ext(filename):
     name = (filename or "").lower()
@@ -273,6 +382,8 @@ def strip_audio(data: bytes, filename: str = "") -> "tuple[bytes, bool]":
             out = _strip_mp3(data)
         elif ext in ("opus", "ogg") or (not ext and data[:4] == b"OggS"):
             out = _strip_opus(data)
+        elif ext == "wav" or (not ext and data[:4] == b"RIFF"):
+            out = _strip_wav(data)
         else:
             out = None
 

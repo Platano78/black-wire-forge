@@ -2,17 +2,21 @@
 serve a file that was not actually cleaned.
 
 Covers the fix to strip_metadata()/proxy_view_local() -- a WAV clean
-download (dl=1, no keep_recipe) must be REFUSED (4xx), not silently served
-as the original under the "cleaned" label; a FLAC clean download must
-actually be cleaned; a plain (keep_recipe=1) download of a WAV must still
-work unchanged; and /api/credits must not advertise WAV/M4A as cleanable.
+download (dl=1, no keep_recipe) must ACTUALLY BE CLEANED (200 blob with
+the text chunks gone), a WAV sanitize cannot parse (truncated) must be
+REFUSED (4xx), never silently served as the original under the "cleaned"
+label; a FLAC clean download must actually be cleaned; a plain
+(keep_recipe=1) download of a WAV must still work unchanged; and
+/api/credits must advertise WAV as cleanable but not M4A.
 
 RED/GREEN: run against the pre-fix strip_metadata() (which discarded
 sanitize's `_stripped` result and always returned the original bytes with
 no signal), "WAV clean download refused" FAILED -- the handler served a
 200 blob of the untouched original instead of a 4xx. After propagating
 `stripped` through strip_metadata() and refusing on False in
-proxy_view()/proxy_view_local(), it passes.
+proxy_view()/proxy_view_local(), it passes. (WAV cleaning itself landed
+later: sanitize.strip_audio gained _strip_wav, so the first section now
+expects a 200 with the text chunks gone rather than a 4xx.)
 
 Run: python3 tests/test_clean_download.py
 """
@@ -32,6 +36,7 @@ def check(name, cond, detail=""):
 
 
 import _scratch_config  # noqa: E402 -- must run before server.py's own exec_module below
+import sanitize  # noqa: E402
 
 spec = importlib.util.spec_from_file_location("srv_clean_dl", os.path.join(ROOT, "server.py"))
 srv = importlib.util.module_from_spec(spec)
@@ -55,19 +60,41 @@ def call_view(q):
     return results[-1] if results else None
 
 
-wav_bytes = (b"RIFF" + (36).to_bytes(4, "little") + b"WAVEfmt "
-             + (16).to_bytes(4, "little") + b"\x01\x00\x01\x00"
-             + (8000).to_bytes(4, "little") + (8000).to_bytes(4, "little")
-             + b"\x01\x00\x08\x00" + b"data" + (0).to_bytes(4, "little"))
-with open(os.path.join(SCRATCH, "job1", "clip.wav"), "wb") as f:
-    f.write(wav_bytes)
+def _riff(cid, payload):
+    chunk = cid + len(payload).to_bytes(4, "little") + payload
+    return chunk + (b"\x00" if len(payload) % 2 else b"")
 
-print("F1: WAV clean download is refused, never silently served as the original")
+
+fmt = (b"fmt " + (16).to_bytes(4, "little") + b"\x01\x00\x01\x00"
+       + (8000).to_bytes(4, "little") + (8000).to_bytes(4, "little")
+       + b"\x01\x00\x08\x00")
+needle = b"prompt: a secret prompt"
+info = b"INFO" + b"ICMT" + len(needle).to_bytes(4, "little") + needle
+data = b"data" + (64).to_bytes(4, "little") + bytes(64)
+wav_bytes = b"RIFF" + (len(fmt) + len(_riff(b"LIST", info)) + len(data) + 4).to_bytes(4, "little") \
+    + b"WAVE" + fmt + _riff(b"LIST", info) + data
+wav_clean = b"RIFF" + (len(fmt) + len(data) + 4).to_bytes(4, "little") + b"WAVE" + fmt + data
+wav_trunc = wav_bytes[:len(wav_bytes) - 10]    # data chunk declared larger than present
+for name, blob in (("clip.wav", wav_bytes), ("clip_trunc.wav", wav_trunc)):
+    with open(os.path.join(SCRATCH, "job1", name), "wb") as f:
+        f.write(blob)
+
+print("F1: WAV clean download is actually cleaned, never the untouched original")
 kind, payload, code = call_view({"job": ["job1"], "filename": ["clip.wav"], "dl": ["1"]})
-check("dl=1 (clean download) on a WAV refuses with a 4xx, not a 200 blob",
-      kind == "json" and 400 <= code < 500, str((kind, code, payload)))
+check("dl=1 (clean download) on a WAV is served as a blob, not a refusal",
+      kind == "blob", str((kind, code, payload))[:200])
+check("the text chunk (the prompt) is actually gone from the served bytes",
+      kind == "blob" and needle not in payload and payload == wav_clean, repr(payload)[:200])
+check("sanity: sanitize.strip_audio itself reports stripped=True for this WAV",
+      sanitize.strip_audio(wav_bytes, "clip.wav")[1] is True)
+
+print()
+print("F1: a WAV that cannot be parsed is refused, never silently served as the original")
+kind, payload, code = call_view({"job": ["job1"], "filename": ["clip_trunc.wav"], "dl": ["1"]})
+check("dl=1 on a truncated WAV refuses with a 4xx, not a 200 blob",
+      kind == "json" and 400 <= code < 500, str((kind, code, payload))[:200])
 check("the refusal is the plain sentence, not a stack trace or Python exception text",
-      kind == "json" and "recipe" in (payload.get("error") or "").lower(), str(payload))
+      kind == "json" and "recipe" in (payload.get("error") or "").lower(), str(payload)[:200])
 
 print()
 print("F1: plain (keep_recipe) download of the same WAV still works exactly as before")
@@ -80,9 +107,6 @@ print("F1: viewing (dl=0) a WAV is untouched, same as any other output")
 kind3, data3, _ = call_view({"job": ["job1"], "filename": ["clip.wav"], "dl": ["0"]})
 check("dl=0 serves the original bytes untouched",
       kind3 == "blob" and data3 == wav_bytes, str(kind3))
-
-import sanitize  # noqa: E402
-
 
 def _flac_block(btype, payload, last):
     return bytes([(0x80 if last else 0) | btype]) + len(payload).to_bytes(3, "big") + payload
@@ -109,7 +133,7 @@ check("sanity: sanitize.strip_audio itself reports stripped=True for this FLAC",
       sanitize.strip_audio(flac_bytes, "clip.flac")[1] is True)
 
 print()
-print("F1: /api/credits no longer advertises WAV/M4A as cleanable audio")
+print("F1: /api/credits advertises WAV as cleanable audio, still not M4A")
 _h = srv.Handler.__new__(srv.Handler)
 _h.path = "/api/credits"
 _h.command = "GET"
@@ -119,10 +143,10 @@ _h.send_json = lambda payload, code=200: _results.append((payload, code))
 srv.Handler.do_GET(_h)
 _payload, _code = _results[-1] if _results else ({}, None)
 exts = set(_payload.get("clean_audio_exts") or [])
-check("clean_audio_exts does not contain 'wav'", "wav" not in exts, repr(exts))
+check("clean_audio_exts contains 'wav'", "wav" in exts, repr(exts))
 check("clean_audio_exts does not contain 'm4a'", "m4a" not in exts, repr(exts))
-check("clean_audio_exts is sanitize's real coverage: flac/mp3/opus/ogg",
-      exts == {"flac", "mp3", "opus", "ogg"}, repr(exts))
+check("clean_audio_exts is sanitize's real coverage: flac/mp3/opus/ogg/wav",
+      exts == {"flac", "mp3", "opus", "ogg", "wav"}, repr(exts))
 
 shutil.rmtree(SCRATCH, ignore_errors=True)
 

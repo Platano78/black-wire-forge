@@ -249,7 +249,7 @@ prefers one also containing `2.1`) — do not guess a filename requirement not i
 | `Send JSON (Content-Type: application/json).` / `Send the file as a multipart/form-data upload.` (415) | a `POST` had the wrong `Content-Type` | send the header the endpoint expects (JSON everywhere except `/api/upload`, which wants multipart) |
 | `Requests from another site are refused.` (403) | cross-site `Origin`/`Sec-Fetch-Site` on a `POST` | only call the API from a page served by this same app |
 | `Your helper spent its whole answer thinking and wrote nothing. ...` (502 from a guide call) | the helper is a thinking model that used its whole reply budget before writing (the app already retried once at 4x the budget, capped at 16384) | add `"max_tokens": 8192` (a whole number) to `"helper"` in `config.json` and restart, or use a model that does not think first |
-| A "clean download" is refused rather than served | the file's format isn't one `sanitize.py` can actually strip (e.g. WAV/M4A) or a required dependency (Pillow/ffmpeg) is missing | check `/api/credits`' `clean_download`/`clean_audio_exts` for what's currently cleanable, or use "Keep the recipe" instead |
+| A "clean download" is refused rather than served | the file's format isn't one `sanitize.py` can actually strip (e.g. M4A) or a required dependency (Pillow/ffmpeg) is missing | check `/api/credits`' `clean_download`/`clean_audio_exts` for what's currently cleanable, or use "Keep the recipe" instead |
 
 ## Hardware
 

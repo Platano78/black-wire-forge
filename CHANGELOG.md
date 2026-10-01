@@ -285,6 +285,8 @@ Not checked on Windows: cutting with ffmpeg (ffmpeg was not installed on the tes
 
 ### Fixed
 
+- A WAV file's "recipe removed" download works: only its format and audio chunks are kept (text chunks such as LIST/INFO are dropped); before, every WAV download was refused.
+- A Producer job's other outputs (the fitted part, the mix as WAV) now each have a Download under the result; before, only the first one played and the rest could not be reached.
 - A process lane is now up when at least one of its tools has every program it needs, so Grid check works on a lane that also lists `"3d"` without Blender installed; the turntable mode lists Blender as missing, and the lane is down only when no tool can run.
 - Setup step 2 no longer says a recommended file is "already installed" when a different file
   covers that model; the row now reads "covered by" and names the file it found.

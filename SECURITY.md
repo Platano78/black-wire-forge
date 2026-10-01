@@ -89,18 +89,22 @@ the file leaves the app:
   file with no text chunks. Lossless for PNG (a byte-for-byte round trip of the pixel
   data); JPEG and WebP are re-encoded, not byte-identical, since Pillow has to decode
   and re-save them to drop their metadata.
-- **FLAC/MP3/Opus-in-Ogg only** (`sanitize.strip_audio`) — the container is parsed by
+- **FLAC/MP3/Opus-in-Ogg/WAV only** (`sanitize.strip_audio`) — the container is parsed by
   hand (no third-party audio library): FLAC drops its `VORBIS_COMMENT`/`APPLICATION`/
   `PICTURE`/padding metadata blocks, MP3 drops a leading ID3v2 tag and any trailing
   ID3v1/APEv2 tag, Opus rewrites its comment-header page to an empty tag list. Audio
-  frames are copied byte-identical in every case. **WAV and M4A are not implemented** —
-  `sanitize.strip_audio` does not understand either container, so a WAV/M4A "clean
-  download" is refused rather than served untouched under that label (see below).
+  frames are copied byte-identical in every case. WAV keeps only its `fmt `/`data`
+  (and `fact`) chunks, dropping LIST/INFO, id3, bext, iXML and every other chunk, with
+  the audio bytes unchanged; the `fmt ` and `fact` chunks are cut to their defined
+  length, so nothing can ride along inside them; a WAV it cannot parse (truncated,
+  RF64) is refused. **M4A
+  is not implemented** — its "clean download" is refused rather than served untouched
+  under that label (see below).
 - **MP4/WebM/MOV/MKV** — requires `ffmpeg` on `PATH`. `sanitize.strip_video` runs an
   `ffmpeg` stream-copy remux (`-c copy`, no re-encode) that drops container-level
   metadata and chapters.
 
-A strip that cannot fully clean a file (an unsupported sub-format such as WAV/M4A,
+A strip that cannot fully clean a file (an unsupported sub-format such as M4A,
 a missing dependency such as Pillow or `ffmpeg`, or a parse that doesn't match what the
 stripper expects) is **refused with an error** rather than silently served as the
 original under the "recipe removed" label — a failed strip must never look like a

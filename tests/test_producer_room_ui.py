@@ -7,6 +7,8 @@ is only found on PATH. Real server.py, real browser; SKIPs without Playwright/Ch
 
 Run: python3 tests/test_producer_room_ui.py
 """
+import base64
+import io
 import json
 import os
 import struct
@@ -14,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import wave
 
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -28,6 +31,55 @@ MIX_SUMMARY = "mixed 2 tracks, -14.0 LUFS, true peak -1.0 dBTP, 0:05"
 S = tempfile.mkdtemp(prefix="bwf_prod_ui_")
 ARGV_FILE = os.path.join(S, "argv.json")
 
+# The audio frames the stand-ins write, and the exact WAV bytes they emit
+# (both write a real WAV through the `wave` module, 8000 Hz 16-bit mono),
+# so the download check can compare the fetched file against the program's
+# output.
+FIT_FRAMES = bytes(800)
+MIX_FRAMES = bytes(1600)
+FIT_WAV = (b"RIFF" + struct.pack("<I", 36 + len(FIT_FRAMES)) + b"WAVEfmt "
+           + struct.pack("<IHHIIHH", 16, 1, 1, 8000, 16000, 2, 16)
+           + b"data" + struct.pack("<I", len(FIT_FRAMES)) + FIT_FRAMES)
+MIX_WAV = (b"RIFF" + struct.pack("<I", 36 + len(MIX_FRAMES)) + b"WAVEfmt "
+           + struct.pack("<IHHIIHH", 16, 1, 1, 8000, 16000, 2, 16)
+           + b"data" + struct.pack("<I", len(MIX_FRAMES)) + MIX_FRAMES)
+
+# Runs in the page context, so the fetch goes out with the same origin and
+# Host header the page itself uses. Reports the link's href, the HTTP status,
+# the byte length, the first 12 bytes (hex), the base64 body on success, and
+# the response body on refusal.
+DOWNLOAD_FETCH_JS = """async (name) => {
+  const a = [...document.querySelectorAll('#jobExtras a')].find(x => x.textContent.includes(name));
+  if(!a) return {found: false, name: name};
+  const r = await fetch(a.href);
+  const body = r.ok ? '' : (await r.clone().text()).slice(0, 300);
+  const b = new Uint8Array(await r.arrayBuffer());
+  let b64 = '';
+  if (r.ok) { let s = ''; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); b64 = btoa(s); }
+  return {found: true, name: name, href: a.href, status: r.status, len: b.length,
+          head: Array.from(b.slice(0, 12)).map(x => x.toString(16).padStart(2, '0')).join(''),
+          b64: b64, body: body};
+}"""
+
+
+def download_check(page, label, name, want, frames):
+    """Fetch the named link's href from the page context and check it answers
+    200 with the exact length and the first 12 bytes the stand-in wrote, and
+    that the downloaded file's audio frames equal the stand-in's (read with
+    the `wave` module)."""
+    res = page.evaluate(DOWNLOAD_FETCH_JS, name)
+    ok = bool(res and res.get("found")) and res.get("status") == 200 \
+        and res.get("len") == len(want) and res.get("head") == want[:12].hex()
+    detail = res
+    if ok:
+        try:
+            with wave.open(io.BytesIO(base64.b64decode(res["b64"]))) as w:
+                ok = w.readframes(w.getnframes()) == frames
+        except Exception as e:
+            ok = False
+            detail = (res, repr(e))
+    check(label, ok, detail)
+
 FIT_STUB = ("#!%s\nimport json, os, sys, wave\na = sys.argv[2:]\nif '--check' in a: sys.exit(0)\n"
             "out = a[a.index('--out') + 1]; os.makedirs(out, exist_ok=True)\n"
             "json.dump(sys.argv, open(os.environ['BWF_UI_ARGV'], 'w'))\n"
@@ -38,15 +90,13 @@ FIT_STUB = ("#!%s\nimport json, os, sys, wave\na = sys.argv[2:]\nif '--check' in
             "open(os.path.join(out, 'fit.json'), 'w'))\n"
             "print('PROGRESS 5/5', flush=True); print(%r, flush=True)\n") % (sys.executable, FIT_SUMMARY)
 
-MIX_STUB = ("#!%s\nimport json, os, struct, sys\na = sys.argv[1:]\n"
+MIX_STUB = ("#!%s\nimport json, os, sys, wave\na = sys.argv[1:]\n"
             "json.dump(sys.argv, open(os.environ['BWF_UI_ARGV'], 'w'))\n"
             "if '--check' in a: sys.exit(0)\n"
             "out = a[a.index('--out') + 1]; os.makedirs(out, exist_ok=True)\n"
             "open(os.path.join(out, 'mix.mp3'), 'wb').write(b'ID3' + bytes(64))\n"
-            "pcm = bytes(1600)\n"
-            "open(os.path.join(out, 'mix.wav'), 'wb').write(b'RIFF' + struct.pack('<I', 36 + len(pcm)) "
-            "+ b'WAVEfmt ' + struct.pack('<IHHIIHH', 16, 1, 1, 8000, 16000, 2, 16) "
-            "+ b'data' + struct.pack('<I', len(pcm)) + pcm)\n"
+            "w = wave.open(os.path.join(out, 'mix.wav'), 'wb')\n"
+            "w.setnchannels(1); w.setsampwidth(2); w.setframerate(8000); w.writeframes(bytes(1600)); w.close()\n"
             "json.dump({'measured_lufs': -14.0, 'true_peak_dbtp': -1.0}, "
             "open(os.path.join(out, 'mix.json'), 'w'))\n"
             "print('PROGRESS 3/3', flush=True); print(%r, flush=True)\n") % (sys.executable, MIX_SUMMARY)
@@ -129,14 +179,12 @@ try:
         check("the finished Fit shows its summary on the page",
               summary.count() == 1 and summary.text_content() == FIT_SUMMARY,
               summary.text_content() if summary.count() else page.locator("#monitor").inner_text()[:300])
-        # PAGE FINDING: the page gives no Download for fitted.wav -- a .wav output is media
-        # "audio" (server.py _process_media), and only media "file" outputs (fit.json) get a
-        # link in #jobExtras; the stage plays only the first output (preview.mp3), so fitted.wav
-        # has neither a player nor a download on the page.
         check("... and a Download for fit.json",
               page.locator("#jobExtras a", has_text="fit.json").count() == 1)
-        check("... and NO Download link for the .wav (page finding: audio gets a player, not a link)",
-              page.locator("#jobExtras a", has_text="fitted.wav").count() == 0)
+        check("... and a Download for fitted.wav (the file the next step, Mix, feeds on)",
+              page.locator("#jobExtras a", has_text="fitted.wav").count() == 1)
+        download_check(page, "fetched, the fitted.wav Download answers 200 with the Fit's frames intact (wave module)",
+                       "fitted.wav", FIT_WAV, FIT_FRAMES)
         check("the preview still plays on the stage", page.locator("#monitor audio").count() == 1)
         try:
             argv = argv_of()
@@ -173,11 +221,12 @@ try:
         check("the finished Mix shows its summary on the page",
               summary.count() == 1 and summary.text_content() == MIX_SUMMARY,
               summary.text_content() if summary.count() else page.locator("#monitor").inner_text()[:300])
-        # Same page finding as Fit: mix.wav is audio, so only mix.json gets a Download.
         check("... and a Download for mix.json",
               page.locator("#jobExtras a", has_text="mix.json").count() == 1)
-        check("... and NO Download link for the .wav (page finding: audio gets a player, not a link)",
-              page.locator("#jobExtras a", has_text="mix.wav").count() == 0)
+        check("... and a Download for mix.wav (the finished mix as a wave file)",
+              page.locator("#jobExtras a", has_text="mix.wav").count() == 1)
+        download_check(page, "fetched, the mix.wav Download answers 200 with the Mix's frames intact (wave module)",
+                       "mix.wav", MIX_WAV, MIX_FRAMES)
         check("the mix still plays on the stage", page.locator("#monitor audio").count() == 1)
         try:
             argv = argv_of()

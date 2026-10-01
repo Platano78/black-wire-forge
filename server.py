@@ -9903,9 +9903,9 @@ class Handler(BaseHTTPRequestHandler):
                                         + ["audio"]
                                         + (["video"] if shutil.which("ffmpeg") else [])),
                     # F1: audio cleaning is per-format, not per-kind -- sanitize.py only
-                    # understands these; WAV/M4A (accepted by strip_metadata's filename
-                    # match) come back stripped=False and are refused, never advertised.
-                    "clean_audio_exts": ["flac", "mp3", "opus", "ogg"],
+                    # understands these; M4A (accepted by strip_metadata's filename
+                    # match) comes back stripped=False and is refused, never advertised.
+                    "clean_audio_exts": ["flac", "mp3", "opus", "ogg", "wav"],
                 })
             if u.path == "/api/sequences":
                 return self.send_json(*seq_list())

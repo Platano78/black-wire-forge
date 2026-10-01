@@ -1359,13 +1359,17 @@ function processTailHTML(job){
   return '<pre class="job-tail" id="jobTail">' + esc(lines.join('\n').slice(-400)) + '</pre>';
 }
 // A finished process job's one-line result (a pack whose plan prints one: Grid check's
-// "4/4, 111.5 BPM, drift +0.4%") and every output the stage has no player for (grid.json),
-// each with its own Download. Without this the summary and the data file never reach the page.
+// "4/4, 111.5 BPM, drift +0.4%") and, with a Download each, the other outputs: a
+// PROCESS job's every output except `o` (the one the stage plays -- the fitted part,
+// the mix as WAV, grid.json), any other job's media-"file" outputs. Without this the
+// summary and the data file never reach the page.
 function jobExtrasHTML(job, o){
   if(job.status !== 'done') return '';
   const proc = laneKindOf(STATE.lanes.find(l => l.id === job.lane)) === 'process';
   const line = proc ? (job.notes || []).map(x => String(x).trim()).filter(Boolean).slice(-1)[0] : '';
-  const files = (job.outputs || []).filter(x => x !== o && x.media === 'file');
+  const files = proc
+    ? (job.outputs || []).filter(x => x !== o)
+    : (job.outputs || []).filter(x => x !== o && x.media === 'file');
   if(!line && !files.length) return '';
   return '<div class="job-extras" id="jobExtras">'
     + (line ? '<p class="job-summary" id="jobSummary">' + esc(line) + '</p>' : '')
@@ -1416,9 +1420,9 @@ const STATE = {
                                        // download is actually cleaned for; conservative
                                        // default until the endpoint answers (never claims
                                        // more than today's known-safe kinds).
-  cleanAudioExts: ['flac', 'mp3', 'opus', 'ogg'],  // /api/credits "clean_audio_exts" --
+  cleanAudioExts: ['flac', 'mp3', 'opus', 'ogg', 'wav'],  // /api/credits "clean_audio_exts" --
                                        // F1: audio cleaning is per-FORMAT (sanitize.py
-                                       // does not implement WAV/M4A), so "audio" alone
+                                       // implements these; M4A is not), so "audio" alone
                                        // is not enough to promise a clean download.
   activeLane: null,   // lane id the inspector generates against
   room: null,         // the task room on screen (#room=<id>)

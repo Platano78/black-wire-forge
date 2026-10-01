@@ -126,6 +126,148 @@ check("mp3: ID3v2 size overruns file -> bail, not stripped",
 
 
 print()
+print("  wav -- RIFF chunks")
+
+import io as _io  # noqa: E402
+import wave as _wave  # noqa: E402
+
+
+def _riff_chunk(cid, payload):
+    chunk = cid + len(payload).to_bytes(4, "little") + payload
+    return chunk + (b"\x00" if len(payload) % 2 else b"")
+
+
+def _build_wav(frames, chunks=()):
+    """A 16-bit PCM WAV (0.1 s of 8000 Hz mono) from the `wave` module, with
+    `chunks` spliced in after the fmt chunk."""
+    buf = _io.BytesIO()
+    w = _wave.open(buf, "wb")
+    w.setnchannels(1); w.setsampwidth(2); w.setframerate(8000)
+    w.writeframes(frames)
+    w.close()
+    wav = bytes(buf.getvalue())
+    pos = 20 + int.from_bytes(wav[16:20], "little")   # end of the fmt chunk
+    return wav[:pos] + b"".join(chunks) + wav[pos:], wav, frames
+
+
+def _wav_frames(data):
+    with _wave.open(_io.BytesIO(data), "rb") as w:
+        return w.readframes(w.getnframes())
+
+
+wav_frames = bytes((i * 7) % 256 for i in range(1600))    # 0.1 s, 8000 Hz, 16-bit mono
+
+comment = b"prompt: a secret prompt"
+list_payload = b"INFO" + b"ICMT" + len(comment).to_bytes(4, "little") + comment
+wav_meta, wav_plain, _ = _build_wav(
+    wav_frames, [_riff_chunk(b"LIST", list_payload), _riff_chunk(b"id3 ", b"workflow")])
+outw, okw = sanitize.strip_audio(wav_meta, "x.wav")
+check("wav: stripped", okw)
+check("wav: LIST/INFO comment (the prompt) gone", b"secret prompt" not in outw)
+check("wav: id3 chunk ('workflow') gone", b"workflow" not in outw)
+check("wav: parses with the wave module, frames byte-identical to the original",
+      _wav_frames(outw) == wav_frames)
+check("wav: fmt chunk bytes unchanged", outw[12:36] == wav_meta[12:36])
+check("wav: data chunk intact (id, size, payload)",
+      outw.endswith(b"data" + len(wav_frames).to_bytes(4, "little") + wav_frames))
+
+wav_odd, _, _ = _build_wav(wav_frames, [_riff_chunk(b"bext", b"ABCDEFGHIJKLMNO")])  # 15 bytes + pad
+outo, oko = sanitize.strip_audio(wav_odd, "x.wav")
+check("wav: odd-sized chunk (with its pad byte) dropped cleanly",
+      oko and b"bext" not in outo and _wav_frames(outo) == wav_frames
+      and len(outo) == len(wav_plain))
+
+outp, okp = sanitize.strip_audio(wav_plain, "x.wav")
+check("wav: no extra chunks -> stripped, byte-identical",
+      okp and outp == wav_plain)
+
+wav_trunc = wav_plain[:len(wav_plain) - 10]
+check("wav: truncated (data declared larger than present) -> unchanged, not stripped",
+      sanitize.strip_audio(wav_trunc, "x.wav") == (wav_trunc, False))
+
+rf64 = b"RF64" + b"\x24\x00\x00\x00" + b"WAVE" + wav_plain[12:]
+check("wav: RF64 (64-bit) header -> unchanged, not stripped",
+      sanitize.strip_audio(rf64, "x.wav") == (rf64, False))
+
+check("wav: random bytes named x.wav -> unchanged, not stripped",
+      sanitize.strip_audio(_random, "x.wav") == (_random, False))
+
+check("wav: no filename but a RIFF/WAVE body -> still cleaned",
+      sanitize.strip_audio(wav_meta, "") == (outw, True))
+
+
+# fmt/fact are kept as chunks but must be cut to their DEFINED length --
+# anything past it (text riding inside a fat fmt or fact chunk) is dropped.
+def _pcm16_fmt(cbsize=None, tag=1):
+    p = tag.to_bytes(2, "little") + b"\x01\x00" + (8000).to_bytes(4, "little") \
+        + (16000).to_bytes(4, "little") + b"\x02\x00" + b"\x10\x00"
+    if cbsize is not None:
+        p += cbsize.to_bytes(2, "little")
+    return p
+
+
+def _raw_wav(fmt_body, fact_body=None):
+    """A RIFF/WAVE file with an exact `fmt ` chunk of `fmt_body` (odd body is
+    padded), an optional `fact` chunk, and the standard data chunk."""
+    chunks = [b"fmt " + len(fmt_body).to_bytes(4, "little") + fmt_body
+              + (b"\x00" if len(fmt_body) % 2 else b"")]
+    if fact_body is not None:
+        chunks.append(b"fact" + len(fact_body).to_bytes(4, "little") + fact_body
+                      + (b"\x00" if len(fact_body) % 2 else b""))
+    chunks.append(b"data" + len(wav_frames).to_bytes(4, "little") + wav_frames)
+    body = b"".join(chunks)
+    return b"RIFF" + (len(body) + 4).to_bytes(4, "little") + b"WAVE" + body
+
+
+def _find_chunk(data, cid):
+    i = 12
+    while i + 8 <= len(data):
+        s = int.from_bytes(data[i + 4:i + 8], "little")
+        if data[i:i + 4] == cid:
+            return data[i:i + 8], data[i + 8:i + 8 + s]
+        i += 8 + s + (s % 2)
+    return None, None
+
+
+w1 = _raw_wav(_pcm16_fmt() + b"SECRET_TEXT")   # fmt declared 27: 16 real + 11 text + pad
+o1, k1 = sanitize.strip_audio(w1, "x.wav")
+f1h, f1b = _find_chunk(o1, b"fmt ") if o1 else (None, None)
+check("wav: fmt declared 27 (16 real + b'SECRET_TEXT') -> stripped, no b'SECRET'",
+      k1 and b"SECRET" not in o1)
+check("wav: that fmt is cut to its 16-byte defined length, real bytes kept",
+      f1h == b"fmt " + (16).to_bytes(4, "little") and f1b == _pcm16_fmt())
+check("wav: frames after the fmt cut equal the original frames",
+      k1 and _wav_frames(o1) == wav_frames)
+
+pcm18 = _pcm16_fmt(cbsize=0)                   # 18-byte PCM fmt: a real file shape
+w2 = _raw_wav(pcm18)
+o2, k2 = sanitize.strip_audio(w2, "x.wav")
+check("wav: PCM fmt of 18 bytes (cbSize 0) kept unchanged",
+      k2 and o2 == w2)
+
+ext = (0xFFFE).to_bytes(2, "little") + (2).to_bytes(2, "little") + (44100).to_bytes(4, "little") \
+      + (176400).to_bytes(4, "little") + (4).to_bytes(2, "little") + (16).to_bytes(2, "little") \
+      + (22).to_bytes(2, "little") + (16).to_bytes(2, "little") + (3).to_bytes(2, "little") \
+      + b"\x10\x00\x00\x00" + b"\x88\xe8" + b"\x4c\xfa" + b"\x88\xee" + b"\x77\xed\x87\x8e\x5d\xcb"
+w3 = _raw_wav(ext + b"SECRET")                  # EXTENSIBLE fmt declared 46: 40 + 6 text
+o3, k3 = sanitize.strip_audio(w3, "x.wav")
+check("wav: EXTENSIBLE fmt declared 46 (40 + b'SECRET') -> cut to 40, no b'SECRET'",
+      k3 and b"SECRET" not in o3
+      and _find_chunk(o3, b"fmt ")[0] == b"fmt " + (40).to_bytes(4, "little"))
+
+w4 = _raw_wav(_pcm16_fmt(), fact_body=(800).to_bytes(4, "little") + b"SECRET_T")  # fact 12 bytes
+o4, k4 = sanitize.strip_audio(w4, "x.wav")
+h4, b4 = _find_chunk(o4, b"fact") if o4 else (None, None)
+check("wav: fact of 12 bytes (count + b'SECRET_T') -> cut to 4, no b'SECRET'",
+      k4 and b"SECRET" not in o4
+      and h4 == b"fact" + (4).to_bytes(4, "little") and b4 == (800).to_bytes(4, "little"))
+
+w5 = _raw_wav(_pcm16_fmt(cbsize=5))            # PCM with cbSize 5: breaks the rule
+check("wav: PCM fmt with cbSize 5 -> refused, original returned",
+      sanitize.strip_audio(w5, "x.wav") == (w5, False))
+
+
+print()
 print("Section C -- decisive proof against REAL renders (tests/fixtures/audio/)")
 
 FIXTURE_FILES = {"flac": "sfx_flac.flac", "mp3": "sfx_mp3.mp3", "opus": "sfx_opus.opus"}
@@ -348,7 +490,7 @@ check("/api/credits clean_download always contains 'audio' (some audio formats a
 check("video: /api/credits clean_download never contains '3d'",
       "3d" not in (_payload.get("clean_download") or []))
 check("video: /api/credits clean_audio_exts is exactly sanitize's real audio coverage",
-      set(_payload.get("clean_audio_exts") or []) == {"flac", "mp3", "opus", "ogg"},
+      set(_payload.get("clean_audio_exts") or []) == {"flac", "mp3", "opus", "ogg", "wav"},
       repr(_payload.get("clean_audio_exts")))
 
 
