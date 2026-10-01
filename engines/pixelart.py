@@ -78,6 +78,10 @@ def pixelart_graph(p, m):
     the RGBA result is this mode's PRIMARY output, and the pack's `post`
     entry (below) is what turns it into a sprite.
     """
+    # an empty prompt is refused with the Picture room's sentence, shape or no shape: the prompt
+    # is what gets drawn (and, held to a shape, what fills it)
+    if not str(p.get("prompt") or "").strip():
+        raise ValueError("Tell it what you want first.")
     # a bad palette or height is refused now, not after the render
     parse_palette(p.get("pixel_palette"))
     ph = int(p.get("pixel_height", 0) or 0)

@@ -33,6 +33,7 @@ Every host, port, model filename and the listen port come from config.json.
 
 import base64
 import copy
+import ipaddress
 import json
 import math
 import mimetypes
@@ -7593,6 +7594,30 @@ def parse_multipart(body, boundary):
 # HTTP server
 # ---------------------------------------------------------------------------
 
+def own_host_names(local_ip=None):
+    """The names this computer answers to as far as the server knows them: the loopback
+    names, the local address a connection arrived on (when given) and the machine's own
+    host name. The request guard below and Setup's "is ComfyUI on this computer?" hint
+    both read this one set."""
+    names = {"localhost", "127.0.0.1", "::1"}
+    if local_ip:
+        names.add(local_ip.lower())
+    gname = socket.gethostname().lower()
+    return names | {gname, gname + ".local"}
+
+
+def host_is_this_computer(host, local_ip=None):
+    """True when `host` (a typed address or computer name) is this computer by those names,
+    or any loopback address (127.x, ::1)."""
+    h = str(host or "").strip().lower().strip("[]")
+    if h in own_host_names(local_ip):
+        return True
+    try:
+        return ipaddress.ip_address(h).is_loopback
+    except ValueError:
+        return False
+
+
 def request_refusal(handler):
     """B1 request guard (pattern borrowed from a sibling studio app): this app
     has no auth, so every request must prove it arrived through its own
@@ -7620,13 +7645,11 @@ def request_refusal(handler):
                      "pass the Host header with no port, or with port %d."
                      % (PORT, hostname + ":" + port, PORT))
     hn = hostname.lower().strip("[]")
-    allowed = {"localhost", "127.0.0.1", "::1"}
     try:                                   # the local address this connection
-        allowed.add(handler.connection.getsockname()[0].lower())   # arrived on,
+        local_ip = handler.connection.getsockname()[0]   # arrived on,
     except Exception:                      # so a LAN IP needs no config
-        pass
-    gname = socket.gethostname().lower()
-    allowed |= {gname, gname + ".local"}
+        local_ip = None
+    allowed = own_host_names(local_ip)
     if BIND not in ("0.0.0.0", "::"):
         allowed.add(BIND.lower())
     for entry in ALLOWED_HOSTS:                        # each optionally host:port
@@ -7758,8 +7781,16 @@ def _setup_comfy_stats(host, port):
             "name": name or "ComfyUI"}
 
 
-def setup_probe_comfy(body):
-    """{host?, port?} -> the ComfyUI found. No host: 127.0.0.1 on 8188, then 8000."""
+def setup_probe_comfy(body, local_ip=None):
+    """{host?, port?} -> the ComfyUI found. No host: 127.0.0.1 on 8188, then 8000.
+    `this_computer` says whether that address is this computer (see host_is_this_computer)."""
+    res, code = _setup_probe_comfy(body)
+    if res.get("ok"):
+        res["found"]["this_computer"] = host_is_this_computer(res["found"]["host"], local_ip)
+    return res, code
+
+
+def _setup_probe_comfy(body):
     if body.get("host"):
         try:
             host, port = _setup_address(body.get("host"), body.get("port"))
@@ -8045,11 +8076,16 @@ def setup_rooms(query):
             group = e if isinstance(e, list) else [e]
             srcs = [s for r in group for s in sources.get(r, [])]
             srcs.sort(key=lambda s: not s["run_by_us"])          # the recommended file first
-            installed = (None if pools is None else
-                         any(pick_model(pools.get(ROLE_POOL[r], []), ROLE_RULES[r], False) for r in group))
+            picks = ([] if pools is None else
+                     [pick_model(pools.get(ROLE_POOL[r], []), ROLE_RULES[r], False) for r in group])
+            found = next((x for x in picks if x), None)       # the file that actually covers the role
+            installed = None if pools is None else bool(found)
             if models_root and not installed:   # W3: a file in the declared models folder, at its exact size
-                installed = any(_model_on_disk(models_root, s) for s in srcs)
-            role = {"role": group[0], "label": words.get(group[0], group[0]), "sources": srcs, "installed": installed}
+                on_disk = next((s for s in srcs if _model_on_disk(models_root, s)), None)
+                installed = bool(on_disk)
+                found = on_disk["file"] if on_disk else None
+            role = {"role": group[0], "label": words.get(group[0], group[0]), "sources": srcs, "installed": installed,
+                    "found": found.rsplit("/", 1)[-1] if found else None}
             if len(group) > 1:
                 role["any_of"] = group
             roles.append(role)
@@ -9295,7 +9331,11 @@ class Handler(BaseHTTPRequestHandler):
                 if not body_ok:
                     self.send_json({"ok": False, "error": "Send a JSON object."}, 400)
                 else:
-                    self.send_json(*(SETUP_POSTS.get(u.path) or DOWNLOAD_POSTS[u.path])(body))
+                    fn = SETUP_POSTS.get(u.path) or DOWNLOAD_POSTS[u.path]
+                    if fn is setup_probe_comfy:      # the address this page was reached on counts as "here"
+                        self.send_json(*fn(body, self.connection.getsockname()[0]))
+                    else:
+                        self.send_json(*fn(body))
             elif u.path.startswith("/api/"):
                 self.send_json(SETUP_UNFINISHED, 503)
             elif self.command == "POST":

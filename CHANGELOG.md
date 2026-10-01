@@ -173,6 +173,17 @@ All notable changes to Black Wire Forge are recorded here.
 
 ### Fixed
 
+- Setup step 2 no longer says a recommended file is "already installed" when a different file
+  covers that model; the row now reads "covered by" and names the file it found.
+- The "No audio machine is reachable right now" message (and its picture/video twins) now goes away
+  by itself when the machine comes up, instead of staying until you reload the page.
+- Setup now shows a hint when "ComfyUI runs on this computer" is ticked but the ComfyUI address is
+  another machine: downloaded files go to this computer's folder, which that ComfyUI only sees if
+  the folder is shared. It never blocks Save.
+- Pixel Art now refuses an empty prompt ("Tell it what you want first.", as the Picture room does)
+  instead of making a sprite titled with its palette.
+- Setup says "We tested with the one above." instead of "We run the one above.", since the app does
+  not claim what hardware or files anyone runs.
 - After Setup's "Save and start" the engine menu no longer opens by itself; while a lane is still
   being checked its engines read "checking…" instead of a red "needs …".
 - A failed process job (the 3D turntable) shows the last lines of its output under the error.

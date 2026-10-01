@@ -127,6 +127,7 @@
           <label for="m-same">ComfyUI runs on this computer</label>
         </div>
         <div id="m-box" hidden>
+          <p class="muted" id="m-hint" role="status" hidden></p>
           <p class="muted">Then Black Wire Forge can download a room's model files straight into ComfyUI's models
             folder. Leave this off and each file shows a command to get it instead.</p>
           <div class="row">
@@ -317,6 +318,7 @@
     $("c-version").textContent = f.version || "Not reported";
     $("c-where").textContent = f.host + ":" + f.port;
     $("c-name").value = f.name || "ComfyUI";
+    machineHint();
   }
   function findComfy(body, statusEl){
     var el = statusEl || $("c-status");
@@ -349,8 +351,15 @@
     say($("m-status"), path ? "Using " + path + ". Each room in the next step can download its files into it." : "",
         path ? "ok" : "");
   }
+  function machineHint(){   // not a block: the user declares where ComfyUI runs
+    var h = $("m-hint"), other = $("m-same").checked && S.comfy && S.comfy.this_computer === false;
+    h.hidden = !other;
+    h.textContent = other ? "The ComfyUI address above is another machine (" + S.comfy.host +
+      "). Files downloaded here go to this computer's folder; that ComfyUI only sees them if the folder is shared." : "";
+  }
   $("m-same").onchange = function(){
     $("m-box").hidden = !this.checked;
+    machineHint();
     if (!this.checked && S.models) post("/api/setup/models-folder", {path: null}).then(function(j){
       if (j.ok) useModels(null); else { $("m-same").checked = true; $("m-box").hidden = false; say($("m-status"), j.error, "bad"); }
     });
@@ -407,13 +416,14 @@
     return ["Needs " + r.needs.files + " file" + (r.needs.files === 1 ? "" : "s") + " (" + gb(r.needs.bytes) + ")",
             "badge"];
   }
-  function fileRow(s, installed){
+  function fileRow(s, installed, found){
     var box = el("div", "file");
     var line = el("div");
     line.appendChild(el("span", "num", base(s.file)));
     line.appendChild(document.createTextNode(" \u00b7 " + gb(s.size) + " \u00b7 folder " + s.folder +
       (s.subdir ? "/" + s.subdir : "")));
-    if (installed) line.appendChild(el("span", "ok", S.models ? " \u00b7 already installed" : " \u00b7 already in your ComfyUI"));
+    if (installed && found && found !== base(s.file)) line.appendChild(el("span", "ok", " \u00b7 covered by " + found));
+    else if (installed) line.appendChild(el("span", "ok", S.models ? " \u00b7 already installed" : " \u00b7 already in your ComfyUI"));
     box.appendChild(line);
     box.appendChild(el("div", "muted", s.licence ? "Licence: " + s.licence : "No stated licence: ask its author first."));
     var cmd = el("code", "cmd", command(s));
@@ -445,12 +455,12 @@
       var rest = role.sources.filter(function(s){ return s !== main; });
       var wrap = el("div", "file");
       wrap.appendChild(el("div", "room-name", role.label.charAt(0).toUpperCase() + role.label.slice(1)));
-      if (main) wrap.appendChild(fileRow(main, role.installed));
+      if (main) wrap.appendChild(fileRow(main, role.installed, role.found));
       if (rest.length) {
         var alt = el("details", "alt");
         alt.appendChild(el("summary", null, "Other choices (" + rest.length + ")"));
         rest.forEach(function(s){
-          alt.appendChild(el("p", "muted", s.run_by_us ? "Another choice. We run the one above." :
+          alt.appendChild(el("p", "muted", s.run_by_us ? "Another choice. We tested with the one above." :
                                              "Not run by us: it may work, but we have not tried it."));
           alt.appendChild(fileRow(s, false));
         });
