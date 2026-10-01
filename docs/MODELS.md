@@ -364,7 +364,7 @@ Both files above are the ones we ran (sizes checked against our working install;
 SHA-256 matches the Hub). Not a ComfyUI download: they are Python packages you install into their own
 Python, a virtual environment (a bare `pip` on a modern distro's Python is refused), and point BWF at.
 CPU is the intended path. Create it with `python3 -m venv ~/bwf-producer`, then install PyTorch first,
-from its CPU index (about 190 MB): `~/bwf-producer/bin/python -m pip install torch --index-url
+from its CPU index (about 190 MB; BSD-3-Clause plus bundled permissive licences): `~/bwf-producer/bin/python -m pip install torch --index-url
 https://download.pytorch.org/whl/cpu`, then `~/bwf-producer/bin/python -m pip install
 git+https://github.com/CPJKU/beat_this` (needs `git`), and `~/bwf-producer/bin/python -m pip install
 demucs` only if you want the drum stem. Make that Python visible to BWF by setting `BWF_PRODUCER_PYTHON` to its full path

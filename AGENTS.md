@@ -316,8 +316,9 @@ Hugging Face hosts only (`HF_TOKEN` for gated repos, sent only to huggingface.co
 bound beyond localhost the downloads routes answer 403.
 
 **Grid check (Cover room) uses no ComfyUI, same rule.** It runs on a process lane under a
-separate Python that has beat_this. The first run downloads beat_this `final0` (81 MB, MIT); the
-installs fetch CPU PyTorch (about 190 MB). Its "Use the drum stem" option also needs Demucs, whose
+separate Python that has beat_this, and needs `ffmpeg` and `git`: `command -v ffmpeg; command -v
+git`, install what is missing. The first run downloads beat_this `final0` (81 MB, MIT); the
+installs fetch CPU PyTorch (about 190 MB, BSD-3-Clause plus bundled permissive licences). Its "Use the drum stem" option also needs Demucs, whose
 `htdemucs` weights (84 MB, MIT code, no licence stated on the weights' own card) download on first
 use: ask about that separately. After a yes:
 
@@ -333,9 +334,10 @@ the lane `{"id": "cpu", "name": "This machine", "kind": "process", "caps": ["pro
 `"3d"` only if Blender is installed too: a process lane missing any of its programs is down).
 Start it again with the variable set, every time:
 `BWF_PRODUCER_PYTHON=$HOME/bwf-producer/bin/python .venv/bin/python server.py`.
-`/api/engines?lane=cpu` → `producer` → mode `grid` `"available": true`. Upload the song to
-`lane=cpu`, then generate `{"lane": "cpu", "kind": "producer", "mode": "grid", "prompt": "",
-"source_audio_name": "<the name>"}`. A done job has `grid-check.mp3` and `grid.json` (`"type":
+`/api/engines?lane=cpu` → `producer` → mode `grid` `"available": true`. Upload the song with
+`curl -s -F lane=cpu -F file=@song.mp3 http://127.0.0.1:3998/api/upload` and keep the `"name"`
+it answers with, then generate `{"lane": "cpu", "kind": "producer", "mode": "grid", "prompt": "",
+"source_audio_name": "<that name>"}`. A done job has `grid-check.mp3` and `grid.json` (`"type":
 "local"`) and the one-line summary in `"notes"`.
 
 ## Where to read further
