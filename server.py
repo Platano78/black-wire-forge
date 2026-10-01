@@ -1692,23 +1692,37 @@ def _process_media(name):
 
 def poll_process_lane(lane):
     """A process lane is never networked: discovery is which() per declared
-    bin, so installing a program shows up on the next poll, no restart."""
+    bin, so installing a program shows up on the next poll, no restart.
+
+    The lane is UP when at least one of its process packs has every program
+    it declares; it is down only when no pack can run. Whether a MODE can run
+    is decided per mode from the found programs (`able` / missing_words), so a
+    pack with a program missing stays visible with its own "missing" list and
+    never takes a sibling pack's tools down with it. A missing program is still
+    named in the lane's `err` so the user knows what to install."""
     found, notes = {}, []
+    ran, any_pack = False, False
     for pack in engines.packs():
         if pack["cap"] not in lane["caps"]:
             continue
         if (pack.get("lane_kind") or "comfy") != "process":
             continue
+        any_pack = True
+        pack_ok = True
         for role, prog in (pack.get("bins") or {}).items():
-            if role in found:
-                continue
-            found[role] = shutil.which(str(prog))
-            if not found[role]:
-                notes.append("this lane needs %s installed to work"
-                             % (pack.get("words") or {}).get(role, role))
+            path = shutil.which(str(prog))
+            found.setdefault(role, path)
+            if not path:
+                pack_ok = False
+                note = ("this lane needs %s installed to work"
+                        % (pack.get("words") or {}).get(role, role))
+                if note not in notes:
+                    notes.append(note)
+        ran = ran or pack_ok
+    up = ran or not any_pack
     with DISCOVERY_LOCK:
         DISCOVERY[lane["id"]] = {"models": found, "pools": {}, "checked": time.time(), "err": ""}
-    st = {"up": not notes, "checked": time.time(), "live_ids": [], "err": "; ".join(notes),
+    st = {"up": up, "checked": time.time(), "live_ids": [], "err": "; ".join(notes),
           "load": round(os.getloadavg()[0], 2), "cores": os.cpu_count() or 1}
     try:
         st["pending"] = PROC_QUEUE[lane["id"]].qsize()

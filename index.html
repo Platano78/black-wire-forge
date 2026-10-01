@@ -1425,7 +1425,8 @@ function machineState(lane){
   if(laneKindOf(lane) === 'process'){
     // A process lane has no card to sleep on and no VRAM to watch, but it
     // is NOT always up: poll_process_lane() takes it down (lane.up false)
-    // when a needed binary (e.g. Blender, ffmpeg) is missing. Check that
+    // when no pack on it has every binary it needs (a pack missing one
+    // binary, e.g. Blender, only lists it under its modes' "missing"). Check that
     // FIRST -- reporting READY on an idle-but-down lane hid a real "needs
     // ..." condition behind a state that means "answering, has what it
     // needs".

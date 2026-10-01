@@ -167,6 +167,7 @@ All notable changes to Black Wire Forge are recorded here.
 
 ### Fixed
 
+- A process lane is now up when at least one of its tools has every program it needs, so Grid check works on a lane that also lists `"3d"` without Blender installed; the turntable mode lists Blender as missing, and the lane is down only when no tool can run.
 - Setup step 2 no longer says a recommended file is "already installed" when a different file
   covers that model; the row now reads "covered by" and names the file it found.
 - The "No audio machine is reachable right now" message (and its picture/video twins) now goes away

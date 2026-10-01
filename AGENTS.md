@@ -44,7 +44,7 @@ Ask, in this order, and stop at the first one that applies:
    ComfyUI lane; don't attempt it without one. Check each binary on its own:
    `command -v blender; command -v ffmpeg` (each prints a path, or nothing if missing), and
    install what is missing (https://www.blender.org/download/, https://ffmpeg.org/download.html);
-   a lane missing one reports itself down with a plain "needs ..." sentence. The lane is a **process** lane:
+   the lane is down only if no mode can run, with a plain "needs ..." sentence. The lane is a **process** lane:
    if `config.json` does not exist yet, this is the whole file (adjust `"port"`/`"bind"` if you
    changed them); if it exists, do not replace it — add just the lane object to its `"lanes"`:
 
@@ -330,8 +330,8 @@ python3 -m venv ~/bwf-producer
 ```
 
 Stop the running server. In `config.json`, add `"producer"` to the process lane's `caps`, or add
-the lane `{"id": "cpu", "name": "This machine", "kind": "process", "caps": ["producer"]}` (keep
-`"3d"` only if Blender is installed too: a process lane missing any of its programs is down).
+the lane `{"id": "cpu", "name": "This machine", "kind": "process", "caps": ["producer"]}` (`"3d"` may stay
+without Blender: the lane is up while Grid check's programs are there, and the turntable mode lists Blender as missing).
 Start it again with the variable set, every time:
 `BWF_PRODUCER_PYTHON=$HOME/bwf-producer/bin/python .venv/bin/python server.py`.
 `/api/engines?lane=cpu` → `producer` → mode `grid` `"available": true`. Upload the song with
