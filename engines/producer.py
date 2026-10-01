@@ -1,4 +1,4 @@
-"""Engine pack: Producer room, P1 "Grid check" (process lane, no ComfyUI graph).
+"""Engine pack: "Grid check" in the Cover room (process lane, no ComfyUI graph).
 
 Where every beat and bar of a song actually sits, and a click track to hear it:
 the mode's "graph" is a one-step run plan for runner.py that calls
@@ -11,7 +11,7 @@ Pointing BWF at that Python is the same mechanism turntable uses for Blender:
 a declared bin, found by name. Put a program called `bwf-producer-python` on
 PATH (a wrapper script that execs your venv's python: a bare symlink to a venv
 python loses the venv), or set BWF_PRODUCER_PYTHON to its full path before
-starting BWF. Design: the producer-room design doc, "First slice".
+starting BWF.
 """
 import math
 import os
