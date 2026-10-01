@@ -69,7 +69,7 @@ check("cutting room is passed through (carries no modes)", not cut.get("modes"),
 print()
 print("rooms_spec.md's table: which modes each room holds today, in (cap_order, pack id, graphs) order")
 WANT_MODES = {
-    "music": ["song", "music", "yue2"], "cover": ["cover"], "sfx": ["sfx"],
+    "music": ["song", "music", "yue2"], "cover": ["cover", "grid"], "sfx": ["sfx"],
     "picture": ["t2i", "edit"], "characters": ["charsheet"], "pixelart": ["pixelart"], "cleanup": ["cutout", "upscale"],
     "video": ["ltx", "ltx_loop", "fl2va", "ref2v", "continue"], "talking": ["talking"], "3d": ["mesh", "turntable"],
 }
