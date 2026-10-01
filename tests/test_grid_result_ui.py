@@ -1,5 +1,5 @@
 """Grid check's result reaches the page: the one-line summary and a Download for grid.json,
-done by clicking (Cover -> Grid check -> upload -> Make), not through the API. A stand-in
+done by clicking (Producer -> Grid check -> upload -> Make), not through the API. A stand-in
 "producer Python" writes both outputs and prints the line; a stand-in ffmpeg is only found on
 PATH. Real server.py, real browser; SKIPs without Playwright/Chromium.
 
@@ -62,10 +62,12 @@ try:
         errors = []
         page.on("pageerror", lambda e: errors.append(str(e)))
         page.goto(url + "?t=%f" % time.time())
-        page.wait_for_selector('#roomStrip [data-room-id="cover"]', timeout=15000)
-        page.click('#roomStrip [data-room-id="cover"]')
-        page.click("#engineChipBtn")
-        page.locator("#enginePicker").get_by_text("Grid check", exact=False).first.click()
+        page.wait_for_selector('#roomStrip [data-room-id="producer"]', timeout=15000)
+        page.click('#roomStrip [data-room-id="producer"]')
+        chip = page.locator("#engineChipBtn")
+        if chip.is_enabled():   # a single-mode room keeps its chip closed, grid already selected
+            chip.click()
+            page.locator("#enginePicker").get_by_text("Grid check", exact=False).first.click()
         page.locator("#roomForm input[type=file]").first.set_input_files(song)
         page.wait_for_timeout(1500)
         page.get_by_role("button", name="Make").first.click()

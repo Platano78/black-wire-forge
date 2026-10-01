@@ -167,7 +167,7 @@ read the relevant file under `engines/` for the exact roles it declares.
 Most generation modes require a suitably configured ComfyUI GPU lane. Two things run without a
 GPU, each on a `"kind": "process"` lane (see "Advanced configuration" below): turning an existing
 `.glb` file into an orbiting turntable video, using Blender (rendered on the CPU,
-`engines/turntable.py`) and `ffmpeg`; and the Cover room's Grid check, which finds a song's beats
+`engines/turntable.py`) and `ffmpeg`; and the Producer room's Grid check, which finds a song's beats
 and bars with beat_this (`engines/producer.py`; setup and downloads in `docs/MODELS.md`). No
 cloud-backed generation lane is included.
 

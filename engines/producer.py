@@ -1,4 +1,4 @@
-"""Engine pack: "Grid check" in the Cover room (process lane, no ComfyUI graph).
+"""Engine pack: "Grid check" in the Producer room (process lane, no ComfyUI graph).
 
 Where every beat and bar of a song actually sits, and a click track to hear it:
 the mode's "graph" is a one-step run plan for runner.py that calls
@@ -129,7 +129,7 @@ ENGINE = {
     "mode_words": {
         "grid": "Grid check (beats and bars)",
     },
-    "mode_rooms": {"grid": "cover"},
+    "mode_rooms": {"grid": "producer"},
     "mode_notes": {
         "grid": "finds every beat and bar start in a song and gives you a click track to check them by ear; runs on the processor",  # source: engines/producer_tools/grid_check.py (module docstring: steps 3 and 5)
     },

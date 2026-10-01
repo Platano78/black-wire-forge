@@ -1,4 +1,4 @@
-"""Grid check (Cover room): the helper script the producer pack runs.
+"""Grid check (Producer room): the helper script the producer pack runs.
 
 Runs under the PYTHON THE USER POINTED BWF AT (the one with beat_this and,
 optionally, Demucs installed), never under the server's own Python. One job:

@@ -251,7 +251,7 @@ pack = next(p for p in engines.packs() if p["id"] == "producer")
 check("process lane, producer cap", pack["lane_kind"] == "process" and pack["cap"] == "producer")
 check("mode id grid, words, room", list(pack["graphs"]) == ["grid"]
       and pack["mode_words"]["grid"] == "Grid check (beats and bars)"
-      and engines.mode_room("producer", "grid") == "cover")
+      and engines.mode_room("producer", "grid") == "producer")
 check("the room's 'Which one?' list gets a one-line note for grid, as every other mode does",
       bool(engines.mode_note("producer", "grid")), engines.mode_note("producer", "grid"))
 fids = [f["id"] for f in engines.fields("producer", "grid")]

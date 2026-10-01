@@ -40,9 +40,9 @@ Ask, in this order, and stop at the first one that applies:
    "Install + start" and point a lane at that ComfyUI's `host`/`port` in `config.json`.
 2. **They have no GPU at all** → two things work, on a CPU-only **process lane**: an orbiting
    turntable video of an existing `.glb` (Blender + `ffmpeg`, `engines/turntable.py`, below) and
-   Cover's Grid check (a song's beats; "Getting the models"). Everything else needs a GPU-backed
+   the Producer room's Grid check (a song's beats; "Getting the models"). Everything else needs a GPU-backed
    ComfyUI lane; don't attempt it without one. Check each binary on its own:
-   `command -v blender; command -v ffmpeg` (each prints a path, or nothing if missing), and
+   `command -v blender; command -v ffmpeg` (each prints a path, or nothing), and
    install what is missing (https://www.blender.org/download/, https://ffmpeg.org/download.html);
    the lane is down only if no mode can run, with a plain "needs ..." sentence. The lane is a **process** lane:
    if `config.json` does not exist yet, this is the whole file (adjust `"port"`/`"bind"` if you
@@ -315,7 +315,7 @@ Hugging Face hosts only (`HF_TOKEN` for gated repos, sent only to huggingface.co
 a file named `downloads.json` in the app's data folder and resumes after a restart. `GET /api/downloads` shows it; on a server
 bound beyond localhost the downloads routes answer 403.
 
-**Grid check (Cover room) uses no ComfyUI, same rule.** It runs on a process lane under a
+**Grid check (Producer room) uses no ComfyUI, same rule.** It runs on a process lane under a
 separate Python that has beat_this, and needs `ffmpeg` and `git`: `command -v ffmpeg; command -v
 git`, install what is missing. The first run downloads beat_this `final0` (81 MB, MIT); the
 installs fetch CPU PyTorch and torchaudio (about 210 MB, BSD-style permissive licences). Its "Use the drum stem" option also needs Demucs, whose
