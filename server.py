@@ -55,6 +55,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+import webbrowser
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -10142,6 +10143,23 @@ class Handler(BaseHTTPRequestHandler):
         return self.send_json({"ok": True, "deleted_files": deleted_files})
 
 
+def _open_browser_if_asked():
+    """`--open`: open the default browser on this computer once the server is listening.
+    BWF_OPENED stops the Setup re-exec (same argv, same environment) from opening a second tab."""
+    if "--open" not in sys.argv or os.environ.get("BWF_OPENED") == "1":
+        return
+    os.environ["BWF_OPENED"] = "1"
+
+    def _go():
+        time.sleep(1)
+        try:
+            log("Opening your browser...", "ok")
+            webbrowser.open("http://127.0.0.1:%d/" % PORT)
+        except Exception:
+            pass
+    threading.Thread(target=_go, daemon=True).start()
+
+
 def main():
     # Bind first, before starting any threads: if the port is taken there is no
     # point polling seven lanes, and a stack trace is a poor way to say
@@ -10174,6 +10192,7 @@ def main():
         # ends up in a screenshot. No lanes, no pollers, no jobs to load.
         log("No %s yet: open http://127.0.0.1:%d/ in a browser on this computer to set up %s."
             % (os.path.basename(CONFIG_FILE), PORT, TITLE), "ok")
+        _open_browser_if_asked()
         srv.serve_forever()
         return
     load_jobs()
@@ -10190,6 +10209,7 @@ def main():
     # is how a home directory ends up in someone's screenshot.
     log("Loaded %d lane(s) from %s" % (len(LANES), os.path.basename(CONFIG_FILE)))
     print("Config file: %s" % CONFIG_FILE, flush=True)
+    _open_browser_if_asked()
     srv.serve_forever()
 
 

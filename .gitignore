@@ -29,3 +29,8 @@ storage
 outputs/
 *.pyc
 .share-staging/
+
+# Launcher user overrides and log
+start-user.sh
+start-user.bat
+start.log

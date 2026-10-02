@@ -17,6 +17,13 @@ this repo to an agentic coding assistant (Claude Code, Codex, Hermes Agent, ...)
 follow [`AGENTS.md`](AGENTS.md) — it walks through deciding whether you need ComfyUI at all,
 installing, and verifying each piece is actually working.
 
+### Easiest start
+
+Double-click `start.bat` (Windows), `start.command` (macOS), or run `./start.sh` (Linux) to launch
+Black Wire Forge. On first run the Setup page opens in your browser. You can create an optional
+`start-user.sh` / `start-user.bat` next to the launcher to set a custom Python path or extra
+arguments; see `start-user.example.sh` and `start-user.example.bat`.
+
     test -e config.json || cp config.example.json config.json   # then put your own hosts in it
     python3 server.py                                            # http://127.0.0.1:3998
 
