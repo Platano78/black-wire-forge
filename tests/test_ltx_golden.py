@@ -45,6 +45,7 @@ CASES = {
 EXTRA_LTX_CASES = [
     ("ltx_i2v", "i2v"),
     ("ltx_flf2v", "flf2v"),
+    ("ltx_i2v_audio_slice", "i2v_audio_slice"),
 ]
 
 
@@ -98,6 +99,31 @@ check("talking: audio branch present (LTXVAudioVAEDecode)",
       any(n.get("class_type") == "LTXVAudioVAEDecode" for n in talking_graph.values()))
 check("talking: filename_prefix is blackwire/TALKING",
       talking_graph["75"]["inputs"]["filename_prefix"] == "blackwire/TALKING")
+
+print()
+print("audio_slice mode: frozen audio latent with zero noise mask")
+audio_slice_graph = engines.graph_for("video", "ltx", dict(args["i2v_audio_slice"]), m)
+check("audio_slice: LoadAudio node 'la' present",
+      audio_slice_graph.get("la", {}).get("class_type") == "LoadAudio")
+check("audio_slice: g[\"377\"][\"inputs\"][\"audio_latent\"] == [\"snm\", 0]",
+      audio_slice_graph.get("377", {}).get("inputs", {}).get("audio_latent") == ["snm", 0])
+check("audio_slice: node '366' (empty audio latent) absent",
+      "366" not in audio_slice_graph)
+check("audio_slice: LTXVAudioVAEEncode node 'ae' present",
+      audio_slice_graph.get("ae", {}).get("class_type") == "LTXVAudioVAEEncode")
+check("audio_slice: SetLatentNoiseMask node 'snm' present",
+      audio_slice_graph.get("snm", {}).get("class_type") == "SetLatentNoiseMask")
+check("audio_slice: SolidMask node 'sm' present with value 0.0",
+      audio_slice_graph.get("sm", {}).get("inputs", {}).get("value") == 0.0)
+
+print()
+print("audio_slice with audio=False raises ValueError")
+try:
+    engines.graph_for("video", "ltx", dict(args["i2v_audio_slice"], audio=False), m)
+    audio_slice_error = False
+except ValueError as e:
+    audio_slice_error = str(e) == "audio_slice needs audio=True"
+check("audio_slice with audio=False raises ValueError", audio_slice_error)
 
 print()
 print("G2 falsifiability proof: perturb one pack value, confirm RED, then GREEN again")

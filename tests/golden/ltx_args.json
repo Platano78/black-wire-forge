@@ -45,5 +45,16 @@
     "width": 1024,
     "height": 576,
     "seed": 4242
+  },
+  "i2v_audio_slice": {
+    "prompt": "The woman in the picture turns her head slowly and smiles.",
+    "width": 1024,
+    "height": 576,
+    "length": 97,
+    "fps": 24,
+    "seed": 4242,
+    "start_image": "test_face.png",
+    "image_strength": 0.7,
+    "audio_slice": "test_clip.wav"
   }
 }

@@ -154,6 +154,12 @@ def _ltx_graph(p, m, filename_prefix):
         (guided morph) mode: both `start_image` and `end_image` are installed as
         chained `LTXVAddGuide` anchors (frame_idx 0 and -1) at the SAME strength
         (`image_strength`). Requires `start_image`. Incompatible with `two_stage`.
+    audio_slice : str or None
+        Filename of an audio file in the ComfyUI input folder. The audio is
+        encoded with the LTX audio VAE and attached with a zero noise mask so
+        the latent is frozen (never denoised). The video follows that audio.
+        The saved clip's audio is that audio after an AudioVAE round trip.
+        Requires `audio=True`.
     """
     prompt = p["prompt"]
     width = p.get("width", 1024)
@@ -172,6 +178,7 @@ def _ltx_graph(p, m, filename_prefix):
     image_strength = p.get("image_strength", 0.7)
     img_compression = p.get("img_compression", 18)
     end_image = p.get("end_image")
+    audio_slice = p.get("audio_slice")
 
     if width % 32 or height % 32:
         raise ValueError(f"width and height must be divisible by 32, got {width}x{height}")
@@ -200,6 +207,8 @@ def _ltx_graph(p, m, filename_prefix):
             f"length {length} exceeds the joint-audio ceiling: LTXVEmptyLatentAudio "
             f"caps at 1000 frames, so 993 is the largest value that is also 8n+1. "
             f"Pass audio=False for anything longer.")
+    if audio_slice is not None and audio_slice != "" and not audio:
+        raise ValueError("audio_slice needs audio=True")
     if seed is None:
         seed = _random_seed()
 
@@ -294,19 +303,34 @@ def _ltx_graph(p, m, filename_prefix):
 
     if audio:
         g["386"] = {"inputs": {"vae_name": m["ltx_vae_audio"]}, "class_type": "VAELoader"}
-        g["366"] = {
-            "inputs": {
-                "frames_number": length,
-                "frame_rate": float(fps),
-                "batch_size": 1,
-                "audio_vae": ["386", 0],
-            },
-            "class_type": "LTXVEmptyLatentAudio",
-        }
-        g["377"] = {
-            "inputs": {"video_latent": [_s1_video_src, _s1_video_slot], "audio_latent": ["366", 0]},
-            "class_type": "LTXVConcatAVLatent",
-        }
+        if audio_slice is not None and audio_slice != "":
+            # Frozen audio latent: encode the slice with the LTX audio VAE and
+            # attach a zero noise mask so the latent is never denoised.
+            g["la"] = {"inputs": {"audio": audio_slice}, "class_type": "LoadAudio"}
+            g["ae"] = {"inputs": {"audio": ["la", 0], "audio_vae": ["386", 0]},
+                        "class_type": "LTXVAudioVAEEncode"}
+            g["sm"] = {"inputs": {"value": 0.0, "width": 512, "height": 512},
+                        "class_type": "SolidMask"}
+            g["snm"] = {"inputs": {"samples": ["ae", 0], "mask": ["sm", 0]},
+                         "class_type": "SetLatentNoiseMask"}
+            g["377"] = {
+                "inputs": {"video_latent": [_s1_video_src, _s1_video_slot], "audio_latent": ["snm", 0]},
+                "class_type": "LTXVConcatAVLatent",
+            }
+        else:
+            g["366"] = {
+                "inputs": {
+                    "frames_number": length,
+                    "frame_rate": float(fps),
+                    "batch_size": 1,
+                    "audio_vae": ["386", 0],
+                },
+                "class_type": "LTXVEmptyLatentAudio",
+            }
+            g["377"] = {
+                "inputs": {"video_latent": [_s1_video_src, _s1_video_slot], "audio_latent": ["366", 0]},
+                "class_type": "LTXVConcatAVLatent",
+            }
         g["367"] = {"inputs": {"av_latent": ["344", 0]}, "class_type": "LTXVSeparateAVLatent"}
 
     # video latent off stage 1, whether or not audio rode along with it
