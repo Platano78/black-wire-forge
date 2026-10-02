@@ -165,6 +165,9 @@ All notable changes to Black Wire Forge are recorded here.
   word from a model card ("Trigger Prompt", a bare "Trigger:" label, "activation token(s)", and
   the README front matter's own `instance_prompt:` field).
 
+- Talking Head: an optional **Your own recording** field. Choose a sound file and the face speaks it in that voice
+  instead of one the model invents (the typed line is then not used); the recording is cut to the clip's length.
+  Leave it empty and nothing changes.
 - Cutting Room: an opt-in **Audio-led** switch (a checkbox in the cut bar, off by default). When on, the first
   picked sound shot is the master: it plays under the whole cut at full level, the video shots keep no sound of
   their own, and each LTX shot is made against its own slice of the master so a mouth in the picture follows it.
