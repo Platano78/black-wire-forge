@@ -6241,12 +6241,14 @@ function renderTimeline(){
 --------------------------------------------------------------------- */
 function bedSlotLabel(seq){
   const s = (seq.slots || []).find(x => x.lane === 'sound' && x.pick);
-  if(!s) return 'Music bed: none picked yet.';
+  // Audio-led (opt-in): the same slot is the MASTER sound, not a quiet bed.
+  const what = seq.audio_led ? 'Master sound' : 'Music bed';
+  if(!s) return what + ': none picked yet.';
   const job = findJob(s.pick);
   // Plain text (the caller escapes it once); a prompt that already ends a
   // sentence keeps its own stop rather than getting a second one.
   const words = String((job && job.prompt) || 'a sound shot').trim();
-  return 'Music bed: ' + words + (/[.!?…]$/.test(words) ? '' : '.');
+  return what + ': ' + words + (/[.!?…]$/.test(words) ? '' : '.');
 }
 /* Never silently degrade (review fix, 2026-09-23): the cut's own
    `loudness` field says which of loudnorm's three real shapes actually
@@ -6335,10 +6337,19 @@ function renderCutBar(){
     + '<span id="cutReason" data-cut-reason>' + esc(reason) + '</span>'
     + (latest ? cutStatusHTML(seq, latest) : '')
     + '<span id="cutBedNote">' + esc(bedSlotLabel(seq)) + '</span>'
+    + '<label id="cutAudioLedLabel" class="muted" title="Off (the default) keeps the cut as it is. On: the first picked sound shot plays '
+    + 'under the whole cut at full level, the video shots keep no sound of their own, and each LTX shot is made to fit its slice of it.">'
+    + '<input type="checkbox" id="audioLedBox"' + (seq.audio_led ? ' checked' : '') + '> Audio-led</label>'
     + '</div>';
   if(setHTML(wrap, html)){
     const btn = $('#cutBtn');
     if(btn) btn.onclick = doCut;
+    const ledBox = $('#audioLedBox');
+    if(ledBox) ledBox.onchange = async () => {
+      ledBox.disabled = true;
+      await seqOp('set_audio_led', {on: ledBox.checked});
+      renderTimeline();     // re-draws the cut bar from the stored state either way
+    };
     const watchBtn = $('#watchCutBtn');
     if(watchBtn) watchBtn.onclick = () => {
       STATE.monitorCut = watchBtn.dataset.cutId;

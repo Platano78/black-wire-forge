@@ -158,7 +158,7 @@ passes it as the shot's `audio_slice`, so the picture is made against the song i
 records `inputs.audio_window`. A shot that already has its own `audio_slice` keeps it. The cut then drops the clips' own audio and
 plays the master from 0 at full level for exactly the picture's length (`_run_cut(..., audio_led=True)`: only the graph build
 differs, the loudness pass, limiter and true-peak correction are shared). Both generate and cut refuse, in plain words, when no
-sound shot has a pick. Tests: `tests/test_audio_led.py`.
+sound shot has a pick. The switch is the **Audio-led** checkbox in the Cutting Room's cut bar. Tests: `tests/test_audio_led.py`, `tests/test_audio_led_ui.py`.
 
 ## Harvest
 

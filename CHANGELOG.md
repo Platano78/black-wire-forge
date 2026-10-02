@@ -165,6 +165,12 @@ All notable changes to Black Wire Forge are recorded here.
   word from a model card ("Trigger Prompt", a bare "Trigger:" label, "activation token(s)", and
   the README front matter's own `instance_prompt:` field).
 
+- Cutting Room: an opt-in **Audio-led** switch (a checkbox in the cut bar, off by default). When on, the first
+  picked sound shot is the master: it plays under the whole cut at full level, the video shots keep no sound of
+  their own, and each LTX shot is made against its own slice of the master so a mouth in the picture follows it.
+  LTX shots also gained an optional "Drive the picture from a sound file" field. With the switch off nothing
+  changes: the cut sends ffmpeg exactly the commands it sent before.
+
 ### Fixed
 
 - A process lane is now up when at least one of its tools has every program it needs, so Grid check works on a lane that also lists `"3d"` without Blender installed; the turntable mode lists Blender as missing, and the lane is down only when no tool can run.
