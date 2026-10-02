@@ -3001,6 +3001,9 @@ async function renderModeFields(){
         setUploads(f.id, (f.type === 'image' || f.type === 'image_list')
           ? j.files.map(x => Object.assign({}, x, {thumb: inputViewURL(x.name)}))
           : j.files);
+        // A recording that drives a shot (the LTX/Talking Head "audio_slice" field): size the clip to it.
+        if(f.id === 'audio_slice' && j.files && j.files[0] && Number(j.files[0].seconds) > 0)
+          applyRecordingLength(Number(j.files[0].seconds));
       } catch(e){
         msgInspector(String(e.message || e), 'err');
       }
@@ -3046,6 +3049,21 @@ async function renderModeFields(){
   if(cb) cb.hidden = !isCompareVisible();
 }
 
+// A chosen recording sets the clip's Length to match it: the smallest 8n+1 frame count that holds it, capped
+// at the 993-frame ceiling one clip can hold with sound on (about 41 s).
+function applyRecordingLength(seconds){
+  const lenEl = $('#inspector [data-field-id="length"]');
+  if(!lenEl) return;
+  const fpsEl = $('#inspector [data-field-id="fps"]');
+  const fps = Math.max(1, Number(fpsEl && fpsEl.value) || 24);
+  const want = seconds * fps;
+  const frames = Math.min(993, Math.max(9, 8 * Math.ceil((want - 1) / 8) + 1));
+  lenEl.value = frames;
+  lenEl.dispatchEvent(new Event('input', {bubbles: true}));
+  lenEl.dispatchEvent(new Event('change', {bubbles: true}));
+  msgInspector('Length set to ' + frames + ' frames (' + (frames / fps).toFixed(1) + ' s) to match the recording.'
+    + (want > 993 ? ' The recording is longer than one clip holds, so the rest is left out.' : ''), '');
+}
 // A picture field's files, from an upload or a result carried over ("Edit
 // this result"); a carried result's thumb is the picture itself.
 function setUploads(fid, files){

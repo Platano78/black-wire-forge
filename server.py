@@ -9401,6 +9401,30 @@ def workflows_open(body):
     raise WorkflowError(409, "There are already 99 copies of this template on %s." % lane["name"])
 
 
+AUDIO_UPLOAD_EXTS = (".wav", ".mp3", ".m4a", ".aac", ".flac", ".ogg", ".opus")
+
+
+def _audio_upload_seconds(filename, data=None, path=None):
+    """Length in seconds of an uploaded SOUND file, or None (not a sound file by name, no
+    ffprobe, unreadable). Additive: callers only add the key when this is a number."""
+    if not FFPROBE_BIN or os.path.splitext(filename or "")[1].lower() not in AUDIO_UPLOAD_EXTS:
+        return None
+    try:
+        if path is not None:
+            d = _probe_duration(path)
+        else:
+            with tempfile.NamedTemporaryFile(suffix=os.path.splitext(filename)[1].lower(), delete=False) as tf:
+                tf.write(data)
+                tmp = tf.name
+            try:
+                d = _probe_duration(tmp)
+            finally:
+                os.remove(tmp)
+    except Exception:
+        return None
+    return round(d, 3) if isinstance(d, float) and d > 0 else None
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     server_version = "GenerationCenter/1.0"
@@ -10134,7 +10158,11 @@ class Handler(BaseHTTPRequestHandler):
                 stored = uuid.uuid4().hex[:8] + "_" + safe
                 with open(os.path.join(d, stored), "xb") as f:
                     f.write(p["data"])
-                uploaded.append({"name": stored, "original": p["filename"], "bytes": len(p["data"])})
+                entry = {"name": stored, "original": p["filename"], "bytes": len(p["data"])}
+                secs = _audio_upload_seconds(name, path=os.path.join(d, stored))
+                if secs is not None:
+                    entry["seconds"] = secs
+                uploaded.append(entry)
             log("Kept %d file(s) for %s" % (len(uploaded), lane["name"]))
             return self.send_json({"ok": True, "files": uploaded})
         uploaded = []
@@ -10149,7 +10177,11 @@ class Handler(BaseHTTPRequestHandler):
             name = res["name"]
             if res.get("subfolder"):
                 name = res["subfolder"] + "/" + name
-            uploaded.append({"name": name, "original": p["filename"], "bytes": len(p["data"])})
+            entry = {"name": name, "original": p["filename"], "bytes": len(p["data"])}
+            secs = _audio_upload_seconds(p["filename"], data=p["data"])
+            if secs is not None:
+                entry["seconds"] = secs
+            uploaded.append(entry)
         log("Sent %d picture/clip(s) over to %s" % (len(uploaded), lane["name"]))
         return self.send_json({"ok": True, "files": uploaded})
 

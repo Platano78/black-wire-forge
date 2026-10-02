@@ -165,6 +165,8 @@ All notable changes to Black Wire Forge are recorded here.
   word from a model card ("Trigger Prompt", a bare "Trigger:" label, "activation token(s)", and
   the README front matter's own `instance_prompt:` field).
 
+- Choosing a recording for a shot now sets its Length to match: uploads of sound files report their length, and the
+  Talking Head / LTX "recording" field sizes the clip (smallest 8n+1 frames that holds it, capped at about 41 s).
 - Talking Head: an optional **Your own recording** field. Choose a sound file and the face speaks it in that voice
   instead of one the model invents (the typed line is then not used); the recording is cut to the clip's length.
   Leave it empty and nothing changes.
