@@ -112,6 +112,16 @@ def talking_head_prompt(line: str, look: str = "") -> str:
             "tone, no music." + tail)
 
 
+def talking_head_audio_prompt(look: str = "") -> str:
+    """The prompt for a Talking Head piece driven by the user's own recording: the sound
+    is given, so nothing is quoted and the model is only asked to move the mouth to it."""
+    shot = " ".join((look or "").split())
+    tail = f" Shot: {shot}." if shot else ""
+    return ("The person in the image looks directly into the camera and speaks, their mouth moving in "
+            "sync with the audio, natural lip movement, subtle head motion, natural blinking. "
+            "Close studio microphone, quiet room tone." + tail)
+
+
 # -- ltx / talking (build_ltx_video) ----------------------------------------
 # Source: build_ltx_video, graph_builders.py:1132-1465.
 
@@ -179,6 +189,7 @@ def _ltx_graph(p, m, filename_prefix):
     img_compression = p.get("img_compression", 18)
     end_image = p.get("end_image")
     audio_slice = p.get("audio_slice")
+    audio_trim = bool(p.get("audio_trim"))
 
     if width % 32 or height % 32:
         raise ValueError(f"width and height must be divisible by 32, got {width}x{height}")
@@ -307,7 +318,13 @@ def _ltx_graph(p, m, filename_prefix):
             # Frozen audio latent: encode the slice with the LTX audio VAE and
             # attach a zero noise mask so the latent is never denoised.
             g["la"] = {"inputs": {"audio": audio_slice}, "class_type": "LoadAudio"}
-            g["ae"] = {"inputs": {"audio": ["la", 0], "audio_vae": ["386", 0]},
+            audio_src = ["la", 0]
+            if audio_trim:
+                # A recording of any length: keep exactly the clip's duration from its start.
+                g["lt"] = {"inputs": {"audio": ["la", 0], "start_index": 0.0, "duration": length / float(fps)},
+                            "class_type": "TrimAudioDuration"}
+                audio_src = ["lt", 0]
+            g["ae"] = {"inputs": {"audio": audio_src, "audio_vae": ["386", 0]},
                         "class_type": "LTXVAudioVAEEncode"}
             g["sm"] = {"inputs": {"value": 0.0, "width": 512, "height": 512},
                         "class_type": "SolidMask"}
@@ -586,7 +603,12 @@ def talking_graph(p, m):
     is deferred to C3 -- see the module docstring.
     """
     inner = dict(p)
-    inner["prompt"] = talking_head_prompt(p.get("line", ""), p.get("look", ""))
+    if p.get("audio_slice"):
+        # Opt-in: the user's own recording drives the mouth; the typed line is not used.
+        inner["prompt"] = talking_head_audio_prompt(p.get("look", ""))
+        inner["audio_trim"] = True
+    else:
+        inner["prompt"] = talking_head_prompt(p.get("line", ""), p.get("look", ""))
     inner["start_image"] = p.get("face")
     inner["audio"] = True
     return _ltx_graph(inner, m, "blackwire/TALKING")
@@ -839,6 +861,8 @@ def talking_derive(values, request):
     stated = stated_frames(text, fps)
     if stated is not None and 9 <= stated <= 993:
         return {"length": stated}
+    if values.get("audio_slice"):
+        return {}               # a recording is given: the typed line is not used, so it sizes nothing
     current = values.get("length")
     if isinstance(current, int) and current != TALKING_MIN_FRAMES:
         return {}
@@ -853,7 +877,7 @@ def talking_check(values, request):
     out = _grid_problems(values, request)
     fps = values.get("fps") or LTX_FPS
     line = values.get("line") or ""
-    words = spoken_words(line)
+    words = 0 if values.get("audio_slice") else spoken_words(line)   # a recording replaces the line
     length = values.get("length")
     if words and isinstance(length, int):
         need = talking_frames(words, fps)
@@ -1355,6 +1379,11 @@ ENGINE = {
             {"id": "look", "label": "Shot note", "type": "text", "default": "",
              "tier": "advanced", "group": "Content", "order": 3,
              "hint": "A short note on lighting or framing, e.g. \"warm lighting\"."},
+            {"id": "audio_slice", "label": "Your own recording (instead of a line)", "type": "audio",
+             "tier": "primary", "group": "Content", "order": 4,
+             "hint": "Optional. Choose a recording and the face speaks it in your own voice instead of one the model "
+                     "invents; the line above is then not used. Set Length to the clip you want (seconds times 24, plus 1): "
+                     "a longer recording is cut to it."},
             {"id": "length", "label": "Length (frames)", "type": "int", "default": 97,
              "tier": "primary", "group": "Length", "order": 1,
              "units": "frames", "range": [9, 993], "ui_range": [49, 361],
