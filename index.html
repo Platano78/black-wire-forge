@@ -487,6 +487,22 @@
   #inspectorMsg.ok{color:var(--ready)}
   #shareCleanError{color:var(--error); font-size:12px; margin:8px 0 0}
 
+  /* ---- compare box / panel ---- */
+  #compareBox{margin:8px 0}
+  #compareBox summary{cursor:pointer; color:var(--text-mid); font-size:13px}
+  #compareBox details[open] > summary{color:var(--text-hi); font-weight:500}
+  .compare-row{display:flex; gap:8px; align-items:center; margin:6px 0}
+  .compare-row label{font-size:13px; min-width:60px; color:var(--text-mid)}
+  .compare-row input, .compare-row select{flex:1; min-width:0}
+  #comparePanel{padding:16px; margin:12px 0}
+  #comparePanelTitle{margin:0 0 8px; font-size:15px}
+  .compare-grid{display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; margin-bottom:12px}
+  .compare-cell{background:var(--panel); border:1px solid var(--divider); padding:8px; display:flex; flex-direction:column; gap:6px}
+  .compare-cell .compare-caption{font-size:13px; color:var(--text-mid); font-weight:500}
+  .compare-cell .compare-thumb{min-height:100px; display:flex; align-items:center; justify-content:center; overflow:hidden}
+  .compare-cell .compare-thumb img, .compare-cell .compare-thumb video{max-width:100%; max-height:200px}
+  #comparePanelClose{margin-top:4px}
+
   /* ---- footer / activity ---- */
   #activityStrip{border-top:1px solid var(--divider); background:var(--surface3)}
   #activityStrip summary{cursor:pointer; padding:6px 12px; font-size:12px; color:var(--text-mid);
@@ -1105,9 +1121,29 @@
       <button type="button" class="btn" id="makeDupeAnywayBtn">Make another</button>
     </div>
     <button class="btn btn-primary" id="makeBtn" type="button">Make</button>
+    <details id="compareBox" hidden><summary>Compare one setting</summary>
+      <div class="compare-row">
+        <label for="compareAxis">Setting</label>
+        <select id="compareAxis"></select>
+      </div>
+      <div class="compare-row">
+        <label for="compareValues">Values</label>
+        <input type="text" id="compareValues" placeholder="20, 30, 40" />
+      </div>
+      <p class="hint">2 to 6 values, separated by commas. Everything else stays the same, including the seed.</p>
+      <button class="btn btn-primary" id="compareBtn" type="button">Compare</button>
+      <p id="compareMsg" class="hint" role="status"></p>
+    </details>
     </div>
   </section>
 </main>
+
+<!-- Compare result panel -->
+<section id="comparePanel" aria-label="Compare results" hidden>
+  <h2 id="comparePanelTitle">Comparing</h2>
+  <div id="comparePanelGrid" class="compare-grid"></div>
+  <button class="btn" id="comparePanelClose" type="button">Close</button>
+</section>
 
 <!-- WB: the Workflows tab. A lane's own templates and saved workflows, what each
      still needs there, and "Save to ComfyUI and open". Built by renderWorkflows()
@@ -1615,6 +1651,7 @@ function renderBin(){
       if(job) forgetJob(job);
     });
   }
+  renderComparePanel();
 }
 /* A mode's post step (engines' post_for) appends its own output after the
    lane's render, marked post: true. That output is the job's RESULT: every
@@ -3002,6 +3039,11 @@ async function renderModeFields(){
     el.addEventListener('input', () => { mark(); refreshEnabled(fields); });
     el.addEventListener('change', () => { mark(); refreshEnabled(fields); });
   });
+
+  // Compare box: rebuild axis options and show/hide based on current mode
+  renderCompareAxis();
+  const cb = $('#compareBox');
+  if(cb) cb.hidden = !isCompareVisible();
 }
 
 // A picture field's files, from an upload or a result carried over ("Edit
@@ -4859,14 +4901,13 @@ async function handleSlotMake(slot, confirm, shapeOk, skipDupe){
 // caught before the network round trip.
 let LAST_MAKE_SIG = null;
 let LAST_MAKE_JOB_ID = null;
-async function handleMake(confirm){
-  makeConfirmHide();
+// Builds the request body for a Make call (what handleMake and the Compare box both send).
+// Returns the body, or null when there is no mode or no machine picked.
+function buildMakeBody(){
   const mode = currentMode();
-  if(!mode){ msgInspector('Nothing to make yet.', 'err'); return; }
+  if(!mode) return null;
   const lane = STATE.activeLane;
-  if(!lane){ msgInspector('Pick a machine in the toolbar first.', 'err'); return; }
-  const slot = isCutting(currentRoom()) ? currentSlot() : null;
-  if(slot){ return handleSlotMake(slot, confirm === true); }
+  if(!lane) return null;
   const values = currentValues();
   const fields = fieldsFor(mode);
   const body = {lane, kind: STATE.cap, mode: STATE.mode};
@@ -4900,6 +4941,18 @@ async function handleMake(confirm){
   // does, so testing the box sent a stale prompt on every cutout/upscale.
   if(!$('#promptWrap').hidden && $('#promptBox').dataset.fieldId) body.prompt = $('#promptBox').value;
   if(SELECTED_QUALITY) body.quality = SELECTED_QUALITY;
+  return body;
+}
+
+async function handleMake(confirm){
+  makeConfirmHide();
+  const mode = currentMode();
+  if(!mode){ msgInspector('Nothing to make yet.', 'err'); return; }
+  const lane = STATE.activeLane;
+  if(!lane){ msgInspector('Pick a machine in the toolbar first.', 'err'); return; }
+  const slot = isCutting(currentRoom()) ? currentSlot() : null;
+  if(slot){ return handleSlotMake(slot, confirm === true); }
+  const body = buildMakeBody();
   // UX-2 #6: "identical" = the same normalised request body (lane, mode,
   // every field value) as the one still queued/running -- there is no
   // client-editable "seed" field today (server.py picks it), so nothing
@@ -4936,6 +4989,198 @@ async function handleMake(confirm){
     $('#makeBtn').disabled = false;
   }
 }
+
+/* ---------------------------------------------------------------------
+   Compare box: sweep one setting across 2-6 values.
+--------------------------------------------------------------------- */
+let COMPARE_DISMISSED_GROUP = null;  // group id to hide until a newer one appears
+
+function isCompareVisible(){
+  const mode = currentMode();
+  if(!mode) return false;
+  if(STATE.cap !== 'image' && STATE.cap !== 'video') return false;
+  if(isCutting(currentRoom())) return false;
+  return true;
+}
+
+function getAxisLabel(axis){
+  const mode = currentMode();
+  if(!mode) return axis;
+  const fields = fieldsFor(mode);
+  const f = fields.find(ff => ff.id === axis);
+  if(f) return f.label;
+  if(axis === 'seed') return 'Seed';
+  if(axis === 'quality') return 'Quality';
+  return axis;
+}
+
+function renderCompareAxis(){
+  const sel = $('#compareAxis');
+  if(!sel) return;
+  const mode = currentMode();
+  const fields = mode ? fieldsFor(mode) : [];
+  let opts = fields.filter(f => f.type === 'int' || f.type === 'number' || f.type === 'select')
+    .map(f => '<option value="' + esc(f.id) + '">' + esc(f.label) + '</option>');
+  opts.push('<option value="seed">Seed</option>');
+  // Quality only when the mode has tiers
+  const quality = (mode && mode.quality) || (FIXTURE ? fixtureQuality() : []);
+  if(quality && quality.length) opts.push('<option value="quality">Quality</option>');
+  const prevAxis = sel.value;
+  sel.innerHTML = opts.join('');
+  if(prevAxis && Array.prototype.some.call(sel.options, o => o.value === prevAxis)) sel.value = prevAxis;
+  // Update placeholder based on axis
+  function updatePlaceholder(){
+    const axis = sel.value;
+    const inp = $('#compareValues');
+    if(!inp) return;
+    if(axis === 'seed'){
+      inp.placeholder = '7, 42, 100';
+    } else if(axis === 'quality'){
+      const tiers = (mode && mode.quality) || (FIXTURE ? fixtureQuality() : []);
+      inp.placeholder = tiers ? tiers.map(t => t.id).join(', ') : '';
+    } else {
+      const f = fields.find(ff => ff.id === axis);
+      if(f && f.type === 'select' && f.options){
+        inp.placeholder = f.options.join(', ');
+      } else {
+        inp.placeholder = '20, 30, 40';
+      }
+    }
+  }
+  sel.onchange = updatePlaceholder;
+  updatePlaceholder();
+}
+
+$('#compareBtn').onclick = async () => {
+  const axis = $('#compareAxis').value;
+  const raw = ($('#compareValues').value || '').split(',').map(s => s.trim()).filter(Boolean);
+  if(raw.length < 2 || raw.length > 6){
+    msgInspector('Give 2 to 6 values.', 'err');
+    $('#compareMsg').textContent = 'Give 2 to 6 values.';
+    return;
+  }
+  const mode = currentMode();
+  const fields = mode ? fieldsFor(mode) : [];
+  const fieldDef = fields.find(f => f.id === axis);
+  let values = raw;
+  if(axis === 'seed'){
+    values = raw.map(v => {
+      const n = parseInt(v, 10);
+      if(isNaN(n)){ $('#compareMsg').textContent = 'Those values need to be numbers.'; return null; }
+      return n;
+    });
+    if(values.some(v => v === null)) return;
+  } else if(fieldDef && (fieldDef.type === 'int' || fieldDef.type === 'number')){
+    values = raw.map(v => {
+      const n = fieldDef.type === 'number' ? parseFloat(v) : parseInt(v, 10);
+      if(isNaN(n)){ $('#compareMsg').textContent = 'Those values need to be numbers.'; return null; }
+      return n;
+    });
+    if(values.some(v => v === null)) return;
+  } else if(axis === 'quality'){
+    // Keep as strings
+  } else if(fieldDef && fieldDef.type === 'select'){
+    // Keep as strings
+  }
+  const body = buildMakeBody();
+  if(!body){ $('#compareMsg').textContent = 'Nothing to compare.'; return; }
+  body.compare = {axis: axis, values: values};
+  $('#compareMsg').textContent = 'Comparing ' + values.length + ' versions...';
+  msgInspector('Comparing ' + values.length + ' versions...', '');
+  $('#compareBtn').disabled = true;
+  try{
+    const r = await postJSON('/api/compare', body);
+    if(!r.ok){
+      $('#compareMsg').textContent = r.error || 'That did not go through.';
+      return;
+    }
+    $('#compareMsg').textContent = 'Comparing ' + values.length + ' versions...';
+    pollJobs();
+  } catch(e){
+    $('#compareMsg').textContent = String(e.message || e);
+  } finally {
+    $('#compareBtn').disabled = false;
+  }
+};
+
+function renderComparePanel(){
+  const panel = $('#comparePanel');
+  if(!panel) return;
+  // Find jobs with compare tags
+  const compareJobs = STATE.jobs.filter(j => j.compare && j.compare.group);
+  if(!compareJobs.length){ panel.hidden = true; return; }
+  // Determine the most recent group
+  compareJobs.sort((a, b) => (b.created || 0) - (a.created || 0));
+  const latestGroup = compareJobs[0].compare.group;
+  // If we've dismissed this group, hide the panel
+  if(COMPARE_DISMISSED_GROUP === latestGroup){ panel.hidden = true; return; }
+  // Find the matching axis label
+  const latest = compareJobs[0];
+  const axis = latest.compare.axis;
+  const groupJobs = compareJobs.filter(j => j.compare && j.compare.group === latestGroup);
+  // The server queues the values in the order they were typed, so creation order IS the user's order.
+  groupJobs.sort((a, b) => ((a.created || 0) - (b.created || 0)) || String(a.id).localeCompare(String(b.id)));
+  const axisLabel = getAxisLabel(axis);
+  $('#comparePanelTitle').textContent = 'Comparing ' + axisLabel;
+  const grid = $('#comparePanelGrid');
+  // Rebuild only when something a viewer can see changed, so finished pictures are not re-downloaded on every poll.
+  const sig = JSON.stringify(groupJobs.map(j => {
+    const o = j.status === 'done' ? resultOutput(j) : null;
+    return [j.id, j.status, j.error || '', o ? o.filename : '', j.compare.value];
+  }));
+  if(grid.dataset.sig === sig){ panel.hidden = false; return; }
+  grid.dataset.sig = sig;
+  grid.innerHTML = '';
+  groupJobs.forEach(job => {
+    const cell = document.createElement('div');
+    cell.className = 'compare-cell';
+    const caption = document.createElement('div');
+    caption.className = 'compare-caption';
+    caption.textContent = axisLabel + ': ' + job.compare.value;
+    cell.appendChild(caption);
+    const thumb = document.createElement('div');
+    thumb.className = 'compare-thumb';
+    if(job.status === 'queued' || job.status === 'running'){
+      thumb.textContent = job.status === 'running' ? 'Rendering…' : 'Queued';
+    } else if(job.status === 'done'){
+      const output = resultOutput(job);
+      if(output){
+        const url = viewURL(job.lane, output, false);
+        const fname = output.filename || '';
+        if(fname.endsWith('.mp4') || fname.endsWith('.webm')){
+          const vid = document.createElement('video');
+          vid.src = url;
+          vid.controls = true;
+          vid.muted = true;
+          vid.loop = true;
+          thumb.appendChild(vid);
+        } else {
+          const img = document.createElement('img');
+          img.src = url;
+          img.alt = caption.textContent;
+          thumb.appendChild(img);
+        }
+      } else {
+        thumb.textContent = 'No output yet';
+      }
+    } else {
+      thumb.textContent = job.error || 'Failed';
+    }
+    cell.appendChild(thumb);
+    grid.appendChild(cell);
+  });
+  panel.hidden = false;
+}
+
+$('#comparePanelClose').onclick = () => {
+  const panel = $('#comparePanel');
+  const compareJobs = STATE.jobs.filter(j => j.compare && j.compare.group);
+  if(compareJobs.length){
+    compareJobs.sort((a, b) => (b.created || 0) - (a.created || 0));
+    COMPARE_DISMISSED_GROUP = compareJobs[0].compare.group;
+  }
+  panel.hidden = true;
+};
 
 /* ---------------------------------------------------------------------
    Credits dialog
