@@ -165,6 +165,9 @@ All notable changes to Black Wire Forge are recorded here.
   word from a model card ("Trigger Prompt", a bare "Trigger:" label, "activation token(s)", and
   the README front matter's own `instance_prompt:` field).
 
+- Cutting Room (Audio-led): the master sound can now be **your own sound file** instead of a generated sound shot: add a file, and
+  optionally start it partway in. The file leads the cut, and each shot is made against its slice of it. A cut with the switch
+  off ignores the file.
 - Choosing a recording for a shot now sets its Length to match: uploads of sound files report their length, and the
   Talking Head / LTX "recording" field sizes the clip (smallest 8n+1 frames that holds it, capped at about 41 s).
 - Talking Head: an optional **Your own recording** field. Choose a sound file and the face speaks it in that voice

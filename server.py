@@ -2775,11 +2775,37 @@ def _audio_led_master_slot(seq):
     return next((s for s in seq.get("slots") or [] if s.get("lane") == "sound" and s.get("pick")), None)
 
 
+def _audio_led_master_source(seq):
+    """(absolute path, start offset in seconds) of the master sound; raises ValueError with a plain sentence.
+    An imported sound file wins; otherwise the first picked sound shot."""
+    sid = seq["id"]
+    mf = seq.get("master")
+    if isinstance(mf, dict) and mf.get("file"):
+        base = os.path.realpath(os.path.join(SEQ_MEDIA_DIR, sid))
+        path = os.path.realpath(os.path.join(base, mf["file"]))
+        if not path.startswith(base + os.sep) or not os.path.isfile(path):
+            raise ValueError("The master sound file is missing. Add it again.")
+        return path, float(mf.get("start") or 0.0)
+    master = _audio_led_master_slot(seq)
+    if master is None:
+        raise ValueError("This sequence is audio-led, so it needs a master sound: pick a take on a sound shot, "
+                         "or add a sound file.")
+    try:
+        path = _cut_ensure_take_file(sid, master["id"], master["pick"])
+    except ValueError:
+        raise ValueError("The master sound (%s) is not copied yet — is its lane off?" % master["id"])
+    return path, 0.0
+
+
 def _audio_led_derive(out):
-    """Audio-led only: master_slot_id, and each video shot's window on the master
-    (planned lengths laid end to end, no gaps)."""
-    master = _audio_led_master_slot(out)
+    """Audio-led only: master_slot_id (and master_file when a sound file was imported), and each video
+    shot's window on the master (planned lengths laid end to end, no gaps)."""
+    mf = out.get("master")
+    has_file = isinstance(mf, dict) and bool(mf.get("file"))
+    master = None if has_file else _audio_led_master_slot(out)
     out["master_slot_id"] = master["id"] if master else None
+    if has_file:
+        out["master_file"] = {"name": mf.get("name"), "seconds": mf.get("seconds"), "start": mf.get("start", 0.0)}
     start = 0.0
     for slot in out.get("slots") or []:
         if slot.get("lane") != "video":
@@ -2904,6 +2930,24 @@ def _op_set_audio_led(seq, p):
         seq["audio_led"] = True
     else:
         seq.pop("audio_led", None)
+
+
+def _op_set_master_start(seq, p):
+    """Where in the imported master sound the cut starts (seconds): lets a long song be used from the middle."""
+    mf = seq.get("master")
+    if not isinstance(mf, dict) or not mf.get("file"):
+        raise ValueError("Add a sound file to this sequence first.")
+    start = p.get("start")
+    if isinstance(start, bool) or not isinstance(start, (int, float)) or start < 0:
+        raise ValueError("The start must be a number of seconds, zero or more.")
+    secs = mf.get("seconds")
+    if isinstance(secs, (int, float)) and start >= secs:
+        raise ValueError("The sound file is only %.1f seconds long; start earlier than that." % secs)
+    mf["start"] = float(start)
+
+
+def _op_clear_master(seq, p):
+    seq.pop("master", None)
 
 
 def _op_set_canvas(seq, p):
@@ -3515,7 +3559,7 @@ def _op_copy_beat_to_prompt(seq, p):
 
 SEQ_OPS = {
     "set_title": _op_set_title, "set_mode": _op_set_mode, "set_canvas": _op_set_canvas,
-    "set_audio_led": _op_set_audio_led,
+    "set_audio_led": _op_set_audio_led, "set_master_start": _op_set_master_start, "clear_master": _op_clear_master,
     "add_slot": _op_add_slot, "update_slot": _op_update_slot, "move_slot": _op_move_slot,
     "remove_slot": _op_remove_slot, "pick_take": _op_pick_take, "adopt_take": _op_adopt_take, "set_trim": _op_set_trim,
     "set_title_card": _op_set_title_card, "set_sing": _op_set_sing,
@@ -6710,13 +6754,7 @@ def _audio_led_slice(seq, slot, lane):
     if not CAN_CUT:
         raise ValueError(CUT_REASON)
     sid = seq["id"]
-    master = _audio_led_master_slot(seq)
-    if master is None:
-        raise ValueError("This sequence is audio-led, so a sound shot needs a picked take to lead it. Pick one first.")
-    try:
-        mpath = _cut_ensure_take_file(sid, master["id"], master["pick"])
-    except ValueError:
-        raise ValueError("The master sound (%s) is not copied yet — is its lane off?" % master["id"])
+    mpath, mstart = _audio_led_master_source(seq)
     derived = copy.deepcopy(seq)
     _audio_led_derive(derived)
     win = next((s.get("window") for s in derived.get("slots") or [] if s.get("id") == slot.get("id")), None)
@@ -6725,7 +6763,7 @@ def _audio_led_slice(seq, slot, lane):
     outdir = os.path.join(SEQ_MEDIA_DIR, sid, "audio")
     os.makedirs(outdir, exist_ok=True)
     wav = os.path.join(outdir, "%s.wav" % slot["id"])
-    r = subprocess.run([FFMPEG_BIN, "-y", "-hide_banner", "-ss", "%.6f" % win["start"], "-i", mpath,
+    r = subprocess.run([FFMPEG_BIN, "-y", "-hide_banner", "-ss", "%.6f" % (mstart + win["start"]), "-i", mpath,
                         "-af", "apad", "-t", "%.6f" % (win["len"] + 1.0 / AUDIO_LED_FPS),
                         "-ar", "44100", "-ac", "2", wav], capture_output=True, text=True, timeout=120)
     if r.returncode != 0 or not os.path.isfile(wav):
@@ -6742,6 +6780,60 @@ def _audio_led_slice(seq, slot, lane):
     if res.get("subfolder"):
         name = res["subfolder"] + "/" + name
     return name, {"start": win["start"], "len": win["len"]}
+
+
+MASTER_EXTS = (".wav", ".mp3", ".m4a", ".aac", ".flac", ".ogg", ".opus")
+MASTER_MAX_BYTES = 200 * 1024 * 1024
+
+
+def seq_master_import(sid, rev, filename, data):
+    """POST /api/sequence/master (multipart id, rev, file): keep the user's own sound file as this
+    sequence's master. Opt-in: nothing happens to a sequence unless it is called, and the master only
+    leads an audio-led cut. Returns (body, http code)."""
+    if not seq_valid_id(sid):
+        return {"ok": False, "error": "That is not a sequence id."}, 400
+    if not CAN_CUT:
+        return {"ok": False, "error": CUT_REASON}, 400
+    name = re.sub(r"[^A-Za-z0-9._ -]", "_", os.path.basename(filename or ""))[:120]
+    ext = os.path.splitext(name)[1].lower()
+    if ext not in MASTER_EXTS:
+        return {"ok": False, "error": "That is not a sound file I can use (wav, mp3, m4a, aac, flac, ogg or opus)."}, 400
+    if not data or len(data) > MASTER_MAX_BYTES:
+        return {"ok": False, "error": "The sound file is empty or larger than %d MB." % (MASTER_MAX_BYTES // (1024 * 1024))}, 400
+    with SEQ_LOCK:
+        seq = _seq_read(sid)
+    if seq is None:
+        return {"ok": False, "error": "There is no such sequence."}, 404
+    if rev is not None and seq.get("rev") != rev:
+        return {"ok": False, "error": "This sequence changed somewhere else. Here is how it is now.",
+                "sequence": seq_derive(seq)}, 409
+    adir = os.path.join(SEQ_MEDIA_DIR, sid, "audio")
+    os.makedirs(adir, exist_ok=True)
+    tmp = os.path.join(adir, ".master" + ext + ".tmp")
+    with open(tmp, "wb") as f:
+        f.write(data)
+    info = _probe_json(tmp)
+    try:
+        dur = float(info["format"]["duration"]) if info else None
+    except (KeyError, TypeError, ValueError):
+        dur = None
+    if info is None or _probe_audio_stream(info) is None or not dur or dur <= 0:
+        os.remove(tmp)
+        return {"ok": False, "error": "That file has no sound I can read."}, 400
+    for old in os.listdir(adir):
+        if old.startswith("master."):
+            os.remove(os.path.join(adir, old))
+    dest = os.path.join(adir, "master" + ext)
+    os.replace(tmp, dest)
+    with SEQ_LOCK:
+        seq = _seq_read(sid)
+        if seq is None:
+            return {"ok": False, "error": "There is no such sequence."}, 404
+        seq["master"] = {"file": "audio/master" + ext, "name": name, "seconds": round(dur, 3), "start": 0.0}
+        seq["rev"] += 1
+        seq["updated"] = time.time()
+        _seq_write(seq)
+    return seq_derive(seq), 200
 
 
 def seq_generate(payload):
@@ -7131,13 +7223,25 @@ def seq_cut_start(payload):
     else:
         dissolves, join_notes = _cut_join_plan(seq, clip_plans, joined, sung)
     bed_path = None
+    master_start = 0.0
+    if audio_led:
+        mf_in = seq.get("master")
+        if isinstance(mf_in, dict) and mf_in.get("file"):
+            # An imported sound file is the master (it wins over a picked sound shot).
+            try:
+                bed_path, master_start = _audio_led_master_source(seq)
+            except ValueError as e:
+                return {"ok": False, "error": str(e)}, 400
+            if _probe_json(bed_path) is None:
+                return {"ok": False, "error": "The master sound file could not be read — it may be corrupt."}, 400
+            shots.append({"slot_id": None, "job_id": None, "licence": None, "role": "master", "name": mf_in.get("name")})
     # The bed is the first SOUND-lane slot (timeline order) with a pick --
     # whether or not it is local YET. It gets the same cut-time harvest
     # retry as a video shot (R2), never a silent "no bed" (owner review,
     # 2026-09-23): a picked bed is a decision the user made, so a copy
     # failure is refused, naming the slot, exactly like a missing video take.
     bed_slot = next((s for s in seq.get("slots") or [] if s.get("lane") == "sound" and s.get("pick")), None)
-    if bed_slot is not None:
+    if bed_slot is not None and bed_path is None:
         try:
             bed_path = _cut_ensure_take_file(sid, bed_slot["id"], bed_slot["pick"])
         except ValueError:
@@ -7151,8 +7255,8 @@ def seq_cut_start(payload):
         shots.append({"slot_id": bed_slot["id"], "job_id": bed_slot["pick"], "licence": bed_job.get("licence"),
                       "role": "master" if audio_led else "bed"})
     if audio_led and bed_path is None:
-        return {"ok": False, "error": "This sequence is audio-led, so a sound shot needs a picked take to lead "
-                "the cut. Pick one first."}, 400
+        return {"ok": False, "error": "This sequence is audio-led, so it needs a master sound to lead the cut: "
+                "pick a take on a sound shot, or add a sound file."}, 400
 
     # E1 (R4): with a song and at least one shot made singing it, the song
     # itself is the soundtrack -- unless the timeline cannot line every such
@@ -7196,7 +7300,7 @@ def seq_cut_start(payload):
         seq2["updated"] = time.time()
         _seq_write(seq2)
     threading.Thread(target=_run_cut, args=(sid, cut_id, clip_plans, bed_path, out_path, out_w, out_h),
-                     kwargs={"song_plan": song_plan, "audio_led": audio_led}, daemon=True).start()
+                     kwargs={"song_plan": song_plan, "audio_led": audio_led, "master_start": master_start}, daemon=True).start()
     return {"ok": True, "cut_id": cut_id}, 200
 
 
@@ -7440,7 +7544,7 @@ def _measure_true_peak(path, timeout=120):
         return None
 
 
-def _run_cut(sid, cut_id, clip_plans, bed_path, out_path, out_w, out_h, song_plan=None, audio_led=False):
+def _run_cut(sid, cut_id, clip_plans, bed_path, out_path, out_w, out_h, song_plan=None, audio_led=False, master_start=0.0):
     """The whole ffmpeg build, off the request thread (R8). ffmpeg always
     runs as an argv list, never a shell. Any failure -- ffmpeg's own
     non-zero exit, a take that turns out corrupt once ffmpeg opens it, or a
@@ -7474,9 +7578,9 @@ def _run_cut(sid, cut_id, clip_plans, bed_path, out_path, out_w, out_h, song_pla
             # Audio-led (opt-in): the clips' own audio is dropped; the master
             # sound plays from 0 at full level for exactly the picture's length.
             total = sum(c["len"] for c in clip_plans)
-            master = ("[%d:a]aformat=sample_rates=%d:channel_layouts=%s,atrim=0:duration=%.6f,"
+            master = ("[%d:a]aformat=sample_rates=%d:channel_layouts=%s,atrim=start=%.6f:duration=%.6f,"
                       "asetpts=PTS-STARTPTS,apad=whole_dur=%.6f[acat]"
-                      % (bed_index, CUT_SAMPLE_RATE, CUT_CHANNEL_LAYOUT, total, total))
+                      % (bed_index, CUT_SAMPLE_RATE, CUT_CHANNEL_LAYOUT, master_start, total, total))
             graph = v_chains + ["%sconcat=n=%d:v=1:a=0[vcat]" % ("".join("[v%d]" % i for i in range(n)), n), master]
             audio_graph = [master]
         else:
@@ -7832,7 +7936,7 @@ def request_refusal(handler):
     # application/x-www-form-urlencoded or multipart/form-data, so demanding
     # application/json (multipart for uploads) refuses every one of them.
     ctype = (handler.headers.get("Content-Type") or "").split(";")[0].strip().lower()
-    if handler.path.split("?")[0] == "/api/upload":
+    if handler.path.split("?")[0] in ("/api/upload", "/api/sequence/master"):
         if ctype != "multipart/form-data":
             return 415, "Send the file as a multipart/form-data upload."
     elif ctype != "application/json":
@@ -10071,6 +10175,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(*downloads_cancel(self.read_json()))
             if u.path == "/api/upload":
                 return self.api_upload()
+            if u.path == "/api/sequence/master":
+                return self.api_sequence_master()
             if u.path == "/api/generate":
                 return self.api_generate()
             if u.path == "/api/compare":
@@ -10184,6 +10290,30 @@ class Handler(BaseHTTPRequestHandler):
             uploaded.append(entry)
         log("Sent %d picture/clip(s) over to %s" % (len(uploaded), lane["name"]))
         return self.send_json({"ok": True, "files": uploaded})
+
+    def api_sequence_master(self):
+        """Multipart: id, optional rev, file. The size is checked BEFORE the body is read."""
+        ctype = self.headers.get("Content-Type", "")
+        m = re.search(r"boundary=([^;]+)", ctype)
+        if not m:
+            return self.send_json({"ok": False, "error": "expected multipart"}, 400)
+        if int(self.headers.get("Content-Length") or 0) > MASTER_MAX_BYTES + 1024 * 1024:
+            return self.send_json({"ok": False, "error": "The sound file is larger than %d MB." % (MASTER_MAX_BYTES // (1024 * 1024))}, 413)
+        parts = parse_multipart(self.read_body(), m.group(1).strip().strip('"').encode())
+        sid, rev, fpart = "", None, None
+        for p in parts:
+            if p["name"] == "id" and not p["filename"]:
+                sid = p["data"].decode("utf-8", "replace").strip()
+            elif p["name"] == "rev" and not p["filename"]:
+                try:
+                    rev = int(p["data"].decode("utf-8", "replace").strip())
+                except ValueError:
+                    rev = None
+            elif p["filename"]:
+                fpart = p
+        if fpart is None:
+            return self.send_json({"ok": False, "error": "No file came with that."}, 400)
+        return self.send_json(*seq_master_import(sid, rev, fpart["filename"], fpart["data"]))
 
     def api_generate(self):
         return self.send_json(*generate(self.read_json()))
