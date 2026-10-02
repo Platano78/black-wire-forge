@@ -2745,7 +2745,48 @@ def seq_derive(seq):
     out["cut_reason"] = CUT_REASON
     out["can_title"] = CAN_TITLE
     out["title_reason"] = TITLE_REASON
+    if out.get("audio_led"):
+        _audio_led_derive(out)
     return out
+
+
+AUDIO_LED_FPS = 24
+
+
+def _slot_planned_len(slot):
+    """Seconds a video shot is planned to run in an audio-led sequence: its
+    trim length when it has one, else the frames it will be made with (an
+    8n+1 LTX shot keeps 8n, so 97 frames plan 4.0 s)."""
+    trim = slot.get("trim")
+    if isinstance(trim, dict):
+        ln = trim.get("len")
+        if isinstance(ln, (int, float)) and not isinstance(ln, bool) and ln > 0:
+            return float(ln)
+    try:
+        frames = int((slot.get("values") or {}).get("length", 97))
+    except (TypeError, ValueError):
+        frames = 97
+    return max(frames - 1, 1) / AUDIO_LED_FPS
+
+
+def _audio_led_master_slot(seq):
+    """The master sound: the first sound-lane slot, in slot order, with a pick
+    (the same slot the classic cut uses as its bed)."""
+    return next((s for s in seq.get("slots") or [] if s.get("lane") == "sound" and s.get("pick")), None)
+
+
+def _audio_led_derive(out):
+    """Audio-led only: master_slot_id, and each video shot's window on the master
+    (planned lengths laid end to end, no gaps)."""
+    master = _audio_led_master_slot(out)
+    out["master_slot_id"] = master["id"] if master else None
+    start = 0.0
+    for slot in out.get("slots") or []:
+        if slot.get("lane") != "video":
+            continue
+        ln = _slot_planned_len(slot)
+        slot["window"] = {"start": round(start, 6), "len": round(ln, 6)}
+        start += ln
 
 
 def _seq_auto_title(seq):
@@ -2850,6 +2891,19 @@ def _op_set_mode(seq, p):
     if p.get("mode") not in SEQ_MODES:
         raise ValueError("A sequence is either a sequence or a storyboard.")
     seq["mode"] = p["mode"]
+
+
+def _op_set_audio_led(seq, p):
+    """Opt-in: the sequence's master sound (its first picked sound shot) leads
+    the cut and drives the shots. Off deletes the key, so a sequence switched
+    off is byte-identical to one that never had it."""
+    on = p.get("on")
+    if not isinstance(on, bool):
+        raise ValueError("Audio-led is either on or off.")
+    if on:
+        seq["audio_led"] = True
+    else:
+        seq.pop("audio_led", None)
 
 
 def _op_set_canvas(seq, p):
@@ -3461,6 +3515,7 @@ def _op_copy_beat_to_prompt(seq, p):
 
 SEQ_OPS = {
     "set_title": _op_set_title, "set_mode": _op_set_mode, "set_canvas": _op_set_canvas,
+    "set_audio_led": _op_set_audio_led,
     "add_slot": _op_add_slot, "update_slot": _op_update_slot, "move_slot": _op_move_slot,
     "remove_slot": _op_remove_slot, "pick_take": _op_pick_take, "adopt_take": _op_adopt_take, "set_trim": _op_set_trim,
     "set_title_card": _op_set_title_card, "set_sing": _op_set_sing,
@@ -6648,6 +6703,47 @@ def resolve_slot_sing(seq, slot, target_lane):
     return name, use
 
 
+def _audio_led_slice(seq, slot, lane):
+    """Audio-led generate: cut this shot's window out of the master sound, upload
+    it to the lane the shot will run on, and return (uploaded name, window).
+    Raises ValueError with a plain sentence for every refusal."""
+    if not CAN_CUT:
+        raise ValueError(CUT_REASON)
+    sid = seq["id"]
+    master = _audio_led_master_slot(seq)
+    if master is None:
+        raise ValueError("This sequence is audio-led, so a sound shot needs a picked take to lead it. Pick one first.")
+    try:
+        mpath = _cut_ensure_take_file(sid, master["id"], master["pick"])
+    except ValueError:
+        raise ValueError("The master sound (%s) is not copied yet — is its lane off?" % master["id"])
+    derived = copy.deepcopy(seq)
+    _audio_led_derive(derived)
+    win = next((s.get("window") for s in derived.get("slots") or [] if s.get("id") == slot.get("id")), None)
+    if not win:
+        raise ValueError("Shot %s has no place on the master sound." % slot.get("id"))
+    outdir = os.path.join(SEQ_MEDIA_DIR, sid, "audio")
+    os.makedirs(outdir, exist_ok=True)
+    wav = os.path.join(outdir, "%s.wav" % slot["id"])
+    r = subprocess.run([FFMPEG_BIN, "-y", "-hide_banner", "-ss", "%.6f" % win["start"], "-i", mpath,
+                        "-af", "apad", "-t", "%.6f" % (win["len"] + 1.0 / AUDIO_LED_FPS),
+                        "-ar", "44100", "-ac", "2", wav], capture_output=True, text=True, timeout=120)
+    if r.returncode != 0 or not os.path.isfile(wav):
+        raise ValueError("The master sound could not be cut for shot %s." % slot["id"])
+    with open(wav, "rb") as f:
+        payload = f.read()
+    res = http_post_multipart(
+        lane_url(lane, "/upload/image"),
+        {"type": "input", "overwrite": "false"},
+        [("image", "%s_%s.wav" % (sid, slot["id"]), "audio/wav", payload)])
+    if "_http_error" in res or not res.get("name"):
+        raise ValueError("%s would not take the sound clip. Try the other lane." % lane["name"])
+    name = res["name"]
+    if res.get("subfolder"):
+        name = res["subfolder"] + "/" + name
+    return name, {"start": win["start"], "len": win["len"]}
+
+
 def seq_generate(payload):
     """POST /api/sequence/generate {id, slot_id} (§7). Builds `p` from the
     slot, resolves references, calls generate(p), then appends a take
@@ -6707,12 +6803,25 @@ def seq_generate(payload):
     p["values"].update(field_values)
     if sing_use:
         p["sing_audio"], p["sing_start"] = sing_audio, sing_use["start"]
+    audio_inputs = {}
+    # Opt-in audio-led mode: an LTX video shot with no sound file of its own is
+    # driven by its window of the sequence's master sound.
+    if (seq.get("audio_led") and slot.get("lane") == "video" and slot.get("mode") == "ltx"
+            and not str(slot_values.get("audio_slice") or "").strip() and not sing_use):
+        try:
+            led_name, led_window = _audio_led_slice(seq, slot, lane)
+        except ValueError as e:
+            return {"ok": False, "error": str(e)}, 400
+        p["audio_slice"] = led_name
+        p["values"]["audio_slice"] = led_name
+        audio_inputs = {"audio_window": led_window}
     body, code = generate(p)
     if not body.get("ok"):
         return body, code
     job = body["job"]
     beat = next((b for b in seq.get("beats") or [] if b.get("id") == slot.get("beat_id")), None)
     inputs = {"refs": ref_uses, "cables": cable_uses}
+    inputs.update(audio_inputs)
     if sing_use:
         inputs["sing"] = sing_use
     # E2 (R2): only when the render kept the overlap (join field on + cabled).
@@ -7008,8 +7117,13 @@ def seq_cut_start(payload):
                     "sequence's %sx%s canvas; the cut never rescales across a different aspect ratio."
                     % (clip["slot_id"], clip["w"], clip["h"], cw, ch)}, 400
         clip_plans.append(clip)
-    dissolves, join_notes = _cut_join_plan(seq, clip_plans, joined, sung)
-
+    # Audio-led (opt-in): the master sound leads the cut, so the shots are joined hard on its windows
+    # (no dissolve overlaps) and a song-sung soundtrack is not built; the master IS the soundtrack.
+    audio_led = bool(seq.get("audio_led"))
+    if audio_led:
+        dissolves, join_notes = 0, []
+    else:
+        dissolves, join_notes = _cut_join_plan(seq, clip_plans, joined, sung)
     bed_path = None
     # The bed is the first SOUND-lane slot (timeline order) with a pick --
     # whether or not it is local YET. It gets the same cut-time harvest
@@ -7029,13 +7143,16 @@ def seq_cut_start(payload):
         with JOBS_LOCK:
             bed_job = JOBS.get(bed_slot["pick"]) or {}
         shots.append({"slot_id": bed_slot["id"], "job_id": bed_slot["pick"], "licence": bed_job.get("licence"),
-                      "role": "bed"})
+                      "role": "master" if audio_led else "bed"})
+    if audio_led and bed_path is None:
+        return {"ok": False, "error": "This sequence is audio-led, so a sound shot needs a picked take to lead "
+                "the cut. Pick one first."}, 400
 
     # E1 (R4): with a song and at least one shot made singing it, the song
     # itself is the soundtrack -- unless the timeline cannot line every such
     # shot up on one continuous track, when each shot keeps its own sound.
     song_plan, song_note = None, None
-    if bed_slot is not None and any(x["sing"] and x["sing"].get("song") == bed_slot["pick"] for x in sung):
+    if not audio_led and bed_slot is not None and any(x["sing"] and x["sing"].get("song") == bed_slot["pick"] for x in sung):
         song_plan = _cut_song_plan(clip_plans, sung, bed_slot["pick"])
         if song_plan is None:
             song_note = ("The song could not run as one track under the singing shots (the timeline's order "
@@ -7060,6 +7177,8 @@ def seq_cut_start(payload):
         entry["join_note"] = " ".join(
             (["%d shot join%s blended across the shared frames." % (dissolves, "" if dissolves == 1 else "s")]
              if dissolves else []) + join_notes)
+    if audio_led:
+        entry["audio_led"] = True
     with SEQ_LOCK:
         seq2 = _seq_read(sid)
         if seq2 is None:
@@ -7071,7 +7190,7 @@ def seq_cut_start(payload):
         seq2["updated"] = time.time()
         _seq_write(seq2)
     threading.Thread(target=_run_cut, args=(sid, cut_id, clip_plans, bed_path, out_path, out_w, out_h),
-                     kwargs={"song_plan": song_plan}, daemon=True).start()
+                     kwargs={"song_plan": song_plan, "audio_led": audio_led}, daemon=True).start()
     return {"ok": True, "cut_id": cut_id}, 200
 
 
@@ -7315,7 +7434,7 @@ def _measure_true_peak(path, timeout=120):
         return None
 
 
-def _run_cut(sid, cut_id, clip_plans, bed_path, out_path, out_w, out_h, song_plan=None):
+def _run_cut(sid, cut_id, clip_plans, bed_path, out_path, out_w, out_h, song_plan=None, audio_led=False):
     """The whole ffmpeg build, off the request thread (R8). ffmpeg always
     runs as an argv list, never a shell. Any failure -- ffmpeg's own
     non-zero exit, a take that turns out corrupt once ffmpeg opens it, or a
@@ -7343,23 +7462,34 @@ def _run_cut(sid, cut_id, clip_plans, bed_path, out_path, out_w, out_h, song_pla
             # E1 (R4): a singing shot's own audio IS the song -- silenced here,
             # the song track below plays under it instead.
             sings = bool(song_plan and song_plan["sing"][i])
-            a_chains.append(_clip_audio_chain(i, dict(clip, has_audio=False) if sings else clip))
-        # E2 (R3): a dissolve seam joins its clip onto the run before it (xfade +
-        # an equal-gain acrossfade over the overlap); runs are then concatenated.
-        runs, xv, xa, run_len = [], [], [], 0.0
-        for i, clip in enumerate(clip_plans):
-            if clip.get("xfade") and runs:
-                d, off = clip["xfade"], run_len - clip["xfade"]
-                xv.append("[%s][v%d]xfade=transition=fade:duration=%.6f:offset=%.6f[vx%d]" % (runs[-1][0], i, d, off, i))
-                # equal GAIN (tri): the overlap's sound is the shot before's own
-                # tail re-rendered, i.e. correlated; equal power would swell ~3 dB.
-                xa.append("[%s][a%d]acrossfade=d=%.6f:c1=tri:c2=tri[ax%d]" % (runs[-1][1], i, d, i))
-                runs[-1], run_len = ("vx%d" % i, "ax%d" % i), off + clip["len"]
-            else:
-                runs.append(("v%d" % i, "a%d" % i))
-                run_len = clip["len"]
-        concat_inputs = "".join("[%s][%s]" % r for r in runs)
-        graph = v_chains + a_chains + xv + xa + ["%sconcat=n=%d:v=1:a=1[vcat][acat]" % (concat_inputs, len(runs))]
+            if not audio_led:
+                a_chains.append(_clip_audio_chain(i, dict(clip, has_audio=False) if sings else clip))
+        if audio_led:
+            # Audio-led (opt-in): the clips' own audio is dropped; the master
+            # sound plays from 0 at full level for exactly the picture's length.
+            total = sum(c["len"] for c in clip_plans)
+            master = ("[%d:a]aformat=sample_rates=%d:channel_layouts=%s,atrim=0:duration=%.6f,"
+                      "asetpts=PTS-STARTPTS,apad=whole_dur=%.6f[acat]"
+                      % (bed_index, CUT_SAMPLE_RATE, CUT_CHANNEL_LAYOUT, total, total))
+            graph = v_chains + ["%sconcat=n=%d:v=1:a=0[vcat]" % ("".join("[v%d]" % i for i in range(n)), n), master]
+            audio_graph = [master]
+        else:
+            # E2 (R3): a dissolve seam joins its clip onto the run before it (xfade +
+            # an equal-gain acrossfade over the overlap); runs are then concatenated.
+            runs, xv, xa, run_len = [], [], [], 0.0
+            for i, clip in enumerate(clip_plans):
+                if clip.get("xfade") and runs:
+                    d, off = clip["xfade"], run_len - clip["xfade"]
+                    xv.append("[%s][v%d]xfade=transition=fade:duration=%.6f:offset=%.6f[vx%d]" % (runs[-1][0], i, d, off, i))
+                    # equal GAIN (tri): the overlap's sound is the shot before's own
+                    # tail re-rendered, i.e. correlated; equal power would swell ~3 dB.
+                    xa.append("[%s][a%d]acrossfade=d=%.6f:c1=tri:c2=tri[ax%d]" % (runs[-1][1], i, d, i))
+                    runs[-1], run_len = ("vx%d" % i, "ax%d" % i), off + clip["len"]
+                else:
+                    runs.append(("v%d" % i, "a%d" % i))
+                    run_len = clip["len"]
+            concat_inputs = "".join("[%s][%s]" % r for r in runs)
+            graph = v_chains + a_chains + xv + xa + ["%sconcat=n=%d:v=1:a=1[vcat][acat]" % (concat_inputs, len(runs))]
         # A second, AUDIO-ONLY concat (never producing [vcat]) for the
         # measurement pass below: on ffmpeg 4.4.2, a filter_complex output
         # pad that is built but never `-map`ped ("Filter concat:out:v0 has
@@ -7368,7 +7498,8 @@ def _run_cut(sid, cut_id, clip_plans, bed_path, out_path, out_w, out_h, song_pla
         # never [vcat] -- needs a graph that never creates an unmapped
         # video pad in the first place. Bonus: ffmpeg then never decodes
         # the video streams for this pass at all.
-        audio_graph = a_chains + xa + ["%sconcat=n=%d:v=0:a=1[acat]" % ("".join("[%s]" % r[1] for r in runs), len(runs))]
+        if not audio_led:
+            audio_graph = a_chains + xa + ["%sconcat=n=%d:v=0:a=1[acat]" % ("".join("[%s]" % r[1] for r in runs), len(runs))]
 
         def _mix_bed(stmts, acat_label):
             stmts = list(stmts)
@@ -7383,7 +7514,7 @@ def _run_cut(sid, cut_id, clip_plans, bed_path, out_path, out_w, out_h, song_pla
             return stmts, "amixed"
 
         final_audio = "acat"
-        if bed_path:
+        if bed_path and not audio_led:
             # R7: the bed starts at 0, is mixed at -18dB under the clip
             # audio BEFORE the single loudnorm below, and is cut at the
             # video's end -- amix's own duration=first stops the mix at

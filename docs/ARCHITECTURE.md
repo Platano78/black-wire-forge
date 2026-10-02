@@ -145,6 +145,21 @@ imported script; beats map onto slots and pre-fill their prompt field. `seq_deri
 computes each slot's live state (rendering / done / stale) on every read — nothing
 derived is stored.
 
+### Audio-led sequences (opt-in)
+
+A sequence is **audio-led** only when it carries `"audio_led": true` (op `set_audio_led {on}`; off deletes the key). Without it
+nothing in this section applies: every response, take and cut is unchanged.
+
+The **master** is the first sound-lane slot, in slot order, with a picked take (the slot the classic cut uses as its bed). Each
+video slot gets a derived `window {start, len}` on the master: planned lengths laid end to end, where a slot's planned length is
+its `trim.len` if set, else `(length - 1) / 24` (97 frames plan 4.0 s, matching the 96 frames a cut keeps). Generating an `ltx`
+video shot in an audio-led sequence cuts that window (plus one frame of slack) out of the master, uploads it to the lane, and
+passes it as the shot's `audio_slice`, so the picture is made against the song instead of the model inventing sound; the take
+records `inputs.audio_window`. A shot that already has its own `audio_slice` keeps it. The cut then drops the clips' own audio and
+plays the master from 0 at full level for exactly the picture's length (`_run_cut(..., audio_led=True)`: only the graph build
+differs, the loudness pass, limiter and true-peak correction are shared). Both generate and cut refuse, in plain words, when no
+sound shot has a pick. Tests: `tests/test_audio_led.py`.
+
 ## Harvest
 
 When `job_poller()` marks a job done, `seq_harvest()` looks for a sequence slot waiting
