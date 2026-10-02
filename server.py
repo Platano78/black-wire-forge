@@ -9912,6 +9912,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.api_upload()
             if u.path == "/api/generate":
                 return self.api_generate()
+            if u.path == "/api/compare":
+                return self.api_compare()
             if u.path == "/api/chain":
                 return self.api_chain()
             if u.path == "/api/carry":
@@ -10016,6 +10018,127 @@ class Handler(BaseHTTPRequestHandler):
 
     def api_generate(self):
         return self.send_json(*generate(self.read_json()))
+
+    def api_compare(self):
+        """POST /api/compare: run the same request across a single axis value."""
+        p = self.read_json()
+        compare = p.get("compare")
+        if not isinstance(compare, dict):
+            return self.send_json({"ok": False, "error": "Missing compare axis and values."}, 400)
+        axis = compare.get("axis")
+        values = compare.get("values")
+        if not isinstance(axis, str):
+            return self.send_json({"ok": False, "error": "Missing axis."}, 400)
+        if not isinstance(values, list):
+            return self.send_json({"ok": False, "error": "Values must be a list."}, 400)
+        if len(values) < 2 or len(values) > 6:
+            return self.send_json({"ok": False, "error": "Need 2 to 6 values, got %d." % len(values)}, 400)
+
+        kind = p.get("kind")
+        if kind not in ("image", "video"):
+            return self.send_json({"ok": False, "error": "Compare works on pictures and clips."}, 400)
+
+        mode = p.get("mode", "")
+        # Derive qmode the same way generate() does.
+        if kind == "image":
+            qmode = "edit" if mode == "edit" else "t2i"
+        else:  # video
+            qmode = mode if mode in ("ref2v", "continue") else "fl2va"
+
+        # Build the set of valid axis ids.
+        valid_axes = ["seed", "quality"]
+        for f in engines.fields(kind, qmode):
+            if f["type"] in ("int", "number", "select"):
+                valid_axes.append(f["id"])
+
+        if axis not in valid_axes:
+            return self.send_json(
+                {"ok": False,
+                 "error": "Unknown axis %r. Allowed: %s." % (axis, ", ".join(valid_axes))},
+                400)
+
+        # Validate values for this axis.
+        if axis == "quality":
+            allowed = [t["id"] for t in engines.quality(kind, qmode)]
+            for v in values:
+                if v not in allowed:
+                    return self.send_json(
+                        {"ok": False, "error": "Unknown quality setting %r." % v}, 400)
+        else:
+            # For int/number/select axes, validate against field definition.
+            field_def = None
+            if axis != "seed":
+                field_def = next((f for f in engines.fields(kind, qmode) if f["id"] == axis), None)
+            for v in values:
+                if axis == "seed":
+                    try:
+                        int(v)
+                    except (ValueError, TypeError):
+                        return self.send_json(
+                            {"ok": False, "error": "%s needs a whole number." % (axis)}, 400)
+                elif field_def:
+                    try:
+                        coerced = _coerce_field_value(field_def, v)
+                    except ValueError as e:
+                        return self.send_json({"ok": False, "error": str(e)}, 400)
+                    # Check the declared range if present.
+                    rng = field_def.get("range")
+                    if rng and len(rng) == 2:
+                        lo, hi = rng[0], rng[1]
+                        if lo is not None and coerced < lo:
+                            return self.send_json(
+                                {"ok": False, "error": "%s must be >= %s." % (field_def.get("label", axis), lo)}, 400)
+                        if hi is not None and coerced > hi:
+                            return self.send_json(
+                                {"ok": False, "error": "%s must be <= %s." % (field_def.get("label", axis), hi)}, 400)
+
+        # Pin a single seed for all runs (when axis is not "seed").
+        pinned_seed = None
+        if axis != "seed":
+            if p.get("seed") is not None:
+                try:
+                    pinned_seed = int(p["seed"])
+                except (ValueError, TypeError):
+                    pinned_seed = None
+            if pinned_seed is None:
+                pinned_seed = random.randint(1, 2 ** 48)
+
+        # Clone the body once, then modify per-value.
+        body = dict(p)
+
+        queued = []
+        group = uuid.uuid4().hex[:12]
+
+        for val in values:
+            copy = dict(body)
+            # Set the axis value in both top-level and values dict.
+            if axis == "quality":
+                copy["quality"] = val
+            else:
+                copy[axis] = val
+                if isinstance(copy.get("values"), dict):
+                    copy["values"] = dict(copy["values"])
+                    copy["values"][axis] = val
+            if axis != "seed":
+                copy["seed"] = pinned_seed
+
+            result, code = generate(copy)
+            if not result.get("ok") or code != 200:
+                return self.send_json(
+                    {"ok": False, "error": result.get("error", "generate failed"),
+                     "queued": queued},
+                    code)
+
+            job = result["job"]
+            with JOBS_LOCK:
+                if job["id"] in JOBS:
+                    JOBS[job["id"]]["compare"] = {"group": group, "axis": axis, "value": val}
+            save_jobs()
+            queued.append({"id": job["id"], "value": val})
+
+        log("Compare %s axis=%s count=%d" % (LANE_BY_ID.get(p.get("lane", ""), {}).get("name", p.get("lane", "")), axis, len(values)), "compare")
+        return self.send_json({"ok": True, "group": group, "axis": axis,
+                               "jobs": queued})
 
     def api_chain(self):
         """WORKFLOW: carry a finished still from its lane straight onto a video
