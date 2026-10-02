@@ -1084,6 +1084,18 @@ ENGINE = {
              "Measured 2026-09-23.",
              "values": {"cfg": 1.0, "sampler": "euler", "scheduler": "simple",
                         "steps": 25, "guidance_style": "Plain"}},
+            # Sharp text: the vendor template's recipe (cfg 1, euler/simple) at 40 steps.
+            # MEASURED 2026-10-02, n=1 (one seed, one prompt: a labelled engineering
+            # blueprint, 1664x928, Q6_K build): more legible lettering than Default and
+            # than 25 steps, 83s vs 200s for Default. Single seed -- not a multi-seed result.
+            {"id": "sharp-text", "label": "Sharp text", "note":
+             "For pictures with lettering or fine line detail (signs, labels, diagrams). "
+             "Plain guidance at Guidance strength 1, 40 steps: faster than Default, but "
+             "\"Things to avoid\" has no effect at this guidance. One test (a labelled "
+             "blueprint, one seed) read more clearly than Default; not a multi-seed result. "
+             "Measured 2026-10-02.",
+             "values": {"cfg": 1.0, "sampler": "euler", "scheduler": "simple",
+                        "steps": 40, "guidance_style": "Plain"}},
             # Full citation: 25 steps @ 1024^2 beats the vendor's own 40/2048 default
             # for tiling work -- 40 steps makes the seam gradient WORSE 6/6 paired
             # (+50% time), and both axes show a systematic warm colour drift 12/12.

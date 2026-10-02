@@ -229,7 +229,8 @@ FreSca scale (low/high frequency), FreSca frequency cutoff — these are fine-tu
 Balanced mechanism itself; leave them at default unless the user is chasing a specific measured
 effect, since none of these has documented per-value guidance beyond the app's own defaults.
 Presets: default (Balanced, Guidance 3 — the standard starting point), fast-plain (Guidance 1,
-Plain, about 3x faster than default, but Things to avoid does nothing at this guidance), seamless-
+Plain, about 3x faster than default, but Things to avoid does nothing at this guidance), sharp-text (Guidance 1, 40 steps, Plain — for
+lettering, signs and diagram-style pictures; one test only, so say so if asked), seamless-
 tile (25 steps at 1024x1024, Plain guidance — MEASURED to beat higher-step, higher-resolution
 renders for tiling: more steps made the seam worse and drifted the colour warm), set-plate (adds
 "people, person, human figures, characters" to Things to avoid — for a location reference plate that

@@ -106,8 +106,8 @@ else:
         check("Default preset graph matches arm D's graph", False, "%s: %s" % (type(e).__name__, e))
 
 print()
-print("Fast / plain and Seamless tile carry no APG/FreSca and use euler/simple")
-for preset_id in ("fast-plain", "seamless-tile"):
+print("Fast / plain, Sharp text and Seamless tile carry no APG/FreSca and use euler/simple")
+for preset_id in ("fast-plain", "sharp-text", "seamless-tile"):
     args, _ = build_args("image", "t2i", preset_id)
     graph = engines.graph_for("image", "t2i", args, MODELS)
     classes = {n.get("class_type") for n in graph.values()}
@@ -116,6 +116,14 @@ for preset_id in ("fast-plain", "seamless-tile"):
     ks = next(n for n in graph.values() if n.get("class_type") == "KSampler")["inputs"]
     check("%s uses sampler euler" % preset_id, ks.get("sampler_name") == "euler", repr(ks))
     check("%s uses scheduler simple" % preset_id, ks.get("scheduler") == "simple", repr(ks))
+
+print()
+print("Sharp text: cfg 1, 40 steps")
+args, _ = build_args("image", "t2i", "sharp-text")
+graph = engines.graph_for("image", "t2i", args, MODELS)
+ks = next(n for n in graph.values() if n.get("class_type") == "KSampler")["inputs"]
+check("sharp-text uses cfg 1.0", ks.get("cfg") == 1.0, repr(ks))
+check("sharp-text uses 40 steps", ks.get("steps") == 40, repr(ks))
 
 print()
 print(("FAILED: %d" % len(FAILED)) if FAILED else "ALL PASS")

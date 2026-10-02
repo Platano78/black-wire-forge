@@ -156,6 +156,7 @@ card, then general web craft — see "Research log" for what came from where.
   ~2.5). — observed, `engines/qwen_image.py` `fields.t2i`, `presets.t2i["default"]`,
   `["fast-plain"]`.
 - `t2i` presets: `default` (Balanced, cfg 3), `fast-plain` (cfg 1, ~3x faster, negatives inert),
+  `sharp-text` (cfg 1, 40 steps, plain guidance — for lettering and fine line detail; one-seed measurement, 2026-10-02),
   `seamless-tile` (25 steps @ 1024², plain guidance — measured to beat higher-step/higher-res
   renders for tiling, which drift warm and worsen seams), `set-plate` (no-people negative, for a
   reference plate reused across shots — asymmetric framing matters more than the prompt saying "no
