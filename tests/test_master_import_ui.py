@@ -1,0 +1,303 @@
+"""Browser check for the Audio-led master sound file controls in the Cutting Room's cut bar.
+
+With Audio-led OFF none of it appears. Ticking Audio-led shows "Add a sound file"; choosing one stores it on the
+sequence (the bar names it with its length and the note reads "Master sound: <name>."), the start field moves where the cut
+begins, "Replace sound file" swaps it, and "Remove" clears it. Drives the real page in Playwright against its own fake lane
+and server.py subprocess; nothing reaches the live app. Harness copied from the frozen tests/test_cut_ui.py.
+Run: python3 tests/test_master_import_ui.py
+"""
+import json
+import os
+import shutil
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.request
+
+sys.dont_write_bytecode = True
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+HERE = os.path.dirname(os.path.abspath(__file__))
+LANE_ID = "t"
+
+FAILED = []
+def check(name, cond, detail=""):
+    print(("  PASS  " if cond else "  FAIL  ") + name + (("  " + str(detail)) if not cond and detail else ""))
+    if not cond:
+        FAILED.append(name)
+
+def free_port():
+    s = socket.socket(); s.bind(("127.0.0.1", 0)); p = s.getsockname()[1]; s.close()
+    return p
+
+def http_json(url, timeout=5, data=None, method=None):
+    req = urllib.request.Request(url, data=data, method=method,
+                                  headers={"Content-Type": "application/json"} if data else {})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read())
+
+def wait_true(desc, fn, timeout):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            if fn():
+                return True
+        except Exception:
+            pass
+        time.sleep(0.15)
+    check(desc, False, "still false after %.0fs" % timeout)
+    return False
+
+def stop(proc):
+    if proc is not None and proc.poll() is None:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill(); proc.wait()
+
+try:
+    from playwright.sync_api import sync_playwright
+except ImportError:
+    # Finding #21: absence of an OPTIONAL dev dependency is a SKIP, not a
+    # failure -- a clean clone with no playwright must not read as broken.
+    print("SKIP: playwright is not installed. pip install -r requirements-dev.txt "
+          "&& python3 -m playwright install --with-deps chromium")
+    sys.exit(0)
+
+try:
+    with sync_playwright() as _pw_probe:
+        _pw_probe.chromium.launch().close()
+except Exception as _pw_err:
+    print("SKIP: playwright's chromium browser is not installed (%s). "
+          "Run: python3 -m playwright install --with-deps chromium" % _pw_err)
+    sys.exit(0)
+
+PROCS = []
+
+def start_fake_lane(scratch, name, output_clip_path=None):
+    store = os.path.join(scratch, "fake_%s" % name)
+    os.makedirs(os.path.join(store, "outputs"), exist_ok=True)
+    if output_clip_path:
+        # Always served under "ui_ready.mp4" -- the one filename
+        # build_sequence_with_a_picked_shot() arms /_control/accept with.
+        shutil.copy(output_clip_path, os.path.join(store, "outputs", "ui_ready.mp4"))
+    port = free_port()
+    proc = subprocess.Popen(
+        [sys.executable, os.path.join(HERE, "fixtures", "fake_comfy.py"), "--port", str(port), "--store", store],
+        cwd=REPO, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    PROCS.append(proc)
+    ok = wait_true("fake lane %s answers /system_stats" % name,
+                    lambda: http_json("http://127.0.0.1:%d/system_stats" % port), 15)
+    if not ok:
+        raise SystemExit("fake lane %s did not come up" % name)
+    return proc, port, store
+
+
+def start_server(scratch, lane_port, name, path_value, cut_config=None):
+    data_dir = os.path.join(scratch, "data_%s" % name)
+    cfg_path = os.path.join(scratch, "config_%s.json" % name)
+    port = free_port()
+    cfg = {"title": "C3.6 UI test", "port": port, "bind": "127.0.0.1",
+           "lanes": [{"id": LANE_ID, "name": "Fake lane", "host": "127.0.0.1", "port": lane_port,
+                      "caps": ["image", "video", "audio"]}],
+           "timing": {"poll_seconds": 0.4, "job_poll_seconds": 1.0, "http_timeout": 4.0,
+                      "free_settle_seconds": 1.0, "discover_seconds": 300.0}}
+    if cut_config is not None:
+        cfg["cut"] = cut_config
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+    logf = open(os.path.join(scratch, "server_%s.log" % name), "w")
+    env = dict(os.environ, GENCENTER_CONFIG=cfg_path, GENCENTER_DATA=data_dir)
+    if path_value is not None:
+        env["PATH"] = path_value
+    proc = subprocess.Popen([sys.executable, os.path.join(REPO, "server.py")], cwd=REPO, env=env,
+                             stdout=logf, stderr=subprocess.STDOUT)
+    PROCS.append(proc)
+    url = "http://127.0.0.1:%d/" % port
+
+    def lane_up():
+        d = http_json(url + "api/lanes")
+        lanes = d.get("lanes") if isinstance(d, dict) else d
+        l = next((x for x in (lanes or []) if x.get("id") == LANE_ID), None)
+        return bool(l and l.get("up") and l.get("discovered"))  # discovered: generate before discovery is refused (503)
+
+    ok = wait_true("server %s is up and the fake lane is up" % name, lane_up, 30)
+    if not ok:
+        with open(os.path.join(scratch, "server_%s.log" % name)) as f:
+            print("  -- server %s log tail: %s" % (name, f.read()[-1200:]))
+    return proc, url, data_dir
+
+
+def open_cutting_room_with_a_sequence(page, url, title):
+    page.goto(url, wait_until="networkidle", timeout=30000)
+    page.wait_for_timeout(800)
+    page.click('#roomStrip [data-room-id="cutting"]')
+    page.wait_for_timeout(300)
+    page.fill("#seqNewTitle", title)
+    page.click("#seqNewBtn")
+    page.wait_for_timeout(500)
+    h = page.evaluate("location.hash")
+    check("[%s] URL carries #room=cutting&seq=<id> (really in the Cutting Room, not stuck on the picker)"
+          % title, "room=cutting" in h and "seq=s_" in h, h)
+    return h.split("seq=")[1].split("&")[0] if "seq=s_" in h else None
+
+
+def http_post_json(url, payload):
+    req = urllib.request.Request(url, data=json.dumps(payload).encode(),
+                                  headers={"Content-Type": "application/json"}, method="POST")
+    with urllib.request.urlopen(req, timeout=10) as r:
+        return json.loads(r.read())
+
+
+PNG_1X1 = bytes.fromhex(
+    "89504e470d0a1a0a0000000d4948445200000001000000010802000000907753"
+    "de0000000c4944415478da6360606060000000050001a5f645400000000049454e44ae426082")
+
+
+def make_tiny_mp4(path):
+    subprocess.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+                     "-f", "lavfi", "-i", "color=c=red:size=320x240:rate=24:duration=1",
+                     "-f", "lavfi", "-i", "sine=frequency=440:duration=1",
+                     "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", path], check=True)
+
+
+def explain(e, name):
+    """An HTTPError's own body and URL, plus the server's log tail -- so an
+    intermittent setup failure says what the server refused and why."""
+    body = ""
+    if hasattr(e, "read"):
+        try:
+            body = e.read().decode("utf-8", "replace")[:400]
+        except Exception:
+            pass
+    tail = ""
+    try:
+        with open(os.path.join(SCRATCH, "server_%s.log" % name)) as f:
+            tail = f.read()[-800:]
+    except OSError:
+        pass
+    return "%r url=%s body=%s\n  -- server %s log tail:\n%s" % (e, getattr(e, "url", ""), body, name, tail)
+
+
+def build_sequence_with_a_picked_shot(url, lane_port):
+    """API-only setup (this file's own concern is the CUT button's state
+    given a real picked shot, not the make-a-shot flow -- that is
+    tests/test_sequence_ui.py's job): create a sequence, add one video slot,
+    render it against the fake lane, pick it."""
+    seq = http_post_json(url + "api/sequence", {"title": "UI ready", "mode": "sequence"})
+    sid, rev = seq["id"], seq["rev"]
+    body = http_post_json(url + "api/sequence/op",
+                           {"id": sid, "rev": rev, "op": "add_slot", "lane": "video", "cap": "video",
+                            "mode": "ltx", "values": {"prompt": "a shot", "length": 121}})
+    rev = body["rev"]
+    slot_id = body["slots"][0]["id"]
+    http_post_json("http://127.0.0.1:%d/_control/accept" % lane_port,
+                    {"outputs": [{"filename": "ui_ready.mp4", "subfolder": "", "type": "output"}]})
+    gbody = http_post_json(url + "api/sequence/generate", {"id": sid, "slot_id": slot_id})
+    job_id = gbody["job"]["id"]
+
+    def harvested():
+        d = http_json(url + "api/sequence?id=" + sid)
+        slot = next(s for s in d["slots"] if s["id"] == slot_id)
+        take = next((t for t in slot["takes"] if t["job_id"] == job_id), None)
+        return take and take.get("file")
+
+    wait_true("(setup) take harvested for the UI-ready sequence", harvested, 20)
+    d = http_json(url + "api/sequence?id=" + sid)
+    http_post_json(url + "api/sequence/op",
+                    {"id": sid, "rev": d["rev"], "op": "pick_take", "slot_id": slot_id, "job_id": job_id})
+    http_post_json("http://127.0.0.1:%d/_control/accept" % lane_port, {"outputs": None})
+    return sid
+
+
+
+SCRATCH = tempfile.mkdtemp(prefix="bwf-masterui-")
+TINY_MP4 = os.path.join(SCRATCH, "tiny.mp4")
+if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
+    print("SKIP: ffmpeg/ffprobe not on PATH")
+    shutil.rmtree(SCRATCH, ignore_errors=True)
+    sys.exit(0)
+make_tiny_mp4(TINY_MP4)
+WAV6 = os.path.join(SCRATCH, "six.wav"); WAV3 = os.path.join(SCRATCH, "three.wav")
+for path, secs in ((WAV6, 6), (WAV3, 3)):
+    subprocess.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i",
+                    "sine=frequency=440:sample_rate=44100:duration=%d" % secs, path], check=True)
+
+try:
+    fake_proc, fake_port, fake_store = start_fake_lane(SCRATCH, "mui", output_clip_path=TINY_MP4)
+    srv_proc, url, data_dir = start_server(SCRATCH, fake_port, "mui", None)
+    sid = build_sequence_with_a_picked_shot(url, fake_port)
+
+    def seq_now():
+        return http_json(url + "api/sequence?id=" + sid)
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch()
+        page = browser.new_page(viewport={"width": 1440, "height": 900})
+        errors = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.goto(url + "#room=cutting&seq=%s" % sid, wait_until="networkidle", timeout=30000)
+        page.wait_for_timeout(1200)
+        check("audio-led off: no sound-file controls anywhere in the bar", page.query_selector("#cutMasterRow") is None)
+
+        page.click("#audioLedBox")
+        page.wait_for_timeout(1200)
+        check("ticking Audio-led shows 'Add a sound file'", page.query_selector("#cutMasterAddLabel") is not None
+              and "Add a sound file" in page.eval_on_selector("#cutMasterAddLabel", "el => el.innerText"))
+        check("no file named yet", page.query_selector("#cutMasterName") is None)
+
+        page.set_input_files("#cutMasterFile", WAV6)
+        page.wait_for_timeout(1500)
+        st = seq_now()
+        check("the file is stored on the sequence (name six.wav, about 6 s, start 0)",
+              st.get("master", {}).get("name") == "six.wav" and abs(float(st["master"].get("seconds", 0)) - 6.0) < 0.1
+              and st["master"].get("start") == 0.0, st.get("master"))
+        name_txt = page.eval_on_selector("#cutMasterName", "el => el.innerText")
+        check("the bar names it with its length", "six.wav" in name_txt and "6.0 s" in name_txt, name_txt)
+        bed = page.eval_on_selector("#cutBedNote", "el => el.innerText").strip()
+        check("the note says 'Master sound: six.wav.'", bed == "Master sound: six.wav.", bed)
+        check("the button now offers to replace it", "Replace sound file" in page.eval_on_selector("#cutMasterAddLabel", "el => el.innerText"))
+
+        page.fill("#cutMasterStart", "2")
+        page.dispatch_event("#cutMasterStart", "change")
+        page.wait_for_timeout(1200)
+        check("the start field stores start 2.0", seq_now().get("master", {}).get("start") == 2.0, seq_now().get("master"))
+        page.fill("#cutMasterStart", "99")
+        page.dispatch_event("#cutMasterStart", "change")
+        page.wait_for_timeout(1200)
+        check("a start past the end is refused and the stored start stays 2.0", seq_now().get("master", {}).get("start") == 2.0)
+        check("and the field goes back to 2", float(page.eval_on_selector("#cutMasterStart", "el => el.value")) == 2.0)
+
+        page.set_input_files("#cutMasterFile", WAV3)
+        page.wait_for_timeout(1500)
+        st = seq_now()
+        check("replacing swaps the file and resets the start to 0", st.get("master", {}).get("name") == "three.wav" and st["master"].get("start") == 0.0, st.get("master"))
+
+        page.click("#cutMasterClear")
+        page.wait_for_timeout(1200)
+        check("Remove clears it from the sequence", "master" not in seq_now())
+        check("and the bar offers 'Add a sound file' again", page.query_selector("#cutMasterName") is None
+              and "Add a sound file" in page.eval_on_selector("#cutMasterAddLabel", "el => el.innerText"))
+
+        page.set_input_files("#cutMasterFile", WAV3)
+        page.wait_for_timeout(1500)
+        page.click("#audioLedBox")
+        page.wait_for_timeout(1200)
+        check("unticking Audio-led hides the controls", page.query_selector("#cutMasterRow") is None)
+        check("but keeps the file stored (it only matters when audio-led is on)", "master" in seq_now())
+        bed = page.eval_on_selector("#cutBedNote", "el => el.innerText").strip()
+        check("and the note is back to the classic wording", bed.startswith("Music bed:"), bed)
+        check("no page JS errors", not errors, errors)
+        browser.close()
+except Exception as e:
+    check("the master-file UI test ran without raising", False, explain(e, "mui"))
+finally:
+    for p in PROCS:
+        stop(p)
+    shutil.rmtree(SCRATCH, ignore_errors=True)
+
+print()
+print("ALL PASS" if not FAILED else "FAILED: %d -- %s" % (len(FAILED), FAILED))
+sys.exit(1 if FAILED else 0)

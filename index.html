@@ -6258,6 +6258,8 @@ function renderTimeline(){
    started cut's state (F4) needs no poll of its own.
 --------------------------------------------------------------------- */
 function bedSlotLabel(seq){
+  // Audio-led with an imported sound file: the file is the master, whatever sound shots exist.
+  if(seq.audio_led && seq.master && seq.master.file) return 'Master sound: ' + (seq.master.name || 'a sound file') + '.';
   const s = (seq.slots || []).find(x => x.lane === 'sound' && x.pick);
   // Audio-led (opt-in): the same slot is the MASTER sound, not a quiet bed.
   const what = seq.audio_led ? 'Master sound' : 'Music bed';
@@ -6333,6 +6335,45 @@ async function doCut(){
   }catch(e){ /* the next poll tick picks it up */ }
   renderCutBar();
 }
+/* Audio-led only: your own sound file as the master (POST /api/sequence/master), where it starts, and removing it. */
+function masterControlsHTML(seq){
+  const mf = seq.master && seq.master.file ? seq.master : null;
+  let h = '<span id="cutMasterRow">';
+  if(mf){
+    h += '<span id="cutMasterName">Sound file: ' + esc(mf.name || 'sound') + ' (' + Number(mf.seconds || 0).toFixed(1) + ' s)</span>'
+      + '<label class="muted">starts at <input type="number" id="cutMasterStart" min="0" step="0.5" value="'
+      + esc(String(mf.start || 0)) + '" style="width:5em"> s</label>'
+      + '<button type="button" class="btn" id="cutMasterClear">Remove</button>';
+  }
+  h += '<label class="btn" id="cutMasterAddLabel">' + (mf ? 'Replace sound file' : 'Add a sound file')
+    + '<input type="file" id="cutMasterFile" accept="audio/*,.m4a,.mp3,.wav,.aac,.flac,.ogg,.opus" hidden></label></span>';
+  return h;
+}
+function wireMasterControls(){
+  const addEl = $('#cutMasterFile');
+  if(addEl) addEl.onchange = async () => {
+    const file = addEl.files && addEl.files[0];
+    if(!file || !STATE.seq) return;
+    const fd = new FormData();
+    fd.append('id', STATE.seq.id);
+    fd.append('rev', String(STATE.seq.rev));
+    fd.append('file', file, file.name);
+    let r;
+    try{ const resp = await fetch('/api/sequence/master', {method: 'POST', body: fd}); r = await resp.json(); }
+    catch(e){ r = {error: String(e.message || e)}; }
+    if(r && typeof r.rev === 'number' && r.id === STATE.seq.id){ STATE.seq = r; STATE.cutError = null; renderTimeline(); }
+    else if(r && r.sequence){ STATE.seq = r.sequence; msgSeq('This sequence changed elsewhere — refreshed. Add the file again.', 'err'); renderTimeline(); }
+    else { STATE.cutError = (r && r.error) || 'Could not add that file.'; renderCutBar(); }
+  };
+  const clr = $('#cutMasterClear');
+  if(clr) clr.onclick = async () => { await seqOp('clear_master', {}); renderTimeline(); };
+  const st = $('#cutMasterStart');
+  if(st) st.onchange = async () => {
+    const r = await seqOp('set_master_start', {start: Number(st.value)});
+    if(r) renderTimeline();
+    else st.value = String((STATE.seq && STATE.seq.master && STATE.seq.master.start) || 0);   // refused (already said): put the stored value back
+  };
+}
 function renderCutBar(){
   const wrap = $('#cutBar');
   if(!wrap) return;
@@ -6358,6 +6399,7 @@ function renderCutBar(){
     + '<label id="cutAudioLedLabel" class="muted" title="Off (the default) keeps the cut as it is. On: the first picked sound shot plays '
     + 'under the whole cut at full level, the video shots keep no sound of their own, and each LTX shot is made to fit its slice of it.">'
     + '<input type="checkbox" id="audioLedBox"' + (seq.audio_led ? ' checked' : '') + '> Audio-led</label>'
+    + (seq.audio_led ? masterControlsHTML(seq) : '')
     + '</div>';
   if(setHTML(wrap, html)){
     const btn = $('#cutBtn');
@@ -6368,6 +6410,7 @@ function renderCutBar(){
       await seqOp('set_audio_led', {on: ledBox.checked});
       renderTimeline();     // re-draws the cut bar from the stored state either way
     };
+    wireMasterControls();
     const watchBtn = $('#watchCutBtn');
     if(watchBtn) watchBtn.onclick = () => {
       STATE.monitorCut = watchBtn.dataset.cutId;
