@@ -117,6 +117,17 @@ check("audio_slice: SolidMask node 'sm' present with value 0.0",
       audio_slice_graph.get("sm", {}).get("inputs", {}).get("value") == 0.0)
 
 print()
+print("audio_slice is an optional shot field (opt-in; empty = the usual joint sound)")
+_ltx_fields = {f["id"]: f for f in engines.fields("video", "ltx")}
+check("audio_slice field is declared as an audio upload", _ltx_fields.get("audio_slice", {}).get("type") == "audio")
+check("audio_slice is advanced and has no default (empty means off)",
+      _ltx_fields.get("audio_slice", {}).get("tier") == "advanced" and "default" not in _ltx_fields.get("audio_slice", {}))
+check("audio_slice is only enabled when Add sound is on",
+      _ltx_fields.get("audio_slice", {}).get("enabled_when") == {"field": "audio", "truthy": True})
+check("the usual ltx graph has no LoadAudio node (default path untouched)",
+      "la" not in engines.graph_for("video", "ltx", dict(args["i2v"]), m))
+
+print()
 print("audio_slice with audio=False raises ValueError")
 try:
     engines.graph_for("video", "ltx", dict(args["i2v_audio_slice"], audio=False), m)

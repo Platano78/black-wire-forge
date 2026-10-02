@@ -1243,6 +1243,13 @@ ENGINE = {
              "tier": "primary", "group": "Length", "order": 2,
              "hint": "Picture and sound are generated together. Turning this off is the "
                      "only way past the 993-frame length cap."},
+            {"id": "audio_slice", "label": "Drive the picture from a sound file", "type": "audio",
+             "tier": "advanced", "group": "Length", "order": 3,
+             "enabled_when": {"field": "audio", "truthy": True},
+             "disabled_reason": "Needs Add sound switched on.",
+             "hint": "Optional. Choose a sound clip about the length of this shot (a line of a song, a voice-over). "
+                     "It is frozen in as the shot's sound instead of the model inventing its own, so a mouth in the "
+                     "picture moves to that audio. Leave empty for the usual joint sound."},
             {"id": "width", "label": "Width", "type": "int", "default": 1024,
              "tier": "advanced", "group": "Size", "order": 1,
              "units": "px", "range": [128, 1920], "ui_range": [512, 1536],
