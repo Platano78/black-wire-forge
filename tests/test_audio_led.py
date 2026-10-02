@@ -709,5 +709,40 @@ check("and keeps the clip's own audio", vc7 is not None and vc7 > -40, vc7)
 
 
 print()
+print("8. windows tile: a 97-frame take (4.0417 s) is trimmed to its planned 4.0 s window when audio-led")
+s8 = seq_create(URL, "tiling")
+sid8 = s8["id"]
+body = add_video_slot(URL, sid8, s8["rev"], length=97, prompt="t1")
+body = add_video_slot(URL, sid8, body["rev"], length=97, prompt="t2")
+v8a, v8b = [s["id"] for s in body["slots"]]
+body = add_sound_slot(URL, sid8, body["rev"], seconds=8.0)
+snd8 = body["slots"][2]["id"]
+master8 = os.path.join(FAKE_OUT, "master8.m4a")
+make_audio_only(master8, 440, 9.0)
+clips8 = []
+for k in (1, 2):
+    c = os.path.join(FAKE_OUT, "tile_clip%d.mp4" % k)
+    make_clip(c, width=CW, height=CH, duration=97 / 24.0, audio_freq=1000, color=("red" if k == 1 else "blue"))
+    clips8.append(c)
+_, ja, rev8 = generate_slot(URL, sid8, v8a, FAKE_PORT, clips8[0])
+_, jb, rev8 = generate_slot(URL, sid8, v8b, FAKE_PORT, clips8[1])
+_, jm, rev8 = generate_slot(URL, sid8, snd8, FAKE_PORT, master8)
+for slot_id, job in ((v8a, ja), (v8b, jb), (snd8, jm)):
+    rev8 = pick(URL, sid8, rev8, slot_id, job)["rev"]
+code, body = seq_op(URL, sid8, rev8, "set_audio_led", on=True)
+code, b = do_cut(URL, sid8)
+entry8 = wait_cut_done(URL, sid8, b.get("cut_id")) if code == 200 else None
+out8 = cut_file_path(DATA_DIR, sid8, entry8, b.get("cut_id")) if entry8 else None
+dur8 = probed_duration(out8) if out8 and os.path.isfile(out8) else 0.0
+check("the audio-led cut of two 4.0417 s takes is 8.0 s (windows tile, no drift)", abs(dur8 - 8.0) < 0.05, dur8)
+code, body = seq_op(URL, sid8, seq_get(URL, sid8)["rev"], "set_audio_led", on=False)
+code, b = do_cut(URL, sid8)
+entry8c = wait_cut_done(URL, sid8, b.get("cut_id")) if code == 200 else None
+out8c = cut_file_path(DATA_DIR, sid8, entry8c, b.get("cut_id")) if entry8c else None
+dur8c = probed_duration(out8c) if out8c and os.path.isfile(out8c) else 0.0
+check("control: with the flag off the same takes cut at their full length (8.083 s)", abs(dur8c - 2 * 97 / 24.0) < 0.05, dur8c)
+
+
+print()
 print("ALL PASS" if not FAILED else "FAILED: %d -- %s" % (len(FAILED), FAILED))
 sys.exit(1 if FAILED else 0)

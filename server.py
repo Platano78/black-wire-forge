@@ -7055,6 +7055,7 @@ def seq_cut_start(payload):
     # scaled to it; a different aspect ratio is still refused, naming the
     # shot and both sizes. The sequence canvas still governs the cable
     # crop and default_canvas() -- untouched here.
+    audio_led = bool(seq.get("audio_led"))
     shots, probed, sung, joined = [], [], [], []
     for slot in picked:
         job_id = slot["pick"]
@@ -7077,6 +7078,12 @@ def seq_cut_start(payload):
             in_point, length = _resolve_trim_or_raise(slot["id"], slot.get("trim"), duration)
         except ValueError as e:
             return {"ok": False, "error": str(e)}, 400
+        if audio_led and slot.get("trim") is None:
+            # Audio-led: an untrimmed shot keeps exactly its planned window (an 8n+1 take keeps 8n),
+            # so the windows tile and the picture never drifts against the master.
+            planned = _slot_planned_len(slot)
+            if 0 < planned < length:
+                length = planned
         with JOBS_LOCK:
             job = JOBS.get(job_id) or {}
         shots.append({"slot_id": slot["id"], "job_id": job_id, "licence": job.get("licence")})
@@ -7119,7 +7126,6 @@ def seq_cut_start(payload):
         clip_plans.append(clip)
     # Audio-led (opt-in): the master sound leads the cut, so the shots are joined hard on its windows
     # (no dissolve overlaps) and a song-sung soundtrack is not built; the master IS the soundtrack.
-    audio_led = bool(seq.get("audio_led"))
     if audio_led:
         dissolves, join_notes = 0, []
     else:
