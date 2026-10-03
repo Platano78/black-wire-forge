@@ -1,0 +1,8 @@
+# Line endings are part of the source. Without this, a Windows checkout (git's default
+# core.autocrlf=true) turns every .sh into CRLF, which bash rejects ("$'\r': command not found"),
+# and turns data and docs into CRLF too, which breaks byte-exact comparisons.
+* text=auto eol=lf
+*.sh text eol=lf
+*.command text eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
