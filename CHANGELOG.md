@@ -4,11 +4,24 @@ All notable changes to Black Wire Forge are recorded here.
 
 ## Unreleased
 
-### Fixed
+### Security
 
-- Process lanes (Grid check, the 3D turntable) no longer crash on Windows. The runner used POSIX-only process calls, which Windows refuses with "preexec_fn is not supported on Windows platforms"; it now starts a new process group and stops a job's whole process tree with `taskkill` there. Linux behaviour is unchanged. Checked on Windows 11 with Python 3.13: the README quick start (venv, install, start, every page answers) and the runner tests, including stopping a job and its child. The full test suite and the Grid check itself were not run on Windows.
-- Title text in a cut: macOS and Windows system fonts are now tried when no Linux font is found, and a Windows font path is escaped correctly for ffmpeg.
-- The Pillow and numpy install hints print the right virtual-environment path on Windows.
+- **A remote ComfyUI machine could make the Pixel Art step write a file outside its temporary folder.** The step saved the render under the file name the machine reported, so a name such as `../../x` (or an absolute path) escaped the folder. It now builds its own file name. Every release from v1.0.0 to v1.2.0 has this; it needs a ComfyUI machine you did not intend to trust (or one that has been compromised), so check the machines in your `config.json`.
+- Output file names that are Windows device names (`NUL`, `CON`, `COM1`...) or end in a dot or space are refused, `..` is caught with either slash direction, and a models folder on another drive gets the plain "outside the models folder" sentence.
+
+### Fixed (Windows)
+
+Checked on Windows 11 with Python 3.13 (python.org build): the README quick start, and the test suite run through Git Bash (153 suites; see the note at the end). Linux behaviour is unchanged.
+
+- **Grid check and the 3D turntable could not run at all.** The process runner used POSIX-only calls (`preexec_fn`, `os.killpg`), and the lane poller called `os.getloadavg()`, which does not exist on Windows, so every process lane stayed down. They now start and stop a job's whole process tree with `taskkill`, and the lane's load meter stays empty.
+- **Model downloads failed.** The app decided its own `.part` file "was replaced by something else" because NTFS reports different sizes and times for a path and for an open handle; it now compares the file's identity. A finished download no longer leaves its `.part` behind, and replacing or deleting a file retries for a moment if a virus scanner or indexer has it locked (one real download in twenty failed this way).
+- **Setup's "Save and start" left the launcher with nothing to wait on.** On Windows `os.execv` starts a new process and exits the old one, so the `start.bat` window closed while a hidden copy kept running. The original process now stays and runs the new copy as its child.
+- **A second copy of the app could take the same port silently**, as could any other local program: on Windows the usual "reuse the address" option allows that. The server now binds exclusively there, and the "port already in use" message gives the Windows way to find the owner (`netstat -ano | findstr :PORT`) instead of `lsof`.
+- **Non-ASCII text.** Windows reads text files as cp1252 unless told otherwise: a curly quote or accent in a lane name in `config.json` made the app refuse to start with "not valid JSON", `rooms.json` showed garbled dashes, and one non-cp1252 character in a log line could kill the logging thread. Text files, ffmpeg output and the console are now UTF-8 (`config.json` also accepts a Notepad BOM), and `start.bat` sets `PYTHONUTF8=1`.
+- **Line endings.** A Windows checkout turned every `.sh` file into CRLF, which bash rejects, and broke byte-exact checks. `.gitattributes` now keeps `.sh` and `.command` as LF and `start.bat` as CRLF.
+- Cut titles try macOS and Windows system fonts when no Linux font is found, and ffmpeg gets a Windows font path it can read. Install hints print `.venv\Scripts\python` on Windows.
+
+Not checked on Windows: cutting with ffmpeg (ffmpeg was not installed on the test PC), Grid check and the turntable with their real programs (beat_this, Blender), and macOS. A few checks skip on Windows because they test POSIX-only things (read-only folder permissions, symlink target permissions, FIFOs), and the suites that need ffmpeg skip when it is not installed.
 
 ## v1.2.0 — 2026-10-03
 

@@ -41,6 +41,16 @@ gated repos); otherwise it shows an `hf download` command per file (`hf` comes w
 `requirements.txt` is optional (see "Install" below) and, on modern distro Python, needs its
 own virtual environment rather than a global `pip install` — same command either way.
 
+### On Windows
+
+Install Python 3.8 or newer from python.org (tick "Add python.exe to PATH") and double-click `start.bat`. Or, in PowerShell in this folder:
+
+    py -m venv .venv
+    .venv\Scripts\python -m pip install -r requirements.txt
+    .venv\Scripts\python server.py
+
+Checked on Windows 11 with Python 3.13. For the Cutting Room, install ffmpeg and put it on your PATH; Grid check and the 3D turntable need their own programs, as on any system (see `docs/WHAT-YOU-NEED.md`). To run the tests, use Git Bash: `bash scripts/run-tests.sh`.
+
 `config.json` is gitignored: it carries machine addresses and never belongs in the repo. The
 `test -e ... ||` guard above only creates it if it doesn't already exist, so re-running this
 never clobbers a real one.
