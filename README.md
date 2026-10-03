@@ -20,9 +20,9 @@ installing, and verifying each piece is actually working.
 ### Easiest start
 
 Double-click `start.bat` (Windows), `start.command` (macOS), or run `./start.sh` (Linux) to launch
-Black Wire Forge. On first run the Setup page opens in your browser. You can create an optional
-`start-user.sh` / `start-user.bat` next to the launcher to set a custom Python path or extra
-arguments; see `start-user.example.sh` and `start-user.example.bat`.
+Black Wire Forge. On first run the Setup page opens in your browser. To set a custom Python path or extra
+arguments, copy `start-user.example.sh` (or `start-user.example.bat` on Windows) to the same name
+without "example", next to the launcher, and edit it; the launcher itself never needs editing.
 
     test -e config.json || cp config.example.json config.json   # then put your own hosts in it
     python3 server.py                                            # http://127.0.0.1:3998
