@@ -825,6 +825,15 @@
     border-radius:4px; margin:4px 0}
   #shareBody p{margin-bottom:10px; font-size:13px; color:var(--text-mid)}
   #shareActions{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px}
+  /* Make a music video from this song (the Forge video dialog) */
+  #forgeVideoDialog p{font-size:13px; margin:0 0 10px}
+  #forgeVideoDialog .field-row{max-width:420px}
+  #forgeVideoDialog .field-row input[type="file"]{color:var(--text-mid); font-size:12px; min-height:36px}
+  #forgeVideoDialog .hint{font-size:11px; color:var(--text-mid); margin:0 0 10px; max-width:420px}
+  #forgeVideoDialog progress{display:block; width:100%; max-width:420px; height:8px; margin:0 0 10px}
+  #forgeVideoDialog .btn{margin-right:8px}
+  #forgeVideoDialog a.btn{color:var(--accent); text-decoration:none}
+  #forgeVideoDialog a.btn:hover{color:var(--text-hi)}
   .fixture-badge{font-family:var(--mono); font-size:10px; color:var(--accent); border:1px dashed var(--accent);
     padding:1px 6px; margin-left:6px; text-transform:uppercase}
 
@@ -880,6 +889,8 @@
   #dlLine details{display:inline; margin-left:8px}
   #dlLine summary{display:inline; cursor:pointer; color:var(--accent)}
   #dlLine ul{margin:4px 0 0; padding-left:20px}
+  #forgeVideoNotice{font-size:12px; color:var(--text-mid); padding:4px 16px; border-bottom:1px solid var(--hairline)}
+  #forgeVideoNotice .btn{min-height:28px; margin-left:8px; font-size:12px; padding:0 10px}
 </style>
 </head>
 <body>
@@ -894,6 +905,8 @@
 <!-- W3: while model downloads (started in Setup) run: one line, and a plain list behind "Details". -->
 <div id="dlLine" role="status" hidden><span id="dlText"></span>
   <details id="dlMore"><summary>Details</summary><ul id="dlList"></ul></details></div>
+<div id="forgeVideoNotice" role="status" hidden><span>A music video is being made...</span>
+  <button type="button" class="btn" id="forgeVideoNoticeShow">Show</button></div>
 
 <!-- Rooms by task: built from /api/engines "rooms" (rooms.json + what each
      pack declares), never a fixed list in this markup. -->
@@ -1245,6 +1258,17 @@
     <button class="close-x" type="button" data-close="shareDialog" aria-label="Close">&times;</button>
   </div>
   <div class="dialog-body" id="shareBody"></div>
+</dialog>
+
+<!-- Make a music video from this song: one required input (a photo), one
+     optional line (a style), then Start -- the body is built by the
+     openForgeVideo()/forgeVideoRender() functions, creditsDialog's pattern. -->
+<dialog id="forgeVideoDialog" aria-labelledby="forgeVideoTitle">
+  <div class="dialog-head">
+    <h2 id="forgeVideoTitle">Make a music video from this song</h2>
+    <button class="close-x" type="button" data-close="forgeVideoDialog" aria-label="Close">&times;</button>
+  </div>
+  <div class="dialog-body" id="forgeVideoBody"></div>
 </dialog>
 
 <!-- LORA-1 Build B: the "Browse styles" catalog drawer. Server-driven --
@@ -1845,7 +1869,12 @@ function renderMonitor(){
   const canStart = cutting && STATE.seq && o && o.media === 'image' && job.status === 'done';
   const info = modeInfo(job.kind, job.mode);
   const beforeWords = 'Before ' + ((info && info.post && info.post.words) || 'the finishing step');
+  // Make a music video from this song (owner ruling 2026-10-02, autopilot):
+  // ONLY a finished audio job with a result and a machine picked -- nothing
+  // else offers it, and the dialog is the whole conversation (no questionnaire).
+  const canForgeVideo = o && job.kind === 'audio' && job.status === 'done' && !!STATE.activeLane;
   const actions = (o ? '<button class="btn" id="shareBtn" type="button">Share</button>' : '')
+    + (canForgeVideo ? '<button class="btn" id="forgeVideoBtn" type="button">Make a music video from this song</button>' : '')
     + (before ? '<button class="btn" id="beforeBtn" type="button" aria-pressed="' + (shown === before)
       + '">' + esc(beforeWords) + '</button>' : '')
     + '<button class="btn" id="useAgainBtn" type="button">Use again</button>'
@@ -1893,6 +1922,7 @@ function renderMonitor(){
   // job the monitor is NOW showing, not the last one that forced a write.
   setHTML($('#monitorActions'), actions);
   if($('#shareBtn')) $('#shareBtn').onclick = () => openShare(job, o);
+  if($('#forgeVideoBtn')) $('#forgeVideoBtn').onclick = () => openForgeVideo(job);
   if($('#useAgainBtn')) $('#useAgainBtn').onclick = () => useAgain(job);
   if($('#editResultBtn')) $('#editResultBtn').onclick = () => editResult(job);
   if($('#beforeBtn')) $('#beforeBtn').onclick = () => {
@@ -5250,6 +5280,184 @@ async function openCredits(){
 }
 
 /* ---------------------------------------------------------------------
+   Make a music video from this song (owner ruling 2026-10-02: autopilot).
+   One required input (a photo, uploaded to the lane like the Talking Head
+   face), one optional line (a style), then Start: POST /api/forge/music-video,
+   then poll GET /api/forge/run every 3 s until the run stops being running.
+   OLDER servers have none of these routes -- a 404 is not an error here.
+--------------------------------------------------------------------- */
+const FORGE_VIDEO = {jobId: null, photo: null, style: '', runId: null, timer: null, run: null};
+
+function forgeVideoStageWords(stage){
+  // Plain words for the record's stage -- the stage keys are the machine's
+  // vocabulary, not the person's.
+  return {planning: 'Working out the shots', scenes: 'Writing the scenes',
+          stills: 'Making the pictures', shots: 'Animating the shots',
+          cutting: 'Cutting it together', done: 'Ready'}[stage] || 'Working';
+}
+
+function forgeVideoFormHTML(){
+  return '<p>It plans the shots from the song, makes a picture for each, animates them to the music and cuts it together. You can leave it running.</p>'
+    + '<div class="field-row"><label class="field-label" for="forgeVideoPhoto">A photo of who is in it</label>'
+    + '<input type="file" id="forgeVideoPhoto" accept="image/*"></div>'
+    + '<p class="hint">Only use a photo of someone who agrees to be in it.</p>'
+    + '<div class="field-row"><label class="field-label" for="forgeVideoStyle">Style (optional)</label>'
+    + '<input type="text" id="forgeVideoStyle" maxlength="200" placeholder="e.g. neon carnival at night" value="' + esc(FORGE_VIDEO.style) + '"></div>'
+    + '<p id="forgeVideoMsg" role="status"></p>'
+    + '<button class="btn btn-primary" id="forgeVideoStart" type="button"' + (FORGE_VIDEO.photo ? '' : ' disabled') + '>Start</button>'
+    + '<button class="btn" id="forgeVideoCancel" type="button">Cancel</button>';
+}
+
+function forgeVideoProgressHTML(run){
+  let tail;
+  if(run.status === 'done'){
+    tail = '<p>Your video is ready.</p>'
+      + '<a class="btn" id="forgeVideoCutLink" href="#room=cutting'
+      + (run.sequence ? '&amp;seq=' + encodeURIComponent(run.sequence) : '') + '">Open it in the Cutting Room</a>';
+  } else if(run.status === 'running'){
+    tail = '<button class="btn" id="forgeVideoStop" type="button">Stop</button>';
+  } else {   // error or stopped: the record's own message is the plain answer
+    tail = '<p style="color:var(--error)">' + esc(run.message || run.error || 'It stopped.') + '</p>';
+  }
+  return '<p>' + esc(run.plan_line || '') + '</p>'
+    + '<p class="hint">' + esc(forgeVideoStageWords(run.stage))
+    + (run.message ? ' \u2014 ' + esc(run.message) : '') + '</p>'
+    + '<progress id="forgeVideoBar" value="' + (run.done || 0) + '" max="' + ((run.total || 0) || 1) + '"></progress>'
+    + tail + '<p id="forgeVideoMsg" role="status"></p>';
+}
+
+function forgeVideoRender(){
+  // The progress view is rebuilt whole on every poll: a 3 s tick never tears
+  // down anything long-lived (the form view is not rebuilt by polls at all).
+  const run = FORGE_VIDEO.run;
+  if(!run) return;
+  $('#forgeVideoBody').innerHTML = forgeVideoProgressHTML(run);
+  if($('#forgeVideoStop')) $('#forgeVideoStop').onclick = forgeVideoStop;
+  if($('#forgeVideoCutLink')) $('#forgeVideoCutLink').onclick = () => {
+    // close first, then let the link's hash carry the room switch through the
+    // page's own hashchange handler (the Cutting Room with this sequence).
+    $('#forgeVideoDialog').close();
+  };
+}
+
+function forgeVideoPoll(){
+  FORGE_VIDEO.timer = null;
+  if(!FORGE_VIDEO.runId || !$('#forgeVideoDialog').open) return;
+  fetch('/api/forge/run?id=' + encodeURIComponent(FORGE_VIDEO.runId))
+    .then(r => r.status === 404 ? null : r.json())
+    .then(run => {
+      if(!run || !FORGE_VIDEO.runId || !$('#forgeVideoDialog').open) return;
+      FORGE_VIDEO.run = run;
+      forgeVideoRender();
+      if(run.status === 'running') FORGE_VIDEO.timer = setTimeout(forgeVideoPoll, 3000);
+      else FORGE_VIDEO.runId = null;   // done / error / stopped: the run is over
+    })
+    .catch(() => { FORGE_VIDEO.timer = setTimeout(forgeVideoPoll, 3000); });   // transport noise: try the next tick
+}
+
+function forgeVideoUpload(){
+  const input = $('#forgeVideoPhoto');
+  const msg = $('#forgeVideoMsg');
+  const file = input && input.files && input.files[0];
+  if(!file){ if(msg) msg.textContent = 'Add a photo of who is in the video.'; return; }
+  const lane = STATE.activeLane;
+  const fd = new FormData();
+  fd.append('lane', lane);
+  fd.append('file', file, file.name);
+  fetch('/api/upload', {method:'POST', body: fd})
+    .then(r => r.json())
+    .then(j => {
+      if(!j || !j.ok){ if(msg) msg.textContent = (j && j.error) || 'Could not send the photo.'; return; }
+      FORGE_VIDEO.photo = (j.files && j.files[0] && j.files[0].name) || null;
+      const start = $('#forgeVideoStart');
+      if(start) start.disabled = !FORGE_VIDEO.photo;
+      if(FORGE_VIDEO.photo && msg) msg.textContent = '';
+    })
+    .catch(() => { if(msg) msg.textContent = 'Could not send the photo to ' + activeLaneName() + '.'; });
+}
+
+async function forgeVideoStart(){
+  const fv = FORGE_VIDEO;
+  const msg = $('#forgeVideoMsg');
+  const job = STATE.jobs.find(j => j.id === fv.jobId);
+  if(!job || job.status !== 'done' || !STATE.activeLane){
+    if(msg) msg.textContent = 'Pick a finished song first.';
+    return;
+  }
+  if(!fv.photo){ if(msg) msg.textContent = 'Add a photo of who is in the video.'; return; }
+  let r;
+  try{
+    r = await postJSON('/api/forge/music-video',
+      {lane: STATE.activeLane, song_job: job.id, photo: fv.photo, style: (fv.style || '').trim()});
+  }catch(e){ if(msg) msg.textContent = 'Could not reach the machine.'; return; }
+  if(!r || !r.ok){ if(msg) msg.textContent = (r && r.error) || 'Could not start.'; return; }
+  fv.runId = r.run_id;
+  fv.run = {id: r.run_id, kind: 'music-video', status: 'running', stage: 'planning', message: '',
+            done: 0, total: 0, plan_line: r.plan_line || '', sequence: r.sequence || ''};
+  if(msg) msg.textContent = '';
+  forgeVideoRender();
+  forgeVideoPoll();
+}
+
+async function forgeVideoStop(){
+  const fv = FORGE_VIDEO;
+  if(!fv.runId) return;
+  // The record's own next tick says stopped/error -- keep polling whatever the
+  // answer is, a refused stop still ends in the run's own state.
+  try{ await postJSON('/api/forge/stop', {id: fv.runId}); }catch(e){ /* keep polling */ }
+}
+
+function forgeVideoWireForm(){
+  const photo = $('#forgeVideoPhoto');
+  if(photo) photo.onchange = () => forgeVideoUpload();
+  const style = $('#forgeVideoStyle');
+  if(style) style.oninput = () => { FORGE_VIDEO.style = style.value; };
+  if($('#forgeVideoStart')) $('#forgeVideoStart').onclick = forgeVideoStart;
+  if($('#forgeVideoCancel')) $('#forgeVideoCancel').onclick = () => $('#forgeVideoDialog').close();
+}
+
+function openForgeVideo(job){
+  const fv = FORGE_VIDEO;
+  clearTimeout(fv.timer); fv.timer = null;
+  fv.jobId = job.id;
+  fv.runId = null; fv.run = null;
+  $('#forgeVideoBody').innerHTML = forgeVideoFormHTML();
+  forgeVideoWireForm();
+  $('#forgeVideoDialog').showModal();
+}
+
+function forgeVideoShowRunning(run){
+  // The notice bar's "Show": straight into the progress view, polling resumes.
+  const fv = FORGE_VIDEO;
+  clearTimeout(fv.timer); fv.timer = null;
+  fv.runId = run.id;
+  fv.run = run;
+  forgeVideoRender();
+  $('#forgeVideoDialog').showModal();
+  forgeVideoPoll();
+}
+
+async function checkForgeVideoRunning(){
+  // Once, after the first render: a video started in another tab (or before a
+  // reload) is not orphaned. The dialog's own poll owns everything after.
+  let run = null;
+  try{
+    const r = await fetch('/api/forge/run');
+    if(r.status !== 404){ const j = await r.json(); run = (j && j.id) ? j : null; }   // the bare record, or {run: null} when there is none yet
+  }catch(e){ return; }   // older server without the route: stay quiet
+  if(!run || run.status !== 'running') return;
+  const bar = $('#forgeVideoNotice');
+  bar.hidden = false;
+  const show = $('#forgeVideoNoticeShow');
+  if(show) show.onclick = () => { bar.hidden = true; forgeVideoShowRunning(run); };
+}
+
+$('#forgeVideoDialog').addEventListener('close', () => {   // leaving the dialog cancels the poll; the run itself keeps going
+  clearTimeout(FORGE_VIDEO.timer);
+  FORGE_VIDEO.timer = null;
+});
+
+/* ---------------------------------------------------------------------
    LORA-1 Build B: the "Browse styles" catalog drawer.
 --------------------------------------------------------------------- */
 function humanBytes(n){
@@ -7670,6 +7878,7 @@ async function init(){
   // when the current mode has no prompt field at all.
   focusFirstInput();
   await pollJobs();
+  setTimeout(checkForgeVideoRunning, 1000);   // one quiet look after the first render: is a video already being made?
   setInterval(pollLanes, 3000);
   setInterval(async () => {
     const changed = await loadEnginesFor();
