@@ -152,7 +152,7 @@ try:
         (jobs) => {
           try {
             STATE.jobs = jobs.map(j => Object.assign({}, j));
-            COMPARE_DISMISSED_GROUP = null;
+            COMPARE_DISMISSED_GROUP = null; try{ localStorage.removeItem('bwf.compare.dismissed'); }catch(e){}
             renderComparePanel();
             return {
               ok: true,
@@ -181,7 +181,7 @@ try:
               const t = Date.now() / 1000;
               STATE.jobs = [40, 20, 30].map((v, i) => Object.assign({}, jobs[0],
                 {id: 'ord' + i, created: t + i, compare: {group: 'ordgroup', axis: 'steps', value: v}}));
-              COMPARE_DISMISSED_GROUP = null;
+              COMPARE_DISMISSED_GROUP = null; try{ localStorage.removeItem('bwf.compare.dismissed'); }catch(e){}
               renderComparePanel();
               return Array.from(document.querySelectorAll('.compare-caption')).map(e => e.textContent);
             }""", COMPARE_JOBS)
@@ -194,7 +194,41 @@ try:
               return el === document.querySelector('.compare-cell');
             }""")
             check("An unchanged grid is not rebuilt on the next poll (pictures are not re-downloaded)", same_node)
-            page.evaluate("(jobs) => { STATE.jobs = jobs.map(j => Object.assign({}, j)); COMPARE_DISMISSED_GROUP = null; renderComparePanel(); }", COMPARE_JOBS)
+            page.evaluate("(jobs) => { STATE.jobs = jobs.map(j => Object.assign({}, j)); COMPARE_DISMISSED_GROUP = null; try{ localStorage.removeItem('bwf.compare.dismissed'); }catch(e){} renderComparePanel(); }", COMPARE_JOBS)
+
+            # A comparison of pictures does not belong in another kind of room (it ate the Music room on the live page).
+            other_room = page.evaluate("""
+            (jobs) => {
+              STATE.jobs = jobs.map(j => Object.assign({}, j));
+              COMPARE_DISMISSED_GROUP = null; try{ localStorage.removeItem('bwf.compare.dismissed'); }catch(e){}
+              const cap = STATE.cap; STATE.cap = 'audio'; renderComparePanel();
+              const hiddenThere = $('#comparePanel').hidden;
+              STATE.cap = cap; renderComparePanel();
+              return {hiddenThere, shownHere: !$('#comparePanel').hidden};
+            }""", COMPARE_JOBS)
+            check("The panel is hidden in a room of another kind", other_room.get("hiddenThere") is True, other_room)
+            check("...and shown again in the matching room", other_room.get("shownHere") is True, other_room)
+            # An old comparison is history, not something to put back in front of the person.
+            old_hidden = page.evaluate("""
+            (jobs) => {
+              STATE.jobs = jobs.map(j => Object.assign({}, j, {created: Date.now()/1000 - 7*3600}));
+              renderComparePanel(); const h = $('#comparePanel').hidden;
+              STATE.jobs = jobs.map(j => Object.assign({}, j)); renderComparePanel(); return h;
+            }""", COMPARE_JOBS)
+            check("A comparison older than six hours is not shown again", old_hidden is True)
+            # Six cells must not push the room's input off the screen: the panel is capped and scrolls.
+            tall = page.evaluate("""
+            (jobs) => {
+              const base = jobs[0], t = Date.now()/1000;
+              STATE.jobs = [1,2,3,4,5,6].map(i => Object.assign({}, base, {id:'tall'+i, created: t+i, compare:{group:'tallgroup', axis:'steps', value:i*10}}));
+              COMPARE_DISMISSED_GROUP = null; try{ localStorage.removeItem('bwf.compare.dismissed'); }catch(e){}
+              renderComparePanel();
+              const el = $('#comparePanel');
+              return {h: el.offsetHeight, vh: window.innerHeight, cells: document.querySelectorAll('.compare-cell').length};
+            }""", COMPARE_JOBS)
+            check("Six cells are all there", tall.get("cells") == 6, tall)
+            check("The panel never takes more than 40% of the screen height", tall.get("h", 9999) <= 0.40 * tall.get("vh", 1), tall)
+            page.evaluate("(jobs) => { STATE.jobs = jobs.map(j => Object.assign({}, j)); COMPARE_DISMISSED_GROUP = null; try{ localStorage.removeItem('bwf.compare.dismissed'); }catch(e){} renderComparePanel(); }", COMPARE_JOBS)
 
             # Check Close button hides the panel
             page.click("#comparePanelClose")
@@ -202,6 +236,10 @@ try:
             check("Close hides the compare panel",
                   page.evaluate("() => $('#comparePanel') && $('#comparePanel').hidden"))
 
+            stored = page.evaluate("() => { try{ return localStorage.getItem('bwf.compare.dismissed'); }catch(e){ return 'no-storage'; } }")
+            check("Close remembers the dismissed group in browser storage (it survives a reload)", stored == COMPARE_GROUP, stored)
+            survives = page.evaluate("() => { COMPARE_DISMISSED_GROUP = null; renderComparePanel(); return $('#comparePanel').hidden; }")
+            check("A reload (variable reset) still keeps it dismissed", survives is True)
             # A fresh poll shouldn't re-show the same group
             page.evaluate("() => { pollJobs(); }")
             page.wait_for_timeout(500)

@@ -494,13 +494,13 @@
   .compare-row{display:flex; gap:8px; align-items:center; margin:6px 0}
   .compare-row label{font-size:13px; min-width:60px; color:var(--text-mid)}
   .compare-row input, .compare-row select{flex:1; min-width:0}
-  #comparePanel{padding:16px; margin:12px 0}
+  #comparePanel{padding:10px 16px; margin:0; max-height:34vh; overflow:auto; border-top:1px solid var(--divider)}
   #comparePanelTitle{margin:0 0 8px; font-size:15px}
-  .compare-grid{display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; margin-bottom:12px}
+  .compare-grid{display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:10px; margin-bottom:8px}
   .compare-cell{background:var(--panel); border:1px solid var(--divider); padding:8px; display:flex; flex-direction:column; gap:6px}
   .compare-cell .compare-caption{font-size:13px; color:var(--text-mid); font-weight:500}
-  .compare-cell .compare-thumb{min-height:100px; display:flex; align-items:center; justify-content:center; overflow:hidden}
-  .compare-cell .compare-thumb img, .compare-cell .compare-thumb video{max-width:100%; max-height:200px}
+  .compare-cell .compare-thumb{min-height:60px; display:flex; align-items:center; justify-content:center; overflow:hidden}
+  .compare-cell .compare-thumb img, .compare-cell .compare-thumb video{max-width:100%; max-height:120px}
   #comparePanelClose{margin-top:4px}
 
   /* ---- footer / activity ---- */
@@ -5012,6 +5012,15 @@ async function handleMake(confirm){
    Compare box: sweep one setting across 2-6 values.
 --------------------------------------------------------------------- */
 let COMPARE_DISMISSED_GROUP = null;  // group id to hide until a newer one appears
+const COMPARE_RECENT_SECONDS = 6 * 3600;   // an older comparison is history, not something to put in front of you again
+// The dismissed group is remembered across reloads (a per-viewer convenience: browser storage may be off, then it is per page load).
+function compareDismissed(){
+  try{ return localStorage.getItem('bwf.compare.dismissed') || COMPARE_DISMISSED_GROUP; }catch(e){ return COMPARE_DISMISSED_GROUP; }
+}
+function compareDismiss(group){
+  COMPARE_DISMISSED_GROUP = group;
+  try{ localStorage.setItem('bwf.compare.dismissed', group); }catch(e){}
+}
 
 function isCompareVisible(){
   const mode = currentMode();
@@ -5125,13 +5134,17 @@ function renderComparePanel(){
   const panel = $('#comparePanel');
   if(!panel) return;
   // Find jobs with compare tags
-  const compareJobs = STATE.jobs.filter(j => j.compare && j.compare.group);
+  // Only comparisons of the kind this room makes (a picture comparison does not belong in the Music room),
+  // and only recent ones.
+  const now = Date.now() / 1000;
+  const compareJobs = STATE.jobs.filter(j => j.compare && j.compare.group && j.kind === STATE.cap
+                                              && (!j.created || now - j.created < COMPARE_RECENT_SECONDS));
   if(!compareJobs.length){ panel.hidden = true; return; }
   // Determine the most recent group
   compareJobs.sort((a, b) => (b.created || 0) - (a.created || 0));
   const latestGroup = compareJobs[0].compare.group;
   // If we've dismissed this group, hide the panel
-  if(COMPARE_DISMISSED_GROUP === latestGroup){ panel.hidden = true; return; }
+  if(compareDismissed() === latestGroup){ panel.hidden = true; return; }
   // Find the matching axis label
   const latest = compareJobs[0];
   const axis = latest.compare.axis;
@@ -5192,10 +5205,10 @@ function renderComparePanel(){
 
 $('#comparePanelClose').onclick = () => {
   const panel = $('#comparePanel');
-  const compareJobs = STATE.jobs.filter(j => j.compare && j.compare.group);
+  const compareJobs = STATE.jobs.filter(j => j.compare && j.compare.group && j.kind === STATE.cap);
   if(compareJobs.length){
     compareJobs.sort((a, b) => (b.created || 0) - (a.created || 0));
-    COMPARE_DISMISSED_GROUP = compareJobs[0].compare.group;
+    compareDismiss(compareJobs[0].compare.group);
   }
   panel.hidden = true;
 };
