@@ -7647,6 +7647,24 @@ def _measure_true_peak(path, timeout=120):
         return None
 
 
+_CFR_ARGS = None
+
+def _cfr_args():
+    """The constant-frame-rate flag this ffmpeg understands: -fps_mode cfr on 5.1 and newer, -vsync cfr on older ones
+    (4.4 has no -fps_mode; the newest builds have no -vsync). Decided once, by asking the installed ffmpeg."""
+    global _CFR_ARGS
+    if _CFR_ARGS is None:
+        try:
+            r = subprocess.run([FFMPEG_BIN, "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i",
+                                "nullsrc=s=16x16:d=0.1", "-fps_mode", "cfr", "-f", "null", "-"],
+                               capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
+            ok = (r.returncode == 0)
+        except (OSError, subprocess.SubprocessError):
+            ok = False
+        _CFR_ARGS = ["-fps_mode", "cfr"] if ok else ["-vsync", "cfr"]
+    return list(_CFR_ARGS)
+
+
 def _run_cut(sid, cut_id, clip_plans, bed_path, out_path, out_w, out_h, song_plan=None, audio_led=False, master_start=0.0):
     """The whole ffmpeg build, off the request thread (R8). ffmpeg always
     runs as an argv list, never a shell. Any failure -- ffmpeg's own
@@ -7819,8 +7837,9 @@ def _run_cut(sid, cut_id, clip_plans, bed_path, out_path, out_w, out_h, song_pla
                      "-map", "[vcat]", "-map", "[afinal]",
                      "-map_metadata", "-1",
                      "-c:v", "libx264", "-pix_fmt", "yuv420p",
-                     "-c:a", "aac",
-                     "-vsync", "cfr", "-r", "24",
+                     "-c:a", "aac"]
+            args += _cfr_args()
+            args += ["-r", "24",
                      "-movflags", "+faststart",
                      out_path]
             return subprocess.run(args, capture_output=True, text=True,
