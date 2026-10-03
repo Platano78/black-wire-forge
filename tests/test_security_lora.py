@@ -275,7 +275,8 @@ _old_run_lora_download(lane_red3, u3, F3_DEST, 1 << 20,
 with red.DOWNLOAD_LOCK:
     err_red = red.DOWNLOADS["l3red"]["error"]
 check("RED (pre-fix): the absolute loras_dir path IS present in the client-visible error",
-      RO_DIR in err_red, err_red)
+      (RO_DIR in err_red or RO_DIR.replace("\\", "\\\\") in err_red),   # OSError's text repr()s the path: doubled backslashes on Windows
+      err_red)
 httpd3.shutdown()
 
 httpd3b, u3b = _serve_bytes(b"x" * 100)

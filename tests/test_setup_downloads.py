@@ -711,7 +711,7 @@ def g4_http():
     except (OSError, ValueError):
         saved = {"queue": []}
     check("downloads.json holds the file, its dest, expected size and state",
-          [(e["file"], e["dest"], e["expected"], e["state"]) for e in saved["queue"]]
+          [(e["file"], e["dest"].replace("\\", "/"), e["expected"], e["state"]) for e in saved["queue"]]
           == [(UP["file"], "upscale_models/" + UP["file"], UP["size"], "running")], saved["queue"])
     n = len(HF.log)
     HF.slow_sleep = 0.0
