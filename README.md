@@ -239,6 +239,7 @@ which file is used.
 
 - `docs/ARCHITECTURE.md` — lanes, discovery, packs, rooms, jobs, sequences and the cut
 - `docs/WRITING-A-PACK.md` — how to add an engine
+- `docs/WHAT-YOU-NEED.md` — what each opt-in feature needs (external deps, models, ffmpeg, etc.)
 
 ## Testing
 
