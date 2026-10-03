@@ -5,7 +5,7 @@ as it does to a proxied one.
 
 Run: python3 tests/test_local_outputs.py
 """
-import importlib.util, os, shutil, sys, types
+import importlib.util, os, shutil, sys, tempfile, types
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -129,7 +129,8 @@ esc_rel = os.path.realpath(_unguarded_write("job_red_rel", "../escape_rel.png"))
 check("RED: a relative '../' out_name escapes its own job directory",
       esc_rel == rel_escape_target, esc_rel)
 
-abs_escape_target = "/tmp/bwf_escape_abs_%d.png" % os.getpid()
+abs_escape_target = os.path.join(os.path.abspath(tempfile.gettempdir()),
+                                "bwf_escape_abs_%d.png" % os.getpid())
 esc_abs = _unguarded_write("job_red_abs", abs_escape_target)
 check("RED: an absolute out_name discards the job directory entirely (os.path.join's own semantics)",
       esc_abs == abs_escape_target, esc_abs)

@@ -148,7 +148,7 @@ try:
         video_slot["takes"].append({
             "job_id": "thumbjob1", "made": now, "beat_rev": None,
             "inputs": {"refs": [], "cables": {}},
-            "file": os.path.join("takes", "thumbjob1.mp4")})
+            "file": "takes/thumbjob1.mp4"})
         video_slot["pick"] = "thumbjob1"
         srv._seq_write(seq)
     r1 = row(sid1)

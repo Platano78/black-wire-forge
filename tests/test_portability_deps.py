@@ -27,6 +27,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
 
+import runner
+VENV_PY = runner.venv_python_hint()
+
 FAILED = []
 
 
@@ -101,7 +104,7 @@ check("pixelart mode is still listed", pixelart_mode is not None, body.get("imag
 if pixelart_mode:
     check("pixelart reports unavailable", pixelart_mode.get("available") is False, pixelart_mode)
     sentence = ("Pixel art needs the numpy and Pillow Python packages: "
-                "python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt")
+                "python3 -m venv .venv && " + VENV_PY + " -m pip install -r requirements.txt")
     check("pixelart's missing list carries the fix sentence",
           sentence in (pixelart_mode.get("missing") or []), pixelart_mode.get("missing"))
 
@@ -115,7 +118,7 @@ try:
 finally:
     builtins.__import__ = _real_import
 check("_pil()'s Pillow-missing message leads with a venv, not a bare pip install",
-      bool(pil_err) and ".venv/bin/python -m pip install Pillow" in pil_err,
+      bool(pil_err) and (VENV_PY + " -m pip install Pillow") in pil_err,
       pil_err)
 
 HTTPD.shutdown()

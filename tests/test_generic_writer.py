@@ -330,7 +330,7 @@ for label, answers in (("five answers", FOUR + [{"q": "x", "a": "y"}]), ("not a 
 print("ratchet")
 PAT = r"qwen|minimax|h3_|ace.step|\byue\b|trellis|ltx|birefnet|esrgan|sdxl|rife"
 check("ratchet: the generic contract names no engine", not re.search(PAT, srv.GENERIC_WRITER_TASK, re.I))
-r = subprocess.run(["bash", os.path.join(ROOT, "scripts", "check-engine-independence.sh")], cwd=ROOT,
+r = subprocess.run(["bash", "scripts/check-engine-independence.sh"], cwd=ROOT,
                    capture_output=True, text=True)
 check("ratchet: check-engine-independence.sh passes", r.returncode == 0, r.stdout + r.stderr)
 

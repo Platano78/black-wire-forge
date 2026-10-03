@@ -165,7 +165,7 @@ ENGINE_TOKENS = {p["id"] for p in engines.packs() if p["id"] not in engines.caps
 }
 ENGINE_NAME = re.compile(r"\b(" + "|".join(re.escape(t) for t in ENGINE_TOKENS) + r")\b", re.I)
 PLUMBING = re.compile(r"\b(pipeline|model|workflow|cfg|vae|sampler|scheduler|latent|checkpoint|lora)s?\b", re.I)
-raw = json.load(open(os.path.join(ROOT, "rooms.json")))
+raw = json.load(open(os.path.join(ROOT, "rooms.json"), encoding="utf-8"))
 for r in raw:
     for k in ("name", "group", "blurb", "empty"):
         v = r.get(k) or ""
@@ -189,7 +189,7 @@ ENG = os.path.join(ROOT, "engines")
 for fn in sorted(os.listdir(ENG)):
     if not fn.endswith(".py") or fn.startswith("_"):
         continue
-    src = open(os.path.join(ENG, fn)).read()
+    src = open(os.path.join(ENG, fn), encoding="utf-8").read()
     m = re.search(r'"mode_notes":\s*\{(.*?)\n    \}', src, re.S)
     if not m:
         continue

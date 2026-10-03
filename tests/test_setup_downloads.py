@@ -140,7 +140,9 @@ def g1():
     ro = models_folder("m1ro")
     os.chmod(ro, 0o555)
     try:
-        if hasattr(os, "geteuid") and os.geteuid() == 0:
+        if os.name == "nt":
+            print("  SKIP  a folder that cannot be written to is refused, saying so (POSIX-only)")
+        elif hasattr(os, "geteuid") and os.geteuid() == 0:
             print("  SKIP  the non-writable folder check: running as root, who can write anywhere")
         else:
             real, why = srv._models_folder_check(ro)
@@ -189,7 +191,7 @@ def g2():
     srv._dl_load()
     q, parts = srv.MODEL_DL["queue"], srv.MODEL_DL["parts"]
     check("an edited downloads.json: the entry's folder and dest come from the manifest, not the file",
-          len(q) == 1 and q[0]["dest"] == "upscale_models/RealESRGAN_x4plus.pth"
+          len(q) == 1 and q[0]["dest"].replace("\\", "/") == "upscale_models/RealESRGAN_x4plus.pth"
           and q[0]["folder"] == "upscale_models", q)
     check("... an entry that is not a manifest file, or not at its manifest size, is dropped", len(q) == 1, q)
     check("... .part records that are only a path (no identity), or outside the models folder, are dropped",
@@ -232,7 +234,10 @@ def g_rev_a():
     v = {"repo": "owner/v", "file": "v.safetensors", "folder": "vae"}
     serve_as(v, 100)
     try:
-        if hasattr(os, "geteuid") and os.geteuid() == 0:
+        if os.name == "nt":
+            print("  SKIP  a symlinked subfolder whose target cannot be written to: refused with a sentence "
+                  "(POSIX-only)")
+        elif hasattr(os, "geteuid") and os.geteuid() == 0:
             print("  SKIP  the not-writable link target: running as root, who can write anywhere")
         else:
             state, why = one(root, entry(v, 100))

@@ -261,7 +261,10 @@ RO_DIR = tempfile.mkdtemp(prefix="bwf_sec3_")
 # NAME_MAX instead: open() raises "File name too long: '<full path>'" for
 # every user, and the folder itself exists, so it fails inside the download's
 # own try, exactly where a permission error would.
-F3_DEST = os.path.join(RO_DIR, "s" * 300 + ".safetensors")
+# Windows caps the WHOLE path at 260 chars and raises [Errno 22] well before
+# that, so on nt the name is shortened to keep the full path under 200.
+_F3_REPEAT = 300 if os.name != "nt" else max(8, 200 - len(RO_DIR) - len(".safetensors") - 2)
+F3_DEST = os.path.join(RO_DIR, "s" * _F3_REPEAT + ".safetensors")
 httpd3, u3 = _serve_bytes(b"x" * 100)
 lane_red3 = make_lane(red, "l3red", RO_DIR)
 _old_run_lora_download(lane_red3, u3, F3_DEST, 1 << 20,

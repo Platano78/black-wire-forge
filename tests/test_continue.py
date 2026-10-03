@@ -538,7 +538,7 @@ else:
 # ===========================================================================
 print("\nK7: the engine-independence ratchet script exits 0")
 
-rc = subprocess.run(["bash", os.path.join(ROOT, "scripts", "check-engine-independence.sh")],
+rc = subprocess.run(["bash", "scripts/check-engine-independence.sh"],
                      cwd=ROOT, capture_output=True, text=True)
 check("K7: scripts/check-engine-independence.sh exits 0", rc.returncode == 0,
       (rc.returncode, rc.stdout[-800:], rc.stderr[-800:]))

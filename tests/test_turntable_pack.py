@@ -205,7 +205,8 @@ check("resolve: no unresolved placeholders",
 check("resolve: step 1 argv[0] is the blender bin", steps[0]["argv"][0] == "/x/blender",
       repr(steps[0]["argv"][:1]))
 check("resolve: blender script path is the real file",
-      any(t == os.path.abspath(script) for s in steps for t in s["argv"]), repr(steps[0]))
+      any(os.path.normpath(t) == os.path.normpath(os.path.abspath(script))
+          for s in steps for t in s["argv"]), repr(steps[0]))
 check("resolve: input staged path made it into argv",
       any(t == "/tmp/x.glb" for s in steps for t in s["argv"]))
 

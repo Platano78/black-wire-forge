@@ -127,7 +127,7 @@ CONFIG = os.path.join(SCRATCH, "config.json")
 
 API_PORT = free_port()   # bound below: the B1 guard checks Host against the
                          # config port, so the server must listen on it
-with open(CONFIG, "w") as f:
+with open(CONFIG, "w", encoding="utf-8") as f:
     json.dump({
         "port": API_PORT, "bind": "127.0.0.1", "title": "l5",
         "timing": {"poll_seconds": 30, "job_poll_seconds": 30},
@@ -261,7 +261,7 @@ DATA3 = os.path.join(SCRATCH3, "data")
 os.makedirs(DATA3)
 CONFIG3 = os.path.join(SCRATCH3, "config.json")
 API_PORT3 = free_port()
-with open(CONFIG3, "w") as f:
+with open(CONFIG3, "w", encoding="utf-8") as f:
     json.dump({"port": API_PORT3, "bind": "127.0.0.1", "title": "l5-deadhelper",
                "timing": {"poll_seconds": 30, "job_poll_seconds": 30},
                "lanes": [{"id": "c1", "name": "Comfy lane", "host": "127.0.0.1",
@@ -332,7 +332,7 @@ DATA2 = os.path.join(SCRATCH2, "data")
 os.makedirs(DATA2)
 CONFIG2 = os.path.join(SCRATCH2, "config.json")
 API_PORT2 = free_port()
-with open(CONFIG2, "w") as f:
+with open(CONFIG2, "w", encoding="utf-8") as f:
     json.dump({"port": API_PORT2, "bind": "127.0.0.1", "title": "l5-nohelper",
                "timing": {"poll_seconds": 30, "job_poll_seconds": 30},
                "lanes": [{"id": "c1", "name": "Comfy lane", "host": "127.0.0.1",
@@ -376,7 +376,7 @@ for pack in srv.engines.packs():
         path = srv.engines._PACK_FILES.get(pack["id"])
         if not (guide and path):
             continue
-        src = open(path).read()
+        src = open(path, encoding="utf-8").read()
         i = src.find('"prompt_guides"')
         block = src[i:i + 4000] if i >= 0 else ""
         check("%s/%s: pack file cites # source: near its guides" % (cap, mode),

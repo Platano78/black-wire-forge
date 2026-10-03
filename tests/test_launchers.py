@@ -51,8 +51,9 @@ for f in ["start.sh", "start.command", "start.bat",
 # ---- Syntax checks ----
 print("Syntax checks")
 for f in ["start.sh", "start.command"]:
-    path = os.path.join(ROOT, f)
-    r = subprocess.run(["bash", "-n", path], capture_output=True)
+    # the path is relative and cwd is the repo root on purpose: Git Bash eats the
+    # backslashes of an absolute C:\... path passed on the command line
+    r = subprocess.run(["bash", "-n", f], cwd=ROOT, capture_output=True)
     check("bash -n %s clean" % f, r.returncode == 0, r.stderr.decode("utf-8", "replace")[:200])
 
 # ---- Executable bits ----
@@ -120,6 +121,8 @@ with open(os.environ.get("BWF_MARKER_FILE", "/dev/null"), "a") as f:
         f.write(url + "\\n")
 ''')
 os.chmod(stub_browser, 0o755)
+# BROWSER is a command line for webbrowser on every platform; on Windows a .py file is not directly executable.
+BROWSER_CMD = stub_browser if os.name != "nt" else '"%s" "%s" %%s' % (sys.executable, stub_browser)
 
 
 def run_server(open_flag=False, env_extra=None, timeout=6):
@@ -171,7 +174,7 @@ try:
     else:
         open_url = None
         proc, _, _, _ = run_server(open_flag=True, env_extra={
-            "BROWSER": stub_browser,
+            "BROWSER": BROWSER_CMD,
             "BWF_MARKER_FILE": BROWSER_MARKER,
         })
         PROC1 = proc
@@ -215,7 +218,7 @@ if os.path.exists(BROWSER_MARKER):
 # Test 2: without --open, marker should never appear
 try:
     proc, _, _, _ = run_server(open_flag=False, env_extra={
-        "BROWSER": stub_browser,
+        "BROWSER": BROWSER_CMD,
         "BWF_MARKER_FILE": BROWSER_MARKER,
     })
     PROC2 = proc
@@ -255,7 +258,7 @@ if os.path.exists(BROWSER_MARKER):
 # Test 3: BWF_OPENED=1 should prevent opening even with --open
 try:
     proc, _, _, _ = run_server(open_flag=True, env_extra={
-        "BROWSER": stub_browser,
+        "BROWSER": BROWSER_CMD,
         "BWF_MARKER_FILE": BROWSER_MARKER,
         "BWF_OPENED": "1",
     })
@@ -325,10 +328,13 @@ if port_free(3998):
     with open(stub2, "w") as f2:
         f2.write("#!/usr/bin/env python3\nimport sys\nopen(%r, 'a').write(' '.join(sys.argv[1:]) + chr(10))\n" % marker)
     os.chmod(stub2, 0o755)
-    envr = dict(os.environ, GENCENTER_CONFIG=os.path.join(d, "none.json"), GENCENTER_DATA=os.path.join(d, "data"), BROWSER=stub2)
+    envr = dict(os.environ, GENCENTER_CONFIG=os.path.join(d, "none.json"), GENCENTER_DATA=os.path.join(d, "data"), BROWSER=(stub2 if os.name != "nt" else '"%s" "%s" %%s' % (sys.executable, stub2)))
     envr.pop("BWF_OPENED", None)
     logf = os.path.join(ROOT, "start.log")
-    sp = subprocess.Popen(["bash", os.path.join(ROOT, "start.sh")], cwd=d, env=envr, stdin=subprocess.DEVNULL,
+    # relative to cwd=d, forward-slashed: Git Bash eats the backslashes of an
+    # absolute C:\... path passed on the command line
+    start_sh = os.path.relpath(os.path.join(ROOT, "start.sh"), d).replace(os.sep, "/")
+    sp = subprocess.Popen(["bash", start_sh], cwd=d, env=envr, stdin=subprocess.DEVNULL,
                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     try:
         t_end = time.monotonic() + 12
@@ -341,13 +347,20 @@ if port_free(3998):
               os.path.exists(logf) and "set up" in open(logf, errors="replace").read())
     finally:
         try:
-            os.killpg(sp.pid, 15)
+            if hasattr(os, "killpg"):
+                os.killpg(sp.pid, 15)
+            else:
+                sp.terminate()
         except OSError:
             pass
         try:
             sp.wait(10)
         except subprocess.TimeoutExpired:
-            os.killpg(sp.pid, 9)
+            if hasattr(os, "killpg"):
+                os.killpg(sp.pid, 9)
+            else:
+                sp.kill()
+            sp.wait()
         if os.path.exists(os.path.join(ROOT, "start.log")):
             os.remove(os.path.join(ROOT, "start.log"))
 else:

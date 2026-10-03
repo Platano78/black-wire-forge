@@ -13,6 +13,7 @@ Run: python3 tests/test_model_sources.py
 """
 import importlib.util
 import os
+import posixpath
 import re
 import sys
 
@@ -65,7 +66,9 @@ def table_rows():
         m = re.search(r"`([^`]+)` · `([^`]+)`((?: \+ `[^`]+`)*)", src)
         files = [m.group(2)] + re.findall(r"`([^`]+)`", m.group(3))
         # "a/b.safetensors + c.safetensors": a later file shares the first one's folder in the repo
-        files = [files[0]] + [os.path.join(os.path.dirname(files[0]), f) for f in files[1:]]
+        # these are repo-relative names written with "/" in MODELS.md and in the packs,
+        # never OS paths -- on Windows os.path.join would write a backslash and miss
+        files = [files[0]] + [posixpath.join(posixpath.dirname(files[0]), f) for f in files[1:]]
         sizes = [int(s.replace(",", "").strip()) for s in row["HF size"].split("+")]
         fm = re.match(r"`models/([^/`]+)/?([^`]*?)/?` \(`([A-Za-z0-9]+)`", row["ComfyUI folder"])
         lic = re.search(r"\(([A-Za-z0-9.\-]+)\)", src[m.end():])

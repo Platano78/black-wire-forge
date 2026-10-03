@@ -104,7 +104,7 @@ def start_server(name, with_helper):
            "lanes": [{"id": "c1", "name": "Comfy lane", "host": "127.0.0.1", "port": 1, "caps": ["image"]}]}
     if with_helper:
         cfg["helper"] = {"url": "http://127.0.0.1:%d/v1" % HELPER_PORT, "model": "test-model", "timeout_s": 2}
-    with open(cfg_path, "w") as f:
+    with open(cfg_path, "w", encoding="utf-8") as f:
         json.dump(cfg, f)
     os.environ["GENCENTER_CONFIG"] = cfg_path
     os.environ["GENCENTER_DATA"] = os.path.join(scratch, "data")
@@ -210,7 +210,7 @@ check("guide files: no live-trial, README or no-brain.txt ships", not [
 print("loader: a broken guide is refused with a sentence naming the file")
 tmp = tempfile.mkdtemp(prefix="bwf_guides_broken_")
 rooms_path = os.path.join(tmp, "rooms.json")
-with open(rooms_path, "w") as f:
+with open(rooms_path, "w", encoding="utf-8") as f:
     json.dump([{"id": "cutting", "kind": "cutting", "guide": "film"}], f)
 try:
     guides.load_all(rooms_path, os.path.join(tmp, "guides"))
@@ -219,20 +219,20 @@ except guides.GuideError as e:
     check("loader: missing guide.json refused, naming the file", "guide.json" in str(e), str(e))
 os.makedirs(os.path.join(tmp, "guides", "film"))
 for fname in ("film.persona.json", "system-prompt.txt", "system-prompt-verbose.txt", "knowledge.md"):
-    with open(os.path.join(tmp, "guides", "film", fname), "w") as f:
+    with open(os.path.join(tmp, "guides", "film", fname), "w", encoding="utf-8") as f:
         f.write(read("guides/film/" + fname))
 bad = dict(META, caps={"compact": {"max_tokens": 0, "answer_chars": 10},
                        "verbose": {"max_tokens": 1, "answer_chars": 1}})
-with open(os.path.join(tmp, "guides", "film", "guide.json"), "w") as f:
+with open(os.path.join(tmp, "guides", "film", "guide.json"), "w", encoding="utf-8") as f:
     json.dump(bad, f)
 try:
     guides.load_all(rooms_path, os.path.join(tmp, "guides"))
     check("loader: a zero cap is refused", False, "no error")
 except guides.GuideError as e:
     check("loader: a zero cap is refused", "caps.compact" in str(e), str(e))
-with open(os.path.join(tmp, "guides", "film", "guide.json"), "w") as f:
+with open(os.path.join(tmp, "guides", "film", "guide.json"), "w", encoding="utf-8") as f:
     json.dump(META, f)
-open(os.path.join(tmp, "guides", "film", "knowledge.md"), "w").close()
+open(os.path.join(tmp, "guides", "film", "knowledge.md"), "w", encoding="utf-8").close()
 try:
     guides.load_all(rooms_path, os.path.join(tmp, "guides"))
     check("loader: an empty knowledge file is refused", False, "no error")
@@ -322,7 +322,7 @@ HELPER_STATE["props"] = None
 print("startup: a helper.context that is not a whole number of tokens is refused")
 bad_dir = tempfile.mkdtemp(prefix="bwf_guides_badctx_")
 bad_cfg = os.path.join(bad_dir, "config.json")
-with open(bad_cfg, "w") as f:
+with open(bad_cfg, "w", encoding="utf-8") as f:
     json.dump({"port": free_port(), "bind": "127.0.0.1",
                "lanes": [{"id": "c1", "name": "Comfy lane", "host": "127.0.0.1", "port": 1, "caps": ["image"]}],
                "helper": {"url": "http://127.0.0.1:1/v1", "context": "big"}}, f)
