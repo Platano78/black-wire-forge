@@ -515,7 +515,9 @@ try:
 
         down_job = None
         diag = None
-        for attempt in range(1, 4):
+        # a few more tries than strictly needed on Linux: killing the fake lane's process tree is slower on
+        # Windows, so the job more often finishes first (the legitimate race this loop retries)
+        for attempt in range(1, 7):
             if attempt > 1:
                 restart_fake()
             attempt_t = time.time()
