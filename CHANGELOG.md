@@ -2,6 +2,12 @@
 
 All notable changes to Black Wire Forge are recorded here.
 
+## Unreleased
+
+### Added
+
+- **Guide on / off.** A switch in the guide's header (shown when a guide model is set up) turns the guide off in this browser, for every room. Off, the room works exactly as with no guide model: the prompt box is the main field and Make sends exactly what you typed; nothing is sent to the guide model. The choice is remembered per browser. On a phone, the guide's name now has its own line so the switch fits.
+
 ## v1.2.1 — 2026-10-03
 
 ### Security
