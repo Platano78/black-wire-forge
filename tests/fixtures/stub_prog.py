@@ -30,7 +30,7 @@ def main():
             print("ARG %s" % arg, flush=True)
     if a.spawn_child:
         # A child in the same process group: a group kill must take it down.
-        child = subprocess.Popen(["sleep", "300"])
+        child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(300)"])
         print("CHILD %d" % child.pid, flush=True)
         time.sleep(300)
     if a.sleep_s:

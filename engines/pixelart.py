@@ -44,6 +44,8 @@ import os
 import re
 import tempfile
 
+import runner        # repo-root module: the cross-platform .venv python path,
+                    # used only by the install hint below
 from . import _quantise
 from .qwen_image import STYLE_FIELDS, qwen_edit_graph, qwen_t2i_graph
 
@@ -259,7 +261,7 @@ def _deps_reason():
     what makes this a `mode_deps` check rather than a per-lane model role."""
     return None if _quantise.DEPS_OK else (
         "Pixel art needs the numpy and Pillow Python packages: python3 -m venv .venv && "
-        ".venv/bin/python -m pip install -r requirements.txt")
+        "%s -m pip install -r requirements.txt" % runner.venv_python_hint())
 
 
 ENGINE = {

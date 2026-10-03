@@ -92,10 +92,19 @@ if m:
     child = int(m.group(1))
     dead = False
     deadline = time.monotonic() + 7
-    while time.monotonic() < deadline:
+    def alive(pid):
+        if os.name == "nt":      # os.kill(pid, 0) would TERMINATE the process on Windows
+            import subprocess
+            out = subprocess.run(["tasklist", "/FI", "PID eq %d" % pid, "/NH"],
+                                 capture_output=True, text=True).stdout
+            return str(pid) in out
         try:
-            os.kill(child, 0)
+            os.kill(pid, 0)
         except ProcessLookupError:
+            return False
+        return True
+    while time.monotonic() < deadline:
+        if not alive(child):
             dead = True
             break
         time.sleep(0.2)

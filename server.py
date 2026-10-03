@@ -310,12 +310,18 @@ if not isinstance(_CUT_CONFIG, dict):
     die("\"cut\" in %s must be an object if present." % CONFIG_FILE)
 
 # A handful of default DejaVu/Liberation paths -- what finding 9 measured as
-# installed on the machine that runs the app. config.cut.fontfile, when set, always wins.
+# installed on the machine that runs the app, plus the macOS and Windows
+# equivalents, which are simply skipped when absent. config.cut.fontfile,
+# when set, always wins.
 _DEFAULT_CUT_FONTS = (
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
     "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
     "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+    "/System/Library/Fonts/Supplemental/Arial.ttf",
+    "/Library/Fonts/Arial.ttf",
+    "C:/Windows/Fonts/arial.ttf",
+    "C:/Windows/Fonts/segoeui.ttf",
 )
 
 
@@ -4433,7 +4439,7 @@ def _pil():
         raise RuntimeError(
             "Picture -> video needs Pillow for the image fit step. "
             "Install it with: python3 -m venv .venv && "
-            ".venv/bin/python -m pip install Pillow"
+            "%s -m pip install Pillow" % runner.venv_python_hint()
         )
 
 
@@ -7464,8 +7470,14 @@ def _ff_quote(value):
     """Single-quote a filter-option value (a path we built ourselves, never
     user text -- title text goes through drawtext's `textfile` instead, see
     _title_filter). Guards the rare case of a configured fontfile path
-    holding a space or colon."""
-    return "'" + str(value).replace("'", "'\\''") + "'"
+    holding a space or colon. ffmpeg's filter syntax reads `:` as its
+    option separator, so a Windows drive path gets forward slashes and an
+    escaped drive colon; any other path comes back exactly as before."""
+    text = str(value)
+    if re.match(r"^[A-Za-z]:[\\/]", text):      # a Windows drive path, and only that
+        text = text.replace("\\", "/")
+        text = text[0] + "\\:" + text[2:]
+    return "'" + text.replace("'", "'\\''") + "'"
 
 
 def _title_filter(title):

@@ -2,6 +2,14 @@
 
 All notable changes to Black Wire Forge are recorded here.
 
+## Unreleased
+
+### Fixed
+
+- Process lanes (Grid check, the 3D turntable) no longer crash on Windows. The runner used POSIX-only process calls, which Windows refuses with "preexec_fn is not supported on Windows platforms"; it now starts a new process group and stops a job's whole process tree with `taskkill` there. Linux behaviour is unchanged. Checked on Windows 11 with Python 3.13: the README quick start (venv, install, start, every page answers) and the runner tests, including stopping a job and its child. The full test suite and the Grid check itself were not run on Windows.
+- Title text in a cut: macOS and Windows system fonts are now tried when no Linux font is found, and a Windows font path is escaped correctly for ffmpeg.
+- The Pillow and numpy install hints print the right virtual-environment path on Windows.
+
 ## v1.2.0 — 2026-10-03
 
 ### Added

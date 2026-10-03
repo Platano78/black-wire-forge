@@ -18,6 +18,25 @@ import threading
 import time
 from collections import deque
 
+# Windows has no process groups in the POSIX sense: `preexec_fn`, os.nice
+# and os.killpg are refused or missing there, so the lane is started with
+# CREATE_NEW_PROCESS_GROUP and stopped with taskkill instead. Everything
+# POSIX stays on the POSIX path, byte for byte.
+IS_WINDOWS = os.name == "nt"
+
+# The Windows value of the constant, so this module also loads (and the
+# Windows branch can be exercised in a test) on a POSIX box.
+CREATE_NEW_PROCESS_GROUP = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200)
+
+
+def venv_python_hint():
+    """The interpreter of the project's .venv, as a printed install hint.
+
+    POSIX keeps .venv/bin/python; Windows puts the shims in Scripts.
+    """
+    return ".venv\\Scripts\\python" if IS_WINDOWS else ".venv/bin/python"
+
+
 # The two token shapes the spec allows, and the shape that catches every
 # OTHER {word} / {word:word} so it can be refused loudly. Known tokens
 # must come first in the alternation so {job} / {bin:x} never fall
@@ -115,27 +134,43 @@ def run_steps(steps, cwd, progress=None, on_progress=None, stop_event=None):
     tail = deque(maxlen=20)
 
     def kill_group(proc):
-        try:
-            os.killpg(proc.pid, signal.SIGTERM)
-        except OSError:
-            pass
+        if IS_WINDOWS:
+            # /T takes the whole tree down, /F skips the polite ask.
+            try:
+                subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except OSError:
+                pass
+        else:
+            try:
+                os.killpg(proc.pid, signal.SIGTERM)
+            except OSError:
+                pass
         try:
             proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
-            try:
-                os.killpg(proc.pid, signal.SIGKILL)
-            except OSError:
-                pass
+            if IS_WINDOWS:
+                try:
+                    proc.kill()
+                except OSError:
+                    pass
+            else:
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except OSError:
+                    pass
 
     for n, step in enumerate(steps, 1):
         argv = step["argv"]
         timeout = step["timeout_s"]
         reason = []  # filled by the watchdog: "timeout" or "stop"
+        popen_kw = ({"creationflags": CREATE_NEW_PROCESS_GROUP}
+                    if IS_WINDOWS else
+                    {"start_new_session": True, "preexec_fn": lambda: os.nice(10)})
         try:
             proc = subprocess.Popen(
                 argv, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                text=True, errors="replace", bufsize=1, start_new_session=True,
-                preexec_fn=lambda: os.nice(10))
+                text=True, errors="replace", bufsize=1, **popen_kw)
         except (FileNotFoundError, PermissionError) as exc:
             return False, list(tail), "step %d could not start: %s" % (n, exc)
         wd_stop = threading.Event()
