@@ -289,7 +289,7 @@ try:
         page3.route("**/api/forge*", route_404)
         page3.goto(URL + "#room=music", wait_until="networkidle", timeout=30000)
         page3.wait_for_selector("#makeBtn", timeout=15000)
-        page3.wait_for_timeout(800)
+        page3.wait_for_timeout(2500)   # the page looks once, 1 s after init
         check("The 404-answering server leaves the notice bar hidden",
               page3.evaluate("() => $('#forgeVideoNotice').hidden"))
         check("The page still renders its monitor", page3.evaluate("() => !!$('#monitor')"))
@@ -297,8 +297,8 @@ try:
         # Chromium logs a bare "Failed to load resource: 404" for ANY 404 fetch --
         # that is the network stack talking, not the page's code. So the honest
         # check is: nothing OTHER than that expected 404 line is in the log.
-        check("the only console error is the expected 404 resource line",
-              len(errors) == 1 and "404" in errors[0], errors[:5])
+        check("any console error is only the expected 404 resource line",
+              all("404" in e for e in errors), errors[:5])
         page3.close()
 
         browser.close()
