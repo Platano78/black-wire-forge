@@ -375,6 +375,10 @@
   #guideNoBrainList li{margin-bottom:4px}
   #guideAddBrain{font-size:12px; color:var(--text-mid); margin:0}
   #guideNewBtn{min-height:32px; padding:0 10px; font-size:12px; flex:none; margin-left:auto}
+  /* The on/off switch: shown only when the server HAS a guide model, so the
+     guide can be stepped aside for every room without touching config.json. */
+  #guideOnOff{min-height:32px; padding:0 10px; font-size:12px; flex:none}
+  #guideOnOff[aria-pressed="true"]{color:var(--text-mid)}
   #guideNewUndo{margin:6px 0 0; font-size:12px; color:var(--text-mid)}
   #guideNewUndo .btn{min-height:28px; padding:0 8px; font-size:12px}
   #guideVerbosity{display:flex; border:1px solid var(--divider); flex:none}
@@ -798,6 +802,7 @@
     #inspector{order:2}
     #bin{order:3}
     .tl-lane-label{width:64px}
+    #guideOnOff{min-height:44px}
     #tlPlayhead{left:78px}
     /* The timeline scrolls horizontally INSIDE its own track, never the page:
        each .tl-track already carries overflow-x:auto; this just stops a
@@ -1033,6 +1038,7 @@
       <div id="guideHeader">
         <button type="button" id="guideExpandBtn" aria-expanded="false" aria-controls="guidePanel"
                 title="Show the whole conversation"><span id="guideName"></span></button>
+        <button type="button" class="btn" id="guideOnOff" aria-pressed="true" hidden>Guide: on</button>
         <div id="guideVerbosity" role="group" aria-label="How much the guide knows" hidden>
           <button type="button" data-verbosity="compact" aria-pressed="true">Compact</button>
           <button type="button" data-verbosity="verbose" aria-pressed="false">Verbose</button>
@@ -3391,6 +3397,12 @@ function guideStoreSet(k, v){
   catch(e){ return false; }
 }
 function guideVerbosity(){ return guideStoreGet('bwf.guide.verbosity') === 'verbose' ? 'verbose' : 'compact'; }
+// The guide on / off switch. The choice is this browser's, for every room;
+// the SERVER's truth stays in GUIDE.helper_server, so a room with no helper
+// configured never shows the switch and never changes.
+const GUIDE_OFF_NOTE = 'The guide is off, so type straight into the fields.';
+function guideIsOff(){ return guideStoreGet('bwf.guide.off') === '1'; }
+function guideOffChosen(){ return !!(GUIDE && GUIDE.helper_server && guideIsOff()); }
 function guideHistKey(){
   const room = currentRoom();
   return 'bwf.guide.hist.' + (room ? room.id : '') + (isCutting(room) && STATE.seq ? '.' + STATE.seq.id : '');
@@ -3613,7 +3625,12 @@ async function renderGuidePanel(){
     GUIDE_REVISE = null;   // an attached result belongs to the room it was attached in
     $('#guideName').textContent = 'loading…';
     GUIDE_LOADING = getJSON('/api/guide?room=' + encodeURIComponent(room.id)).then(
-      b => { if(GUIDE_ROOM === room.id) GUIDE = b; },
+      b => {
+        if(GUIDE_ROOM !== room.id) return;
+        b.helper_server = b.helper;   // what the server says; the switch only ever turns it off
+        if(guideIsOff()) b.helper = false;
+        GUIDE = b;
+      },
       e => { if(GUIDE_ROOM === room.id) GUIDE_LOAD_ERROR = 'The guide could not be loaded (' + (e.message || e) + '). Reload the page to try again.'; });
   }
   await GUIDE_LOADING;
@@ -3644,6 +3661,21 @@ function renderGuideBody(){
   renderGuideWrite();
   renderReviseChip();
   renderHelperBar();
+  renderGuideOnOff();   // last: it also settles what the no-helper lines say
+}
+// The guide on / off switch, and the one line under it. With no helper
+// configured there is nothing to switch, so the button stays hidden and every
+// no-helper line (how to add a helper) stays exactly as it was.
+function renderGuideOnOff(){
+  const btn = $('#guideOnOff'), server = !!(GUIDE && GUIDE.helper_server), off = server && guideIsOff();
+  btn.hidden = !server;
+  btn.textContent = off ? 'Guide: off' : 'Guide: on';
+  btn.setAttribute('aria-pressed', String(!off));
+  btn.title = off ? 'The guide model is switched off: your own words go straight to Make.'
+                  : 'Let the guide write the words for you.';
+  $('#guideOffNote').textContent = server ? 'The guide is off. Type straight into the fields.' : GUIDE_OFF_NOTE;
+  // The helper IS configured here, so "add a helper to config.json" would be a lie.
+  $('#guideAddBrain').hidden = guideOffChosen();
 }
 // FB-2 (R6): no helper, in a mode whose writer would write here -- the panel
 // is one line, the prompt box is the main field. A result attached with "Not
@@ -4082,6 +4114,18 @@ $('#guideVerbosity').addEventListener('click', e => {
   guideStoreSet('bwf.guide.verbosity', b.dataset.verbosity);
   renderGuideToggle();
 });
+// The guide on / off switch. Off = the room behaves exactly as if no guide
+// model were configured: the prompt box is the main field and Make sends what
+// was typed. A reply in flight is dropped, not shown afterwards.
+$('#guideOnOff').onclick = () => {
+  guideStoreSet('bwf.guide.off', guideIsOff() ? null : '1');
+  if(GUIDE) GUIDE.helper = !!GUIDE.helper_server && !guideIsOff();
+  STATE.helperOn = !!STATE.helperServer && !guideIsOff();
+  if(GUIDE_ABORT) GUIDE_ABORT.abort();
+  renderGuideBody();
+  placeGuidePanel(currentRoom());
+  renderHelperBar();
+};
 // One of the guide reply's action buttons, clicked: run it (never
 // automatically -- only from that click). One listener for every reply.
 $('#guidePanel').addEventListener('click', e => {
@@ -4177,7 +4221,7 @@ function renderGuideWrite(){
   // A preview or question for another shot never fills this one.
   if(GUIDE_SKILL && (GUIDE_SKILL.slot || null) !== writeSlotId()) guideSkillClear();
   const writes = !!(g && mode && !$('#promptWrap').hidden && (!isCutting(currentRoom()) || slotWriteBeat()));
-  $('#guideWriteNoBrain').hidden = !(writes && !GUIDE.helper) || guideLayout(currentRoom()) === 'off';
+  $('#guideWriteNoBrain').hidden = !(writes && !GUIDE.helper) || guideLayout(currentRoom()) === 'off' || guideOffChosen();
   if(writes && GUIDE.helper && GUIDE_ROOM === currentRoom().id && $('#guideSkill').hidden) guideWriteRestore();
 }
 function guidePictureRef(src){
@@ -4522,7 +4566,7 @@ function renderReviseChip(){
   const chip = $('#guideChip');
   const brain = !!(GUIDE && GUIDE.guide && GUIDE.helper);
   const r = GUIDE_REVISE && GUIDE_REVISE.room === GUIDE_ROOM ? GUIDE_REVISE : null;
-  $('#guideReviseNoBrain').hidden = !(r && GUIDE && GUIDE.guide && !brain);
+  $('#guideReviseNoBrain').hidden = !(r && GUIDE && GUIDE.guide && !brain) || guideOffChosen();
   renderGuideOff();
   guideInputPlaceholder();
   chip.textContent = '';
@@ -7748,7 +7792,8 @@ async function loadEnginesFor(){
   const d = await getJSON('/api/engines' + (STATE.activeLane ? ('?lane=' + encodeURIComponent(STATE.activeLane)) : ''));
   const rooms = Array.isArray(d.rooms) ? d.rooms : [];
   delete d.rooms;
-  STATE.helperOn = !!d.helper;   // a writer for another mode shows its topic box only with a brain
+  STATE.helperServer = !!d.helper;   // the server's truth, kept under the switch's choice
+  STATE.helperOn = STATE.helperServer && !guideIsOff();   // a writer for another mode shows its topic box only with a brain
   delete d.helper;   // not a capability; the guide (GET /api/guide) says whether a helper is set up
   STATE.engines = d;
   STATE.rooms = rooms.slice().sort((a, b) => (a.order == null ? 1000 : a.order) - (b.order == null ? 1000 : b.order));
