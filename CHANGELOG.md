@@ -9,9 +9,13 @@ All notable changes to Black Wire Forge are recorded here.
 - **A remote ComfyUI machine could make the Pixel Art step write a file outside its temporary folder.** The step saved the render under the file name the machine reported, so a name such as `../../x` (or an absolute path) escaped the folder. It now builds its own file name. Every release from v1.0.0 to v1.2.0 has this; it needs a ComfyUI machine you did not intend to trust (or one that has been compromised), so check the machines in your `config.json`.
 - Output file names that are Windows device names (`NUL`, `CON`, `COM1`...) or end in a dot or space are refused, `..` is caught with either slash direction, and a models folder on another drive gets the plain "outside the models folder" sentence.
 
+### Fixed (all systems)
+
+- **Every cut failed on a current ffmpeg.** The Cutting Room passed `-vsync cfr`, which the newest ffmpeg builds (2026, newer than 8.x) no longer have: "Unrecognized option 'vsync'", and the cut ended "ffmpeg could not build this cut." The app now asks the installed ffmpeg which flag it understands (`-fps_mode` on 5.1 and newer, `-vsync` on older ones such as Ubuntu 22.04's 4.4).
+
 ### Fixed (Windows)
 
-Checked on Windows 11 with Python 3.13 (python.org build): the README quick start, and the test suite run through Git Bash (153 suites; see the note at the end). Linux behaviour is unchanged.
+Checked on Windows 11 with Python 3.13 (python.org build): the README quick start, and the whole test suite run through Git Bash with a current ffmpeg on the PATH (see the note at the end). Linux behaviour is unchanged.
 
 - **Grid check and the 3D turntable could not run at all.** The process runner used POSIX-only calls (`preexec_fn`, `os.killpg`), and the lane poller called `os.getloadavg()`, which does not exist on Windows, so every process lane stayed down. They now start and stop a job's whole process tree with `taskkill`, and the lane's load meter stays empty.
 - **Model downloads failed.** The app decided its own `.part` file "was replaced by something else" because NTFS reports different sizes and times for a path and for an open handle; it now compares the file's identity. A finished download no longer leaves its `.part` behind, and replacing or deleting a file retries for a moment if a virus scanner or indexer has it locked (one real download in twenty failed this way).
