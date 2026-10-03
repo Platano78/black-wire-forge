@@ -164,6 +164,10 @@ sound shot has a pick. Instead of a picked sound shot, the master can be **your 
 into it (shots slice from the same offset), and `clear_master` removes it. It only matters to an audio-led sequence; with the flag off a classic
 cut ignores it. The switch is the **Audio-led** checkbox in the Cutting Room's cut bar. Tests: `tests/test_audio_led.py`, `tests/test_audio_led_ui.py`.
 
+### Speech source (opt-in)
+
+Off by default. With a `"speech"` key in `config.json` (`url` required to enable, `model` default `"tts-1"`, `voice` default `"alloy"`, `api_key_env` optional bearer-token env name, `timeout` default 120 s clamped to 5..600) the server exposes `POST /api/speech` (JSON: `lane`, `text`, optional `voice`/`instructions`) and `GET /api/speech/status` (`{"enabled": true|false}`). The route calls the configured endpoint's `/audio/speech` with JSON `{model, input, voice, response_format: "wav"}` and returns an upload shaped identically to `POST /api/upload`. Any OpenAI-style `/audio/speech` endpoint works; recording your own voice or any other tool's wav works without it.
+
 ## Harvest
 
 When `job_poller()` marks a job done, `seq_harvest()` looks for a sequence slot waiting

@@ -357,6 +357,36 @@ FLEET_LLM = CONFIG.get("status_only") or None
 # "Help me write this" / "Describe this picture" buttons at all.
 HELPER = CONFIG.get("helper") or None
 
+# Optional speech source (off by default). Omit "speech" from config.json and
+# /api/speech 404s, /api/speech/status reports enabled: false, and nothing
+# else changes. With a "speech" object containing a valid https url, the
+# endpoint calls that OpenAI-style /audio/speech and returns an upload shaped
+# exactly like /api/upload.
+_SPEECH_RAW = CONFIG.get("speech")
+SPEECH_ENABLED = False
+SPEECH_URL = None
+SPEECH_MODEL = "tts-1"
+SPEECH_VOICE = "alloy"
+SPEECH_API_KEY = None
+SPEECH_TIMEOUT = 120.0
+if isinstance(_SPEECH_RAW, dict):
+    raw_url = _SPEECH_RAW.get("url")
+    if isinstance(raw_url, str):
+        parsed = urllib.parse.urlsplit(raw_url)
+        if parsed.scheme in ("http", "https"):
+            SPEECH_ENABLED = True
+            SPEECH_URL = raw_url.rstrip("/")
+            SPEECH_MODEL = str(_SPEECH_RAW.get("model", "tts-1")) or "tts-1"
+            SPEECH_VOICE = str(_SPEECH_RAW.get("voice", "alloy")) or "alloy"
+            api_key_env = _SPEECH_RAW.get("api_key_env")
+            if isinstance(api_key_env, str) and api_key_env:
+                SPEECH_API_KEY = os.environ.get(api_key_env)
+            try:
+                t = float(_SPEECH_RAW.get("timeout", 120))
+            except Exception:
+                t = 120.0
+            SPEECH_TIMEOUT = max(5.0, min(600.0, t))
+
 # Room guides (guides.py): every guide rooms.json names, loaded once. A named
 # guide that is missing or broken refuses startup, like a broken config --
 # a room silently without its guide is the thing this must never do.
@@ -9739,6 +9769,8 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/api/workflows/thumb":
                 thumb = workflows_thumb(q)
                 return self.send_blob(*thumb) if thumb else self.send_json({"error": "not found"}, 404)
+            if u.path == "/api/speech/status":
+                return self.send_json({"enabled": SPEECH_ENABLED})
             self.send_json({"error": "not found"}, 404)
         except BrokenPipeError:
             pass
@@ -10219,6 +10251,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(*self.api_lora_download_cancel(self.read_json()))
             if u.path == "/api/workflows/open":
                 return self.send_json(*_wf_answer(workflows_open, self.read_json()))
+            if u.path == "/api/speech":
+                return self.api_speech()
             self.send_json({"error": "not found"}, 404)
         except BrokenPipeError:
             pass
@@ -10228,6 +10262,44 @@ class Handler(BaseHTTPRequestHandler):
             traceback.print_exc()
             self.send_json({"ok": False, "error": "Something went wrong handling that request.",
                             "detail": str(e)}, 500)
+
+    def speech_store(self, lane, data):
+        """Store generated speech audio the same way api_upload stores a file for
+        that lane: process lanes keep it under UPLOADS_DIR/<lane id> with a
+        unique sanitized name; ComfyUI lanes POST multipart to /upload/image.
+        Returns (name, original, bytes, seconds) or raises ValueError(sentence)."""
+        name = "speech.wav"
+        safe = re.sub(r"[^A-Za-z0-9._-]", "_", name)
+        if lane_kind(lane) == "process":
+            d = os.path.join(UPLOADS_DIR, lane["id"])
+            os.makedirs(d, exist_ok=True)
+            stored = uuid.uuid4().hex[:8] + "_" + safe
+            path = os.path.join(d, stored)
+            with open(path, "xb") as f:
+                f.write(data)
+            secs = _audio_upload_seconds(name, path=path)
+            entry = {"name": stored, "original": name, "bytes": len(data)}
+            if secs is not None:
+                entry["seconds"] = secs
+            log("Kept speech for %s" % lane["name"])
+            return entry
+        # ComfyUI lane: POST multipart to /upload/image
+        res = http_post_multipart(
+            lane_url(lane, "/upload/image"),
+            {"type": "input", "overwrite": "false"},
+            [("image", name, "audio/wav", data)])
+        if "_http_error" in res or not res.get("name"):
+            raise ValueError("%s would not take the speech file. Try a smaller file or the other lane."
+                             % lane["name"])
+        stored_name = res["name"]
+        if res.get("subfolder"):
+            stored_name = res["subfolder"] + "/" + stored_name
+        secs = _audio_upload_seconds(name, data=data)
+        entry = {"name": stored_name, "original": name, "bytes": len(data)}
+        if secs is not None:
+            entry["seconds"] = secs
+        log("Sent speech over to %s" % lane["name"])
+        return entry
 
     def api_upload(self):
         """Browser -> us -> the target lane's POST /upload/image."""
@@ -10290,6 +10362,67 @@ class Handler(BaseHTTPRequestHandler):
             uploaded.append(entry)
         log("Sent %d picture/clip(s) over to %s" % (len(uploaded), lane["name"]))
         return self.send_json({"ok": True, "files": uploaded})
+
+    def api_speech(self):
+        """POST /api/speech JSON -> calls configured OpenAI-style TTS, stores the
+        wav like api_upload does, returns the same {"ok": true, "files": [...]} shape."""
+        if not SPEECH_ENABLED:
+            return self.send_json({"ok": False, "error": "No speech source is set up. Add a \"speech\" section to config.json, or use your own recording."}, 404)
+        p = self.read_json()
+        lane_id = (p.get("lane") or "").strip()
+        text = (p.get("text") or "").strip()
+        voice = (p.get("voice") or "").strip() or None
+        instructions = (p.get("instructions") or "").strip() or None
+        if not lane_id:
+            return self.send_json({"ok": False, "error": "unknown lane %r" % lane_id}, 400)
+        lane = LANE_BY_ID.get(lane_id)
+        if not lane:
+            return self.send_json({"ok": False, "error": "unknown lane %r" % lane_id}, 400)
+        if not text:
+            return self.send_json({"ok": False, "error": "The text to speak cannot be empty."}, 400)
+        if len(text) > 2000:
+            return self.send_json({"ok": False, "error": "The text is too long (max 2000 characters)."}, 400)
+        # Build the request payload for the TTS endpoint
+        payload = {"model": SPEECH_MODEL, "input": text, "voice": voice or SPEECH_VOICE, "response_format": "wav"}
+        if instructions:
+            payload["instructions"] = instructions
+        headers = {"Content-Type": "application/json"}
+        if SPEECH_API_KEY:
+            headers["Authorization"] = "Bearer " + SPEECH_API_KEY
+        url = SPEECH_URL + "/audio/speech"
+        body = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(url, data=body, method="POST", headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=SPEECH_TIMEOUT) as r:
+                # Cap at 50 MB
+                max_bytes = 50 * 1024 * 1024
+                data = b""
+                while True:
+                    chunk = r.read(65536)
+                    if not chunk:
+                        break
+                    data += chunk
+                    if len(data) > max_bytes:
+                        return self.send_json({"ok": False, "error": "The speech source returned more than 50 MB."}, 502)
+        except urllib.error.HTTPError as e:
+            raw = e.read().decode("utf-8", "replace")
+            detail = raw[:300]
+            log("Speech source HTTP error %d: %s" % (e.code, detail))
+            return self.send_json({"ok": False, "error": "The speech source returned an error.", "detail": detail}, 502)
+        except Exception as e:
+            log("Speech source request failed: %s" % str(e)[:300])
+            return self.send_json({"ok": False, "error": "Could not reach the speech source.", "detail": str(e)[:300]}, 502)
+        # Validate it's a readable sound file
+        secs = _audio_upload_seconds("speech.wav", data=data)
+        if secs is None:
+            return self.send_json({"ok": False, "error": "The speech source did not return a sound file."}, 502)
+        # Store it like api_upload does
+        try:
+            entry = self.speech_store(lane, data)
+        except ValueError as e:
+            return self.send_json({"ok": False, "error": str(e)}, 502)
+        log("Speech generated for %s (%.2fs)" % (lane["name"], secs))
+        return self.send_json({"ok": True, "files": [entry]})
 
     def api_sequence_master(self):
         """Multipart: id, optional rev, file. The size is checked BEFORE the body is read."""
