@@ -6,6 +6,28 @@ All notable changes to Black Wire Forge are recorded here.
 
 ### Added
 
+- **Make a music video from this song** (Forge Master). On a finished song in the Music room, a button opens a small
+  dialog: add a photo of who is in it (someone who agrees to be), optionally a style line, press Start. It plans
+  shots of about 4 seconds from the song, writes a scene for each from the lyrics, makes a picture from your photo,
+  animates each picture to its slice of the song and cuts the shots together, with no further questions. It needs a
+  machine that can edit pictures and make video (see `docs/WHAT-YOU-NEED.md`) and ffmpeg. A dialog shows the plan
+  ("N shots of about 4 seconds, roughly M minutes") and progress, and you can leave it running or press Stop; the
+  shots made so far stay in the Cutting Room. One video is made at a time. Programmatic use:
+  `POST /api/forge/music-video`, `GET /api/forge/run`, `POST /api/forge/stop`.
+
+- **Compare one setting.** `POST /api/compare` queues one request several times across a single setting (steps,
+  guidance, quality tier, seed, or any numeric or choice field), and a "Compare one setting" box in the page shows
+  the results side by side.
+
+- **Launchers.** `start.sh` (Linux), `start.command` (macOS) and `start.bat` (Windows) start the app; `--open`
+  opens it in your browser. An optional `start-user.*` file next to the launcher sets a Python path or extra arguments.
+
+- **Speech source** (optional, off by default): `POST /api/speech` turns a typed line into a `.wav` through any
+  service that speaks the OpenAI-style `/audio/speech` API. See `docs/WHAT-YOU-NEED.md`.
+
+- Picture room: a **Sharp text** preset for lettering and fine line detail (plain guidance, cfg 1, euler/simple,
+  40 steps). Measured on one seed and one prompt only.
+
 - **Grid check** (beats and bars), a new mode in the Cover room. Give it a song and get back
   `grid.json` (every beat and bar start, beats per bar, tempo per bar, drift), `grid-check.mp3` (the
   song with a click on each beat and a higher, louder click on each bar start) and a one-line summary

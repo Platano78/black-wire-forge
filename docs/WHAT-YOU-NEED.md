@@ -96,6 +96,20 @@ This page lists the opt-in features that depend on something outside the app, wh
 
 ---
 
+## Make a music video from this song (Forge Master)
+
+**What it does:** from a finished song in History plus one photo, plans the shots, makes a picture of the person in each scene, animates each to its slice of the song, and cuts it into one video. No questions asked after Start.
+
+**What you need:** a machine (lane) in `config.json` that can edit pictures (a Picture "edit" mode) and make video (the LTX video mode), a finished song made in the Music room (its lyrics, if any, are used for the scenes), a photo of someone who agrees to be in it, and ffmpeg on the computer running the app (for the cut). A helper (the optional chat endpoint) writes the scenes; without one, plain fallback scenes are used.
+
+**Time and size:** about a minute per 4-second shot on a 16 GB card (measured once), so a 150-second song takes roughly an hour.
+
+**Without it:** make the pictures, shots and cut yourself in the Cutting Room.
+
+**How to turn it on:** nothing to configure. The button appears on a finished song once a machine is picked. Started runs survive a page reload; stop one with the Stop button or `POST /api/forge/stop`.
+
+---
+
 ## Speech source (optional text-to-speech)
 
 **What it does:** turns a typed line into a `.wav` through any text-to-speech service that speaks the OpenAI-style `/audio/speech` API, and hands the result back like an upload, so it can be used as "Your own recording" or as the master sound of an audio-led sequence.
