@@ -104,6 +104,7 @@ def one(root, e):
 
 def own(root, rel):
     """Mark a .part as this app's own, the way the app records one it creates (its identity)."""
+    rel = os.path.join(*rel.split("/"))      # the app keys parts by os.path.relpath: a backslash path on Windows
     if hasattr(srv, "_part_set"):
         srv._part_set(rel, os.lstat(os.path.join(root, rel)))
     else:                         # the tree before identity records: a bare path string
