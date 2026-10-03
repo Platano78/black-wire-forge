@@ -75,6 +75,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 # ---------------------------------------------------------------------------
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
+import forge_run
 import engines               # engine packs: every model name lives in one
 import runner                # process lanes: fills the plan's placeholders and runs it
 import guides                # room guides: the persona a room's helper conversation speaks as
@@ -9769,6 +9770,8 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/api/workflows/thumb":
                 thumb = workflows_thumb(q)
                 return self.send_blob(*thumb) if thumb else self.send_json({"error": "not found"}, 404)
+            if u.path == "/api/forge/run":
+                return self.send_json(*forge_run_get((q.get("id") or [""])[0]))
             if u.path == "/api/speech/status":
                 return self.send_json({"enabled": SPEECH_ENABLED})
             self.send_json({"error": "not found"}, 404)
@@ -10253,6 +10256,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(*_wf_answer(workflows_open, self.read_json()))
             if u.path == "/api/speech":
                 return self.api_speech()
+            if u.path == "/api/forge/music-video":
+                return self.send_json(*forge_music_video(self.read_json()))
+            if u.path == "/api/forge/stop":
+                return self.send_json(*forge_stop(self.read_json()))
             self.send_json({"error": "not found"}, 404)
         except BrokenPipeError:
             pass
@@ -10698,6 +10705,285 @@ class Handler(BaseHTTPRequestHandler):
         return self.send_json({"ok": True, "deleted_files": deleted_files})
 
 
+# ---------------------------------------------------------------------------
+# Forge Master v0: a finished song + one photo -> a music video, in one go.
+# forge_master.py plans the shots and writes the scenes, forge_run.py orchestrates; this block is the thin
+# adapter over this server's own sequence / generate / carry functions, and the three routes.
+# ---------------------------------------------------------------------------
+
+class _ForgeBackend:
+    """The backend forge_run.MusicVideoRun is written against (see its docstring). Every method calls an existing
+    server function; anything a person should read is raised as forge_run.RunError."""
+
+    def __init__(self, run_id, lane, w, h):
+        self.run_id, self.lane, self.w, self.h = run_id, lane, w, h
+
+    # -- sequence -----------------------------------------------------------
+    def _rev(self, sid):
+        with SEQ_LOCK:
+            seq = _seq_read(sid)
+        if seq is None:
+            raise forge_run.RunError("The sequence is gone.")
+        return seq["rev"]
+
+    def _op(self, sid, op, **kw):
+        for _ in range(3):          # a take landing between the read and the write makes the rev stale: read again
+            body, code = seq_op(dict(kw, id=sid, rev=self._rev(sid), op=op))
+            if code == 200:
+                return body
+            if code != 409:
+                raise forge_run.RunError(body.get("error") or "That step did not go through.")
+        raise forge_run.RunError("The sequence kept changing; try again.")
+
+    def create_sequence(self, title):
+        body, code = seq_create({"title": title, "mode": "sequence"})
+        if code >= 300 or not body.get("id"):
+            raise forge_run.RunError(body.get("error") or "Could not start a sequence.")
+        return body["id"]
+
+    def set_canvas(self, sid, w, h):
+        self._op(sid, "set_canvas", width=w, height=h)
+
+    def set_audio_led(self, sid):
+        self._op(sid, "set_audio_led", on=True)
+
+    def import_master(self, sid, song_job_id):
+        try:
+            data, fname = _resolve_job_output_bytes(song_job_id, 0)
+        except ValueError as e:
+            raise forge_run.RunError(str(e))
+        body, code = seq_master_import(sid, self._rev(sid), fname, data)
+        if code != 200:
+            raise forge_run.RunError(body.get("error") or "The song could not be used.")
+        return float((body.get("master") or {}).get("seconds") or 0)
+
+    def add_shot(self, sid, window, prompt, start_image_name, w, h):
+        body = self._op(sid, "add_slot", lane="video", cap="video", mode="ltx",
+                        values={"prompt": prompt, "start_image": start_image_name, "length": window["frames"],
+                                "width": w, "height": h, "two_stage": True, "image_strength": 0.9})
+        return body["slots"][-1]["id"]
+
+    def pick(self, sid, slot_id, job_id):
+        self._op(sid, "pick_take", slot_id=slot_id, job_id=job_id)
+
+    def generate_shot(self, sid, slot_id):
+        body, code = seq_generate({"id": sid, "slot_id": slot_id})
+        if code != 200 or not body.get("ok"):
+            raise forge_run.RunError(body.get("error") or "A shot could not be started.")
+        return body["job"]["id"]
+
+    def cut(self, sid):
+        body, code = seq_cut_start({"id": sid})
+        if code != 200 or not body.get("cut_id"):
+            raise forge_run.RunError(body.get("error") or "The cut could not be started.")
+        return body["cut_id"]
+
+    # -- waiting (every loop honours stop) ------------------------------------
+    def _poll(self, timeout, step, probe):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            self.check_stop()
+            r = probe()
+            if r is not None:
+                return r
+            time.sleep(step)
+        return None
+
+    def wait_take(self, sid, slot_id, job_id, timeout):
+        def probe():
+            with SEQ_LOCK:
+                seq = _seq_read(sid)
+            slot = next((s for s in (seq or {}).get("slots") or [] if s.get("id") == slot_id), None)
+            if slot and any(t.get("job_id") == job_id and t.get("file") for t in slot.get("takes") or []):
+                return True
+            with JOBS_LOCK:
+                job = JOBS.get(job_id) or {}
+            return False if job.get("status") in ("error", "failed") else None
+        return bool(self._poll(timeout, 1.0, probe))
+
+    def wait_cut(self, sid, cut_id, timeout):
+        def probe():
+            with SEQ_LOCK:
+                seq = _seq_read(sid)
+            cut = next((c for c in (seq or {}).get("cuts") or [] if c.get("id") == cut_id), None)
+            if cut and cut.get("status") in ("done", "error", "interrupted"):
+                return {"status": cut["status"], "file": cut.get("file")}
+            return None
+        return self._poll(timeout, 2.0, probe) or {"status": "timeout"}
+
+    # -- stills ---------------------------------------------------------------
+    def make_still(self, prompt, photo_name, w, h):
+        body, code = generate({"lane": self.lane["id"], "kind": "image", "mode": "edit", "confirm": True,
+                               "prompt": prompt, "ref_images": [photo_name]})
+        if code != 200 or not body.get("ok"):
+            raise forge_run.RunError(body.get("error") or "A picture could not be started.")
+        return body["job"]["id"]
+
+    def wait_job(self, job_id, timeout):
+        def probe():
+            with JOBS_LOCK:
+                job = copy.deepcopy(JOBS.get(job_id) or {})
+            return job if job.get("status") in ("done", "error", "failed") else None
+        job = self._poll(timeout, 1.0, probe)
+        if job is None:
+            raise forge_run.RunError("A picture took too long to make.")
+        return job
+
+    def carry_still(self, job_id):
+        with JOBS_LOCK:
+            job = copy.deepcopy(JOBS.get(job_id) or {})
+        try:
+            name, _note = carry(job, 0, self.lane, fit=(self.w, self.h))
+        except ValueError as e:
+            raise forge_run.RunError(str(e))
+        return name
+
+    # -- helpers --------------------------------------------------------------
+    def helper_chat(self, system, user):
+        reply, _finish = _helper_chat([{"role": "system", "content": system}, {"role": "user", "content": user}],
+                                      max_tokens=4096, timeout=90)
+        return reply
+
+    def check_stop(self):
+        if forge_run.FORGE_RUN_STOP.get(self.run_id):
+            raise forge_run.RunStopped()
+
+    def sleep(self, s):
+        time.sleep(s)
+
+    def plan(self, plan_line, n_shots):
+        forge_run.update_run(self.run_id, plan_line=plan_line, total=2 * n_shots)
+
+    def say(self, stage, message, done, total):
+        fields = {"stage": stage, "message": message}
+        if total:
+            fields.update(done=done, total=total)
+        forge_run.update_run(self.run_id, **fields)
+        log("Music video: %s (%d/%d)" % (stage, done, total))      # counts only: never the song, photo, lyrics or prompts
+
+
+def _forge_run_validation(p):
+    """Validate the forge/music-video request body.
+
+    Returns (lane, errors) where errors is a list of (status_code, sentence).
+    """
+    if not isinstance(p, dict):
+        return None, [(400, "Send a JSON object.")]
+
+    lane_id = (p.get("lane") or "").strip()
+    lane = LANE_BY_ID.get(lane_id)
+    if not lane:
+        return None, [(400, "unknown lane %r" % lane_id)]
+    with STATE_LOCK:
+        lane_up = LANE_STATE.get(lane["id"], {}).get("up")
+    if not lane_up:
+        return None, [(400, "%s is offline right now. Pick one of the lanes glowing green." % lane["name"])]
+
+    song_job = (p.get("song_job") or "").strip()
+    if not song_job:
+        return None, [(400, "Pick a finished song first.")]
+    with JOBS_LOCK:
+        song_job_rec = JOBS.get(song_job)
+    if not song_job_rec or song_job_rec.get("status") != "done":
+        return None, [(400, "Pick a finished song first.")]
+    # Verify it's an audio job
+    outs = song_job_rec.get("outputs") or []
+    if not outs:
+        return None, [(400, "Pick a finished song first.")]
+    first_out = outs[0]
+    media = first_out.get("media", "")
+    if media != "audio":
+        # Check by extension as fallback
+        fn = first_out.get("filename", "").lower()
+        if not any(fn.endswith(e) for e in (".wav", ".mp3", ".m4a", ".aac", ".flac", ".ogg", ".opus")):
+            return None, [(400, "Pick a finished song first.")]
+
+    photo = (p.get("photo") or "").strip()
+    if not photo:
+        return None, [(400, "Add a photo of who is in the video.")]
+
+    style = (p.get("style") or "").strip()
+    if len(style) > 200:
+        return None, [(400, "The style note is too long (max 200 characters).")]
+
+    lyrics = (p.get("lyrics") or "").strip()
+    if len(lyrics) > 6000:
+        return None, [(400, "The lyrics are too long (max 6000 characters).")]
+    # If no lyrics provided, try to get from song job's meta
+    if not lyrics:
+        lyrics = (song_job_rec.get("args") or {}).get("lyrics", "")
+        if isinstance(lyrics, str):
+            lyrics = lyrics.strip()
+        if not lyrics:
+            lyrics = None
+
+    width = p.get("width")
+    height = p.get("height")
+    if width is None:
+        width = 576
+    if height is None:
+        height = 768
+    try:
+        width = int(width)
+        height = int(height)
+    except (TypeError, ValueError):
+        return None, [(400, "Width and height must be numbers.")]
+    # Validate multiples of 16, 256..1152
+    if width < 256 or width > 1152 or width % 16 != 0:
+        return None, [(400, "Width must be a multiple of 16, between 256 and 1152.")]
+    if height < 256 or height > 1152 or height % 16 != 0:
+        return None, [(400, "Height must be a multiple of 16, between 256 and 1152.")]
+
+    return {
+        "lane": lane, "song_job": song_job, "photo": photo,
+        "style": style, "lyrics": lyrics, "width": width, "height": height,
+    }, []
+
+
+def _forge_thread(run_id, v):
+    be = _ForgeBackend(run_id, v["lane"], v["width"], v["height"])
+    try:
+        out = forge_run.MusicVideoRun(be).run(v["song_job"], v["photo"], v["style"], v["lyrics"] or "", v["width"], v["height"])
+        forge_run.update_run(run_id, status="done", stage="done", message="Your video is ready.", file=out["file"],
+                             cut_id=out["cut_id"], sequence=out["sequence"], done=2 * out["shots"], total=2 * out["shots"])
+    except forge_run.RunStopped:
+        forge_run.update_run(run_id, status="stopped", message="Stopped. The shots made so far are in the Cutting Room.")
+    except forge_run.RunError as e:
+        forge_run.update_run(run_id, status="error", error=str(e), message=str(e))
+    except Exception:                                            # never leave a run "running" forever
+        traceback.print_exc()
+        forge_run.update_run(run_id, status="error", error="Something went wrong making the video.",
+                             message="Something went wrong making the video.")
+
+
+def forge_music_video(p):
+    """POST /api/forge/music-video -> (body, code). The whole run happens on a background thread."""
+    v, errors = _forge_run_validation(p)
+    if errors:
+        code, sentence = errors[0]
+        return {"ok": False, "error": sentence}, code
+    run_id = forge_run.new_run()
+    if run_id is None:
+        return {"ok": False, "error": "A music video is already being made. Wait for it, or stop it first."}, 409
+    threading.Thread(target=_forge_thread, args=(run_id, v), daemon=True).start()
+    log("Music video started on %s" % v["lane"]["name"])
+    return {"ok": True, "run_id": run_id}, 200
+
+
+def forge_run_get(run_id):
+    rec = forge_run.get_run(run_id)
+    if rec is None:
+        return ({"error": "There is no such run."}, 404) if run_id else ({"run": None}, 200)
+    return rec, 200
+
+
+def forge_stop(p):
+    rid = (p.get("id") or "") if isinstance(p, dict) else ""
+    if not forge_run.request_stop(rid):
+        return {"ok": False, "error": "There is no such run."}, 404
+    return {"ok": True}, 200
+
+
 def _open_browser_if_asked():
     """`--open`: open the default browser on this computer once the server is listening.
     BWF_OPENED stops the Setup re-exec (same argv, same environment) from opening a second tab."""
@@ -10751,6 +11037,7 @@ def main():
         srv.serve_forever()
         return
     load_jobs()
+    forge_run.configure(DATA_DIR)
     seq_mark_interrupted_cuts()
     for l in LANES:
         threading.Thread(target=lane_poller, args=(l,), daemon=True).start()
