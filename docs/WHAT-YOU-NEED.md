@@ -1,6 +1,16 @@
 # What each BWF feature needs
 
-This page lists the opt-in features that depend on something outside the app, what you need for each, what works without it, and how to turn it on. Every claim comes from the code or existing docs.
+This page lists the opt-in features that depend on something outside the app, what you need for each, what works without it, and how to turn it on.
+
+---
+
+## First run (Setup page)
+
+**What it does:** with no `config.json`, the app opens a Setup page that finds ComfyUI, shows what each room needs, and writes the settings file for you.
+
+**What you need:** a ComfyUI that is already running (on this computer or another one you can reach). Python 3.8 or newer to start the app; on Windows, macOS or Linux you can double-click `start.bat`, `start.command` or run `./start.sh`.
+
+**Without it:** copy `config.example.json` to `config.json` and edit it by hand; see the README.
 
 ---
 
@@ -14,7 +24,6 @@ This page lists the opt-in features that depend on something outside the app, wh
 
 **How to turn it on:** Select the Talking Head room, choose a lane that has the LTX models, fill in Face and Line, press Make.
 
-*Confirmed from:* `engines/ltx.py` fields `face`, `line` (talking mode); `docs/MODELS.md` LTX-2.5 roles.
 
 ---
 
@@ -28,7 +37,6 @@ This page lists the opt-in features that depend on something outside the app, wh
 
 **How to turn it on:** In the Talking Head form, upload a file in the "Your own recording" field (replaces the Line field). Set Length to match the clip (seconds × 24 + 1).
 
-*Confirmed from:* `engines/ltx.py:1291` field `audio_slice` (label "Your own recording (instead of a line)", type `audio`).
 
 ---
 
@@ -42,7 +50,6 @@ This page lists the opt-in features that depend on something outside the app, wh
 
 **How to turn it on:** In the Cutting Room, check **Audio-led**. Pick a take on a sound shot, or click the master row to import your own sound file.
 
-*Confirmed from:* `docs/ARCHITECTURE.md` "Audio-led sequences (opt-in)"; `server.py:1776` `_op_set_audio_led`, `server.py:5150` `seq_master_import`, `server.py:5146` `MASTER_EXTS`, `server.py:5147` `MASTER_MAX_BYTES`.
 
 ---
 
@@ -56,7 +63,6 @@ This page lists the opt-in features that depend on something outside the app, wh
 
 **How to turn it on:** With Audio-led enabled, click the master row in the Cut bar → choose a file → it uploads to `POST /api/sequence/master`. The "Start (s)" field sets the offset into that file where the cut begins (`set_master_start`); "Clear" removes it (`clear_master`).
 
-*Confirmed from:* `server.py:5150` `seq_master_import`; `index.html:4800` `masterControlsHTML`, `index.html:4832` `set_master_start`, `index.html:4830` `clear_master`.
 
 ---
 
@@ -70,7 +76,6 @@ This page lists the opt-in features that depend on something outside the app, wh
 
 **How to turn it on:** Open the Music room, select a lane that has the required models discovered, describe the song, press Make.
 
-*Confirmed from:* `docs/MODELS.md` sections "ACE-Step 1.5" and "MiniMax-Music3"; `engines/audio.py` modes `song` and `music`; `docs/ARCHITECTURE.md` "Discovery".
 
 ---
 
@@ -86,26 +91,23 @@ This page lists the opt-in features that depend on something outside the app, wh
 | Guide "Not right? Tell the guide" on a video clip | The middle-frame still extraction (`_video_still`) raises `ValueError`: "To show the guide a clip, ffmpeg must be installed and on PATH (it takes one still frame from the middle)." |
 | Help page Cutting Room note | States "Cutting needs `ffmpeg`/`ffprobe` installed." |
 
-**How to provide:** Install `ffmpeg` (which includes `ffprobe`) and ensure both are on `PATH` before starting the server. The check runs once at process start (`server.py:255` `shutil.which`).
+**How to provide:** Install `ffmpeg` (which includes `ffprobe`) and ensure both are on `PATH` before starting the server. The check runs once, when the app starts.
 
-*Confirmed from:* `server.py:255` `FFMPEG_BIN`, `server.py:256` `FFPROBE_BIN`, `server.py:257` `_CUT_MISSING`, `server.py:261` `CUT_REASON`, `server.py:3579` `_video_still`, `server.py:5150` `seq_master_import`, `server.py:5115` `_audio_led_slice`, `server.py:5455` `seq_cut_start`, `help.html:261`.
-
----
-
-## Speech source (optional text-to-speech) — **planned**
-
-**Status:** Being added on branch `speech-source`. Will be off by default.
-
-**What it will do:** Accept any OpenAI-style `/audio/speech` endpoint for text-to-speech, so a typed line can be turned into audio without recording your own voice.
-
-**What you will need:** An OpenAI-compatible TTS endpoint URL (configured in `config.json` when the feature merges).
-
-**Without it:** Recording your own voice (the "Your own recording" field in Talking Head) works today and needs no external service.
-
-**How to turn it on:** Will be a config option once merged; the Talking Head form will offer a TTS choice alongside the typed line and your recording.
-
-*This row is a placeholder and will be updated when the `speech-source` branch merges.*
 
 ---
 
-*All claims above were confirmed by grepping the codebase and docs. Features not listed here either need nothing external or are not opt-in.*
+## Speech source (optional text-to-speech)
+
+**What it does:** turns a typed line into a `.wav` through any text-to-speech service that speaks the OpenAI-style `/audio/speech` API, and hands the result back like an upload, so it can be used as "Your own recording" or as the master sound of an audio-led sequence.
+
+**What you need:** the address of such a service (yours or a hosted one), set in `config.json`:
+
+```json
+"speech": {"url": "https://tts.example.com/v1", "model": "tts-1", "voice": "alloy", "api_key_env": "SPEECH_API_KEY", "timeout": 120}
+```
+
+Only `url` is required. `api_key_env` is the *name* of an environment variable that holds a bearer token; the token itself never goes in the file.
+
+**Without it:** nothing changes. Record your own voice, or use any other tool's `.wav`; both work with the features above and need no service.
+
+**How to turn it on:** add the `speech` section and restart. `GET /api/speech/status` reports whether it is on; `POST /api/speech` with `{"lane", "text"}` returns the same file description `/api/upload` does.
