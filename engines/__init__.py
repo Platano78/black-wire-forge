@@ -1095,7 +1095,7 @@ def rooms(path=None):
     label (the path above), so the page still reaches every engine.
     """
     try:
-        with open(path or ROOMS_PATH) as f:
+        with open(path or ROOMS_PATH, encoding="utf-8") as f:
             base = json.load(f)
         if not isinstance(base, list) or not all(isinstance(r, dict) and r.get("id") for r in base):
             raise ValueError("expected a list of rooms, each with an id")

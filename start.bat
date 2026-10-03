@@ -25,6 +25,7 @@ if not defined FOUND (
 )
 
 echo Black Wire Forge is starting. Your browser will open. Close this window to stop it.
+set "PYTHONUTF8=1"
 %FOUND% server.py --open %BWF_ARGS% >"%LOGFILE%" 2>&1
 if errorlevel 1 (
     echo.

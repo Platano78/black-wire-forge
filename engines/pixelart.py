@@ -156,7 +156,7 @@ def _post_quantise(input_bytes, filename, args):
             # the chosen colours ARE the locked palette: hand them to the vendored
             # loader as a palette file, one #rrggbb per line
             pal_path = os.path.join(td, "palette.txt")
-            with open(pal_path, "w") as f:
+            with open(pal_path, "w", encoding="utf-8") as f:
                 f.write("".join("#%s\n" % c for c in palette))
             kw["palette_file"] = pal_path
         _quantise.quantise_and_dither(src, out, target_size=(size, height), n_colors=colors,

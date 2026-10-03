@@ -331,7 +331,7 @@ def run(args):
                        "demucs": _version("demucs") if args.drum_stem else None,
                        "torch": _version("torch"), "numpy": np.__version__}
     report["summary"] = summary_line(report, args.expected_bpm)
-    with open(os.path.join(args.out, "grid.json"), "w") as f:
+    with open(os.path.join(args.out, "grid.json"), "w", encoding="utf-8") as f:
         json.dump(report, f, indent=1)
     progress(4)
     encode_mp3(args.ffmpeg, mix_clicks(stereo, report["beats"], report["downbeats"]),
@@ -371,7 +371,7 @@ def main(argv=None):
         try:
             if args.out:
                 os.makedirs(args.out, exist_ok=True)
-                with open(os.path.join(args.out, "grid-error.log"), "w") as f:
+                with open(os.path.join(args.out, "grid-error.log"), "w", encoding="utf-8") as f:
                     f.write(traceback.format_exc())
         except OSError:
             pass

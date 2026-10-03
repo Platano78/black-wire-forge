@@ -66,7 +66,8 @@ def _preflight(python, drum_stem):
     one plain sentence on the request, never a traceback on a job."""
     argv = [python, _HELPER, "--check"] + (["--drum-stem"] if drum_stem else [])
     try:
-        r = subprocess.run(argv, capture_output=True, text=True, timeout=_PREFLIGHT_TIMEOUT_S)
+        r = subprocess.run(argv, capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", timeout=_PREFLIGHT_TIMEOUT_S)
     except (OSError, subprocess.TimeoutExpired) as e:
         raise ValueError("Grid check could not start the Python BWF is pointed at (%s): %s."
                          % (python, e.__class__.__name__))

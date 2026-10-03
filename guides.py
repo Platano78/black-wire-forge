@@ -110,7 +110,7 @@ def load_all(rooms_path=ROOMS_PATH, guides_dir=GUIDES_DIR):
     that cannot be read names no guides (engines.rooms() already warns about
     it and falls back); a guide it DOES name must load, or GuideError."""
     try:
-        with open(rooms_path) as f:
+        with open(rooms_path, encoding="utf-8") as f:
             rooms = json.load(f)
     except (OSError, ValueError):
         return {}

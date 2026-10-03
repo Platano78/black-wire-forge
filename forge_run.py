@@ -79,7 +79,7 @@ def configure(data_dir):
     if not os.path.exists(path):
         return
     try:
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             runs = json.load(f)
     except Exception:
         traceback.print_exc()
@@ -102,7 +102,7 @@ def _save_locked():
     path = _forge_runs_path()
     tmp = "%s.%d.tmp" % (path, threading.get_ident())
     try:
-        with open(tmp, "w") as f:
+        with open(tmp, "w", encoding="utf-8") as f:
             json.dump(FORGE_RUNS, f)
             f.flush()
             os.fsync(f.fileno())

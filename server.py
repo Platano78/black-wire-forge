@@ -59,6 +59,14 @@ import webbrowser
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+# Windows hands a redirected stdout/stderr cp1252; log lines carry lane names and
+# paths, so make the console UTF-8 (lossy) before anything can print through it.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 # ---------------------------------------------------------------------------
 # Config
 #
@@ -115,7 +123,7 @@ def load_config():
     """Read config.json, or explain exactly what to do instead of crashing.
     Only called when the file exists: a missing one is Setup mode (below)."""
     try:
-        with open(CONFIG_FILE) as f:
+        with open(CONFIG_FILE, encoding="utf-8-sig") as f:      # utf-8-sig: Notepad may save a BOM
             cfg = json.load(f)
     except ValueError as e:
         die("%s is not valid JSON: %s\n"
@@ -456,14 +464,14 @@ LOG_LOCK = threading.Lock()
 # progress of a job we queued before the restart straight back to us.
 CLIENTS_FILE = os.path.join(DATA_DIR, "clients.json")
 try:
-    with open(CLIENTS_FILE) as _f:
+    with open(CLIENTS_FILE, encoding="utf-8") as _f:
         LANE_CLIENT_ID = json.load(_f)
 except Exception:
     LANE_CLIENT_ID = {}
 for _l in LANES:
     LANE_CLIENT_ID.setdefault(_l["id"], str(uuid.uuid4()))
 try:
-    with open(CLIENTS_FILE, "w") as _f:
+    with open(CLIENTS_FILE, "w", encoding="utf-8") as _f:
         json.dump(LANE_CLIENT_ID, _f)
 except Exception:
     pass
@@ -2196,7 +2204,7 @@ def save_jobs():
                         if j in JOBS and (pinned is None or j in newest or j in pinned)]
                 text = json.dumps([JOBS[j] for j in keep])
             tmp = "%s.%d.tmp" % (JOBS_FILE, threading.get_ident())
-            with open(tmp, "w") as f:
+            with open(tmp, "w", encoding="utf-8") as f:
                 f.write(text)
                 f.flush()
                 os.fsync(f.fileno())
@@ -2229,7 +2237,7 @@ def load_jobs():
     if not os.path.exists(JOBS_FILE):
         return
     try:
-        with open(JOBS_FILE) as f:
+        with open(JOBS_FILE, encoding="utf-8") as f:
             arr = json.load(f)
         with JOBS_LOCK:
             for j in arr:
@@ -2308,7 +2316,7 @@ def _seq_read(sid):
     if not os.path.exists(path):
         return None
     try:
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             seq = json.load(f)
     except ValueError:
         seq = None
@@ -2321,7 +2329,7 @@ def _seq_write(seq):
     """Caller holds SEQ_LOCK. Per-writer tmp name, fsync, then os.replace."""
     path = _seq_path(seq["id"])
     tmp = "%s.%d.tmp" % (path, threading.get_ident())
-    with open(tmp, "w") as f:
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(seq, f)
         f.flush()
         os.fsync(f.fileno())
@@ -4955,7 +4963,7 @@ def _guide_hist_read(key):
     if not os.path.exists(path):
         return 0, []
     try:
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             stored = json.load(f)
     except ValueError:
         return 0, []
@@ -4971,7 +4979,7 @@ def _guide_hist_write(key, generation, hist):
     """Caller holds GUIDE_HIST_LOCK. Per-writer tmp name, fsync, then os.replace."""
     path = _guide_hist_path(key)
     tmp = "%s.%d.tmp" % (path, threading.get_ident())
-    with open(tmp, "w") as f:
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump({"generation": generation, "turns": hist}, f)
         f.flush()
         os.fsync(f.fileno())
@@ -5163,6 +5171,7 @@ def _video_still(data, filename):
         with open(src, "wb") as f:
             f.write(data)
         probe = subprocess.run([FFMPEG_BIN, "-hide_banner", "-i", src], capture_output=True, text=True,
+                               encoding="utf-8", errors="replace",
                                timeout=VIDEO_STILL_TIMEOUT)
         m = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", probe.stderr or "")
         middle = (int(m.group(1)) * 3600 + int(m.group(2)) * 60 + float(m.group(3))) / 2 if m else 0.0
@@ -6835,7 +6844,8 @@ def _audio_led_slice(seq, slot, lane):
     wav = os.path.join(outdir, "%s.wav" % slot["id"])
     r = subprocess.run([FFMPEG_BIN, "-y", "-hide_banner", "-ss", "%.6f" % (mstart + win["start"]), "-i", mpath,
                         "-af", "apad", "-t", "%.6f" % (win["len"] + 1.0 / AUDIO_LED_FPS),
-                        "-ar", "44100", "-ac", "2", wav], capture_output=True, text=True, timeout=120)
+                        "-ar", "44100", "-ac", "2", wav], capture_output=True, text=True,
+                        encoding="utf-8", errors="replace", timeout=120)
     if r.returncode != 0 or not os.path.isfile(wav):
         raise ValueError("The master sound could not be cut for shot %s." % slot["id"])
     with open(wav, "rb") as f:
@@ -7050,7 +7060,8 @@ def _probe_json(path, timeout=30):
     try:
         r = subprocess.run([FFPROBE_BIN, "-v", "quiet", "-print_format", "json",
                             "-show_format", "-show_streams", path],
-                           capture_output=True, text=True, timeout=timeout)
+                           capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", timeout=timeout)
         if r.returncode != 0 or not r.stdout:
             return None
         return json.loads(r.stdout)
@@ -7584,7 +7595,8 @@ def _measure_loudness(input_args, graph_stmts, final_audio_label, timeout=600):
     args = [FFMPEG_BIN, "-y", "-hide_banner"] + list(input_args) + [
         "-filter_complex", fc, "-map", "[measured]", "-f", "null", "-"]
     try:
-        r = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+        r = subprocess.run(args, capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", timeout=timeout)
     except Exception:
         return None
     m = re.search(r"\{[^{}]*\"input_i\"[^{}]*\}", r.stderr or "", re.S)
@@ -7608,7 +7620,8 @@ def _measure_true_peak(path, timeout=120):
         r = subprocess.run([FFMPEG_BIN, "-y", "-hide_banner", "-i", path,
                             "-filter_complex", "[0:a]ebur128=peak=true:metadata=0[out]",
                             "-map", "[out]", "-f", "null", "-"],
-                           capture_output=True, text=True, timeout=timeout)
+                           capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", timeout=timeout)
     except Exception:
         return None
     matches = re.findall(r"Peak:\s*(-?[\d.]+)\s*dB", r.stderr or "")
@@ -7796,7 +7809,8 @@ def _run_cut(sid, cut_id, clip_plans, bed_path, out_path, out_w, out_h, song_pla
                      "-vsync", "cfr", "-r", "24",
                      "-movflags", "+faststart",
                      out_path]
-            return subprocess.run(args, capture_output=True, text=True, timeout=1800)
+            return subprocess.run(args, capture_output=True, text=True,
+                                  encoding="utf-8", errors="replace", timeout=1800)
 
         r = _encode()
         if r.returncode != 0 or not os.path.isfile(out_path):
@@ -8587,7 +8601,7 @@ def _dl_save():
     """Persist the queue (caller holds MODEL_DL_LOCK): temp file + rename."""
     os.makedirs(DATA_DIR, exist_ok=True)
     tmp = MODEL_DL_FILE + ".tmp"
-    with open(tmp, "w") as f:
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(MODEL_DL, f, indent=1)
     os.replace(tmp, MODEL_DL_FILE)
 
@@ -8597,7 +8611,7 @@ def _dl_load():
     packs' own sources (repo + file must be a "run by us" source, its size
     the manifest's), so an edited file can never widen what is fetched."""
     try:
-        with open(MODEL_DL_FILE) as f:
+        with open(MODEL_DL_FILE, encoding="utf-8") as f:
             d = json.load(f)
     except FileNotFoundError:
         return
