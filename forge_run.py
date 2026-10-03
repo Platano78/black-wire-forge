@@ -43,6 +43,7 @@ import time
 import traceback
 
 import forge_master
+import fsutil
 
 # ---------------------------------------------------------------------------
 # Exceptions
@@ -106,7 +107,7 @@ def _save_locked():
             json.dump(FORGE_RUNS, f)
             f.flush()
             os.fsync(f.fileno())
-        os.replace(tmp, path)
+        fsutil.replace(tmp, path)
     except Exception:
         traceback.print_exc()
 

@@ -4,7 +4,7 @@ while it is being written or just closed, so server.py must compare only
 (dev, ino) there -- on Windows it must also retry a locked unlink.
 
 Runs on ANY platform -- the Windows behaviour is exercised by setting
-srv._IS_WINDOWS, never by being on Windows.
+srv._IS_WINDOWS / fsutil.IS_WINDOWS, never by being on Windows.
 
 Run: python3 tests/test_windows_part_identity.py
 """
@@ -23,6 +23,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
 sys.path.insert(0, HERE)
+
+import fsutil
 
 FAILED = []
 def check(name, cond, detail=""):
@@ -56,10 +58,12 @@ def as_windows(flag):
     def deco(fn):
         def run(*a, **k):
             srv._IS_WINDOWS = flag
+            fsutil.IS_WINDOWS = flag
             try:
                 return fn(*a, **k)
             finally:
                 srv._IS_WINDOWS = REAL_FLAG
+                fsutil.IS_WINDOWS = REAL_FLAG
         return run
     return deco
 
@@ -122,7 +126,8 @@ def part_windows():
 
 part_posix(); part_windows()
 
-# 3. _unlink_retry: a locked file is retried on Windows, refused once on POSIX
+# 3. fsutil.unlink (server._unlink_retry delegates to it): a locked file is retried
+#    on Windows, refused once on POSIX
 LOCKED = os.path.join(SCRATCH, "locked.part")
 open(LOCKED, "wb").write(b"part")
 
@@ -130,7 +135,7 @@ class _Lock(object):
     """os.unlink stand-in that refuses `refusals` times before really unlinking."""
     def __init__(self, refusals):
         self.refusals, self.calls = refusals, 0
-        self.real = srv.os.unlink
+        self.real = fsutil.os.unlink
     def __call__(self, path):
         self.calls += 1
         if self.calls <= self.refusals:
@@ -140,27 +145,27 @@ class _Lock(object):
 @as_windows(True)
 def unlink_windows_transient():
     open(LOCKED, "wb").write(b"part")
-    lock, real_sleep = _Lock(2), srv.time.sleep
-    srv.os.unlink, srv.time.sleep = lock, lambda *a, **k: None
+    lock, real_sleep = _Lock(2), fsutil.time.sleep
+    fsutil.os.unlink, fsutil.time.sleep = lock, lambda *a, **k: None
     try:
-        srv._unlink_retry(LOCKED)
+        fsutil.unlink(LOCKED)
     finally:
-        srv.os.unlink, srv.time.sleep = lock.real, real_sleep
+        fsutil.os.unlink, fsutil.time.sleep = lock.real, real_sleep
     check("unlink: Windows: two refusals are retried, then the file is gone",
           not os.path.exists(LOCKED) and lock.calls == 3, lock.calls)
 
 @as_windows(True)
 def unlink_windows_permanent():
     open(LOCKED, "wb").write(b"part")
-    lock, real_sleep = _Lock(99), srv.time.sleep
-    srv.os.unlink, srv.time.sleep = lock, lambda *a, **k: None
+    lock, real_sleep = _Lock(99), fsutil.time.sleep
+    fsutil.os.unlink, fsutil.time.sleep = lock, lambda *a, **k: None
     raised = False
     try:
-        srv._unlink_retry(LOCKED)
+        fsutil.unlink(LOCKED)
     except PermissionError:
         raised = True
     finally:
-        srv.os.unlink, srv.time.sleep = lock.real, real_sleep
+        fsutil.os.unlink, fsutil.time.sleep = lock.real, real_sleep
     check("unlink: Windows: a permanent lock re-raises after the attempts",
           raised and lock.calls == 15, (raised, lock.calls))
 
@@ -168,14 +173,14 @@ def unlink_windows_permanent():
 def unlink_posix():
     open(LOCKED, "wb").write(b"part")
     lock = _Lock(99)
-    srv.os.unlink = lock
+    fsutil.os.unlink = lock
     raised = False
     try:
-        srv._unlink_retry(LOCKED)
+        fsutil.unlink(LOCKED)
     except PermissionError:
         raised = True
     finally:
-        srv.os.unlink = lock.real
+        fsutil.os.unlink = lock.real
     check("unlink: POSIX: one attempt only, and the refusal propagates",
           raised and lock.calls == 1, (raised, lock.calls))
     check("unlink: POSIX: the file is still there",

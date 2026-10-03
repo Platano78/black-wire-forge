@@ -85,6 +85,7 @@ for _stream in (sys.stdout, sys.stderr):
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 import forge_run
 import engines               # engine packs: every model name lives in one
+import fsutil                # replace/delete that retries a moment of Windows refusal
 import runner                # process lanes: fills the plan's placeholders and runs it
 import guides                # room guides: the persona a room's helper conversation speaks as
 
@@ -1319,7 +1320,7 @@ def _run_lora_download(lane, url, dest, max_bytes, repo, filename, convert_name=
 
         with _DOWNLOAD_OPENER.open(urllib.request.Request(url), timeout=60.0) as r:
             _download_body(r, open_part, max_bytes, cancelled=cancelled, progress=progress)
-        os.replace(part, dest)
+        fsutil.replace(part, dest)
         if convert_name:
             # LORA-2E #1: the pack declared a conversion for this family --
             # run it now, on the just-verified download, before it's ever
@@ -1329,7 +1330,7 @@ def _run_lora_download(lane, url, dest, max_bytes, repo, filename, convert_name=
             tmp = dest + ".converting"
             try:
                 _convert_lora_file(convert_name, dest, tmp)
-                os.replace(tmp, dest)
+                fsutil.replace(tmp, dest)
             except Exception as e:
                 for p in (tmp, dest):
                     try:
@@ -2221,7 +2222,7 @@ def save_jobs():
                 f.write(text)
                 f.flush()
                 os.fsync(f.fileno())
-            os.replace(tmp, JOBS_FILE)
+            fsutil.replace(tmp, JOBS_FILE)
     except Exception:
         traceback.print_exc()
 
@@ -2346,7 +2347,7 @@ def _seq_write(seq):
         json.dump(seq, f)
         f.flush()
         os.fsync(f.fileno())
-    os.replace(tmp, path)
+    fsutil.replace(tmp, path)
 
 
 def _seq_all():
@@ -3296,7 +3297,7 @@ def _op_add_ref(seq, p):
     ref_id = "r%d" % (max(used + [0]) + 1)
     cache_path = seq_ref_path(seq["id"], ref_id)
     os.makedirs(os.path.dirname(cache_path), exist_ok=True)
-    os.replace(tmp_path, cache_path)
+    fsutil.replace(tmp_path, cache_path)
     ref = {"id": ref_id, "role": role, "label": label, "job_id": job["id"], "output": idx,
            "file": "refs/%s.png" % ref_id, "recipe": job.get("recipe")}
     if role == "set":
@@ -3745,7 +3746,7 @@ def seq_delete(p):
         dest = os.path.join(dest_dir, sid + ".json")
         if os.path.exists(dest):
             dest = os.path.join(dest_dir, "%s.%d.json" % (sid, int(time.time())))
-        os.replace(path, dest)
+        fsutil.replace(path, dest)
     log("Deleted a sequence (its file is kept under sequences/deleted/).")
     return {"ok": True, "id": sid}, 200
 
@@ -3986,7 +3987,7 @@ def run_post_step(lane, job):
         tmp = path + ".tmp"
         with open(tmp, "wb") as f:
             f.write(out_bytes)
-        os.replace(tmp, path)
+        fsutil.replace(tmp, path)
         ext = os.path.splitext(out_name)[1].lower()
         media = "image" if ext in (".png", ".jpg", ".jpeg", ".webp") else "file"
         with JOBS_LOCK:
@@ -4044,7 +4045,7 @@ def seq_harvest(lane, job):
         tmp = dest + ".tmp"
         with open(tmp, "wb") as f:
             f.write(data)
-        os.replace(tmp, dest)
+        fsutil.replace(tmp, dest)
     except Exception as e:
         log("Could not copy the take for a sequence (not copied yet -- is its lane off?): %s" % str(e)[:300], "warn")
         return
@@ -4996,7 +4997,7 @@ def _guide_hist_write(key, generation, hist):
         json.dump({"generation": generation, "turns": hist}, f)
         f.flush()
         os.fsync(f.fileno())
-    os.replace(tmp, path)
+    fsutil.replace(tmp, path)
 
 
 def _guide_hist_turn_ok(turn):
@@ -6917,7 +6918,7 @@ def seq_master_import(sid, rev, filename, data):
         if old.startswith("master."):
             os.remove(os.path.join(adir, old))
     dest = os.path.join(adir, "master" + ext)
-    os.replace(tmp, dest)
+    fsutil.replace(tmp, dest)
     with SEQ_LOCK:
         seq = _seq_read(sid)
         if seq is None:
@@ -7136,7 +7137,7 @@ def _cut_ensure_take_file(sid, slot_id, job_id):
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(data)
-        os.replace(tmp, dest)
+        fsutil.replace(tmp, dest)
     except BaseException:
         try:
             os.unlink(tmp)
@@ -8643,7 +8644,7 @@ def _dl_save():
     tmp = MODEL_DL_FILE + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(MODEL_DL, f, indent=1)
-    os.replace(tmp, MODEL_DL_FILE)
+    fsutil.replace(tmp, MODEL_DL_FILE)
 
 
 def _dl_load():
@@ -8878,24 +8879,15 @@ def _dl_forget_part(rel):
 
 
 def _unlink_retry(path):
-    """os.unlink, retried briefly on Windows: a file that was just written may be locked for a moment by a virus scanner
-    or indexer (PermissionError), which is gone a moment later. POSIX: one plain unlink."""
-    attempts = 15 if _IS_WINDOWS else 1
-    for i in range(attempts):
-        try:
-            os.unlink(path)
-            return
-        except PermissionError:
-            if i == attempts - 1:
-                raise
-            time.sleep(0.2)
+    """Kept as a name callers already use; the retry itself lives in fsutil.unlink."""
+    return fsutil.unlink(path)
 
 
 def _dl_drop_part(part, rel, ident):
     """Remove our .part only while the path still holds exactly `ident`."""
     try:
         if _same_file(os.lstat(part), ident):
-            _unlink_retry(part)
+            fsutil.unlink(part)
             _dl_forget_part(rel)
     except OSError:
         pass
@@ -9029,7 +9021,7 @@ def _dl_one(root, e):
         except OSError:
             if os.path.lexists(dest):
                 return "failed", "A file named %s appeared in %s meanwhile; it is left alone." % (name, where)
-            os.replace(part, dest)       # a drive without hard links
+            fsutil.replace(part, dest)       # a drive without hard links
             _dl_forget_part(rel_part)
         else:
             _dl_drop_part(part, rel_part, mine[0])
