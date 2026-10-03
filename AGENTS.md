@@ -312,7 +312,7 @@ and names its models folder (checked: exists, writable, holds ComfyUI's usual su
 room card can download that room's files into it: size, destination and licences are shown first,
 and the user's click on "Download N files" is the yes. One file at a time, exact manifest sizes,
 Hugging Face hosts only (`HF_TOKEN` for gated repos, sent only to huggingface.co); the queue is
-`data/downloads.json` and resumes after a restart. `GET /api/downloads` shows it; on a server
+a file named `downloads.json` in the app's data folder and resumes after a restart. `GET /api/downloads` shows it; on a server
 bound beyond localhost the downloads routes answer 403.
 
 **Grid check (Cover room) uses no ComfyUI, same rule.** It runs on a process lane under a

@@ -106,7 +106,7 @@ the request (`"attached"`), so the server knows the count and grounds the brain 
 **How pictures are named.** The user says "picture 1", "picture 2" (upload order). The instruction
 calls them `<image1>`, `<image2>`: Qwen-Image 2.1's own text encoder puts exactly that label in
 front of each attached picture, in upload order (observed in ComfyUI's
-`comfy/text_encoders/qwen_image21.py`), and the engine's upstream enhancer writes that tag for two or
+own Qwen-Image 2.1 text-encoder source), and the engine's upstream enhancer writes that tag for two or
 more pictures. With one picture it says "the picture". The output takes its size from `<image1>`
 (observed: `TextEncodeQwenImage21`'s latent follows the first reference). **UNTESTED by a
 render:** neither this tag form nor plain ordinal prose ("the second picture") has been compared
