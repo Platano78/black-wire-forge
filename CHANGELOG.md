@@ -415,8 +415,7 @@ All notable changes to Black Wire Forge are recorded here.
   `scripts/run-tests.sh` uses the repo's `.venv` when there is one. Two suites that compare
   against the committed code skip that comparison in a download with no git history,
   instead of failing.
-- The guides no longer cite internal documents, and several docs were corrected against the
-  code: startup lines, the 503 while a lane's models are still being read, `/api/guide`'s
+- Several docs were corrected against the code: startup lines, the 503 while a lane's models are still being read, `/api/guide`'s
   fields, how a sequence take is chosen, where cuts are written, the sample pack in
   WRITING-A-PACK.md, and the Real-ESRGAN licence source.
 

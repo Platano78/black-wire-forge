@@ -23,6 +23,8 @@ Double-click `start.bat` (Windows), `start.command` (macOS), or run `./start.sh`
 Black Wire Forge. On first run the Setup page opens in your browser. To set a custom Python path or extra
 arguments, copy `start-user.example.sh` (or `start-user.example.bat` on Windows) to the same name
 without "example", next to the launcher, and edit it; the launcher itself never needs editing.
+The launcher uses the first working `python3` or `python` it finds, not the repo's `.venv`; to use the venv
+(for optional packages such as Pillow), set `PYTHON=.venv/bin/python` in `start-user.sh`.
 
 Or from a terminal:
 
@@ -143,8 +145,9 @@ For the Picture room (Qwen-Image 2.1, `engines/qwen_image.py`), your lane's Comf
   `FreSca`, `KSampler`, `VAEDecode`, `SaveImage` -- these are all core in current ComfyUI,
   nothing extra to add. The recommended GGUF-quantised UNet additionally needs `UnetLoaderGGUF`
   from the ComfyUI-GGUF custom node pack (see `docs/MODELS.md`'s "Custom-node packages").
-- **Model files**: a UNet, a CLIP/text-encoder, and a VAE whose filenames discovery
-  recognizes as `qwen_image`-named (see "Qwen-Image 2.1 preference" below).
+- **Model files**: a UNet, a CLIP/text-encoder, and a VAE. The UNet and VAE filenames must match
+  the `qwen_image` rules; the text encoder must match `qwen3vl` (preferably `8b`). See the model
+  table in `docs/MODELS.md` for the exact filenames, and "Qwen-Image 2.1 preference" below.
 
 Other rooms (Video, Music, 3D, ...) need their own engine's nodes and models the same way;
 read the relevant file under `engines/` for the exact roles it declares.
@@ -277,7 +280,7 @@ The media in "What it looks like" is machine-generated with open-weight models, 
 | Media | Made with | Licence |
 |---|---|---|
 | The song (the song clip) | ACE-Step 1.5 (ACE Studio and StepFun) | [MIT](https://github.com/ace-step/ACE-Step-1.5) |
-| Pictures (the picture clip, the Picture screenshot) | Qwen-Image 2.1 (Qwen team, Alibaba) | [Qwen Research License](https://huggingface.co/Qwen/Qwen-Image-2.1/blob/main/LICENSE), non-commercial |
+| Pictures (the picture clip, the Picture screenshot) | Qwen-Image 2.1 (Qwen team, Alibaba) | [Qwen Research License](https://huggingface.co/Qwen/Qwen-Image-2.1/blob/main/LICENSE), research or evaluation use only |
 | Video (the storyboard clip, the Cutting Room screenshots) | LTX-2.5 (Lightricks) | [LTX-2.x Community License](https://github.com/Lightricks/LTX-2/blob/main/LICENSE-2_x) |
 | Guide replies | the local chat model the guide was pointed at | its own licence |
 | Template thumbnails in the Workflows clip and screenshot | ComfyUI's own workflow templates, shown as your ComfyUI lists them | theirs |

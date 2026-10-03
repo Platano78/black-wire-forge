@@ -14,7 +14,8 @@ from home; do not port-forward it.
 ## First run binds localhost
 
 With no `config.json`, the app starts in Setup mode: bound to `127.0.0.1` whatever else is
-set, answering only the Setup page (every other API is 503). Its probes reach only the
+set. It serves the Setup page, `/api/health`, the Setup routes and Setup's model-download routes;
+every other API answers 503. Its probes reach only the
 addresses typed on that page (or the usual local ports), time out within 4 seconds and pass
 back only the fields the page shows. Setup never replaces an existing `config.json`, and its
 `/api/setup/*` routes are gone (404) once one exists.
@@ -52,7 +53,7 @@ must not be relied on to make an internet-exposed deployment safe**:
 - **No TLS.** Traffic between your browser and the app, and between the app and its
   ComfyUI lanes, is plain HTTP.
 - **No per-user accounts, no audit log of who did what.**
-- **No request-size, upload-size, storage-quota, or concurrency limit.** The server
+- **No global request-size, upload-size, storage-quota, or concurrency limit** (a few routes, such as master-sound import at 200 MB, cap themselves). The server
   trusts `Content-Length` and buffers the whole request body in memory before doing
   anything else with it; a process-lane upload is then written to local disk with no
   cap. A reachable client can consume server memory, local disk, lane storage, and

@@ -28,7 +28,7 @@ reading the rule and guessing.
 ## Qwen-Image 2.1 (`engines/qwen_image.py`; also required by `engines/pixelart.py` -- see its
 note below)
 
-Licence: **Qwen RESEARCH LICENSE AGREEMENT** (non-commercial) — [licence text](https://huggingface.co/Qwen/Qwen-Image-2.1/blob/main/LICENSE). Attribution: Qwen-Image 2.1 by Alibaba Qwen team.
+Licence: **Qwen RESEARCH LICENSE AGREEMENT**: its §1 defines "Non-Commercial" as *"for research or evaluation purposes only"*, and §2 grants use for non-commercial purposes only, so do not assume ordinary personal creative use is covered; commercial use needs a separate licence from Qwen — [licence text](https://huggingface.co/Qwen/Qwen-Image-2.1/blob/main/LICENSE). Attribution: Qwen-Image 2.1 by Alibaba Qwen team.
 
 | Role | Source (HF repo · file) | HF size | Verified size | Match | ComfyUI folder | Discovery match |
 |---|---|---|---|---|---|---|
@@ -154,7 +154,7 @@ role, so not listed as a recommendation here. `Lightricks/LTX-2.5` is a **gated*
 
 ## MiniMax-H3 (`engines/minimax_h3.py`) — video
 
-Licence: **MiniMax H3 License Agreement** ([official text](https://huggingface.co/MiniMaxAI/MiniMax-H3/raw/main/LICENSE)), confirmed live 2026-09-24, three clauses:
+Licence: **MiniMax H3 License Agreement** ([official text](https://huggingface.co/MiniMaxAI/MiniMax-H3/raw/main/LICENSE)), confirmed live 2026-09-24. These are three of its clauses, not a full summary: it also binds you to its Acceptable Use Policy (Exhibit A) and has terms for passing the model on and for hosted services (APIs, web access). Read the full text before use:
 
 - Territory (§I.5): *"'Excluded Territories' means the European Union, the United Kingdom, the
   Republic of Korea and the United States of America."* (§V.4 backs this with a use
@@ -233,7 +233,7 @@ actual `LICENSE` file in `MiniMaxAI/MiniMax-Music3` (fetched and read directly, 
 2026-09-24) is a custom **"MiniMax-Music3 COMMUNITY LICENSE"**, not Apache-2.0: permissive to
 use/copy/modify/distribute, but §3.1 requires *"You shall prominently display 'MiniMax-Music3'
 on the user interface of commercial product or service that uses the Software"*, and §3.2
-requires separate written authorization from MiniMax above $20M/year aggregate revenue. Treat
+requires separate written authorization from MiniMax above $20M/year aggregate revenue. It also requires your use to comply with its Acceptable Use Policy (Exhibit A). Treat
 the LICENSE file, not the Hub tag, as authoritative. Attribution: MiniMax-Music3.
 
 | Role | Source (HF repo · file) | HF size | Verified size | Match | ComfyUI folder | Discovery match |
@@ -413,7 +413,7 @@ ComfyUI-LTXVideo-only: `LTXVContextWindows`, `LTXVLoopingSampler`, `LTXVLatentUp
 
 ## Licence gates (restated, per AGENTS.md's "Rules for the agent")
 
-- **Non-commercial**: Qwen-Image 2.1 (Qwen Research License), YuE2-3B and SheetSage2 (both
+- **Non-commercial**: Qwen-Image 2.1 (Qwen Research License: research or evaluation use only), YuE2-3B and SheetSage2 (both
   CC BY-NC 4.0).
 - **Revenue threshold, paid licence required above it**: LTX-2.5 — $10M/year annual revenue
   (LTX-2.x Community License §2.1); Stable Audio Open — $1M/year annual revenue (Stability AI

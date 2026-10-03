@@ -14,7 +14,7 @@ card, then general web craft — see "Research log" for what came from where.
 
 ## IDEA — which room, which mode
 
-- The engine behind Picture and Pixel Art is **Qwen-Image 2.1** (research licence, non-commercial) —
+- The engine behind Picture and Pixel Art is **Qwen-Image 2.1** (research licence: research or evaluation use only) —
   text-to-image and edit in one model, up to 10 reference images for edit, 7 preset aspect ratios:
   1:1 (2048×2048), 4:3 (2400×1792), 3:4 (1792×2400), 3:2 (2528×1696), 2:3 (1696×2528), 16:9
   (2752×1536), 9:16 (1536×2752) — no preset is 2048×2752; that figure would wrongly conflate 1:1's

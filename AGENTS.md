@@ -25,12 +25,12 @@ Black Wire Forge is a **web front end** for one or more ComfyUI instances. It:
 - Never commit or share `config.json` — it carries the user's real machine addresses and is
   gitignored on purpose.
 - Before downloading any model weights, tell the user the file size and licence and get an
-  explicit yes. Call out non-commercial licences (Qwen-Image 2.1, YuE2-3B, SheetSage2) and
+  explicit yes. Call out non-commercial licences (Qwen-Image 2.1: research only; YuE2-3B, SheetSage2) and
   territory-restricted ones (MiniMax-H3 — open outside the EU/UK/South Korea/USA) by name;
   "Getting the models" (or `docs/MODELS.md`) has each model's source, size and licence.
 - Don't disable or work around the request guard (`request_refusal()` in `server.py`) — it
   is the only thing standing between this app and a browser-based attack against a no-login
-  server. If it refuses something legitimate, fix `"allowed_hosts"`, don't patch it out.
+  server. If it refuses a real host, add it to `"allowed_hosts"`; never patch it.
 
 ## Decide the path with the user first
 
@@ -124,7 +124,7 @@ Against the running server (port 3998 by default; use the `"port"` in `config.js
   lane count): the app is up, not any lane.
 - `curl -s http://127.0.0.1:3998/api/lanes` → `{"lanes": [...], "title": ..., "fleet_llm": ...}`.
   Per lane: `"up"` — a ComfyUI lane's latest poll reached its `/system_stats` (a process lane:
-  its programs are on `PATH`); `"checked"`: that poll's time; when `false`, `"err"` says why.
+  its programs are found); `"checked"`: that poll's time; when `false`, `"err"` says why.
   `"caps"` — the capabilities (`"image"`, `"video"`, `"audio"`, `"3d"`, `"producer"`) it offers after
   discovery; `"declared_caps"` — what `config.json` asked for. `"able"` — keyed by
   **mode/ability name** (`"t2i"`, `"song"`, `"fl2va"`...), not capability: whether the found
@@ -238,7 +238,7 @@ prefers one also containing `2.1`) — do not guess a filename requirement not i
 
 | Symptom / sentence (grep `server.py` for the exact wording) | Cause | Fix |
 |---|---|---|
-| A "Set up Black Wire Forge" page instead of the rooms; every other API answers 503 `Finish Setup first.` | `config.json` doesn't exist yet (Setup mode, `127.0.0.1:3998` only) | answer the page, or stop the server, `cp config.example.json config.json`, edit it and start again |
+| A "Set up Black Wire Forge" page instead of the rooms; the rooms' APIs answer 503 `Finish Setup first.` (health, Setup and Setup's model-download routes still answer) | `config.json` doesn't exist yet (Setup mode, `127.0.0.1:3998` only) | answer the page, or stop the server, `cp config.example.json config.json`, edit it and start again |
 | `<config> needs a non-empty "lanes" list -- one entry per ComfyUI instance.` | `"lanes"` is missing or `[]` | add at least one lane object |
 | `<config> is not valid JSON: ...` | malformed JSON (commented-out lines, trailing comma) | fix the JSON; it allows neither |
 | `Port <N> is already in use.` | another process (maybe a previous run) already has the port | `lsof -nP -iTCP:<N> -sTCP:LISTEN`, or change `"port"` in `config.json` |
