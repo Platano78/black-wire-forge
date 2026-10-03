@@ -133,6 +133,8 @@ def note(msg):
 # ---------------------------------------------------------------------------
 
 FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+if os.name == "nt":          # no DejaVu on Windows: a system font that every install has (exercises the drive-letter quoting)
+    FONT = "C:/Windows/Fonts/arial.ttf"
 LOUDNESS_DIFF_MIN = 8.0
 BED_DIFF_TARGET = 18.0
 BED_DIFF_TOL = 4.0
