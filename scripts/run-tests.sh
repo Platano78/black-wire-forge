@@ -22,6 +22,12 @@ elif [ -x "$REPO_DIR/.venv/Scripts/python.exe" ]; then      # Windows (Git Bash)
 else
     PYTHON="python3"
 fi
+# tests/sitecustomize.py (loaded by every test process) makes proc.kill() take a Windows
+# process tree down; it needs tests/ on the module path.
+case "$PYTHON" in
+    *.exe) export PYTHONPATH="$TESTS_DIR${PYTHONPATH:+;$PYTHONPATH}" ;;
+    *)     export PYTHONPATH="$TESTS_DIR${PYTHONPATH:+:$PYTHONPATH}" ;;
+esac
 echo "python: $PYTHON"
 
 # GNU `timeout` is not a hard requirement -- stock macOS has no `timeout` at
