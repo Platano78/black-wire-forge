@@ -111,6 +111,26 @@ def pixelart_graph(p, m):
     return base
 
 
+def _source_name(filename):
+    """The temp-file name for the render `_post_quantise` was handed.
+
+    `filename` is whatever the LANE reported for its render -- it arrives
+    from the remote ComfyUI's /history and /view, i.e. from outside this
+    process -- so it is never used as a path component: an absolute or
+    `..`-bearing name would write the downloaded bytes outside the temp
+    dir (on Windows `os.path.join(td, "C:/x")` discards `td` outright).
+    Backslashes are split as separators too, so a Windows-style name is
+    reduced the same way. Only a short alphanumeric extension is kept, and
+    the stem is one this module owns, so a reserved device name (NUL, CON)
+    cannot address one instead of a file.
+    """
+    name = os.path.basename(str(filename or "").replace("\\", "/"))
+    ext = os.path.splitext(name)[1]
+    if not re.fullmatch(r"\.[A-Za-z0-9]{1,5}", ext):
+        ext = ".png"
+    return "render" + ext
+
+
 def _post_quantise(input_bytes, filename, args):
     """The core's own post-render step (see engines/__init__.py's `post` key):
     palette-lock, dither, downscale. `_quantise.quantise_and_dither` is a
@@ -127,7 +147,7 @@ def _post_quantise(input_bytes, filename, args):
     grid = "modal" if args.get("pixel_grid") == GRID_MODAL else "nearest"
     palette = parse_palette(args.get("pixel_palette"))
     with tempfile.TemporaryDirectory() as td:
-        src = os.path.join(td, filename or "render.png")
+        src = os.path.join(td, _source_name(filename))
         with open(src, "wb") as f:
             f.write(input_bytes)
         out = os.path.join(td, "sprite.png")

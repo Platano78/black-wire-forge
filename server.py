@@ -3855,6 +3855,30 @@ def collect_outputs(hist_entry):
     return outs
 
 
+_WIN_RESERVED_NAMES = {"con", "prn", "aux", "nul"}
+_WIN_RESERVED_NAMES |= {"com%d" % i for i in range(1, 10)}
+_WIN_RESERVED_NAMES |= {"lpt%d" % i for i in range(1, 10)}
+
+
+def _unsafe_output_name(filename):
+    """True for a filename Windows cannot store as a real file, checked in
+    ONE place for both output resolvers below.
+
+    Windows silently trims trailing spaces and dots, so `NUL.tmp` and
+    `render.png.` name something other than what was asked for, and CON /
+    PRN / AUX / NUL / COM1-9 / LPT1-9 are DEVICES with any extension --
+    writing one discards the bytes and the later os.replace() raises
+    FileNotFoundError (E-1/E-2 in the Windows audit). Only the part before
+    the first dot counts, so an ordinary name that merely starts with one
+    (`con_art.png`, `nulled.png`) is left alone.
+    """
+    if not isinstance(filename, str) or not filename:
+        return False
+    if filename[-1] in " .":
+        return True
+    return filename.split(".")[0].lower() in _WIN_RESERVED_NAMES
+
+
 def lane_output_path(lane, output):
     """UX-2 #5: resolve one job["outputs"] entry (subfolder+filename) to a
     real path under this LANE's own configured `outputs.dir`, or raise
@@ -3868,7 +3892,7 @@ def lane_output_path(lane, output):
     if not isinstance(outs, dict) or not outs.get("dir"):
         return None
     filename = os.path.basename(output.get("filename") or "")
-    if not filename or filename in (".", ".."):
+    if not filename or filename in (".", "..") or _unsafe_output_name(filename):
         raise ValueError("that output filename is not allowed")
     subfolder = output.get("subfolder") or ""
     # A subfolder is ComfyUI's own (e.g. a job-id-shaped folder name), never
@@ -3900,7 +3924,7 @@ def local_output_path(job_id, filename):
     that escapes) -- one comparison covers every case, on either side.
     """
     filename = os.path.basename(filename or "")
-    if not filename or filename in (".", ".."):
+    if not filename or filename in (".", "..") or _unsafe_output_name(filename):
         raise ValueError("that output filename is not allowed")
     base = os.path.realpath(LOCAL_OUTPUTS_DIR)
     path = os.path.realpath(os.path.join(LOCAL_OUTPUTS_DIR, job_id or "", filename))
@@ -4778,12 +4802,21 @@ def _resolve_job_output_bytes(job_id, output_index):
     return _carry_source_bytes(job, out), out.get("filename") or "image.png"
 
 
+def _has_dotdot(path):
+    """True when any component of `path` is "..". Both separators count:
+    os.sep is "/" here but "\\" on Windows, and a client (or a stored
+    relative path) can carry either -- splitting only on "/" would let
+    "a\\..\\b" through the check on both platforms. realpath stays the
+    backstop; this keeps the shape check portable."""
+    return ".." in str(path).replace("\\", "/").split("/")
+
+
 def _resolve_upload_bytes(lane_id, name):
     """-> (bytes, filename) for an uploaded input, reached the same contained
     way an upload already is: a process lane's own uploads dir (basename
     only, no traversal); a comfy lane's /view?type=input (subfolder split
     off the stored name, same as _carry_source_bytes)."""
-    if not name or "\x00" in name or ".." in name.split("/"):
+    if not name or "\x00" in name or _has_dotdot(name):
         raise ValueError("that upload name is not allowed")
     lane = LANE_BY_ID.get(lane_id)
     if not lane:
@@ -7849,7 +7882,7 @@ def _seq_file_path(sid, rel):
     contained in data/seq/<id>/, same rule as seq_ref_path/_seq_take_cache_path,
     but STRICT (raises) rather than soft: the spec says an escaping path is
     400, not a silent cache-miss."""
-    if not rel or not isinstance(rel, str) or ".." in rel.split("/"):
+    if not rel or not isinstance(rel, str) or _has_dotdot(rel):
         raise ValueError("That path is not allowed.")
     base = os.path.realpath(os.path.join(SEQ_MEDIA_DIR, sid))
     path = os.path.realpath(os.path.join(base, rel))
@@ -8505,7 +8538,15 @@ def _model_dest(root, src):
     if not _MODEL_NAME_RE.match(name) or name.endswith(".part"):
         raise ValueError("%r is not a file name Black Wire Forge will write." % name[:80])
     target = os.path.abspath(os.path.join(root, folder, subdir))
-    if not folder or target == root or os.path.commonpath([target, root]) != root:
+    # commonpath() raises ValueError ("Paths don't have the same drive") when
+    # folder/subdir point at another Windows drive; that is simply another
+    # way of landing outside `root`, so it gets the same plain sentence
+    # rather than CPython's.
+    try:
+        inside = os.path.commonpath([target, root]) == root
+    except ValueError:
+        inside = False
+    if not folder or target == root or not inside:
         raise ValueError("The folder for %s would land outside the models folder; refused." % name)
     return target, os.path.join(target, name)
 
