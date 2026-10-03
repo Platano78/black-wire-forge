@@ -125,9 +125,14 @@ _E1_COMMIT = "671958b"
 OLD = None
 have_old = subprocess.run(["git", "cat-file", "-e", "%s~1" % _E1_COMMIT], cwd=ROOT,
                            capture_output=True).returncode == 0
+OLD_SERVER_SRC = ""
 if have_old:
     OLD_SERVER_SRC = subprocess.run(["git", "show", "%s~1:server.py" % _E1_COMMIT], cwd=ROOT,
                                      capture_output=True, text=True, check=True).stdout
+    # The private repo holds that commit, but its server.py predates pool_select, which the
+    # shared test fixtures call: it cannot be loaded as "old". Treat it as absent, same as a public clone.
+    have_old = "pool_select" in OLD_SERVER_SRC
+if have_old:
     OLD_SERVER_PATH = os.path.join(SCRATCH, "old_server.py")
     with open(OLD_SERVER_PATH, "w") as f:
         f.write(OLD_SERVER_SRC)
