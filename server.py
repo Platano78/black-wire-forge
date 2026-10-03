@@ -8339,14 +8339,36 @@ def _setup_write_new(text):
         os.unlink(tmp)
 
 
+_SERVER = None                 # the running server object, for a Setup-mode restart
+_RESTART_REQUESTED = False     # Windows only: a Setup save asked us to re-run
+
+
 def _setup_restart():
-    """Re-exec this server in-process so the new config loads (same pid,
-    same arguments, same environment)."""
+    """Re-exec this server so the new config loads (same arguments, same environment).
+
+    POSIX: execv() replaces this process, so the pid and everything waiting on it
+    survive. Windows: execv() would start a new process and EXIT us, leaving the
+    launcher with nothing to wait on -- so instead we stop the server and run the
+    new copy as a child of this process (see _finish_after_serve)."""
     time.sleep(0.5)   # let the response reach the page first
     log("Settings saved to %s -- restarting." % os.path.basename(CONFIG_FILE), "ok")
     sys.stdout.flush()
     sys.stderr.flush()
+    if os.name == "nt":
+        global _RESTART_REQUESTED
+        _RESTART_REQUESTED = True
+        _SERVER.shutdown()     # returns serve_forever() in main(); it runs the new copy
+        return
     os.execv(sys.executable, [sys.executable] + sys.argv)
+
+
+def _finish_after_serve(srv):
+    """serve_forever() returned. Normally that only happens at shutdown. On Windows a Setup save asks for a restart
+    by stopping the server (see _setup_restart): free the port, run the new copy as a CHILD of this process (so the
+    launcher still waits on us and a window close still stops everything) and leave with its exit code."""
+    srv.server_close()
+    if _RESTART_REQUESTED:
+        sys.exit(subprocess.call([sys.executable] + sys.argv))
 
 
 def setup_write(body):
@@ -11088,6 +11110,7 @@ class _Server(ThreadingHTTPServer):
 
 
 def main():
+    global _SERVER
     # Bind first, before starting any threads: if the port is taken there is no
     # point polling seven lanes, and a stack trace is a poor way to say
     # "something else is already using this port".
@@ -11108,6 +11131,7 @@ def main():
                 % (BIND, os.path.basename(CONFIG_FILE)))
         raise
     srv.daemon_threads = True
+    _SERVER = srv          # a Setup save stops this very object (see _setup_restart)
 
     _dl_load()   # W3 R4: a model download queue survives the Setup re-exec and any restart
     with MODEL_DL_LOCK:
@@ -11123,6 +11147,7 @@ def main():
             % (os.path.basename(CONFIG_FILE), PORT, TITLE), "ok")
         _open_browser_if_asked()
         srv.serve_forever()
+        _finish_after_serve(srv)
         return
     load_jobs()
     forge_run.configure(DATA_DIR)
@@ -11141,6 +11166,7 @@ def main():
     print("Config file: %s" % CONFIG_FILE, flush=True)
     _open_browser_if_asked()
     srv.serve_forever()
+    _finish_after_serve(srv)
 
 
 if __name__ == "__main__":
