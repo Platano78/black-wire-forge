@@ -180,10 +180,13 @@ try:
         check("Done shows the plain ready message",
               "Your video is ready." in page.inner_text("#forgeVideoBody"))
         check("Done stops offering Stop", not page.evaluate("() => !!$('#forgeVideoStop')"))
+        # The page's own Cutting Room handler may rewrite the hash once it finds this fixture sequence does
+        # not exist, so assert what the LINK did (the hash it set), not the hash left after the rewrite.
+        page.evaluate("() => { window.__hashes = []; window.addEventListener('hashchange', () => window.__hashes.push(location.hash)); }")
         page.click("#forgeVideoCutLink")
-        page.wait_for_function("() => location.hash.indexOf('seq=s_v1') >= 0", timeout=15000)
+        page.wait_for_function("() => window.__hashes.some(h => h.indexOf('seq=s_v1') >= 0)", timeout=15000)
         check("The link lands in the Cutting Room with the run's sequence",
-              page.evaluate("() => location.hash").startswith("#room=cutting"))
+              page.evaluate("() => window.__hashes.some(h => h.startsWith('#room=cutting') && h.indexOf('seq=s_v1') >= 0)"))
         check("The dialog closed behind it",
               not page.evaluate("() => $('#forgeVideoDialog').open"))
 
