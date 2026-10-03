@@ -17,6 +17,8 @@ mkdir -p "$SCRATCH_ROOT"
 # .venv; a PEP 668 system python has none of requirements*.txt), else python3.
 if [ -x "$REPO_DIR/.venv/bin/python" ]; then
     PYTHON="$REPO_DIR/.venv/bin/python"
+elif [ -x "$REPO_DIR/.venv/Scripts/python.exe" ]; then      # Windows (Git Bash)
+    PYTHON="$REPO_DIR/.venv/Scripts/python.exe"
 else
     PYTHON="python3"
 fi
