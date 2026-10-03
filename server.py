@@ -1736,6 +1736,14 @@ def _process_media(name):
     return "image"
 
 
+def _load_average():
+    """1-minute load average, or 0.0 where the platform has none (Windows): the lane's load meter then stays empty."""
+    try:
+        return round(os.getloadavg()[0], 2)
+    except (AttributeError, OSError):
+        return 0.0
+
+
 def poll_process_lane(lane):
     """A process lane is never networked: discovery is which() per declared
     bin, so installing a program shows up on the next poll, no restart.
@@ -1769,7 +1777,7 @@ def poll_process_lane(lane):
     with DISCOVERY_LOCK:
         DISCOVERY[lane["id"]] = {"models": found, "pools": {}, "checked": time.time(), "err": ""}
     st = {"up": up, "checked": time.time(), "live_ids": [], "err": "; ".join(notes),
-          "load": round(os.getloadavg()[0], 2), "cores": os.cpu_count() or 1}
+          "load": _load_average(), "cores": os.cpu_count() or 1}
     try:
         st["pending"] = PROC_QUEUE[lane["id"]].qsize()
     except KeyError:
