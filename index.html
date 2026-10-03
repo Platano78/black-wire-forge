@@ -5320,8 +5320,8 @@ function forgeVideoProgressHTML(run){
     tail = '<p style="color:var(--error)">' + esc(run.message || run.error || 'It stopped.') + '</p>';
   }
   return '<p>' + esc(run.plan_line || '') + '</p>'
-    + '<p class="hint">' + esc(forgeVideoStageWords(run.stage))
-    + (run.message ? ' \u2014 ' + esc(run.message) : '') + '</p>'
+    + (run.status === 'done' ? '' : '<p class="hint">' + esc(forgeVideoStageWords(run.stage))
+    + (run.message ? ' \u2014 ' + esc(run.message) : '') + '</p>')
     + '<progress id="forgeVideoBar" value="' + (run.done || 0) + '" max="' + ((run.total || 0) || 1) + '"></progress>'
     + tail + '<p id="forgeVideoMsg" role="status"></p>';
 }
