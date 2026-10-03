@@ -11013,20 +11013,41 @@ def _open_browser_if_asked():
     threading.Thread(target=_go, daemon=True).start()
 
 
+class _Server(ThreadingHTTPServer):
+    """The listening socket, with one Windows-only fix.
+
+    On Windows SO_REUSEADDR does not mean "the old socket is gone": it lets a
+    SECOND process bind the same address and port, so two copies of this app
+    (or any other local program) silently share the port and requests go to
+    whichever one answers first. SO_EXCLUSIVEADDRUSE is the Windows spelling of
+    "no, this port is mine" and is set before the bind. POSIX needs none of
+    this -- a listening socket already refuses a second binder -- so its
+    behaviour here is exactly what ThreadingHTTPServer did.
+    """
+    allow_reuse_address = (os.name != "nt")
+
+    def server_bind(self):
+        if os.name == "nt" and hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+
 def main():
     # Bind first, before starting any threads: if the port is taken there is no
     # point polling seven lanes, and a stack trace is a poor way to say
     # "something else is already using this port".
     try:
-        srv = ThreadingHTTPServer((BIND, PORT), Handler)
+        srv = _Server((BIND, PORT), Handler)
     except OSError as e:
-        if getattr(e, "errno", None) in (48, 98):   # EADDRINUSE on BSD / Linux
+        if getattr(e, "errno", None) in (48, 98, 10048):  # EADDRINUSE on BSD / Linux / Windows
+            find = ("netstat -ano | findstr :%d" if os.name == "nt"
+                    else "lsof -nP -iTCP:%d -sTCP:LISTEN") % PORT
             die("Port %d is already in use.\n\n"
                 "Either this app is already running, or something else has the port.\n"
-                "Find it with:  lsof -nP -iTCP:%d -sTCP:LISTEN\n"
+                "Find it with:  %s\n"
                 "Or pick another port by changing \"port\" in %s."
-                % (PORT, PORT, os.path.basename(CONFIG_FILE)))
-        if getattr(e, "errno", None) == 49:         # EADDRNOTAVAIL
+                % (PORT, find, os.path.basename(CONFIG_FILE)))
+        if getattr(e, "errno", None) in (49, 10049):  # EADDRNOTAVAIL
             die("Cannot bind to %r. Check \"bind\" in %s: use \"0.0.0.0\" for every\n"
                 "interface, or \"127.0.0.1\" for this machine only."
                 % (BIND, os.path.basename(CONFIG_FILE)))
