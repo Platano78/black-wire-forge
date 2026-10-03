@@ -107,7 +107,8 @@ SYNTH = {
     "roles": {},
     "provides": {"zzstub": ["py"]},      # the mode is able when its bin resolved
     "words": {"py": "the stub program"},
-    "bins": {"py": "python3"},
+    # the running interpreter's own path: 'python3' does not exist on Windows
+    "bins": {"py": sys.executable},
     "fields": {"zzstub": [{"id": "src", "label": "Input", "type": "image"}],
                "churn": [], "fail": []},
     "graphs": {
@@ -252,7 +253,7 @@ check("missing bin takes the lane down", st.get("up") is False, repr(st.get("err
 check("missing-bin note is plain and actionable",
       "the stub program" in (st.get("err") or "") and "installed" in (st.get("err") or ""),
       repr(st.get("err")))
-SYNTH["bins"] = {"py": "python3"}
+SYNTH["bins"] = {"py": sys.executable}
 srv.poll_process_lane(srv.LANE_BY_ID["proc"])
 check("lane is up again once the bin resolves",
       bool((srv.LANE_STATE.get("proc") or {}).get("up")))

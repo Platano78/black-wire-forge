@@ -17,7 +17,6 @@ import importlib.util
 import json
 import os
 import shutil
-import stat
 import subprocess
 import sys
 import tempfile
@@ -27,6 +26,9 @@ sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
+sys.path.insert(0, HERE)
+
+from _portable_exec import make_program  # noqa: E402
 
 FAILED, SKIPPED = [], []
 TOL = 0.070
@@ -382,12 +384,17 @@ print("missing tool: a Python without beat_this ends the job with one sentence")
 
 def wrapper(name, env=""):
     """A configured 'python' that cannot see the installed packages (-S), the
-    way a user's wrong python would; env lets a stub beat_this through."""
+    way a user's wrong python would; env lets a stub beat_this through.
+    POSIX it is the shell script it always was; on Windows the same wrapper is
+    a .cmd that sets those variables and runs this Python with -S."""
     p = os.path.join(WORK, name)
-    with open(p, "w") as f:
-        f.write("#!/bin/sh\n%sexec %s -S \"$@\"\n" % (env, sys.executable))
-    os.chmod(p, os.stat(p).st_mode | stat.S_IXUSR)
-    return p
+    lines = ""
+    if env.strip():
+        name_, _, value = env.strip().partition("=")
+        lines += 'set "%s=%s"\r\n' % (name_, value)
+    lines += '@"%s" -S %%*\r\n' % sys.executable
+    return make_program(p, "#!/bin/sh\n%sexec %s -S \"$@\"\n" % (env, sys.executable),
+                        windows_cmd=lines)
 
 
 import runner  # noqa: E402

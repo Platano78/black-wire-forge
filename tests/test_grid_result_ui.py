@@ -18,30 +18,26 @@ sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import _ui_fixture as ui  # noqa: E402  (SKIPs cleanly without Playwright/Chromium)
+from _portable_exec import make_program  # noqa: E402
 from _ui_fixture import check, free_port, wait_up  # noqa: E402
 from playwright.sync_api import sync_playwright  # noqa: E402
 
 REPO = os.path.dirname(HERE)
 SUMMARY = "4/4, 111.5 BPM (asked 110), drift +0.4%"
 S = tempfile.mkdtemp(prefix="bwf_grid_ui_")
-STUB = ("#!%s\nimport json, os, sys\na = sys.argv[2:]\nif '--check' in a: sys.exit(0)\n"
+# the shebang line is for POSIX only; the Python itself is the py_body
+STUB = ("#!%s\n" % sys.executable +
+        "import json, os, sys\na = sys.argv[2:]\nif '--check' in a: sys.exit(0)\n"
         "out = a[a.index('--out') + 1]; os.makedirs(out, exist_ok=True)\n"
         "json.dump({'summary': %r}, open(os.path.join(out, 'grid.json'), 'w'))\n"
         "open(os.path.join(out, 'grid-check.mp3'), 'wb').write(b'ID3' + bytes(64))\n"
-        "print('PROGRESS 4/4', flush=True); print(%r, flush=True)\n") % (sys.executable, SUMMARY, SUMMARY)
-
-
-def executable(path, text):
-    with open(path, "w") as f:
-        f.write(text)
-    os.chmod(path, 0o755)
-    return path
+        "print('PROGRESS 4/4', flush=True); print(%r, flush=True)\n") % (SUMMARY, SUMMARY)
 
 
 os.makedirs(os.path.join(S, "bin"))
 os.makedirs(os.path.join(S, "data"))
-stub = executable(os.path.join(S, "producer-python"), STUB)
-executable(os.path.join(S, "bin", "ffmpeg"), "#!/bin/sh\nexit 0\n")
+stub = make_program(os.path.join(S, "producer-python"), STUB, py_body=STUB.split("\n", 1)[1])
+make_program(os.path.join(S, "bin", "ffmpeg"), "#!/bin/sh\nexit 0\n", windows_cmd="@exit /b 0\r\n")
 song = os.path.join(S, "song.wav")
 pcm = bytes(16000)
 with open(song, "wb") as f:
