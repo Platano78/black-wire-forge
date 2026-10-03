@@ -26,6 +26,9 @@ sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
+sys.path.insert(0, HERE)
+
+from _portable_exec import bash_exe  # noqa: E402
 
 FAILED = []
 
@@ -485,7 +488,7 @@ check("revise: a helper that fails -> 503", code == 503 and b.get("error") == "T
 HELPER_STATE["status"] = 200
 
 print("ratchet: server.py and index.html name no model")
-out = subprocess.run(["bash", "scripts/check-engine-independence.sh"], cwd=ROOT, capture_output=True, text=True)
+out = subprocess.run([bash_exe(), "scripts/check-engine-independence.sh"], cwd=ROOT, capture_output=True, text=True)
 check("ratchet: check-engine-independence passes", out.returncode == 0, out.stdout + out.stderr)
 if FAILED:
     print("FAILED: %d checks: %s" % (len(FAILED), ", ".join(FAILED)))

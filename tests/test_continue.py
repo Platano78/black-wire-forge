@@ -26,6 +26,9 @@ sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
+sys.path.insert(0, HERE)
+
+from _portable_exec import bash_exe  # noqa: E402
 
 import engines
 
@@ -538,7 +541,7 @@ else:
 # ===========================================================================
 print("\nK7: the engine-independence ratchet script exits 0")
 
-rc = subprocess.run(["bash", "scripts/check-engine-independence.sh"],
+rc = subprocess.run([bash_exe(), "scripts/check-engine-independence.sh"],
                      cwd=ROOT, capture_output=True, text=True)
 check("K7: scripts/check-engine-independence.sh exits 0", rc.returncode == 0,
       (rc.returncode, rc.stdout[-800:], rc.stderr[-800:]))

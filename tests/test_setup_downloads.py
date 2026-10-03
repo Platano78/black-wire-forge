@@ -359,24 +359,27 @@ def g_sec():
 
     prep()
 
-    def to_fifo():
+    if hasattr(os, "mkfifo"):
+        def to_fifo():
+            os.unlink(part)
+            os.mkfifo(part)
+        t0 = time.time()
+        t, res = run_swapped(to_fifo)
+        hung = t.is_alive()
+        if hung:                      # free the blocked writer so the suite can go on
+            fd = os.open(part, os.O_RDONLY | os.O_NONBLOCK)
+            t.join(3)
+            os.close(fd)
+        check("a .part swapped for a FIFO: that file fails fast, never hangs",
+              not hung and res and res[0][0] == "failed" and time.time() - t0 < 5, (hung, res))
+        check("... the FIFO is left alone", stat.S_ISFIFO(os.lstat(part).st_mode))
+        _, c1 = srv.downloads_cancel({})
+        b2, c2 = srv.downloads_discard({})
+        check("... Cancel and Discard still answer, and Discard leaves the FIFO",
+              c1 == 200 and c2 == 200 and stat.S_ISFIFO(os.lstat(part).st_mode), (b2, c2))
         os.unlink(part)
-        os.mkfifo(part)
-    t0 = time.time()
-    t, res = run_swapped(to_fifo)
-    hung = t.is_alive()
-    if hung:                      # free the blocked writer so the suite can go on
-        fd = os.open(part, os.O_RDONLY | os.O_NONBLOCK)
-        t.join(3)
-        os.close(fd)
-    check("a .part swapped for a FIFO: that file fails fast, never hangs",
-          not hung and res and res[0][0] == "failed" and time.time() - t0 < 5, (hung, res))
-    check("... the FIFO is left alone", stat.S_ISFIFO(os.lstat(part).st_mode))
-    _, c1 = srv.downloads_cancel({})
-    b2, c2 = srv.downloads_discard({})
-    check("... Cancel and Discard still answer, and Discard leaves the FIFO",
-          c1 == 200 and c2 == 200 and stat.S_ISFIFO(os.lstat(part).st_mode), (b2, c2))
-    os.unlink(part)
+    else:                           # Windows has no FIFOs
+        print("  SKIP  a .part that is a FIFO (POSIX-only)")
 
     for label, keep_old in (("a new inode", True), ("a possibly reused inode", False)):
         prep()
@@ -698,7 +701,7 @@ def g4_http():
           st.get("running") is True and st.get("position") == 1 and st.get("total") == 1
           and isinstance(st.get("percent"), int), st)
     check("mid-file: the .part is growing", got)
-    proc.send_signal(signal.SIGKILL)
+    proc.kill() if os.name == "nt" else proc.send_signal(signal.SIGKILL)
     proc.wait(10)
     wait(lambda: fx.port_free(fx.SETUP_PORT), 10)
     cut = os.path.getsize(part) if os.path.exists(part) else -1

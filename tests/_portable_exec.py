@@ -7,6 +7,7 @@ stub is written as `<name>.cmd` (a one-line `set` header plus the command) and
 that path is what goes into a config.
 """
 import os
+import shutil
 import sys
 
 
@@ -32,3 +33,19 @@ def make_program(path, posix_text, windows_cmd=None, py_body=None):
     with open(path + ".cmd", "w", newline="") as f:
         f.write(body)
     return path + ".cmd"
+
+
+def bash_exe():
+    """The bash to run scripts with. POSIX: 'bash'. Windows: Git for Windows' bash.exe (the one beside git), never
+    System32's WSL launcher; falls back to shutil.which('bash')."""
+    if os.name != "nt":
+        return "bash"
+    git = shutil.which("git")
+    if git:
+        beside = os.path.join(os.path.dirname(os.path.dirname(git)), "bin", "bash.exe")
+        if os.path.isfile(beside):
+            return beside
+    for cand in (r"C:\Program Files\Git\bin\bash.exe", r"C:\Program Files (x86)\Git\bin\bash.exe"):
+        if os.path.isfile(cand):
+            return cand
+    return shutil.which("bash")

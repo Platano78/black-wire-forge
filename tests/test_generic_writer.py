@@ -25,6 +25,9 @@ sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
+sys.path.insert(0, HERE)
+
+from _portable_exec import bash_exe  # noqa: E402
 
 FAILED = []
 
@@ -330,7 +333,7 @@ for label, answers in (("five answers", FOUR + [{"q": "x", "a": "y"}]), ("not a 
 print("ratchet")
 PAT = r"qwen|minimax|h3_|ace.step|\byue\b|trellis|ltx|birefnet|esrgan|sdxl|rife"
 check("ratchet: the generic contract names no engine", not re.search(PAT, srv.GENERIC_WRITER_TASK, re.I))
-r = subprocess.run(["bash", "scripts/check-engine-independence.sh"], cwd=ROOT,
+r = subprocess.run([bash_exe(), "scripts/check-engine-independence.sh"], cwd=ROOT,
                    capture_output=True, text=True)
 check("ratchet: check-engine-independence.sh passes", r.returncode == 0, r.stdout + r.stderr)
 

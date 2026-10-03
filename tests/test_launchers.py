@@ -24,6 +24,9 @@ import urllib.request
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
+sys.path.insert(0, HERE)
+
+from _portable_exec import bash_exe  # noqa: E402
 
 
 def check(name, cond, detail=""):
@@ -36,7 +39,7 @@ FAILED = []
 
 # Check we can run bash (skip on Windows)
 try:
-    subprocess.run(["bash", "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5)
+    subprocess.run([bash_exe(), "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5)
 except FileNotFoundError:
     print("SKIP: bash not available on this platform")
     sys.exit(0)
@@ -53,7 +56,7 @@ print("Syntax checks")
 for f in ["start.sh", "start.command"]:
     # the path is relative and cwd is the repo root on purpose: Git Bash eats the
     # backslashes of an absolute C:\... path passed on the command line
-    r = subprocess.run(["bash", "-n", f], cwd=ROOT, capture_output=True)
+    r = subprocess.run([bash_exe(), "-n", f], cwd=ROOT, capture_output=True)
     check("bash -n %s clean" % f, r.returncode == 0, r.stderr.decode("utf-8", "replace")[:200])
 
 # ---- Executable bits ----
@@ -334,7 +337,7 @@ if port_free(3998):
     # relative to cwd=d, forward-slashed: Git Bash eats the backslashes of an
     # absolute C:\... path passed on the command line
     start_sh = os.path.relpath(os.path.join(ROOT, "start.sh"), d).replace(os.sep, "/")
-    sp = subprocess.Popen(["bash", start_sh], cwd=d, env=envr, stdin=subprocess.DEVNULL,
+    sp = subprocess.Popen([bash_exe(), start_sh], cwd=d, env=envr, stdin=subprocess.DEVNULL,
                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     try:
         t_end = time.monotonic() + 12

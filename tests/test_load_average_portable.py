@@ -42,19 +42,36 @@ srv = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(srv)
 
 print("a platform that has os.getloadavg")
-value = srv._load_average()
+# POSIX: the real one. Windows: none exists, so install a known one for the
+# length of the check and put back whatever was there (nothing) afterwards.
+_had = hasattr(os, "getloadavg")
+_saved_here = getattr(os, "getloadavg", None)
+try:
+    if not _had:
+        os.getloadavg = lambda: (0.5, 0.5, 0.5)
+    value = srv._load_average()
+    if not _had:
+        check("returns the first number of the 1-minute average", value == 0.5, repr(value))
+finally:
+    if _had:
+        os.getloadavg = _saved_here
+    else:
+        if hasattr(os, "getloadavg"):
+            del os.getloadavg
 check("returns a number", isinstance(value, float), repr(value))
 check("returns a non-negative one", value >= 0, repr(value))
 
 print("a platform with no os.getloadavg at all (Windows)")
-saved = os.getloadavg
+saved = getattr(os, "getloadavg", None)
 try:
-    del os.getloadavg
+    if hasattr(os, "getloadavg"):
+        del os.getloadavg
     check("returns 0.0", srv._load_average() == 0.0, repr(srv._load_average()))
     check("the attribute really is gone", not hasattr(os, "getloadavg"))
 finally:
-    os.getloadavg = saved
-check("the attribute is back", os.getloadavg is saved)
+    if saved is not None:
+        os.getloadavg = saved
+check("the attribute is back", getattr(os, "getloadavg", None) is saved)
 
 print("a platform whose os.getloadavg raises")
 def _boom():
@@ -64,18 +81,25 @@ try:
     os.getloadavg = _boom
     check("returns 0.0", srv._load_average() == 0.0, repr(srv._load_average()))
 finally:
-    os.getloadavg = saved
+    if saved is not None:
+        os.getloadavg = saved
+    elif hasattr(os, "getloadavg"):
+        del os.getloadavg
 
 print("polling a process lane on a platform with no os.getloadavg")
 srv.shutil.which = lambda prog: None            # nothing installed, as on a bare box
 raised = None
 try:
-    del os.getloadavg
+    if hasattr(os, "getloadavg"):
+        del os.getloadavg
     srv.poll_process_lane(srv.LANE_BY_ID["cpu"])
 except Exception as exc:                        # noqa: BLE001 - the point of the gate
     raised = exc
 finally:
-    os.getloadavg = saved
+    if saved is not None:
+        os.getloadavg = saved
+    elif hasattr(os, "getloadavg"):
+        del os.getloadavg
 check("poll_process_lane did not raise", raised is None, repr(raised))
 lanes = {l["id"]: l for l in
          srv.Handler.lanes_payload(srv.Handler.__new__(srv.Handler))["lanes"]}

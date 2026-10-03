@@ -45,6 +45,21 @@ def check(name, cond, detail=""):
         FAILED.append(name)
 
 
+def _alive(pid):
+    """Liveness probe that does not kill on Windows (os.kill(pid, 0) would raise
+    OSError [WinError 87], and any other signal would TERMINATE the process)."""
+    if os.name == "nt":
+        import subprocess
+        out = subprocess.run(["tasklist", "/FI", "PID eq %d" % pid, "/NH"],
+                             capture_output=True, text=True).stdout
+        return str(pid) in out
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
+
 def sha256_of(path):
     try:
         with open(path, "rb") as f:
@@ -202,13 +217,7 @@ def wait_status(jid, want, timeout=20.0, sample=None):
 
 
 def pid_alive(pid):
-    try:
-        os.kill(pid, 0)
-        return True
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
+    return _alive(pid)
 
 
 # ---------------------------------------------------------------------------
