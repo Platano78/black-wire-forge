@@ -1227,6 +1227,11 @@ _DOWNLOAD_OPENER = urllib.request.build_opener(_PinnedRedirectHandler)
 # open stay the guard (security review 2026-09-30, finding 4).
 _O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 _O_NONBLOCK = getattr(os, "O_NONBLOCK", 0)
+# Windows: on NTFS a path-based lstat and a handle-based fstat of the same file
+# disagree on size and mtime while the file is being written or just closed
+# (directory-entry metadata lags), so the identity checks below compare only
+# (dev, ino) there, which are stable.
+_IS_WINDOWS = (os.name == "nt")
 
 
 class _Cancelled(ValueError):
@@ -8706,9 +8711,14 @@ def _part_id(st):
 
 
 def _same_file(a, b):
-    """Two stat results of the same, unchanged regular file."""
-    return a is not None and b is not None and stat.S_ISREG(a.st_mode) and stat.S_ISREG(b.st_mode) and \
-        (a.st_dev, a.st_ino, a.st_size, a.st_mtime_ns) == (b.st_dev, b.st_ino, b.st_size, b.st_mtime_ns)
+    """Two stat results of the same, unchanged regular file. On Windows only
+    (dev, ino) are compared: NTFS size/mtime are not comparable between a path
+    lookup and a handle for a file being written or just closed."""
+    if a is None or b is None or not stat.S_ISREG(a.st_mode) or not stat.S_ISREG(b.st_mode):
+        return False
+    if _IS_WINDOWS:
+        return (a.st_dev, a.st_ino) == (b.st_dev, b.st_ino)
+    return (a.st_dev, a.st_ino, a.st_size, a.st_mtime_ns) == (b.st_dev, b.st_ino, b.st_size, b.st_mtime_ns)
 
 
 def _part_matches(rec, st, grown=False):
@@ -8722,6 +8732,9 @@ def _part_matches(rec, st, grown=False):
         return False
     if (st.st_dev, st.st_ino) != (rec["dev"], rec["ino"]):
         return False
+    if _IS_WINDOWS:
+        # NTFS: size and mtime are not comparable between a path lookup and a handle.
+        return True
     if grown:
         return st.st_size >= rec["size"] and st.st_mtime_ns >= rec["mtime_ns"]
     return (st.st_size, st.st_mtime_ns) == (rec["size"], rec["mtime_ns"])
@@ -8864,11 +8877,25 @@ def _dl_forget_part(rel):
             _dl_save()
 
 
+def _unlink_retry(path):
+    """os.unlink, retried briefly on Windows: a file that was just written may be locked for a moment by a virus scanner
+    or indexer (PermissionError), which is gone a moment later. POSIX: one plain unlink."""
+    attempts = 15 if _IS_WINDOWS else 1
+    for i in range(attempts):
+        try:
+            os.unlink(path)
+            return
+        except PermissionError:
+            if i == attempts - 1:
+                raise
+            time.sleep(0.2)
+
+
 def _dl_drop_part(part, rel, ident):
     """Remove our .part only while the path still holds exactly `ident`."""
     try:
         if _same_file(os.lstat(part), ident):
-            os.unlink(part)
+            _unlink_retry(part)
             _dl_forget_part(rel)
     except OSError:
         pass
