@@ -8376,6 +8376,11 @@ def _finish_after_serve(srv):
     launcher still waits on us and a window close still stops everything) and leave with its exit code."""
     srv.server_close()
     if _RESTART_REQUESTED:
+        # Closing the LISTENING socket is not enough on Windows: an accepted
+        # connection still counts as using the port, so a browser keep-alive left
+        # open on a handler thread would make the child's bind() fail with
+        # WSAEADDRINUSE. Close those too before handing the port over.
+        srv.close_clients()
         sys.exit(subprocess.call([sys.executable] + sys.argv))
 
 
@@ -11111,10 +11116,40 @@ class _Server(ThreadingHTTPServer):
     """
     allow_reuse_address = (os.name != "nt")
 
+    def __init__(self, *args, **kwargs):
+        self._clients = set()      # before super(): ThreadingHTTPServer binds, requests may arrive at once
+        self._clients_lock = threading.Lock()
+        super().__init__(*args, **kwargs)
+
     def server_bind(self):
         if os.name == "nt" and hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
             self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
         super().server_bind()
+
+    def process_request(self, request, client_address):
+        with self._clients_lock:
+            self._clients.add(request)
+        super().process_request(request, client_address)
+
+    def shutdown_request(self, request):
+        with self._clients_lock:
+            self._clients.discard(request)
+        super().shutdown_request(request)
+
+    def close_clients(self):
+        """Shut down and close every accepted connection still open, so the port is
+        really free for the next copy of this server (see _finish_after_serve)."""
+        with self._clients_lock:
+            clients = list(self._clients)
+        for s in clients:
+            try:
+                s.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            try:
+                s.close()
+            except OSError:
+                pass
 
 
 def main():

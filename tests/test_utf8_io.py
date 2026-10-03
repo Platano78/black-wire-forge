@@ -103,8 +103,9 @@ ENV = dict(os.environ)
 ENV.update({"GENCENTER_CONFIG": CONFIG, "GENCENTER_DATA": DATA,
             "LC_ALL": "C", "PYTHONCOERCECLOCALE": "0", "PYTHONUTF8": "0"})
 ENV.pop("PYTHONWARNINGS", None)
+ENV.pop("PYTHONIOENCODING", None)     # a harness may force the console to UTF-8; the stand-in wants the platform default
 
-PROBE = subprocess.run([sys.executable, "-c", "import sys; print(sys.stdout.encoding)"],
+PROBE = subprocess.run([sys.executable, "-c", "import locale; print(locale.getpreferredencoding(False))"],   # what open() defaults to
                        env=ENV, capture_output=True, text=True)
 check("stand-in: the child interpreter's default text encoding is not UTF-8",
       PROBE.stdout.strip() not in ("utf-8", "UTF-8"), PROBE.stdout.strip() + PROBE.stderr)
