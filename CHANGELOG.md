@@ -19,6 +19,8 @@ All notable changes to Black Wire Forge are recorded here.
   subfolder now download (saved flat under their own name, as the Installed badge already matches
   them; `..`, hidden-name, backslash and absolute paths are still refused), and the status line now
   stays pinned at the top of the window.
+- The in-app FAQ now says how to use a style you have downloaded (pick it under Everything else, Style) and
+  what to check when one does not show.
 
 ## v1.2.3 — 2026-10-04
 
