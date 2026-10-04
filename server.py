@@ -1141,11 +1141,17 @@ def _lora_download_target(lane, family_id, repo, filename):
     if entry is None:
         raise ValueError("That pack is not in this lane's catalog. Browse styles again and "
                           "pick \"Get it\" from the list.")
-    if not isinstance(filename, str) or os.path.basename(filename) != filename \
-            or filename.startswith(".") or not filename.endswith(".safetensors"):
+    # A repo may keep its files in subfolders ("yue2/oldschoolhiphop/x.safetensors"):
+    # every segment must be a plain name (no "", ".", "..", dot-prefix, backslash),
+    # and the name must be one the catalog lists. It is saved flat under its own
+    # basename, the way the Installed badge already matches it.
+    parts = filename.split("/") if isinstance(filename, str) else []
+    if not parts or any(x in ("", ".", "..") or x.startswith(".") or "\\" in x for x in parts) \
+            or not filename.endswith(".safetensors"):
         raise ValueError("That is not a valid .safetensors filename.")
     if not any(f["filename"] == filename for f in entry["files"]):
         raise ValueError("That file is not listed for %s in the catalog." % repo)
+    saved_name = parts[-1]
     loras_dir = os.path.abspath(dl["loras_dir"])
     folder = family.get("folder") or ""
     target_dir = os.path.abspath(os.path.join(loras_dir, folder)) if folder else loras_dir
@@ -1154,11 +1160,11 @@ def _lora_download_target(lane, family_id, repo, filename):
     # refuses one via the filename.
     if os.path.commonpath([target_dir, loras_dir]) != loras_dir:
         raise ValueError("That style family's folder would land outside the lane's LoRA folder.")
-    dest = os.path.abspath(os.path.join(target_dir, filename))
+    dest = os.path.abspath(os.path.join(target_dir, saved_name))
     if os.path.dirname(dest) != target_dir:
         raise ValueError("That filename would land outside the lane's LoRA folder.")
     if os.path.exists(dest):
-        raise ValueError("%s already has a file named %s." % (lane["name"], filename))
+        raise ValueError("%s already has a file named %s." % (lane["name"], saved_name))
     max_bytes = dl.get("max_bytes") or DOWNLOAD_DEFAULT_MAX_BYTES
     url = "https://huggingface.co/%s/resolve/main/%s" % (
         urllib.parse.quote(repo, safe="/"), urllib.parse.quote(filename))

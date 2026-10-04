@@ -24,7 +24,10 @@ srv = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(srv)
 
 CATALOG_ENTRY = {"id": "owner/pack", "downloads": 10, "likes": 1, "licence": "mit", "nsfw": False,
-                 "files": [{"filename": "style.safetensors", "size": 12345}]}
+                 "files": [{"filename": "style.safetensors", "size": 12345},
+                           {"filename": "sub/dir/nested.safetensors", "size": 99},
+                           {"filename": "sub/../sneaky.safetensors", "size": 99},
+                           {"filename": "sub/.hidden/x.safetensors", "size": 99}]}
 srv.CATALOG_CACHE["Qwen/Qwen-Image-2.1"] = (time.time(), [CATALOG_ENTRY])
 
 LORAS_DIR = tempfile.mkdtemp(prefix="bwf_loras_")
@@ -58,6 +61,16 @@ check("a valid repo+file from the catalog is ACCEPTED (returns url/dest/max_byte
       srv._lora_download_target(LANE_ON, None, "owner/pack", "style.safetensors")[1]
       == os.path.join(LORAS_DIR, "qwen_image", "style.safetensors"))
 check("path traversal in the filename is refused", refused("owner/pack", "../x.safetensors") is True)
+nested = srv._lora_download_target(LANE_ON, None, "owner/pack", "sub/dir/nested.safetensors")
+check("a catalog file inside a repo subfolder is ACCEPTED and saved flat under its basename",
+      nested[1] == os.path.join(LORAS_DIR, "qwen_image", "nested.safetensors"), nested[1])
+check("...and the download URL keeps the repo's own path",
+      nested[0].endswith("/owner/pack/resolve/main/sub/dir/nested.safetensors"), nested[0])
+check("a '..' segment inside a listed subfolder name is still refused", refused("owner/pack", "sub/../sneaky.safetensors") is True)
+check("a dot-prefixed segment is still refused", refused("owner/pack", "sub/.hidden/x.safetensors") is True)
+check("a subfolder file the catalog does not list is refused", refused("owner/pack", "sub/dir/other.safetensors") is True)
+check("a backslash path is refused", refused("owner/pack", "sub\\dir\\nested.safetensors") is True)
+check("an absolute path is refused", refused("owner/pack", "/etc/x.safetensors") is True)
 check("a non-.safetensors file is refused", refused("owner/pack", "style.bin") is True)
 check("an id not from the catalog is refused", refused("someone/else", "style.safetensors") is True)
 check("a filename not listed for that repo in the catalog is refused",

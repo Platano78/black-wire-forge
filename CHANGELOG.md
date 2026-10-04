@@ -13,6 +13,12 @@ All notable changes to Black Wire Forge are recorded here.
   If the writer fails or asks a question, the page says so and the next Make sends what is on the
   form. This needs a guide model on the server. Nothing else changes with the guide off: every other
   room still sends exactly what you typed, and so does Music when Lyrics already has words.
+- **"Get it" did nothing for a style kept in a repo subfolder** (YuE2 Old School Hip Hop from the
+  Lora Library). The server refused the file name, and the refusal printed at the top of the Browse
+  styles window, out of sight once you had scrolled to the card. Files the catalog lists inside a
+  subfolder now download (saved flat under their own name, as the Installed badge already matches
+  them; `..`, hidden-name, backslash and absolute paths are still refused), and the status line now
+  stays pinned at the top of the window.
 
 ## v1.2.3 — 2026-10-04
 
