@@ -5050,6 +5050,48 @@ function buildMakeBody(){
   return body;
 }
 
+// A song's words are the point of the mode, so the guide switch does not
+// decide whether they get written. Guide off, Lyrics empty and a prompt typed:
+// the mode's own writer fills the form first and Make waits for a second press
+// (you check the words, as with the guide on). One try per prompt: if it fails
+// or asks a question, the next Make sends what is on the form.
+let LYRICS_WRITTEN_FOR = null;
+async function writeLyricsFirst(mode){
+  const w = mode.writer;
+  if(!w || !w.on_make || !(w.fills || []).includes('lyrics')) return false;
+  if(!STATE.helperServer || !guideIsOff()) return false;   // no writer to call, or the guide's own is on
+  const box = $('#inspector [data-field-id="lyrics"]');
+  const topic = $('#promptBox').value.trim();
+  if(!box || box.value.trim() || !topic) return false;
+  const sig = STATE.room + '/' + STATE.mode + '\n' + topic;
+  if(LYRICS_WRITTEN_FOR === sig) return false;
+  LYRICS_WRITTEN_FOR = sig;
+  $('#makeBtn').disabled = true;
+  msgInspector('Writing the lyrics...', '');
+  try{
+    const r = await postJSON('/api/guide/skill', {room: STATE.room, mode: STATE.mode, topic: topic});
+    if(!r || !r.ok) throw new Error((r && r.error) || 'The lyrics writer is busy or switched off right now.');
+    if(r.fields && Object.keys(r.fields).length){
+      Object.entries(r.fields).forEach(([k, v]) => {
+        const el = $('#inspector [data-field-id="' + k + '"]');
+        if(!el) return;
+        setFieldValue(k, v);
+        el.dispatchEvent(new Event('input', {bubbles: true}));
+        el.dispatchEvent(new Event('change', {bubbles: true}));
+      });
+      refreshEnabled(fieldsFor(currentMode()));
+      msgInspector('Lyrics written from your prompt: check them, then press Make.', 'ok');
+    } else {
+      msgInspector((r.question || r.say || 'The lyrics writer had nothing to add.')
+        + ' Add words to Lyrics, or press Make again to make it as it stands.', '');
+    }
+  } catch(e){
+    msgInspector('No lyrics were written (' + String(e.message || e) + '). Press Make again to make it as it stands.', 'err');
+  } finally {
+    $('#makeBtn').disabled = false;
+  }
+  return true;
+}
 async function handleMake(confirm){
   makeConfirmHide();
   const mode = currentMode();
@@ -5058,6 +5100,7 @@ async function handleMake(confirm){
   if(!lane){ msgInspector('Pick a machine in the toolbar first.', 'err'); return; }
   const slot = isCutting(currentRoom()) ? currentSlot() : null;
   if(slot){ return handleSlotMake(slot, confirm === true); }
+  if(await writeLyricsFirst(mode)) return;
   const body = buildMakeBody();
   // UX-2 #6: "identical" = the same normalised request body (lane, mode,
   // every field value) as the one still queued/running -- there is no

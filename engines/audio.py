@@ -1612,6 +1612,7 @@ ENGINE = {
     # per mode. The prompt, the line keys and the check are this engine's own.
     "writers": {
         "song": {
+            "on_make": True,   # Make writes this mode's Lyrics from the prompt first, even with the guide off
             "label": "Song writer",
             "prompt": SONG_WRITER_PROMPT,
             "keys": {"TAGS": "tags", "BPM": "bpm", "KEY": "keyscale", "DURATION": "duration",
@@ -1623,6 +1624,7 @@ ENGINE = {
         },
         # P3b: the other Sound modes. Each prompt is engines/audio_writers/<mode>.txt.
         "music": {
+            "on_make": True,   # Make writes this mode's Lyrics from the prompt first, even with the guide off
             "label": "Background music writer",
             "prompt": _writer_prompt("music"),
             "keys": {"SECONDS": "seconds", "CAPTION": "caption", "LYRICS": "lyrics"},
@@ -1633,6 +1635,7 @@ ENGINE = {
             "check": music_check,
         },
         "yue2": {
+            "on_make": True,   # Make writes this mode's Lyrics from the prompt first, even with the guide off
             "label": "Planned song writer",
             "prompt": _writer_prompt("yue2"),
             "keys": {"STYLE": "style", "MAX_DURATION": "max_duration", "MODE": "mode", "LYRICS": "lyrics"},

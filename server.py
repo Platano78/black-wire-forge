@@ -5656,6 +5656,8 @@ def _writer_payload(cap, mode):
             out[k] = w[k]
     if w.get("keys"):
         out["fills"] = list(dict.fromkeys(w["keys"].values()))
+    if w.get("on_make"):
+        out["on_make"] = True
     return out
 
 

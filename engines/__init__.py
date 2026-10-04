@@ -103,6 +103,11 @@ falsy — is ignored. The dict has exactly these keys:
                        (POST /api/guide/skill): a topic in, this mode's field
                        values out. Each is a dict with:
                          label       short name, e.g. "Song writer"
+                         on_make     optional True. The mode's words ARE the point (a
+                                     song): Make runs this writer first when
+                                     the browser's guide is off and a field it
+                                     fills (lyrics) is empty; the page reads it
+                                     from /api/engines.
                          prompt      the writer's system prompt, this
                                      engine's own writing rules
                          keys        {OUTPUT_KEY: field id}, e.g. {"TAGS":

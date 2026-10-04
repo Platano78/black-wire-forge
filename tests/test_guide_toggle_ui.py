@@ -224,8 +224,9 @@ try:
         check("off by default: nothing was stored -- the server's default is doing this",
               stored_choice(page) is None, repr(stored_choice(page)))
 
-        print("off: Make sends exactly what was typed")
+        print("off: Make sends exactly what was typed (Lyrics typed, so nothing needs writing)")
         page.fill("#promptBox", PROMPT)
+        page.fill('#inspector [data-field-id="lyrics"]', "[Verse]\nTyped by hand")
         del GEN_BODIES[:]
         make(page)
         body = GEN_BODIES[-1] if GEN_BODIES else {}
@@ -235,6 +236,44 @@ try:
               not (isinstance(neg, str) and neg.strip()), repr(neg))
         check("off: the guide model was never asked", HELPER["requests"] == [] and HELPER_CALLS == [],
               (HELPER["requests"], HELPER_CALLS))
+
+        print("off, Lyrics empty: a song's words are written first -- the guide switch does not decide that")
+        WRITER_REPLY = ("TAGS: warm female vocals, folk, singing\nBPM: NONE\nKEY: NONE\nDURATION: 30\nTIMESIG: NONE\n"
+                        "LANGUAGE: NONE\nLYRICS:\n[Verse]\nThe lighthouse burns at sunset\nAnd the gulls come home\n"
+                        "[Chorus]\nLight the way, light the way\nBring the ships back home\n")
+        page.fill('#inspector [data-field-id="lyrics"]', "")
+        page.fill("#promptBox", PROMPT)
+        HELPER["requests"].clear(); HELPER["reply"] = WRITER_REPLY
+        del GEN_BODIES[:]
+        page.click("#makeBtn")
+        page.wait_for_function("() => document.querySelector('[data-field-id=lyrics]').value.length > 0", timeout=15000)
+        written = page.input_value('#inspector [data-field-id="lyrics"]')
+        check("lyrics: the writer was asked once, with the prompt as the topic", len(HELPER["requests"]) == 1
+              and PROMPT in json.dumps(HELPER["requests"][0]), len(HELPER["requests"]))
+        check("lyrics: the Lyrics box now holds the written words", "lighthouse" in written, written)
+        check("lyrics: the prompt box carries the writer's style", "female vocals" in page.input_value("#promptBox"),
+              page.input_value("#promptBox"))
+        check("lyrics: nothing was made yet -- you check the words first", GEN_BODIES == [], GEN_BODIES)
+        check("lyrics: the page says to check them and press Make again",
+              "check them" in text_of(page, "#inspectorMsg"), text_of(page, "#inspectorMsg"))
+        make(page)
+        body = GEN_BODIES[-1] if GEN_BODIES else {}
+        check("lyrics: the second Make sends the written words", body.get("lyrics") == written, body)
+        check("lyrics: and does not ask the writer again", len(HELPER["requests"]) == 1, len(HELPER["requests"]))
+
+        print("off, the writer fails: one try, then Make sends what is on the form")
+        page.fill('#inspector [data-field-id="lyrics"]', "")
+        page.fill("#promptBox", "a different song about rain")
+        HELPER["requests"].clear(); HELPER["reply"] = ""
+        del GEN_BODIES[:]
+        page.click("#makeBtn")
+        page.wait_for_function("() => document.querySelector('#inspectorMsg').textContent.includes('Press Make again')",
+                               timeout=15000)
+        check("lyrics fail: nothing was made, and the page says why", GEN_BODIES == [], GEN_BODIES)
+        make(page)
+        body = GEN_BODIES[-1] if GEN_BODIES else {}
+        check("lyrics fail: the next Make goes through as it stands", bool(GEN_BODIES) and not (body.get("lyrics") or "").strip(), body)
+        HELPER["reply"] = "ok"; HELPER["requests"].clear()
 
         print("click it on: the guide's box is back, and the choice is stored")
         HELPER["requests"].clear()

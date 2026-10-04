@@ -2,6 +2,18 @@
 
 All notable changes to Black Wire Forge are recorded here.
 
+## Unreleased
+
+### Fixed
+
+- **Music with the guide off wrote no words.** A song's words are the point of the mode, so the guide
+  switch no longer decides whether they get written. With the guide off, Lyrics empty and a prompt
+  typed, the first Make in Song, Background music and Planned song asks the mode's own lyrics writer
+  to fill the form (style and Lyrics) and stops, so you can check the words; the next Make sends them.
+  If the writer fails or asks a question, the page says so and the next Make sends what is on the
+  form. This needs a guide model on the server. Nothing else changes with the guide off: every other
+  room still sends exactly what you typed, and so does Music when Lyrics already has words.
+
 ## v1.2.3 — 2026-10-04
 
 ### Changed
