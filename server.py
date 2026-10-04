@@ -2871,6 +2871,22 @@ def _audio_led_master_source(seq):
     return path, 0.0
 
 
+def _audio_led_vocals_source(seq):
+    """The absolute path of the vocals-only stem the user added for this sequence, or
+    None when there is none (or its file is gone). The faces follow the singing instead
+    of the instruments; the cut itself still plays the full mix. Contained under the
+    sequence's own media dir, exactly as the master's file is."""
+    sid = seq["id"]
+    vf = seq.get("master_vocals")
+    if not (isinstance(vf, dict) and vf.get("file")):
+        return None
+    base = os.path.realpath(os.path.join(SEQ_MEDIA_DIR, sid))
+    path = os.path.realpath(os.path.join(base, vf["file"]))
+    if not path.startswith(base + os.sep) or not os.path.isfile(path):
+        return None
+    return path
+
+
 def _audio_led_derive(out):
     """Audio-led only: master_slot_id (and master_file when a sound file was imported), and each video
     shot's window on the master (planned lengths laid end to end, no gaps)."""
@@ -3022,6 +3038,10 @@ def _op_set_master_start(seq, p):
 
 def _op_clear_master(seq, p):
     seq.pop("master", None)
+
+
+def _op_clear_master_vocals(seq, p):
+    seq.pop("master_vocals", None)
 
 
 def _op_set_canvas(seq, p):
@@ -3651,6 +3671,7 @@ def _op_copy_beat_to_prompt(seq, p):
 SEQ_OPS = {
     "set_title": _op_set_title, "set_mode": _op_set_mode, "set_canvas": _op_set_canvas,
     "set_audio_led": _op_set_audio_led, "set_master_start": _op_set_master_start, "clear_master": _op_clear_master,
+    "clear_master_vocals": _op_clear_master_vocals,
     "add_slot": _op_add_slot, "update_slot": _op_update_slot, "move_slot": _op_move_slot,
     "remove_slot": _op_remove_slot, "pick_take": _op_pick_take, "adopt_take": _op_adopt_take, "set_trim": _op_set_trim,
     "set_title_card": _op_set_title_card, "set_sing": _op_set_sing, "set_lipsync": _op_set_lipsync,
@@ -6883,6 +6904,9 @@ def _audio_led_slice(seq, slot, lane):
         raise ValueError(CUT_REASON)
     sid = seq["id"]
     mpath, mstart = _audio_led_master_source(seq)
+    vpath = _audio_led_vocals_source(seq)
+    if vpath:
+        mpath = vpath          # the stem is aligned to the song it came from: same window, same offset
     derived = copy.deepcopy(seq)
     _audio_led_derive(derived)
     win = next((s.get("window") for s in derived.get("slots") or [] if s.get("id") == slot.get("id")), None)
@@ -6915,10 +6939,11 @@ MASTER_EXTS = (".wav", ".mp3", ".m4a", ".aac", ".flac", ".ogg", ".opus")
 MASTER_MAX_BYTES = 200 * 1024 * 1024
 
 
-def seq_master_import(sid, rev, filename, data):
-    """POST /api/sequence/master (multipart id, rev, file): keep the user's own sound file as this
-    sequence's master. Opt-in: nothing happens to a sequence unless it is called, and the master only
-    leads an audio-led cut. Returns (body, http code)."""
+def _seq_sound_upload(sid, rev, filename, data, stem, entry_of):
+    """The shared half of the sequence's own sound files (the master sound and its
+    vocals-only stem): every check, the probe, and the write under the sequence's
+    media dir. `stem` is the file's stem ("master", "vocals"); `entry_of(name, ext,
+    dur)` returns the entry stored on the sequence. Returns (body, http code)."""
     if not seq_valid_id(sid):
         return {"ok": False, "error": "That is not a sequence id."}, 400
     if not CAN_CUT:
@@ -6938,7 +6963,7 @@ def seq_master_import(sid, rev, filename, data):
                 "sequence": seq_derive(seq)}, 409
     adir = os.path.join(SEQ_MEDIA_DIR, sid, "audio")
     os.makedirs(adir, exist_ok=True)
-    tmp = os.path.join(adir, ".master" + ext + ".tmp")
+    tmp = os.path.join(adir, ".%s%s.tmp" % (stem, ext))
     with open(tmp, "wb") as f:
         f.write(data)
     info = _probe_json(tmp)
@@ -6950,19 +6975,38 @@ def seq_master_import(sid, rev, filename, data):
         os.remove(tmp)
         return {"ok": False, "error": "That file has no sound I can read."}, 400
     for old in os.listdir(adir):
-        if old.startswith("master."):
+        if old.startswith(stem + "."):
             os.remove(os.path.join(adir, old))
-    dest = os.path.join(adir, "master" + ext)
+    dest = os.path.join(adir, stem + ext)
     fsutil.replace(tmp, dest)
+    entry = entry_of(name, ext, dur)
     with SEQ_LOCK:
         seq = _seq_read(sid)
         if seq is None:
             return {"ok": False, "error": "There is no such sequence."}, 404
-        seq["master"] = {"file": "audio/master" + ext, "name": name, "seconds": round(dur, 3), "start": 0.0}
+        seq.update(entry)
         seq["rev"] += 1
         seq["updated"] = time.time()
         _seq_write(seq)
     return seq_derive(seq), 200
+
+
+def seq_master_import(sid, rev, filename, data):
+    """POST /api/sequence/master (multipart id, rev, file): keep the user's own sound file as this
+    sequence's master. Opt-in: nothing happens to a sequence unless it is called, and the master only
+    leads an audio-led cut. Returns (body, http code)."""
+    return _seq_sound_upload(sid, rev, filename, data, "master",
+                             lambda name, ext, dur: {"master": {"file": "audio/master" + ext, "name": name,
+                                                                "seconds": round(dur, 3), "start": 0.0}})
+
+
+def seq_vocals_import(sid, rev, filename, data):
+    """POST /api/sequence/vocals (multipart id, rev, file): the same song's vocals-only stem, so the
+    faces mouth along to the singing instead of the instruments. The cut still plays the master.
+    Returns (body, http code)."""
+    return _seq_sound_upload(sid, rev, filename, data, "vocals",
+                             lambda name, ext, dur: {"master_vocals": {"file": "audio/vocals" + ext, "name": name,
+                                                                       "seconds": round(dur, 3)}})
 
 
 def seq_generate(payload):
@@ -8097,7 +8141,7 @@ def request_refusal(handler):
     # application/x-www-form-urlencoded or multipart/form-data, so demanding
     # application/json (multipart for uploads) refuses every one of them.
     ctype = (handler.headers.get("Content-Type") or "").split(";")[0].strip().lower()
-    if handler.path.split("?")[0] in ("/api/upload", "/api/sequence/master"):
+    if handler.path.split("?")[0] in ("/api/upload", "/api/sequence/master", "/api/sequence/vocals"):
         if ctype != "multipart/form-data":
             return 415, "Send the file as a multipart/form-data upload."
     elif ctype != "application/json":
@@ -10393,6 +10437,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.api_upload()
             if u.path == "/api/sequence/master":
                 return self.api_sequence_master()
+            if u.path == "/api/sequence/vocals":
+                return self.api_sequence_vocals()
             if u.path == "/api/generate":
                 return self.api_generate()
             if u.path == "/api/compare":
@@ -10613,6 +10659,12 @@ class Handler(BaseHTTPRequestHandler):
         return self.send_json({"ok": True, "files": [entry]})
 
     def api_sequence_master(self):
+        return self.api_sequence_sound(seq_master_import)
+
+    def api_sequence_vocals(self):
+        return self.api_sequence_sound(seq_vocals_import)
+
+    def api_sequence_sound(self, importer):
         """Multipart: id, optional rev, file. The size is checked BEFORE the body is read."""
         ctype = self.headers.get("Content-Type", "")
         m = re.search(r"boundary=([^;]+)", ctype)
@@ -10634,7 +10686,7 @@ class Handler(BaseHTTPRequestHandler):
                 fpart = p
         if fpart is None:
             return self.send_json({"ok": False, "error": "No file came with that."}, 400)
-        return self.send_json(*seq_master_import(sid, rev, fpart["filename"], fpart["data"]))
+        return self.send_json(*importer(sid, rev, fpart["filename"], fpart["data"]))
 
     def api_generate(self):
         return self.send_json(*generate(self.read_json()))

@@ -513,6 +513,27 @@ def stored_sequence(data_dir, sid):
         return json.load(f)
 
 
+def post_sound(url, route, sid, filename, data, rev=None):
+    """POST a real multipart body to /api/sequence/master or /api/sequence/vocals
+    (tests/test_master_import.py's own post_master, pointed at either route)."""
+    b = os.urandom(8).hex()
+    body = ("--%s\r\nContent-Disposition: form-data; name=\"id\"\r\n\r\n%s\r\n" % (b, sid)).encode()
+    if rev is not None:
+        body += ("--%s\r\nContent-Disposition: form-data; name=\"rev\"\r\n\r\n%s\r\n" % (b, rev)).encode()
+    body += ("--%s\r\nContent-Disposition: form-data; name=\"file\"; filename=\"%s\"\r\n"
+             "Content-Type: audio/wav\r\n\r\n" % (b, filename)).encode() + data + ("\r\n--%s--\r\n" % b).encode()
+    req = urllib.request.Request(url + route, data=body, method="POST",
+                                 headers={"Content-Type": "multipart/form-data; boundary=" + b})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            return r.status, json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        try:
+            return e.code, json.loads(e.read())
+        except Exception:
+            return e.code, {}
+
+
 def lane_log_count(store, needles=("/prompt", "/upload/image")):
     path = os.path.join(store, "requests.log")
     if not os.path.isfile(path):
@@ -809,6 +830,64 @@ with open(os.path.join(FAKE_STORE, "last_prompt.json")) as f:
     graph_on = json.load(f)
 check("whose graph has the LoadAudio node naming the uploaded wav",
       len([n for n in graph_on.values() if n.get("class_type") == "LoadAudio"]) == 1, list(graph_on)[:12])
+
+
+print()
+print("10. a vocals-only stem drives the faces; the master drives the cut")
+s10 = seq_create(URL, "vocals stem")
+sid10 = s10["id"]
+body = add_video_slot(URL, sid10, s10["rev"], length=97, prompt="v1")
+body = add_video_slot(URL, sid10, body["rev"], length=97, prompt="v2")
+v10a, v10b = [s["id"] for s in body["slots"]]
+code, body = seq_op(URL, sid10, body["rev"], "set_audio_led", on=True)
+MASTER10 = os.path.join(SCRATCH, "song10.wav")
+VOCALS10 = os.path.join(SCRATCH, "vocals10.wav")
+for path, freq in ((MASTER10, 440), (VOCALS10, 1000)):
+    ffmpeg(["-f", "lavfi", "-i", "sine=frequency=%d:sample_rate=44100:duration=8" % freq,
+            "-ac", "2", path], "make_tone")
+code, b = post_sound(URL, "api/sequence/master", sid10, "song.wav", open(MASTER10, "rb").read(), rev=body["rev"])
+check("the master sound file is imported", code == 200 and (b.get("master") or {}).get("file") == "audio/master.wav",
+      (code, b.get("error")))
+code, b = post_sound(URL, "api/sequence/master", sid10, "notes.txt", b"not a sound file at all")
+check("the master route refuses a non-sound file with its own sentence",
+      code == 400 and "sound file" in (b.get("error") or ""), (code, b))
+code, b = post_sound(URL, "api/sequence/vocals", sid10, "vocals.wav", open(VOCALS10, "rb").read(),
+                     rev=seq_get(URL, sid10)["rev"])
+vf10 = b.get("master_vocals") or {}
+check("the vocals stem is imported and stored as master_vocals",
+      code == 200 and vf10.get("file") == "audio/vocals.wav" and abs(float(vf10.get("seconds") or 0) - 8.0) < 0.2,
+      (code, b.get("error"), vf10))
+check("the file is kept under the sequence", os.path.isfile(os.path.join(DATA_DIR, "seq", sid10, "audio", "vocals.wav")))
+clip10 = os.path.join(FAKE_OUT, "shot10.mp4")
+make_clip(clip10, width=CW, height=CH, duration=2.0, audio_freq=500)
+
+
+def uploaded_slice_freqs(slot_id):
+    """(440 Hz band, 1000 Hz band) mean volumes of the wav the lane was sent for `slot_id`."""
+    with open(os.path.join(FAKE_STORE, "last_prompt.json")) as f:
+        g = json.load(f)
+    la = [n for n in g.values() if n.get("class_type") == "LoadAudio"]
+    up = os.path.join(FAKE_STORE, "inputs", la[0]["inputs"]["audio"]) if la else None
+    if not up or not os.path.isfile(up):
+        return None, None
+    return (mean_volume(up, trim=(0.0, 1.5), af="bandpass=f=440:w=60,volumedetect"),
+            mean_volume(up, trim=(0.0, 1.5), af="bandpass=f=1000:w=100,volumedetect"))
+
+
+generate_slot(URL, sid10, v10a, FAKE_PORT, clip10)
+v440a, v1000a = uploaded_slice_freqs(v10a)
+check("with a vocals stem the shot is made against the 1000 Hz stem, not the 440 Hz master",
+      None not in (v440a, v1000a) and v1000a - v440a >= 25, (v440a, v1000a))
+code, body = seq_op(URL, sid10, seq_get(URL, sid10)["rev"], "clear_master_vocals")
+check("clear_master_vocals removes the key", code == 200 and "master_vocals" not in body, (code, body.get("error")))
+check("and the stored file drops it too", "master_vocals" not in stored_sequence(DATA_DIR, sid10))
+generate_slot(URL, sid10, v10b, FAKE_PORT, clip10)
+v440b, v1000b = uploaded_slice_freqs(v10b)
+check("after clearing, the next shot is made against the 440 Hz master again",
+      None not in (v440b, v1000b) and v440b - v1000b >= 25, (v440b, v1000b))
+code, b = post_sound(URL, "api/sequence/vocals", sid10, "notes.txt", b"not a sound file at all")
+check("a non-sound upload to /api/sequence/vocals is refused with the master's own sentence",
+      code == 400 and "sound file I can use" in (b.get("error") or ""), (code, b))
 
 
 print()
