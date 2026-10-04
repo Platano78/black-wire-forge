@@ -343,7 +343,8 @@
   .speak-row{display:flex; gap:6px; align-items:center; margin-top:6px}
   .speak-row input[type=text]{flex:1; min-width:0}
   .speak-row button{flex:none}
-  .reuse-select{width:100%; max-width:100%; margin-top:6px; font-size:12px}
+  .reuse-select{width:100%; max-width:100%; margin-top:6px; min-height:36px; padding:6px 8px; font-size:12px;
+    background:var(--surface3); border:1px solid var(--divider); color:var(--text-hi)}
   .pick-picture-btn{margin-top:6px}
   .picture-picker{margin-top:6px; padding:6px; border:1px solid var(--divider); background:var(--surface2)}
   .picker-row{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px}
@@ -3827,7 +3828,11 @@ function renderGuideBody(){
   if(g && !brain){
     const ul = $('#guideNoBrainList');
     ul.textContent = '';
-    (g.no_brain || []).forEach(line => {
+    // A guide model that is only switched off is not "no brain": its opening
+    // "No brain is set up / hooked up..." line would be untrue, so it is left
+    // out and the room's tips stay.
+    (g.no_brain || []).filter((line, i) => !(i === 0 && GUIDE.helper_server && /^No brain is /.test(line)))
+      .forEach(line => {
       const li = document.createElement('li');
       li.textContent = line;
       ul.appendChild(li);

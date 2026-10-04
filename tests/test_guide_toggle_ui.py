@@ -221,6 +221,9 @@ try:
                page.is_visible("#guideReviseNoBrain")))
         check("off by default: nothing went to the guide model", HELPER["requests"] == [] and HELPER_CALLS == [],
               (HELPER["requests"], HELPER_CALLS))
+        tips = page.evaluate("() => Array.from(document.querySelectorAll('#guideNoBrainList li')).map(l => l.textContent)")
+        check("off by default: the room's tips show, but not the untrue 'No brain is set up' line (there IS one)",
+              bool(tips) and not any(t.startswith("No brain is") for t in tips), tips)
         check("off by default: nothing was stored -- the server's default is doing this",
               stored_choice(page) is None, repr(stored_choice(page)))
 
@@ -359,6 +362,9 @@ try:
         check("no helper: the one-line note is unchanged",
               text_of(page, "#guideOffNote") == "The guide is off, so type straight into the fields.",
               text_of(page, "#guideOffNote"))
+        tips = page.evaluate("() => Array.from(document.querySelectorAll('#guideNoBrainList li')).map(l => l.textContent)")
+        check("no helper: the 'No brain is set up' line is still there (it is true here)",
+              bool(tips) and tips[0].startswith("No brain is"), tips)
         check("no helper: how to add a helper is still there", page.is_visible("#guideAddBrain")
               and "config.json" in text_of(page, "#guideAddBrain"))
         page.close()

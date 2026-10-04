@@ -152,6 +152,10 @@ try:
         check("the field has a 'Use one I already made' picker", page.is_visible(sel))
         opts = page.eval_on_selector_all(sel + " option", "els => els.map(e => [e.value, e.textContent])")
         check("its first option asks which one", opts and opts[0][0] == "", opts)
+        look = page.eval_on_selector(sel, "e => [getComputedStyle(e).backgroundColor, getComputedStyle(e).color]")
+        bg = [int(x) for x in look[0][look[0].find("(") + 1:look[0].find(")")].split(",")[:3]]
+        check("it is drawn like the form's other selects, not a white box on the dark page",
+              sum(bg) < 3 * 128 and look[0] != look[1], look)
         check("the finished song is offered as job:output",
               ["songjob1:0"] == [o[0] for o in opts[1:]], opts)
         check("named the way its mode and prompt read",
