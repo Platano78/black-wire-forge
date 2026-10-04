@@ -296,6 +296,12 @@ ENGINE = {
         "arrange": "cuts a song at its bar starts and plays the bars back in the order you type, for example 1-4, 1-4, 9-16; runs on the processor",  # source: engines/producer_tools/arrange.py (module docstring)
         "mix": "lays up to four tracks over each other with a gain and a start time for each, then levels the loudness; runs on the processor",  # source: engines/producer_tools/mix.py (module docstring)
     },
+    # The arrange mode's one text field is a bar list, not words for a model: a writer
+    # asked to fill it must return only that list.
+    "prompt_guides": {
+        "arrange": "The bars to play, in order, as comma-separated bar numbers or ranges, for example "  # source: engines/producer_tools/arrange.py (parse_order docstring)
+                   "1-4, 1-4, 9-16 (bar 1 is the first full bar; a range runs forward). Return only that list.",
+    },
     "fields": {
         "fit": [
             {"id": "source_audio_name", "label": "The song the part was made in", "type": "audio",
@@ -328,7 +334,7 @@ ENGINE = {
             {"id": "source_audio_name", "label": "Song to re-arrange", "type": "audio",
              "tier": "primary", "group": "Content", "order": 1,
              "hint": "a song you already have"},
-            {"id": "order", "label": "Bars to play, in order", "type": "text", "default": "",
+            {"id": "order", "label": "Bars to play, in order", "type": "text", "default": "1-4, 1-4",
              "tier": "primary", "group": "Content", "order": 2,
              "hint": "bar 1 is the first full bar; for example 1-4, 1-4, 9-16 repeats the first four bars, then jumps"},
             {"id": "beats_per_bar", "label": "Beats per bar", "type": "select",

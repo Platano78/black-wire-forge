@@ -1011,7 +1011,6 @@
         <button type="button" class="btn" id="helperWriteBtn">Help me write this</button>
         <button type="button" class="btn" id="helperDescribeBtn" hidden>Describe this picture</button>
         <button type="button" class="btn" id="helperPictureBtn" hidden>Write from a picture</button>
-        <input type="file" accept="image/*" id="helperPictureFile" hidden>
         <button type="button" class="btn" id="slotWriteBtn" hidden>Write this shot</button>
         <span id="helperCue"></span>
         <span id="helperSpinner" hidden role="status"></span>
@@ -1254,6 +1253,9 @@
 </footer>
 
 <!-- WB: one workflow's details (built by openWfDetails(), textContent only). -->
+<!-- "Write from a picture"'s file chooser: outside the form, so it is never one of a mode's file fields. -->
+<input type="file" accept="image/*" id="helperPictureFile" hidden>
+
 <dialog id="wfDialog" aria-labelledby="wfDialogTitle">
   <div class="dialog-head">
     <h2 id="wfDialogTitle">Workflow</h2>
@@ -3517,6 +3519,11 @@ $('#helperCancelBtn').onclick = () => { if(GUIDE_ABORT) GUIDE_ABORT.abort(); };
 // closes it -- the same "click elsewhere closes it" a native <details>
 // gave for free, kept here since the popover is no longer a <details>.
 $('#engineChipBtn').onclick = () => setEngineChipOpen(!ENGINE_CHIP_OPEN);
+// Clicking a row closes the popover even when it is the engine already picked
+// (no change event fires then, and an open popover sits over the Make button).
+$('#enginePicker').addEventListener('click', (e) => {
+  if(e.target.closest('label') && ENGINE_CHIP_OPEN) setEngineChipOpen(false);
+});
 document.addEventListener('click', (e) => {
   if(ENGINE_CHIP_OPEN && !$('#enginePickerWrap').contains(e.target)) setEngineChipOpen(false);
 });
