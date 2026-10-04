@@ -11117,9 +11117,12 @@ class _ForgeBackend:
         return body["job"]["id"]
 
     def make_portrait(self, prompt, w, h):
-        """No photo given: the Picture room's text-to-picture mode makes the person."""
-        body, code = generate({"lane": self.lane["id"], "kind": "image", "mode": "t2i", "confirm": True,
-                               "prompt": prompt, "width": w, "height": h})
+        """No photo given: the Picture room's text-to-picture mode makes the person, with that mode's
+        Default recipe (the page applies a recipe's values itself; a bare call gets the fields' own
+        defaults, which are the older Balanced mix and draw lines across faces)."""
+        recipe = next((x.get("values") or {} for x in engines.presets("image", "t2i") if x.get("id") == "default"), {})
+        body, code = generate(dict(recipe, lane=self.lane["id"], kind="image", mode="t2i", confirm=True,
+                                   recipe="default", prompt=prompt, width=w, height=h))
         if code != 200 or not body.get("ok"):
             raise forge_run.RunError(body.get("error") or "A picture could not be started.")
         return body["job"]["id"]
