@@ -314,7 +314,7 @@ print("pack: the fit field list and plan")
 fids = [f["id"] for f in engines.fields("producer", "fit")]
 check("field ids in the spec order",
       fids == ["source_audio_name", "part_audio_name", "target_audio_name",
-               "source_bar_at", "target_bar_at", "stretch_tool"], fids)
+               "source_bar_at", "target_bar_at", "stretch_tool", "beat_match"], fids)
 by_id = {f["id"]: f for f in engines.fields("producer", "fit")}
 check("source/part/target are audio fields",
       all(by_id[k]["type"] == "audio" for k in ("source_audio_name", "part_audio_name", "target_audio_name")),
@@ -330,6 +330,11 @@ for k in ("source_bar_at", "target_bar_at"):
 st = by_id["stretch_tool"]
 check("stretch_tool: select, default auto, options auto/ffmpeg",
       st["type"] == "select" and st["default"] == "auto" and st["options"] == ["auto", "ffmpeg"], st)
+bm = by_id.get("beat_match") or {}
+check("beat_match: select, default every, options every/half_target/half_source",
+      bm.get("type") == "select" and bm.get("default") == "every"
+      and bm.get("options") == ["every", "half_target", "half_source"]
+      and bm["tier"] == "advanced" and bm["group"] == "Stretch", bm)
 check("mode word and room", engines.mode_words("producer")["fit"] == "Fit a part onto another beat"
       and engines.mode_room("producer", "fit") == "producer")
 check("mode note exists", bool(engines.mode_note("producer", "fit")), engines.mode_note("producer", "fit"))
@@ -346,6 +351,8 @@ try:
           argv[0] == "{bin:producer_python}" and argv[1].endswith("producer_tools/fit.py"), argv)
     check("no --part when the part was not named", "--part" not in argv, argv)
     check("no --source-bar-at when it was not given", "--source-bar-at" not in argv, argv)
+    check("the default beat match is passed as every",
+          "--beat-match" in argv and argv[argv.index("--beat-match") + 1] == "every", argv)
 except Exception as e:
     check("fit_plan(source, target) plans the fit", False, repr(e))
 try:
@@ -361,6 +368,20 @@ try:
           "--source-bar-at" in argv and argv[argv.index("--source-bar-at") + 1] == "12.34", argv)
 except Exception as e:
     check("fit_plan passes --source-bar-at", False, repr(e))
+try:
+    argv = prod.fit_plan({"source_audio_name": "s.wav", "target_audio_name": "t.wav",
+                          "beat_match": "half_target"}, {})["steps"][0]["argv"]
+    check("beat_match=half_target is passed as --beat-match half_target",
+          "--beat-match" in argv and argv[argv.index("--beat-match") + 1] == "half_target", argv)
+except Exception as e:
+    check("fit_plan passes --beat-match half_target", False, repr(e))
+try:
+    prod.fit_plan({"source_audio_name": "s.wav", "target_audio_name": "t.wav",
+                   "beat_match": "quarter"}, {})
+    check("fit_plan refuses beat_match 'quarter'", False, "no error raised")
+except ValueError as e:
+    check("fit_plan refuses beat_match 'quarter' with one sentence",
+          "\n" not in str(e) and str(e).strip() != "", repr(e))
 for bad in ("inf", -1, "abc"):
     for field in ("source_bar_at", "target_bar_at"):
         try:
@@ -399,6 +420,60 @@ try:
           list(g.get("outputs", []))[:1] == ["preview.mp3"], g.get("outputs"))
 except Exception as e:
     check("engines.graph_for('producer', 'fit') plans the fit", False, repr(e))
+
+# ---------------------------------------------------------------------------
+# match_tempos (pure numpy, no model): a 2x tempo gap is refused, or halved
+# when the job asked for every other beat of the faster song
+# ---------------------------------------------------------------------------
+print("match_tempos: a 2x tempo gap is refused, or halved on request")
+if not HAVE_NP:
+    skip("match_tempos", "numpy not importable in this Python")
+else:
+    import numpy as np
+
+    slow = [0.5 * k for k in range(40)]        # 120 BPM
+    fast = [0.25 * k for k in range(80)]       # 240 BPM
+    try:
+        _fit.match_tempos(slow, fast, "every")
+        check("a 2x tempo gap with 'every' refuses", False, "no error raised")
+    except _fit.gc.GridError as e:
+        msg = str(e)
+        check("the refusal names the one setting that fixes it (the target is the faster song here)",
+              "Set Beat match to half_target" in msg and "half_source" not in msg, msg)
+        try:
+            _fit.match_tempos(fast, slow, "every")
+        except _fit.gc.GridError as e2:
+            check("...and half_source when the first song is the faster one",
+                  "Set Beat match to half_source" in str(e2), str(e2))
+        check("a 2x tempo gap with 'every' refuses with one sentence",
+              "\n" not in msg and "about 2x apart" in msg and "120" in msg and "240" in msg, repr(e))
+
+    bs, bt, note = _fit.match_tempos(slow, fast, "half_target")
+    check("half_target keeps every other beat of the target (40 beats)",
+          len(bt) == 40 and all(abs(a - b) <= 1e-9 for a, b in zip(bt, slow[:40])), len(bt))
+    check("half_target spaces the target beats at 0.5 s and leaves the source alone",
+          list(bs) == slow and all(abs((bt[i + 1] - bt[i]) - 0.5) <= 1e-9 for i in range(len(bt) - 1)),
+          bt[:4])
+    check("half_target says what it did",
+          note == "used every other beat of the song to fit onto", note)
+
+    bs, bt, note = _fit.match_tempos(fast, slow, "half_source")
+    check("half_source on the reversed case keeps 40 source beats",
+          len(bs) == 40 and list(bt) == slow
+          and note == "used every other beat of the first song", (len(bs), note))
+
+    near = [0.5 * k for k in range(40)]        # 120 BPM
+    near_t = [(0.5 / 1.1) * k for k in range(44)]  # ~132 BPM
+    bs, bt, note = _fit.match_tempos(near, near_t, "every")
+    check("a 1.1x gap with 'every' is left alone",
+          list(bs) == near and list(bt) == near_t and note == "", note)
+
+    try:
+        _fit.match_tempos(slow, slow, "quarter")
+        check("an unknown beat match refuses", False, "no error raised")
+    except _fit.gc.GridError as e:
+        check("an unknown beat match refuses with one sentence",
+              "\n" not in str(e) and "Unknown beat match" in str(e), repr(e))
 
 # ---------------------------------------------------------------------------
 # repair_grid (pure numpy, no model): a missed beat is filled, an invented

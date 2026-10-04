@@ -162,6 +162,12 @@ def fit_plan(args, models):
     if tool not in (None, "", "auto", "ffmpeg"):
         raise ValueError("The stretch method must be auto or ffmpeg, got %s."
                          % ("'" + str(tool) + "'" if not isinstance(tool, (int, float)) else "%g" % tool))
+    beat_match = args.get("beat_match")
+    if beat_match in (None, ""):
+        beat_match = "every"
+    if beat_match not in ("every", "half_target", "half_source"):
+        raise ValueError("The beat match must be every, half_target or half_source, got %s."
+                         % ("'" + str(beat_match) + "'" if not isinstance(beat_match, (int, float)) else "%g" % beat_match))
     python = (models or {}).get("producer_python")
     # Discovery hands over which()'s path, always a real program; anything else (a placeholder
     # in a test) is not run here, and the runner says what it could not start.
@@ -176,6 +182,7 @@ def fit_plan(args, models):
         argv += ["--source-bar-at", "%g" % bar_s]
     if bar_t is not None:
         argv += ["--target-bar-at", "%g" % bar_t]
+    argv += ["--beat-match", beat_match]
     rb = shutil.which("rubberband")
     if rb:
         argv += ["--rubberband", rb]
@@ -272,6 +279,10 @@ ENGINE = {
              "default": "auto", "options": ["auto", "ffmpeg"],
              "tier": "advanced", "group": "Stretch", "order": 1,
              "hint": "auto uses Rubber Band when it is installed, otherwise ffmpeg (ffmpeg can sound phasey on big stretches)"},
+            {"id": "beat_match", "label": "Beat match", "type": "select",
+             "default": "every", "options": ["every", "half_target", "half_source"],
+             "tier": "advanced", "group": "Stretch", "order": 2,
+             "hint": "pair every beat (default); when one song's beat runs twice as fast, pair every other beat of it"},
         ],
         "mix": [
             {"id": "track_1", "label": "Track 1", "type": "audio",

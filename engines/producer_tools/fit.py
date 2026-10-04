@@ -118,6 +118,41 @@ def repair_grid(beats):
     return b, inserted, dropped
 
 
+def match_tempos(beats_s, beats_t, how):
+    """The two beat grids, checked against each other before anything is
+    paired: if one song's beat runs about twice as fast as the other's, then
+    pairing beat by beat would squash or stretch the part by 2x, so that is
+    refused unless the job asked for every other beat of that song. Pure:
+    two lists of times in seconds, no model.
+    r is the source's typical beat over the target's (r about 2 means the
+    target's beats come twice as fast). "every": unchanged, or one sentence
+    (gc.GridError) when r is outside [0.625, 1.6]. "half_target": the
+    target keeps every other beat (it is the faster one). "half_source": the
+    source does. -> (source beats, target beats, note), the note being "" when
+    nothing was halved."""
+    import numpy as np
+    if how not in ("every", "half_target", "half_source"):
+        raise gc.GridError("Unknown beat match %r." % how)
+    if how == "half_target":
+        return beats_s, beats_t[::2], "used every other beat of the song to fit onto"
+    if how == "half_source":
+        return beats_s[::2], beats_t, "used every other beat of the first song"
+    ds = np.diff(np.asarray(beats_s, dtype="float64"))
+    dt = np.diff(np.asarray(beats_t, dtype="float64"))
+    if len(ds) == 0 or len(dt) == 0:
+        return beats_s, beats_t, ""
+    r = float(np.median(ds)) / float(np.median(dt))
+    if 0.625 <= r <= 1.6:
+        return beats_s, beats_t, ""
+    # the setting that fixes it is the one that halves the FASTER song's beats
+    fix = "half_target (the song to fit onto has the faster beat)" if r > 1.6 \
+        else "half_source (the first song has the faster beat)"
+    raise gc.GridError(
+        "The two songs' beats are about %dx apart (%.0f vs %.0f BPM), so pairing "
+        "them beat by beat would squash or stretch the part. Set Beat match to %s."
+        % (round(max(r, 1.0 / r)), 60.0 / float(np.median(ds)), 60.0 / float(np.median(dt)), fix))
+
+
 def anchor_index(beats, downbeats, bar_at):
     """i0/j0: the first beat to line up. The requested bar anchor when one
     was given (refused with one sentence when no beat is within the snap
@@ -283,6 +318,8 @@ def fit(args, out, progress):
     beats_t, downs_t, _ = gc.track_beats(tgt.mean(axis=1).astype("float64"), "final0")
     beats_s, ins_s, dro_s = repair_grid(beats_s)
     beats_t, ins_t, dro_t = repair_grid(beats_t)
+    how = getattr(args, "beat_match", None) or "every"
+    beats_s, beats_t, note = match_tempos(beats_s, beats_t, how)
     progress(2)
 
     # c. where to start lining up
@@ -368,6 +405,7 @@ def fit(args, out, progress):
         "target_bpm": tbpm,
         "stretch": {"min": min(ratios), "median": statistics.median(ratios), "max": max(ratios)},
         "method": method,
+        "beat_match": how,
         "repaired": {"source": {"inserted": ins_s, "dropped": dro_s},
                      "target": {"inserted": ins_t, "dropped": dro_t}},
     }
@@ -377,6 +415,8 @@ def fit(args, out, progress):
 
     line = "fitted %d beats onto the target: %.1f -> %.1f BPM (stretch %.2fx), %s" % (
         K, sbpm, tbpm, statistics.median(ratios), method)
+    if note:
+        line += "; " + note
     if ins_s + ins_t + dro_s + dro_t:
         line += "; repaired the beat grids (%d added, %d removed)" % (ins_s + ins_t, dro_s + dro_t)
     if method == "ffmpeg atempo" and abs(1.0 - statistics.median(ratios)) > PHASEY_LIMIT:
@@ -395,6 +435,8 @@ def main():
     ap.add_argument("--source-bar-at", dest="source_bar_at", type=float)
     ap.add_argument("--target-bar-at", dest="target_bar_at", type=float)
     ap.add_argument("--rubberband")
+    ap.add_argument("--beat-match", dest="beat_match", choices=["every", "half_target", "half_source"],
+                    default="every")
     ap.add_argument("--check", action="store_true")
     args = ap.parse_args()
 
