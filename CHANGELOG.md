@@ -31,6 +31,11 @@ All notable changes to Black Wire Forge are recorded here.
   levelled to a loudness target (default -14 LUFS, true peak about -1 dBTP), as `mix.mp3` and `mix.wav`. Runs
   on the processor with ffmpeg; no model.
 
+- **Speak it**: with a speech source set up (`"speech"` in `config.json`), every sound file field (Talking
+  Head's "Your own recording", Video's "Drive the picture from a sound file", the Sound rooms' inputs)
+  gets a line to type and a Speak it button; the spoken line lands in the field exactly like a chosen
+  file. Without a speech source nothing changes.
+
 ### Fixed
 
 - A WAV file's "recipe removed" download works: only its format and audio chunks are kept (text chunks such as LIST/INFO are dropped); before, every WAV download was refused.

@@ -340,6 +340,9 @@
   .ledger-thumbs{display:flex; gap:6px; flex-wrap:wrap; margin-top:6px}
   .ledger-thumbs .t{width:56px; height:44px; border:1px solid var(--divider); overflow:hidden; position:relative}
   .ledger-thumbs .t img,.ledger-thumbs .t video{width:100%; height:100%; object-fit:cover}
+  .speak-row{display:flex; gap:6px; align-items:center; margin-top:6px}
+  .speak-row input[type=text]{flex:1; min-width:0}
+  .speak-row button{flex:none}
   .pick-picture-btn{margin-top:6px}
   .picture-picker{margin-top:6px; padding:6px; border:1px solid var(--divider); background:var(--surface2)}
   .picker-row{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px}
@@ -1433,6 +1436,7 @@ const STATE = {
   beforeJob: null,   // the job whose stage shows the render from before its post step
   forgetArmed: null,   // {jobId, until} -- Forget's click-again-to-confirm window; see renderMonitor
   uploads: {},         // field id -> array of {name, original}
+  speechOn: false,     // GET /api/speech/status -- whether the server can speak a typed line into a sound field
   pendingJobId: null,  // job just submitted from THIS inspector -- clears "On its way." when it settles
   seq: null,           // the open sequence (GET /api/sequence's derived object), or null
   seqList: [],         // GET /api/sequences -- the picker's own list
@@ -2699,6 +2703,13 @@ function ledgerRowHTML(f, values){
     + '<div class="ledger-slot" data-field-tier="' + tierOf(f) + '" data-field-id="' + esc(f.id) + '" data-ledger="' + esc(f.id) + '">'
     + '<label class="field-label" for="upload_' + esc(f.id) + '">' + (multi ? 'Add one or more' : 'Choose one') + '</label>'
     + '<input type="file" id="upload_' + esc(f.id) + '" accept="' + accept + '"' + (multi ? ' multiple' : '') + '>'
+    // A sound field can also be made here: type the line and the server speaks
+    // it into the same file slot the picker fills. Only with a speech source.
+    + (STATE.speechOn && f.type === 'audio'
+      ? '<div class="speak-row"><input type="text" id="speak_' + esc(f.id) + '" maxlength="2000" '
+        + 'placeholder="Or type a line to speak it"><button type="button" class="btn" id="speakBtn_'
+        + esc(f.id) + '">Speak it</button></div>'
+      : '')
     + (isCutting(currentRoom()) && STATE.seq && (f.type === 'image' || f.type === 'image_list')
       ? '<button type="button" class="btn pick-picture-btn" data-pick-picture="' + esc(f.id) + '">Choose a picture you made</button>'
         + '<div class="picture-picker" id="picker_' + esc(f.id) + '" hidden></div>'
@@ -3039,16 +3050,29 @@ async function renderModeFields(){
         const r = await fetch('/api/upload', {method:'POST', body: fd});
         const j = await r.json();
         if(!j.ok) throw new Error(j.error || 'upload failed');
-        // An uploaded picture shows as a thumbnail (its real shape, so it can
-        // be read before a Make), the way a carried-over result's does.
-        setUploads(f.id, (f.type === 'image' || f.type === 'image_list')
-          ? j.files.map(x => Object.assign({}, x, {thumb: inputViewURL(x.name)}))
-          : j.files);
-        // A recording that drives a shot (the LTX/Talking Head "audio_slice" field): size the clip to it.
-        if(f.id === 'audio_slice' && j.files && j.files[0] && Number(j.files[0].seconds) > 0)
-          applyRecordingLength(Number(j.files[0].seconds));
+        uploadAccepted(f, j.files);
       } catch(e){
         msgInspector(String(e.message || e), 'err');
+      }
+    };
+    const speakBtn = $('#speakBtn_' + f.id);
+    if(!speakBtn) return;
+    speakBtn.onclick = async () => {
+      const lane = STATE.activeLane;
+      if(!lane){ msgInspector('Pick a machine first.', 'err'); return; }
+      const text = $('#speak_' + f.id).value.trim();
+      if(!text){ msgInspector('Type the line to speak first.', 'err'); return; }
+      speakBtn.disabled = true;
+      msgInspector('Speaking it...', '');
+      try{
+        const j = await postJSON('/api/speech', {lane, text});
+        if(!j.ok) throw new Error(j.error || 'speech failed');
+        uploadAccepted(f, j.files);
+        msgInspector('Spoken: ' + Number(j.files[0].seconds).toFixed(1) + ' s.', 'ok');
+      } catch(e){
+        msgInspector(String(e.message || e), 'err');
+      } finally{
+        speakBtn.disabled = false;
       }
     };
   });
@@ -3106,6 +3130,18 @@ function applyRecordingLength(seconds){
   lenEl.dispatchEvent(new Event('change', {bubbles: true}));
   msgInspector('Length set to ' + frames + ' frames (' + (frames / fps).toFixed(1) + ' s) to match the recording.'
     + (want > 993 ? ' The recording is longer than one clip holds, so the rest is left out.' : ''), '');
+}
+// A file that landed on the lane for this field, however it got there: picked
+// on disk, or just spoken by the server. One place, so both ways show the same.
+function uploadAccepted(f, files){
+  // An uploaded picture shows as a thumbnail (its real shape, so it can
+  // be read before a Make), the way a carried-over result's does.
+  setUploads(f.id, (f.type === 'image' || f.type === 'image_list')
+    ? files.map(x => Object.assign({}, x, {thumb: inputViewURL(x.name)}))
+    : files);
+  // A recording that drives a shot (the LTX/Talking Head "audio_slice" field): size the clip to it.
+  if(f.id === 'audio_slice' && files && files[0] && Number(files[0].seconds) > 0)
+    applyRecordingLength(Number(files[0].seconds));
 }
 // A picture field's files, from an upload or a result carried over ("Edit
 // this result"); a carried result's thumb is the picture itself.
@@ -7889,6 +7925,15 @@ async function loadEnginesFor(){
   ROOMS_KEY = key;
   return changed;
 }
+async function loadSpeechStatus(){
+  // A server without a speech source 404s this (or the page is offline): that
+  // is simply "not on", never an error the person sees.
+  try{
+    STATE.speechOn = !!(await getJSON('/api/speech/status')).enabled;
+  } catch(e){
+    STATE.speechOn = false;
+  }
+}
 async function loadCredits(){
   try{
     const d = await getJSON('/api/credits');
@@ -8000,6 +8045,9 @@ async function init(){
   bindWorkflowsUI();
   await pollLanes();
   await loadEnginesFor();
+  // Read once, before the first form is drawn: a sound field offers Speak it
+  // only when the server can answer.
+  await loadSpeechStatus();
   renderRoomStrip();
   // #room=<id> survives a reload; #room=<id>&try=<example id> also survives one.
   await selectRoom(roomFromHash(), {force: true, tryId: tryIdFromHash()});
