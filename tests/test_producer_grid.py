@@ -246,16 +246,15 @@ def constant_grid(ons, dur, anchor="median"):
 
 
 # ── 1. pack shape (stdlib) ──────────────────────────────────────────────────
-print("the producer pack: three process-lane modes, grid, fit and mix, in the Producer room")
+print("the producer pack: four process-lane modes, grid, fit, arrange and mix, in the Producer room")
 pack = next(p for p in engines.packs() if p["id"] == "producer")
 check("process lane, producer cap", pack["lane_kind"] == "process" and pack["cap"] == "producer")
-check("mode ids grid, fit and mix, words, room", list(pack["graphs"]) == ["grid", "fit", "mix"]
+check("mode ids grid, fit, arrange and mix, words, room", list(pack["graphs"]) == ["grid", "fit", "arrange", "mix"]
       and pack["mode_words"]["grid"] == "Grid check (beats and bars)"
       and pack["mode_words"]["fit"] == "Fit a part onto another beat"
       and pack["mode_words"]["mix"] == "Mix tracks"
-      and engines.mode_room("producer", "grid") == "producer"
-      and engines.mode_room("producer", "fit") == "producer"
-      and engines.mode_room("producer", "mix") == "producer")
+      and pack["mode_words"]["arrange"] == "Re-arrange by bars"
+      and all(engines.mode_room("producer", m) == "producer" for m in ("grid", "fit", "mix", "arrange")))
 check("the room's 'Which one?' list gets a one-line note for each mode, as for every other mode",
       all(bool(engines.mode_note("producer", m)) for m in ("grid", "fit", "mix")))
 fids = [f["id"] for f in engines.fields("producer", "grid")]
