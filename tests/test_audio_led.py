@@ -5,8 +5,9 @@ absent every API response, take and cut is what it has always been; the frozen c
 guard that, and the classic-control checks below re-prove it next to the new behaviour.
 
 What is covered: the op and its validation, the derived windows (planned lengths laid end to end), refusal without a
-master, the slice that a shot generates against (uploaded wav, LoadAudio node, recorded window), and the cut itself
-(the master plays at full level, the clips' own audio is dropped).
+master, the slice that a shot generates against (uploaded wav, LoadAudio node, recorded window), the cut itself
+(the master plays at full level, the clips' own audio is dropped), and the per-shot "Follows the song" opt-out
+(set_lipsync), which makes one shot with no sound clip while its siblings are unchanged.
 
 The helper block between the markers is copied verbatim from tests/test_cut.py (a frozen script that cannot be
 imported); do not edit it here either. Run: python3 tests/test_audio_led.py
@@ -741,6 +742,73 @@ entry8c = wait_cut_done(URL, sid8, b.get("cut_id")) if code == 200 else None
 out8c = cut_file_path(DATA_DIR, sid8, entry8c, b.get("cut_id")) if entry8c else None
 dur8c = probed_duration(out8c) if out8c and os.path.isfile(out8c) else 0.0
 check("control: with the flag off the same takes cut at their full length (8.083 s)", abs(dur8c - 2 * 97 / 24.0) < 0.05, dur8c)
+
+
+print()
+print("9. per-shot opt-out: set_lipsync turns the master sound off for one shot, and only for that shot")
+s9 = seq_create(URL, "lipsync opt out")
+sid9 = s9["id"]
+body = add_video_slot(URL, sid9, s9["rev"], length=97, prompt="off")
+body = add_video_slot(URL, sid9, body["rev"], length=97, prompt="on")
+v9a, v9b = [s["id"] for s in body["slots"]]
+body = add_sound_slot(URL, sid9, body["rev"], seconds=8.0)
+snd9 = body["slots"][2]["id"]
+r9 = body["rev"]
+code, body = seq_op(URL, sid9, r9, "set_lipsync", slot_id=v9a, on="yes")
+check("a non-bool is refused with a sentence", code == 400 and "on or off" in (body.get("error") or ""), (code, body))
+code, body = seq_op(URL, sid9, r9, "set_lipsync", slot_id=snd9, on=False)
+check("a sound shot is refused with a sentence", code == 400 and "video shot" in (body.get("error") or ""), (code, body))
+code, body = seq_op(URL, sid9, r9, "set_lipsync", slot_id=v9a, on=False)
+check("on=false is accepted", code == 200, (code, body))
+check("on=false puts lipsync:false on the slot",
+      next(s for s in body["slots"] if s["id"] == v9a).get("lipsync") is False)
+check("on=false is stored in the sequence file",
+      next(s for s in stored_sequence(DATA_DIR, sid9)["slots"] if s["id"] == v9a).get("lipsync") is False)
+check("the sibling shot is untouched (no key at all)", "lipsync" not in next(s for s in body["slots"] if s["id"] == v9b))
+code, body = seq_op(URL, sid9, body["rev"], "set_lipsync", slot_id=v9a, on=True)
+check("on=true is accepted", code == 200, (code, body))
+check("on=true removes the key again (byte-identical to a shot nobody touched)",
+      "lipsync" not in next(s for s in body["slots"] if s["id"] == v9a))
+check("on=true removes the key from the stored file too",
+      "lipsync" not in next(s for s in stored_sequence(DATA_DIR, sid9)["slots"] if s["id"] == v9a))
+
+# An audio-led sequence with a real master: the opted-out shot is made with no
+# sound clip at all, its sibling still gets its window of the master.
+master9 = os.path.join(FAKE_OUT, "master9.m4a")
+make_audio_only(master9, 440, 8.0)
+slot_s9, job_s9, rev9 = generate_slot(URL, sid9, snd9, FAKE_PORT, master9)
+rev9 = pick(URL, sid9, rev9, snd9, job_s9)["rev"]
+code, body = seq_op(URL, sid9, rev9, "set_audio_led", on=True)
+rev9 = body["rev"]
+code, body = seq_op(URL, sid9, rev9, "set_lipsync", slot_id=v9a, on=False)
+rev9 = body["rev"]
+check("set_lipsync on:false survives set_audio_led", code == 200
+      and next(s for s in body["slots"] if s["id"] == v9a).get("lipsync") is False, (code, body))
+clip9 = os.path.join(FAKE_OUT, "shot9.mp4")
+make_clip(clip9, width=CW, height=CH, duration=2.0, audio_freq=1000)
+uploads_before = lane_log_count(FAKE_STORE, ("/upload/image",))
+slot_off, job_off, rev9 = generate_slot(URL, sid9, v9a, FAKE_PORT, clip9)
+check("the opted-out shot uploads no sound clip to the lane",
+      lane_log_count(FAKE_STORE, ("/upload/image",)) == uploads_before,
+      (uploads_before, lane_log_count(FAKE_STORE, ("/upload/image",))))
+with open(os.path.join(FAKE_STORE, "last_prompt.json")) as f:
+    graph_off = json.load(f)
+check("its generate payload carries no audio_slice (no LoadAudio node in the graph)",
+      not any(n.get("class_type") == "LoadAudio" for n in graph_off.values()), list(graph_off)[:12])
+check("no wav was cut for it under the sequence's own media",
+      not os.path.exists(os.path.join(DATA_DIR, "seq", sid9, "audio", "%s.wav" % v9a)))
+check("its take records no audio window", "audio_window" not in (slot_off["takes"][0].get("inputs") or {}),
+      slot_off["takes"][0].get("inputs"))
+slot_on, job_on, rev9 = generate_slot(URL, sid9, v9b, FAKE_PORT, clip9)
+check("the sibling shot without the flag still gets its window of the master",
+      (slot_on["takes"][0].get("inputs") or {}).get("audio_window") == {"start": 4.0, "len": 4.0},
+      slot_on["takes"][0].get("inputs"))
+check("and it did upload the clip to the lane",
+      lane_log_count(FAKE_STORE, ("/upload/image",)) > uploads_before)
+with open(os.path.join(FAKE_STORE, "last_prompt.json")) as f:
+    graph_on = json.load(f)
+check("whose graph has the LoadAudio node naming the uploaded wav",
+      len([n for n in graph_on.values() if n.get("class_type") == "LoadAudio"]) == 1, list(graph_on)[:12])
 
 
 print()

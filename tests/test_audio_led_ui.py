@@ -262,6 +262,35 @@ try:
         check("unticking removes the key (back to classic)", "audio_led" not in stored, stored.get("audio_led"))
         bed = page.eval_on_selector("#cutBedNote", "el => el.innerText").strip()
         check("and the wording returns to 'Music bed:'", bed.startswith("Music bed:"), bed)
+
+        # Per-shot "Follows the song": only there for an audio-led video shot.
+        ops = []
+        page.on("request", lambda r: ops.append(json.loads(r.post_data))
+                if r.method == "POST" and r.url.endswith("/api/sequence/op") and r.post_data else None)
+        page.click('#tlTrackVideo [data-slot-id]')
+        page.wait_for_timeout(800)
+        check("with audio-led off the per-shot lip-sync toggle is not on the page",
+              page.query_selector("#lipsyncToggle") is None)
+        page.click("#audioLedBox")
+        page.wait_for_timeout(1200)
+        box = page.query_selector("#lipsyncToggle")
+        check("with audio-led on a selected video shot shows the 'Follows the song' toggle",
+              box is not None and page.is_visible("#lipsyncToggle"))
+        check("and it is ticked by default", box is not None and page.eval_on_selector("#lipsyncToggle", "el => el.checked"))
+        hint = page.eval_on_selector("#slotLipsync", "el => el.innerText").strip()
+        check("with the hint about a shot with no singing face", "no singing face" in hint, hint)
+        ops.clear()
+        page.uncheck("#lipsyncToggle")
+        page.wait_for_timeout(1200)
+        sent = [o for o in ops if o.get("op") == "set_lipsync"]
+        check("unticking sends exactly one set_lipsync op with on:false",
+              len(sent) == 1 and sent[0].get("on") is False and "slot_id" in sent[0], sent)
+        stored = http_json(url + "api/sequence?id=" + sid)
+        check("the shot now carries lipsync:false on the server",
+              next(s for s in stored["slots"] if s["id"] == sent[0]["slot_id"]).get("lipsync") is False,
+              [s.get("lipsync") for s in stored["slots"]])
+        check("and the toggle stays unticked after the re-render",
+              not page.eval_on_selector("#lipsyncToggle", "el => el.checked"))
         check("no page JS errors", not errors, errors)
         browser.close()
 except Exception as e:

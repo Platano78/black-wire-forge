@@ -3246,6 +3246,23 @@ def _op_set_sing(seq, p):
     slot["sing"] = sing
 
 
+def _op_set_lipsync(seq, p):
+    """Audio-led only: {slot_id, on} -- whether this shot's face mouths along
+    to the master sound. Off deletes nothing else and leaves the shot's window
+    on the master and the cut exactly as they were; on removes the key, so a
+    shot nobody touched is byte-identical to one made before this toggle."""
+    slot = _slot(seq, p)
+    if slot.get("lane") != "video":
+        raise ValueError("Only a video shot can follow the song.")
+    on = p.get("on")
+    if not isinstance(on, bool):
+        raise ValueError("Lip-sync is either on or off.")
+    if on:
+        slot.pop("lipsync", None)
+    else:
+        slot["lipsync"] = False
+
+
 def _op_set_title_card(seq, p):
     slot = _slot(seq, p)
     card = p.get("title")
@@ -3636,7 +3653,7 @@ SEQ_OPS = {
     "set_audio_led": _op_set_audio_led, "set_master_start": _op_set_master_start, "clear_master": _op_clear_master,
     "add_slot": _op_add_slot, "update_slot": _op_update_slot, "move_slot": _op_move_slot,
     "remove_slot": _op_remove_slot, "pick_take": _op_pick_take, "adopt_take": _op_adopt_take, "set_trim": _op_set_trim,
-    "set_title_card": _op_set_title_card, "set_sing": _op_set_sing,
+    "set_title_card": _op_set_title_card, "set_sing": _op_set_sing, "set_lipsync": _op_set_lipsync,
     "add_ref": _op_add_ref, "move_ref": _op_move_ref, "remove_ref": _op_remove_ref,
     "patch": _op_patch, "unpatch": _op_unpatch,
     "insert_beat": _op_insert_beat, "update_beat": _op_update_beat,
@@ -7020,8 +7037,11 @@ def seq_generate(payload):
         p["sing_audio"], p["sing_start"] = sing_audio, sing_use["start"]
     audio_inputs = {}
     # Opt-in audio-led mode: an LTX video shot with no sound file of its own is
-    # driven by its window of the sequence's master sound.
+    # driven by its window of the sequence's master sound -- unless the shot has
+    # been unticked ("Follows the song"), which is how an instrumental passage
+    # or a shot with nobody in it is made. The window and the cut do not move.
     if (seq.get("audio_led") and slot.get("lane") == "video" and slot.get("mode") == "ltx"
+            and slot.get("lipsync") is not False
             and not str(slot_values.get("audio_slice") or "").strip() and not sing_use):
         try:
             led_name, led_window = _audio_led_slice(seq, slot, lane)

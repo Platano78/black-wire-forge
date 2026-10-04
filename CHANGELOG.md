@@ -40,6 +40,8 @@ All notable changes to Black Wire Forge are recorded here.
   gets a line to type and a Speak it button; the spoken line lands in the field exactly like a chosen
   file. Without a speech source nothing changes.
 
+- **Lip-sync per shot** (audio-led sequences): untick "Follows the song" on a video shot and it is made without the master sound driving it, for an instrumental passage or a shot with no singing face. The cut is unchanged.
+
 ### Fixed
 
 - A WAV file's "recipe removed" download works: only its format and audio chunks are kept (text chunks such as LIST/INFO are dropped); before, every WAV download was refused.
