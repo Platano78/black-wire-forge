@@ -86,7 +86,7 @@ def main():
 
     def run(*a):
         return subprocess.run([args.ffmpeg, "-hide_banner", "-nostdin", "-y"] + list(a),
-                              capture_output=True, text=True)
+                              capture_output=True, text=True, encoding="utf-8", errors="replace")
 
     # The shared graph: one branch per track, then the amix.
     per = []
@@ -151,7 +151,7 @@ def main():
         "true_peak_dbtp": peak,
         "duration_s": duration,
     }
-    with open(report, "w") as f:
+    with open(report, "w", encoding="utf-8") as f:
         json.dump(doc, f, indent=2)
 
     minutes = int(duration) // 60
