@@ -34,7 +34,13 @@ All notable changes to Black Wire Forge are recorded here.
 ### Fixed
 
 - A WAV file's "recipe removed" download works: only its format and audio chunks are kept (text chunks such as LIST/INFO are dropped); before, every WAV download was refused.
+
 - A Producer job's other outputs (the fitted part, the mix as WAV) now each have a Download under the result; before, only the first one played and the rest could not be reached.
+
+- The FAQ's "Which engine is a style for?" no longer names engines (it broke the engine-independence
+  check, `scripts/check-engine-independence.sh`, which v1.2.4 shipped failing); it now says how to find
+  a style's engine from the page itself.
+
 
 ## v1.2.4 — 2026-10-04
 
