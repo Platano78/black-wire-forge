@@ -2,6 +2,14 @@
 
 All notable changes to Black Wire Forge are recorded here.
 
+## Unreleased
+
+### Fixed
+
+- The FAQ's "Which engine is a style for?" no longer names engines (it broke the engine-independence
+  check, `scripts/check-engine-independence.sh`, which v1.2.4 shipped failing); it now says how to find
+  a style's engine from the page itself.
+
 ## v1.2.4 — 2026-10-04
 
 ### Fixed
