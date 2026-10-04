@@ -40,7 +40,7 @@ Ask, in this order, and stop at the first one that applies:
    "Install + start" and point a lane at that ComfyUI's `host`/`port` in `config.json`.
 2. **They have no GPU at all** → two things work, on a CPU-only **process lane**: an orbiting
    turntable video of an existing `.glb` (Blender + `ffmpeg`, `engines/turntable.py`, below) and
-   the Producer room's Grid check (a song's beats; "Getting the models"). Everything else needs a GPU-backed
+   Producer's Grid check (a song's beats; "Getting the models"). Everything else needs a GPU-backed
    ComfyUI lane; don't attempt it without one. Check each binary on its own:
    `command -v blender; command -v ffmpeg` (each prints a path, or nothing), and
    install what is missing (https://www.blender.org/download/, https://ffmpeg.org/download.html);
