@@ -4824,6 +4824,17 @@ def _guide_helper_chat(messages, max_tokens, retry_cut=False):
     return text, finish
 
 
+CARRY_SOUND_MAX_BYTES = 200 * 1024 * 1024
+
+
+def _is_sound_output(out):
+    """True when one finished job output IS a sound: the lane said "audio", or
+    the filename is one of the sound extensions an upload takes."""
+    if (out.get("media") or "") == "audio":
+        return True
+    return os.path.splitext(out.get("filename") or "")[1].lower() in AUDIO_UPLOAD_EXTS
+
+
 def _resolve_job_output_bytes(job_id, output_index):
     """-> (bytes, filename) for a finished job's output, the same source-
     bytes path a chain/carry uses."""
@@ -10417,6 +10428,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(*_wf_answer(workflows_open, self.read_json()))
             if u.path == "/api/speech":
                 return self.api_speech()
+            if u.path == "/api/carry/sound":
+                return self.api_carry_sound()
             if u.path == "/api/forge/music-video":
                 return self.send_json(*forge_music_video(self.read_json()))
             if u.path == "/api/forge/stop":
@@ -10432,11 +10445,14 @@ class Handler(BaseHTTPRequestHandler):
                             "detail": str(e)}, 500)
 
     def speech_store(self, lane, data):
-        """Store generated speech audio the same way api_upload stores a file for
+        """Generated speech: a sound_store() under the name it always had."""
+        return self.sound_store(lane, data, "speech.wav")
+
+    def sound_store(self, lane, data, name):
+        """Store a sound the same way api_upload stores a file for
         that lane: process lanes keep it under UPLOADS_DIR/<lane id> with a
         unique sanitized name; ComfyUI lanes POST multipart to /upload/image.
         Returns (name, original, bytes, seconds) or raises ValueError(sentence)."""
-        name = "speech.wav"
         safe = re.sub(r"[^A-Za-z0-9._-]", "_", name)
         if lane_kind(lane) == "process":
             d = os.path.join(UPLOADS_DIR, lane["id"])
@@ -10449,7 +10465,7 @@ class Handler(BaseHTTPRequestHandler):
             entry = {"name": stored, "original": name, "bytes": len(data)}
             if secs is not None:
                 entry["seconds"] = secs
-            log("Kept speech for %s" % lane["name"])
+            log("Kept a sound for %s" % lane["name"])
             return entry
         # ComfyUI lane: POST multipart to /upload/image
         res = http_post_multipart(
@@ -10457,7 +10473,7 @@ class Handler(BaseHTTPRequestHandler):
             {"type": "input", "overwrite": "false"},
             [("image", name, "audio/wav", data)])
         if "_http_error" in res or not res.get("name"):
-            raise ValueError("%s would not take the speech file. Try a smaller file or the other lane."
+            raise ValueError("%s would not take the sound file. Try a smaller file or the other lane."
                              % lane["name"])
         stored_name = res["name"]
         if res.get("subfolder"):
@@ -10466,7 +10482,7 @@ class Handler(BaseHTTPRequestHandler):
         entry = {"name": stored_name, "original": name, "bytes": len(data)}
         if secs is not None:
             entry["seconds"] = secs
-        log("Sent speech over to %s" % lane["name"])
+        log("Sent a sound over to %s" % lane["name"])
         return entry
 
     def api_upload(self):
@@ -10590,6 +10606,54 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError as e:
             return self.send_json({"ok": False, "error": str(e)}, 502)
         log("Speech generated for %s (%.2fs)" % (lane["name"], secs))
+        return self.send_json({"ok": True, "files": [entry]})
+
+    def api_carry_sound(self):
+        """POST /api/carry/sound: "Use one I already made" for a sound field.
+        One finished sound output of a job goes onto a lane as an input,
+        stored exactly as an upload of that sound would be, and the page
+        puts the returned name in the field. Results only, sounds only."""
+        p = self.read_json()
+        if not isinstance(p, dict):
+            return self.send_json({"ok": False, "error": "Send a JSON object."}, 400)
+        lane_id = p.get("lane") if isinstance(p.get("lane"), str) else ""
+        lane = LANE_BY_ID.get(lane_id)
+        if not lane:
+            return self.send_json({"ok": False, "error": "unknown lane %r" % lane_id}, 400)
+        if lane_kind(lane) != "process":
+            # A ComfyUI lane has to be there to take the file; a process lane
+            # keeps it in its own uploads dir and needs no up-check.
+            with STATE_LOCK:
+                up = LANE_STATE.get(lane["id"], {}).get("up")
+            if not up:
+                return self.send_json({"ok": False, "error": "%s is offline right now. Pick a lane glowing green."
+                                       % lane["name"]}, 409)
+        job_id = p.get("job_id")
+        with JOBS_LOCK:
+            job = dict(JOBS.get(job_id) or {}) if isinstance(job_id, str) else {}
+        if not job:
+            return self.send_json({"ok": False, "error": "I cannot find that result any more."}, 404)
+        if job.get("status") != "done":
+            return self.send_json({"ok": False, "error": "That result is not finished yet."}, 400)
+        outs = job.get("outputs") or []
+        idx = p.get("output")
+        if not isinstance(idx, int) or isinstance(idx, bool) or not (0 <= idx < len(outs)):
+            return self.send_json({"ok": False, "error": "That result has no output number %s." % idx}, 400)
+        out = outs[idx]
+        name = out.get("filename") or ""
+        if not _is_sound_output(out):
+            return self.send_json({"ok": False, "error": "Only a finished sound can go in a sound field."}, 400)
+        try:
+            data, _filename = _resolve_job_output_bytes(job_id, idx)
+        except ValueError as e:
+            return self.send_json({"ok": False, "error": str(e)}, 400)
+        if len(data) > CARRY_SOUND_MAX_BYTES:
+            return self.send_json({"ok": False, "error": "That sound is larger than 200 MB."}, 400)
+        try:
+            entry = self.sound_store(lane, data, os.path.basename(name) or "sound.wav")
+        except ValueError as e:
+            return self.send_json({"ok": False, "error": str(e)}, 502)
+        log("Kept a finished sound for %s" % lane["name"])
         return self.send_json({"ok": True, "files": [entry]})
 
     def api_sequence_master(self):

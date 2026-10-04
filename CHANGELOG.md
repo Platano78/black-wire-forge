@@ -6,6 +6,8 @@ All notable changes to Black Wire Forge are recorded here.
 
 ### Added
 
+- **Use one I already made** for sound: a sound field (the Producer room, Cover, Talking Head's recording, a video driven by sound) can take a finished song or part from History, no download and upload again.
+
 - A **Producer room** in the Sound group (Music, Cover, Sound FX, Producer), for working on tracks
   you already have. **Grid check** moves here from the Cover room, unchanged.
 

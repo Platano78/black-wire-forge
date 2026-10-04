@@ -343,6 +343,7 @@
   .speak-row{display:flex; gap:6px; align-items:center; margin-top:6px}
   .speak-row input[type=text]{flex:1; min-width:0}
   .speak-row button{flex:none}
+  .reuse-select{width:100%; max-width:100%; margin-top:6px; font-size:12px}
   .pick-picture-btn{margin-top:6px}
   .picture-picker{margin-top:6px; padding:6px; border:1px solid var(--divider); background:var(--surface2)}
   .picker-row{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px}
@@ -2703,6 +2704,9 @@ function ledgerRowHTML(f, values){
     + '<div class="ledger-slot" data-field-tier="' + tierOf(f) + '" data-field-id="' + esc(f.id) + '" data-ledger="' + esc(f.id) + '">'
     + '<label class="field-label" for="upload_' + esc(f.id) + '">' + (multi ? 'Add one or more' : 'Choose one') + '</label>'
     + '<input type="file" id="upload_' + esc(f.id) + '" accept="' + accept + '"' + (multi ? ' multiple' : '') + '>'
+    // A sound field can also take a finished sound out of History, the way a
+    // picture field takes one ("Use one I already made").
+    + (f.type === 'audio' ? soundReuseHTML(f) : '')
     // A sound field can also be made here: type the line and the server speaks
     // it into the same file slot the picker fills. Only with a speech source.
     + (STATE.speechOn && f.type === 'audio'
@@ -2717,6 +2721,81 @@ function ledgerRowHTML(f, values){
     + '<div class="ledger-thumbs" id="thumbs_' + esc(f.id) + '"></div>'
     + (f.hint ? '<p class="hint">' + esc(f.hint) + '</p>' : '')
     + '</div>';
+}
+
+function isSoundOutput(out){
+  // One finished output IS a sound: the lane said "audio", or it is named like one.
+  if(!out) return false;
+  if(out.media === 'audio') return true;
+  return /\.(wav|mp3|m4a|aac|flac|ogg|opus)$/i.test(out.filename || '');
+}
+// The finished sounds History can hand a sound field, newest first, at most 40.
+function finishedSoundOptions(){
+  const opts = [];
+  for(const job of STATE.jobs){
+    if(job.status !== 'done') continue;
+    (job.outputs || []).forEach((out, i) => {
+      if(opts.length >= 40 || !isSoundOutput(out)) return;
+      const info = modeInfo(job.kind, job.mode);
+      opts.push({value: job.id + ':' + i,
+                 text: ((info && info.label) || job.mode || 'a sound') + ' · '
+                       + String(job.prompt || out.filename || '').slice(0, 40)});
+    });
+  }
+  return opts;
+}
+function soundReuseHTML(f){
+  // Nothing to reuse: the field stays exactly as it was.
+  const opts = finishedSoundOptions();
+  if(!opts.length) return '';
+  return '<select id="reuse_' + esc(f.id) + '" class="reuse-select">' + soundReuseOptionsHTML(opts) + '</select>';
+}
+function soundReuseOptionsHTML(opts){
+  return '<option value="">Use one I already made…</option>'
+    + opts.map(o => '<option value="' + esc(o.value) + '">' + esc(o.text) + '</option>').join('');
+}
+function wireSoundReuse(sel, f){
+  // The chosen finished sound goes onto the lane as an input, and the page
+  // puts the returned name in the field exactly as an upload does.
+  sel.onchange = async () => {
+    const picked = sel.value;
+    if(!picked) return;
+    const lane = STATE.activeLane;
+    if(!lane){ msgInspector('Pick a machine first.', 'err'); sel.value = ''; return; }
+    const cut = picked.indexOf(':');
+    try{
+      const j = await postJSON('/api/carry/sound', {job_id: picked.slice(0, cut),
+                                                    output: parseInt(picked.slice(cut + 1), 10), lane});
+      if(!j.ok) throw new Error(j.error || 'carry failed');
+      uploadAccepted(f, j.files);
+      msgInspector('That sound is now under ' + (f.label || 'the field') + '.', 'ok');
+    } catch(e){
+      msgInspector(String(e.message || e), 'err');
+    } finally{
+      sel.value = '';
+    }
+  };
+}
+// History arrives on its own poll, often after the room was already drawn, so
+// the reuse pickers on screen follow the newest list: a first finished sound
+// adds the picker, the last one going takes it away again.
+function refreshSoundReuse(){
+  const opts = finishedSoundOptions();
+  fieldsFor(currentMode()).filter(f => f.type === 'audio').forEach(f => {
+    const input = $('#upload_' + f.id);
+    if(!input) return;
+    let sel = $('#reuse_' + f.id);
+    if(!opts.length){ if(sel) sel.remove(); return; }
+    if(!sel){
+      sel = document.createElement('select');
+      sel.id = 'reuse_' + f.id;
+      sel.className = 'reuse-select';
+      input.insertAdjacentElement('afterend', sel);
+      wireSoundReuse(sel, f);
+    }
+    if(document.activeElement === sel) return;
+    sel.innerHTML = soundReuseOptionsHTML(opts);
+  });
 }
 
 function jackNoteHTML(f){
@@ -3055,6 +3134,8 @@ async function renderModeFields(){
         msgInspector(String(e.message || e), 'err');
       }
     };
+    const reuse = $('#reuse_' + f.id);
+    if(reuse) wireSoundReuse(reuse, f);
     const speakBtn = $('#speakBtn_' + f.id);
     if(!speakBtn) return;
     speakBtn.onclick = async () => {
@@ -7872,6 +7953,7 @@ async function pollJobs(){
     const d = await getJSON('/api/jobs?limit=60');
     STATE.jobs = d.jobs || [];
     STATE.log = d.log || [];
+    refreshSoundReuse();
     if(STATE.pendingJobId){
       const j = STATE.jobs.find(x => x.id === STATE.pendingJobId);
       // "On its way." is a submission receipt, not a permanent status line --
