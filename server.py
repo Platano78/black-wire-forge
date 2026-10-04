@@ -5747,7 +5747,8 @@ def guide_skill(p):
     """The whole POST /api/guide/skill body -> (body, http code). A mode
     with a pack writer uses it; any other mode with a text field uses the
     generic writer, and so does a request with "pictures" ("Describe this
-    picture"), where the topic may be empty."""
+    picture"), where the topic may be empty -- except a writer that fills a
+    `lyrics` field, which writes from the picture itself."""
     if not isinstance(p, dict):
         return {"ok": False, "error": "Send a JSON object."}, 400
     room_id, mode = p.get("room"), p.get("mode")
@@ -5795,8 +5796,12 @@ def guide_skill(p):
     attached, err = _guide_attached(w, cap, mode, p.get("attached"))
     if err:
         return {"ok": False, "error": err}, 400
-    if refs:
-        w = None   # "Describe this picture": the generic writer, whatever the mode's own
+    # "Describe this picture": the generic writer, whatever the mode's own --
+    # except a writer that fills a `lyrics` field (the Sound modes), where the
+    # picture is a mood and setting to write the song from, not a caption.
+    from_pics = bool(refs) and w is not None and "lyrics" in (w.get("keys") or {}).values()
+    if refs and not from_pics:
+        w = None
     w = w or _generic_writer(cap, mode, g)
     if not w:
         return {"ok": False, "error": "This mode has no writer yet."}, 404
@@ -5826,7 +5831,9 @@ def guide_skill(p):
     # Words written for another engine (a beat in its format) lose that
     # engine's task prefix before this mode's writer reads them.
     if refs:
-        user += "Request: Describe the attached picture, as the words for this mode."
+        user += ("Request: Write this mode's words from the attached picture: take its mood, setting "
+                 "and imagery into the song; do not describe the picture line by line." if from_pics else
+                 "Request: Describe the attached picture, as the words for this mode.")
         if topic.strip():
             user += "\nThe user's own words so far: " + engines.foreign_prefix_stripped(cap, mode, topic.strip())
     else:

@@ -1003,6 +1003,8 @@
       <div id="helperBar" hidden>
         <button type="button" class="btn" id="helperWriteBtn">Help me write this</button>
         <button type="button" class="btn" id="helperDescribeBtn" hidden>Describe this picture</button>
+        <button type="button" class="btn" id="helperPictureBtn" hidden>Write from a picture</button>
+        <input type="file" accept="image/*" id="helperPictureFile" hidden>
         <button type="button" class="btn" id="slotWriteBtn" hidden>Write this shot</button>
         <span id="helperCue"></span>
         <span id="helperSpinner" hidden role="status"></span>
@@ -3341,7 +3343,8 @@ function renderHelperBar(){
   const roomReady = cutting || (roomModesHere.length > 0 && !roomModesAllOff(roomModesHere));
   const show = !!(g && GUIDE.helper && mode && roomReady && !$('#promptWrap').hidden && (!cutting || slotWriteBeat()));
   $('#helperBar').hidden = !show;
-  if(!show){ $('#helperWriteCaption').hidden = true; $('#helperDescribeBtn').hidden = true; return; }
+  if(!show){ $('#helperWriteCaption').hidden = true; $('#helperDescribeBtn').hidden = true;
+    $('#helperPictureBtn').hidden = true; return; }
   $('#helperCue').textContent = '→ ' + g.name;
   // FB-2: in a writer mode the guide's Send IS the write; only Describe stays.
   const writer = guideLayout(room) === 'writer';
@@ -3350,6 +3353,9 @@ function renderHelperBar(){
   // a topic box describes nothing; nor does a writer that already reads the room's own picture (the sheet writer)
   $('#helperDescribeBtn').hidden = cutting || !currentImageSource() || !$('#promptBox').dataset.fieldId
     || !!(mode.writer && mode.writer.topic_default);
+  // A picture is a mood and setting a lyrics writer writes from (the Sound modes): this
+  // button rides with Describe -- by the guide's Send in a writer mode, never in the hidden bar.
+  $('#helperPictureBtn').hidden = cutting || !((mode.writer || {}).fills || []).includes('lyrics');
   // B3: "Writes: <field labels>" under Help me write this, so the button
   // doesn't look like it only fills the box it sits under (the YuE2 case:
   // nothing said the writer also fills Lyrics, further down the form).
@@ -3361,6 +3367,27 @@ function renderHelperBar(){
 $('#helperWriteBtn').onclick = () => guideSkillRun(undefined, false);
 $('#slotWriteBtn').onclick = () => guideSkillRun(undefined, false, true);
 $('#helperDescribeBtn').onclick = () => guideSkillRun(undefined, true);
+// "Write from a picture": pick a picture, put it on the machine, and let the mode's
+// own writer (a lyrics writer) write from it -- the same write Describe starts.
+$('#helperPictureBtn').onclick = () => $('#helperPictureFile').click();
+$('#helperPictureFile').onchange = async () => {
+  const input = $('#helperPictureFile'), file = input.files && input.files[0];
+  input.value = '';
+  if(!file) return;
+  if(!STATE.activeLane){ msgInspector('Pick a machine first.', 'err'); return; }
+  try{
+    const fd = new FormData();
+    fd.append('lane', STATE.activeLane);
+    fd.append('file', file, file.name);
+    const r = await fetch('/api/upload', {method:'POST', body: fd});
+    const j = await r.json();
+    if(!j.ok || !(j.files || []).length) throw new Error(j.error || 'upload failed');
+    await guideSkillRun(undefined, false, false, undefined, false,
+                        [{lane: STATE.activeLane, upload: j.files[0].name}]);
+  } catch(e){
+    msgInspector(String(e.message || e), 'err');
+  }
+};
 $('#helperCancelBtn').onclick = () => { if(GUIDE_ABORT) GUIDE_ABORT.abort(); };
 // UX-2 #1: the chip toggles its popover; a click outside it, or Escape,
 // closes it -- the same "click elsewhere closes it" a native <details>
@@ -3576,9 +3603,14 @@ function placeGuidePanel(room){
   placeWriterPicture();
   // R9: Describe this picture sits by the guide's Send in a writer mode, never
   // inside the disclosure; everywhere else it is back in the prompt's bar.
-  const describe = $('#helperDescribeBtn');
-  if(lay === 'writer'){ if(describe.previousElementSibling !== $('#guideSendBtn')) $('#guideSendBtn').after(describe); }
-  else if(describe.previousElementSibling !== $('#helperWriteBtn')) $('#helperWriteBtn').after(describe);
+  const describe = $('#helperDescribeBtn'), picture = $('#helperPictureBtn');
+  if(lay === 'writer'){
+    if(describe.previousElementSibling !== $('#guideSendBtn')) $('#guideSendBtn').after(describe);
+    if(picture.previousElementSibling !== describe) describe.after(picture);
+  } else {
+    if(describe.previousElementSibling !== $('#helperWriteBtn')) $('#helperWriteBtn').after(describe);
+    if(picture.previousElementSibling !== describe) describe.after(picture);
+  }
 }
 // FB-2 R12: in a writer mode, the upload the writer reads its pictures from
 // (writer.pictures, a field id from the pack) sits with the fields the guide
@@ -3964,6 +3996,7 @@ function guideBusy(on){
   $('#helperCancelBtn').hidden = !on;
   $('#helperWriteBtn').disabled = on;
   $('#helperDescribeBtn').disabled = on;
+  $('#helperPictureBtn').disabled = on;
   $('#slotWriteBtn').disabled = on;
 }
 async function guideSend(){
@@ -4427,7 +4460,9 @@ async function guideSkillUseTarget(r){
 // FB-2: `typed` (a writer mode's Send) is the request itself, in place of the
 // prompt box's words. R8: `fixSaid` marks a "Fix it" write -- the log shows
 // that line for the user's turn, and the guide says it fixed, not filled.
-async function guideSkillRun(answer, describe, shot, typed, fixSaid){
+// `pics` (a pictures list already on a machine) starts a describe-style write
+// from those pictures instead of the picture on screen.
+async function guideSkillRun(answer, describe, shot, typed, fixSaid, pics){
   if(GUIDE_ABORT || !GUIDE || !GUIDE.helper || !currentMode() || $('#promptWrap').hidden) return;
   const answering = typeof answer === 'string';
   const key = guideHistKey(), room = GUIDE_ROOM, mode = STATE.mode;
@@ -4442,14 +4477,15 @@ async function guideSkillRun(answer, describe, shot, typed, fixSaid){
   } else {
     const beat = shot ? slotWriteBeat() : null;
     if(shot && !beat) return;
-    const pictures = describe ? [guidePictureRef(currentImageSource())].filter(Boolean) : null;
+    const pictures = pics ? pics : describe ? [guidePictureRef(currentImageSource())].filter(Boolean) : null;
     if(describe && !pictures.length){ guideShowError('No picture to describe yet.'); return; }
     hist.filter(m => m.wk === 'topic').forEach(m => { m.closed = true; });
     const topic = beat ? String(beat.text || '').trim() : typeof typed === 'string' ? typed : $('#promptBox').value.trim();
     st = {w: Date.now().toString(36), mode: mode, topic: topic, pictures: pictures, answers: []};
     if(beat) Object.assign(st, {slot: STATE.seqSlotId, room: jobRoom({kind: STATE.cap, mode: mode}),
                                 neighbours: slotWriteNeighbours(beat)});
-    const said = beat ? 'Write this shot: ' + topic : fixSaid || topic || (describe ? 'Describe this picture.' : '');
+    const said = beat ? 'Write this shot: ' + topic : fixSaid || topic
+      || (describe ? 'Describe this picture.' : pics ? 'Write from this picture.' : '');
     turn = said ? {role: 'user', content: said, w: st.w, wk: 'topic', mode: mode, topic: topic, pictures: pictures} : null;
     if(turn && beat) Object.assign(turn, {slot: st.slot, room: st.room, neighbours: st.neighbours});
   }

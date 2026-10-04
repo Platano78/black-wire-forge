@@ -2,6 +2,14 @@
 
 All notable changes to Black Wire Forge are recorded here.
 
+## Unreleased
+
+### Added
+
+- **Write from a picture** (Sound rooms, guide on): pick a picture and the mode's own lyrics writer writes the
+  song from it, its mood, setting and imagery, not a caption read out. Needs a guide model that can see
+  pictures; one that cannot says so, as Describe this picture already does.
+
 ## v1.2.4 — 2026-10-04
 
 ### Fixed
