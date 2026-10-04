@@ -231,8 +231,11 @@ check("describe: the user message carries text + the picture", isinstance(conten
 text = content[0]["text"] if isinstance(content, list) else ""
 check("describe: it asks for a description, grounded with the picture",
       "Describe the attached picture" in text and text.endswith("[1 picture attached.]"), text)
+# A writer that fills `lyrics` keeps its own writer with a picture (the Sound
+# modes writing a song FROM it) -- that is tests/test_guide_picture_lyrics.py;
+# every other pack writer still steps aside for the generic one here.
 check("describe: the generic writer even on a pack-writer mode", code == 200 and skill(
-    {"room": "music", "mode": "song", "pictures": [PIC]})[0] == 200
+    {"room": "sfx", "mode": "sfx", "pictures": [PIC]})[0] == 200
       and "PROMPT: <the finished words" in HELPER_STATE["requests"][-1]["messages"][0]["content"])
 code, b = skill({"room": "picture", "mode": "t2i", "topic": "keep it moody", "pictures": [PIC]})
 check("describe: the user's own words ride along", "The user's own words so far: keep it moody"

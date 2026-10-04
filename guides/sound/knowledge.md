@@ -32,6 +32,9 @@ log" at the end for exactly which claims came from where.
 
 ## WORDS — turning a topic into the text each engine actually reads
 
+- A picture attached to a write here is a **mood and setting to write the song from** — never a
+caption to read out line by line. — **observed**, `server.py` `guide_skill` ("Write from a picture").
+
 **The one rule that matters most: a voice is a choice, not a default.** The maintainer's own ear,
 2026-09-24, same shipped "Try this" lyrics (5 lines, 150 s), seeds 1111/2222/3333: ACE-Step tags
 naming no voice ("warm acoustic pop, gentle drums, sunny afternoon") came back **instrumental

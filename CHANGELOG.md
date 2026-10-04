@@ -41,7 +41,12 @@ All notable changes to Black Wire Forge are recorded here.
   file. Without a speech source nothing changes.
 
 - **Lip-sync per shot** (audio-led sequences): untick "Follows the song" on a video shot and it is made without the master sound driving it, for an instrumental passage or a shot with no singing face. The cut is unchanged.
+
 - **Vocals only** (audio-led sequences): add the song's vocals stem and each shot's face follows the singing, not the instruments; the cut still plays the full mix.
+
+- **Write from a picture** (Sound rooms, guide on): pick a picture and the mode's own lyrics writer writes the
+  song from it, its mood, setting and imagery, not a caption read out. Needs a guide model that can see
+  pictures; one that cannot says so, as Describe this picture already does.
 
 ### Fixed
 
@@ -52,7 +57,6 @@ All notable changes to Black Wire Forge are recorded here.
 - **Make someone up** (music video) drew its person with the older Balanced mix, which leaves thin lines
   across faces, because it asked for a picture without naming a recipe. It now uses the Picture room's
   Default recipe, the same as a picture made from the page.
-
 
 - The FAQ's "Which engine is a style for?" no longer names engines (it broke the engine-independence
   check, `scripts/check-engine-independence.sh`, which v1.2.4 shipped failing); it now says how to find
