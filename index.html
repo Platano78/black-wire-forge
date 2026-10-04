@@ -984,6 +984,9 @@
          sing_offer/sing_span; every offset but a chain head's is computed. -->
     <div id="slotKind" hidden></div>
     <div id="slotSing" hidden></div>
+    <!-- Audio-led: "Follows the song" -- built by renderSlotLipsync(); sends
+         set_lipsync, and only for an audio-led LTX video shot. -->
+    <div id="slotLipsync" hidden></div>
     <!-- F5: "Use one I already made" -- built by renderSlotAdopt(); sends adopt_take. -->
     <div id="slotAdopt" hidden></div>
     <div id="laneNote" role="status"></div>
@@ -6333,6 +6336,26 @@ function renderSlotSing(slot){
   };
 }
 
+// Audio-led: whether this shot's face mouths along to the master sound.
+function renderSlotLipsync(slot){
+  const el = $('#slotLipsync');
+  if(!el) return;
+  if(!(STATE.seq && STATE.seq.audio_led && slot && slot.lane === 'video' && slot.mode === 'ltx')){
+    setHTML(el, ''); el.hidden = true; return;
+  }
+  const on = slot.lipsync !== false;
+  const html = '<div class="field-row"><label class="field-label"><input type="checkbox" id="lipsyncToggle"'
+    + (on ? ' checked' : '') + '> Follows the song (lip-sync)</label></div>'
+    + '<p class="hint">Untick for a shot with no singing face: it is made without the song driving it.</p>';
+  el.hidden = false;
+  if(!setHTML(el, html)) return;
+  const toggle = $('#lipsyncToggle');
+  toggle.onchange = async () => {
+    const r = await seqOp('set_lipsync', {slot_id: slot.id, on: toggle.checked});
+    if(r) renderTimeline(); else toggle.checked = !toggle.checked;
+  };
+}
+
 // F5: the finished jobs of this shot's kind that are not already its takes,
 // newest first, at most 30 -- from the job list the page already polls.
 function renderSlotAdopt(slot){
@@ -6369,6 +6392,7 @@ function renderSlotMeta(slot){
   $('#slotTools').hidden = !slot;
   renderSlotKind(slot);
   renderSlotSing(slot);
+  renderSlotLipsync(slot);
   renderSlotAdopt(slot);
   if(!slot) return;
   const delBtn = $('#slotDeleteBtn');
@@ -6594,6 +6618,7 @@ function renderTimeline(){
   renderCutBar();
   renderSlotAdopt(currentSlot());   // F5: what is already a take stops being offered
   renderSlotSing(currentSlot());   // E1: a reorder/cable/length change moves where a shot sings
+  renderSlotLipsync(currentSlot());
 }
 
 /* ---------------------------------------------------------------------

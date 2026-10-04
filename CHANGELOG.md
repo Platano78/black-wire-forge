@@ -2,6 +2,12 @@
 
 All notable changes to Black Wire Forge are recorded here.
 
+## Unreleased
+
+### Added
+
+- **Lip-sync per shot** (audio-led sequences): untick "Follows the song" on a video shot and it is made without the master sound driving it, for an instrumental passage or a shot with no singing face. The cut is unchanged.
+
 ## v1.2.4 — 2026-10-04
 
 ### Fixed
