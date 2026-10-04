@@ -1,12 +1,21 @@
-"""Q21 acceptance gate: the t2i Default preset's graph matches arm D of the
+"""Q21 acceptance gate: the Balanced RECIPE's graph matches arm D of the
 cfg/APG/FreSca A/B (owner-confirmed 2026-09-23) -- same node classes, same
 wiring shape, same numeric sampling inputs. Arm D's own graph is read live
 from D_P_4242.png's embedded ComfyUI "prompt" chunk (Pillow), never a typed
 copy of it.
 
-Also covers: "Fast / plain" and "Seamless tile" carry no APG/FreSca and use
-euler/simple. The edit Default byte-identical check already lives in
-test_packs_golden.py (qwen_edit.json golden is unchanged by this slice).
+Since the owner's 2026-10-03 ruling arm D is no longer the t2i DEFAULT: the
+default is now raw (Plain, cfg 1, 40 steps) and arm D survives as the opt-in
+`balanced` preset. So this file compares arm D against the `balanced` preset,
+pins the Balanced graph byte-for-byte against its own golden
+(tests/golden/qwen_t2i_balanced.json, generated from the preset's values), and
+pins the raw Default separately (no APG/FreSca, euler/simple, cfg 1.0, 40
+steps). tests/golden/qwen_t2i.json is unchanged -- it is built from the older
+ARGS fixture, which sends no guidance_style, so the graph builder's fallback
+still resolves it to Balanced there (tests/test_packs_golden.py and
+tests/test_style_lora.py read that file). The edit Default byte-identical check
+lives in test_packs_golden.py (qwen_edit.json golden is unchanged by this
+slice).
 
 Run: python3 tests/test_qwen_balanced_golden.py
 """
@@ -32,7 +41,7 @@ MODELS = json.load(open(os.path.join(HERE, "golden", "models.json")))
 # prompt text, seed, filename prefix. Width/height/resolution are ALSO
 # stripped here -- a JUDGMENT CALL (LOW-CONFIDENCE, flagged in the report):
 # arm D was rendered small (1024^2) purely for A/B render-time economy, while
-# the shipped "Default" preset keeps the app's existing 1328^2 -- ruling 4
+# the shipped presets keep the app's existing 1328^2 -- ruling 4
 # never says to change that, and the graph property being tested is the
 # GUIDANCE MECHANISM (APG/FreSca/KSampler wiring and numbers), not output
 # size.
@@ -87,13 +96,13 @@ def build_args(cap, mode, preset_id, prompt="P", negative="N", seed=4242):
     return args, fields
 
 
-print("t2i Default preset's graph == arm D's graph (class shapes, numeric sampling inputs)")
+print("the Balanced recipe's graph == arm D's graph (class shapes, numeric sampling inputs)")
 if not os.path.isfile(ARM_D_PNG):
     print("  SKIP  needs the private A/B evidence PNG, not included in the public repo")
 else:
     try:
         want = canon(read_arm_d_graph(ARM_D_PNG))
-        args, _ = build_args("image", "t2i", "default")
+        args, _ = build_args("image", "t2i", "balanced")
         got_graph = engines.graph_for("image", "t2i", args, MODELS)
         got = canon(got_graph)
         same = want == got
@@ -101,9 +110,36 @@ else:
         if not same:
             wset, gset = set(want), set(got)
             detail = "missing %s extra %s" % (sorted(wset - gset), sorted(gset - wset))
-        check("Default preset graph matches arm D's graph", same, detail)
+        check("Balanced preset graph matches arm D's graph", same, detail)
     except Exception as e:
-        check("Default preset graph matches arm D's graph", False, "%s: %s" % (type(e).__name__, e))
+        check("Balanced preset graph matches arm D's graph", False, "%s: %s" % (type(e).__name__, e))
+
+print()
+print("the Balanced recipe is still the pinned arm D golden, byte for byte")
+G = os.path.join(HERE, "golden")
+want_bal = json.load(open(os.path.join(G, "qwen_t2i_balanced.json")))
+args_bal, _ = build_args("image", "t2i", "balanced", prompt="P", negative="N", seed=4242)
+got_bal = engines.graph_for("image", "t2i", args_bal, MODELS)
+got_bal = json.loads(json.dumps(got_bal, sort_keys=True))
+want_bal = json.loads(json.dumps(want_bal, sort_keys=True))
+check("balanced preset graph == golden/qwen_t2i_balanced.json", got_bal == want_bal,
+      "node ids differ: missing %s extra %s" % (sorted(set(want_bal) - set(got_bal)),
+                                                sorted(set(got_bal) - set(want_bal)))
+      if set(want_bal) != set(got_bal)
+      else "differs at " + str(sorted(k for k in want_bal if want_bal.get(k) != got_bal.get(k))))
+
+print()
+print("the raw Default preset carries no APG/FreSca and uses euler/simple, cfg 1.0, 40 steps")
+args_raw, _ = build_args("image", "t2i", "default")
+graph = engines.graph_for("image", "t2i", args_raw, MODELS)
+classes = {n.get("class_type") for n in graph.values()}
+check("default has no APG node", "APG" not in classes)
+check("default has no FreSca node", "FreSca" not in classes)
+ks = next(n for n in graph.values() if n.get("class_type") == "KSampler")["inputs"]
+check("default uses sampler euler", ks.get("sampler_name") == "euler", repr(ks))
+check("default uses scheduler simple", ks.get("scheduler") == "simple", repr(ks))
+check("default uses cfg 1.0", ks.get("cfg") == 1.0, repr(ks))
+check("default uses 40 steps", ks.get("steps") == 40, repr(ks))
 
 print()
 print("Fast / plain, Sharp text and Seamless tile carry no APG/FreSca and use euler/simple")

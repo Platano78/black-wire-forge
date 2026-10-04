@@ -30,13 +30,13 @@ THE ROOMS AND WHAT EACH ONE DOES — all on Qwen-Image 2.1 (research licence, no
 BiRefNet and RealESRGAN for the tool modes:
 
 - PICTURE, mode t2i: a picture from words alone. Fields: prompt (required), width/height (default
-  1328x1328), Things to avoid (negative — only takes effect once Guidance strength is at least about
-  2.5; the app's own t2i DEFAULT Guidance strength is 3.0, already above that line, so Things to
-  avoid DOES work at the default. It goes inert only at low Guidance strength — e.g. the Fast/plain
-  preset's Guidance strength of 1, where it measured zero effect), Steps (default 20), Guidance
-  strength (default 3.0), Guidance style (Balanced default — holds exposure at higher guidance,
-  costs about 3x the time, can add unrequested props; Plain is faster and simpler but darkens the
-  image once Guidance strength passes about 2.5).
+  1328x1328), Things to avoid (negative — IGNORED at the default Guidance strength of 1: it only
+  takes effect above about 2.5, so raise Guidance strength or choose the Balanced recipe), Steps
+  (default 40), Guidance strength (default 1.0 — the raw model, no guidance), Guidance style
+  (Plain default — it changes nothing at strength 1; Balanced adds extra detail (APG + FreSca),
+  about 2x the time, and can add unrequested props or leave a fine mesh pattern over water and
+  sand on some pictures). Presets: Default (raw), Balanced, Fast / plain, Sharp text,
+  Seamless tile, Set plate, Character anchor.
 - PICTURE, mode edit: change a picture you upload. Write the edit as a positive instruction anchored
   on what the picture actually shows — "Remove the background" works directly. Needs at least one
   uploaded picture (up to 10). There is no width/height field for edit — size comes from the

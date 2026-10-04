@@ -49,12 +49,12 @@ card, then general web craft — see "Research log" for what came from where.
 
 - **Positive prompt only, always.** Put anything to avoid in the separate "Things to avoid" field
   (`negative`), never folded into the main prompt — and it only takes effect once "Guidance
-  strength" (`cfg`) is at least ~2.5. **This is NOT the same as "inert at t2i's default"**: t2i's own
-  default `cfg` is 3.0 (see SETTINGS below), already above that line, so Things to avoid DOES work
-  at t2i's default settings. It goes inert only at a *low* `cfg` — measured **zero** effect (max
-  pixel delta 0) specifically at the `fast-plain` preset's `cfg` of 1, not at the default. —
-  observed, `engines/qwen_image.py` fields (`negative` hint, `cfg` default 3.0 for t2i) + presets
-  `fast-plain` note (measured 2026-09-23/22).
+  strength" (`cfg`) is at least ~2.5. **At t2i's default it is therefore IGNORED**: as of
+  2026-10-03 the t2i default `cfg` is 1.0 (see SETTINGS below), where the
+  "Things to avoid" text measured **zero** effect (max pixel delta 0). To make it count, raise
+  `cfg` above ~2.5 or switch to the `balanced` recipe (`cfg` 3). — observed,
+  `engines/qwen_image.py` fields (`negative` hint, `cfg` default 1.0 for t2i) + presets
+  `fast-plain` / `balanced` notes (measured 2026-09-23/22, default changed 2026-10-03).
 - **`edit` mode**: describe the change as a **positive instruction** anchored on what the uploaded
   picture(s) actually show — "Remove the background" works directly as a prompt, no separate
   before/after framing needed. — observed, `engines/qwen_image.py` `prompt_guides.edit`.
@@ -149,14 +149,19 @@ card, then general web craft — see "Research log" for what came from where.
 ## SETTINGS — the fields and presets that change the render
 
 - `t2i` fields: `prompt` (required), `width`/`height` (default 1328×1328, snapped to a multiple of
-  16), `negative`, `steps` (default 20), `cfg` (default 3.0), `resolution` (encoder working
-  resolution, default 1024), `sampler`, `scheduler`, `guidance_style` (`Balanced` default —
-  APG+FreSca, holds exposure at higher guidance but costs ~3x the render time and can add
-  unrequested props; `Plain` is classic guidance, faster, but darkens the image once `cfg` passes
-  ~2.5). — observed, `engines/qwen_image.py` `fields.t2i`, `presets.t2i["default"]`,
-  `["fast-plain"]`.
-- `t2i` presets: `default` (Balanced, cfg 3), `fast-plain` (cfg 1, ~3x faster, negatives inert),
-  `sharp-text` (cfg 1, 40 steps, plain guidance — for lettering and fine line detail; one-seed measurement, 2026-10-02),
+  16), `negative` (**ignored at the default `cfg` 1**), `steps` (default 40), `cfg` (default 1.0 —
+  raw model output, no guidance), `resolution` (encoder working
+  resolution, default 1024), `sampler` (`euler`), `scheduler` (`simple`), `guidance_style`
+  (`Plain` default — changes nothing at `cfg` 1; `Balanced` adds extra detail via APG+FreSca,
+  holds exposure at higher guidance but costs ~2x the render time and can add unrequested props or
+  leave a fine mesh pattern over water and sand). — observed, `engines/qwen_image.py`
+  `fields.t2i`, `presets.t2i["default"]`, `["fast-plain"]`, `["balanced"]` (defaults changed
+  2026-10-03).
+- `t2i` presets: `default` — "Default (raw)" (cfg 1, 40 steps, plain guidance, ~60s at
+  1328×1328), `balanced` (cfg 3, 20 steps, Balanced guidance — the old default, ~2x the time),
+  `fast-plain` (cfg 1, 25 steps, ~1.6x faster, negatives inert),
+  `sharp-text` (cfg 1, 40 steps, plain guidance — the same recipe as Default, kept as a named
+  choice for lettering and fine line detail; one-seed measurement, 2026-10-02),
   `seamless-tile` (25 steps @ 1024², plain guidance — measured to beat higher-step/higher-res
   renders for tiling, which drift warm and worsen seams), `set-plate` (no-people negative, for a
   reference plate reused across shots — asymmetric framing matters more than the prompt saying "no
@@ -164,8 +169,9 @@ card, then general web craft — see "Research log" for what came from where.
   observed, `engines/qwen_image.py` `presets.t2i`.
 - `edit` fields: same core set, but **no width/height** — output size comes from the uploaded
   picture via the encoder's own latent (`resolution`, default 1024, governs working size only).
-  `cfg` defaults to 2.5 (vs 3.0 for `t2i`); `guidance_style` defaults to `Plain` (vs `Balanced` for
-  `t2i`) — a deliberate, still-open app choice: the Balanced arm was only ever measured on `t2i`,
+  `cfg` defaults to 2.5 (vs 1.0 for `t2i`); `guidance_style` defaults to `Plain` (as does `t2i`'s
+  since 2026-10-03) — `edit`'s own default is a deliberate, still-open app choice: the Balanced
+  arm was only ever measured on `t2i`,
   never benchmarked against edit. — observed, `engines/qwen_image.py` `fields.edit` (`ref_images`,
   `resolution`, `cfg` default), code comment on `guidance_style` default.
 - `edit` presets: `default` (resolution 1024, steps 20, cfg 2.5), `remove-background` (works, but

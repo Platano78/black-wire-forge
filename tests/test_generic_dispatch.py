@@ -304,7 +304,7 @@ payload, code = call_api_generate({"lane": "synth", "kind": "image", "mode": "t2
                                     "prompt": "a q21 request"})
 check("omitting cfg call succeeded", payload and payload.get("ok") is True, str(payload))
 ks = (captured[-1]["graph"].get("8") or {}).get("inputs", {}) if captured else {}
-check("omitting cfg uses the field's declared default (3)", ks.get("cfg") == 3.0, repr(ks))
+check("omitting cfg uses the field's declared default (1, raw)", ks.get("cfg") == 1.0, repr(ks))
 
 srv.dispatch = _orig_dispatch
 

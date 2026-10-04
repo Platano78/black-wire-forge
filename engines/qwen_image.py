@@ -69,13 +69,19 @@ def _describe(models):
 
 
 def qwen_t2i_graph(p, m):
-    # Q21: "Balanced" (the A/B's arm D, measured 2026-09-23,
-    # our internal CFG/APG/FreSca A/B notes) is t2i's
-    # own default guidance style -- APG then FreSca sit between the UNET
-    # and KSampler, and the sampler/scheduler defaults change with it.
-    # "Plain" is today's graph exactly (plain CFG, euler/simple). Defaults
-    # here mirror this mode's field declarations below; the field ids stay
-    # the single source of truth for the actual default values.
+    # These three fallbacks are DELIBERATELY NOT the t2i mode's field defaults
+    # (Plain/euler/simple since 2026-10-03). They are the last-resort values for
+    # callers that build params WITHOUT this mode's fields -- and two of those
+    # exist: engines/pixelart.py (pixelart_graph reuses this builder directly and
+    # declares no sampler/scheduler/guidance_style fields) and the golden tests,
+    # whose args fixtures predate these fields. Both are pinned byte-for-byte
+    # (tests/golden/pixelart_graph.json, tests/golden/qwen_t2i.json), and Pixel
+    # Art's renders were proven on Balanced -- so it keeps rendering exactly as
+    # today. The values the page and the API actually send come from the field
+    # declarations below, which are the single source of truth for the defaults.
+    # Q21: "Balanced" is arm D of the 2026-09-23 A/B (our internal CFG/APG/FreSca
+    # notes): APG then FreSca sit between the UNET and KSampler, and the
+    # sampler/scheduler defaults change with it.
     guidance_style = p.get("guidance_style") or "Balanced"
     sampler_name = p.get("sampler") or "seeds_2"
     scheduler = p.get("scheduler") or "sgm_uniform"
@@ -897,40 +903,50 @@ ENGINE = {
             # Q21, MEASURED 2026-09-22: no visible effect at cfg 1 (pixel delta 0,
             # corr +1.000000), visible at cfg 2.5 (delta 34, corr +0.844) -- the
             # underlying mechanism is plain CFG needing cfg > 1 to do anything at
-            # all, independent of Guidance style.
+            # all, independent of Guidance style. Owner ruling 2026-10-03: the t2i
+            # default is now cfg 1, so the caveat above is the DEFAULT case, not
+            # the low-strength edge case.
             {"id": "negative", "label": "Things to avoid", "type": "text", "default": "",
              "tier": "advanced", "group": "Content", "order": 2,
-             "hint": "Only takes effect when Guidance strength is above 1."},
-            {"id": "steps", "label": "Steps", "type": "int", "default": 20,
+             "hint": "Has no effect at the default Guidance strength of 1: raise "
+                     "Guidance strength to 2.5 or more, or choose the Balanced recipe."},
+            {"id": "steps", "label": "Steps", "type": "int", "default": 40,
              "tier": "advanced", "group": "Quality", "order": 1,
              "units": "steps", "range": [1, 80], "ui_range": [15, 30]},
             # Q21, MEASURED 2026-09-23 (our internal CFG/APG/FreSca A/B notes):
             # plain CFG at 2.5 roughly halves brightness
-            # on Qwen 2.1 (including a no-negative control); APG holds exposure --
-            # this checkpoint's default guidance strength moved to 3 with Balanced.
-            {"id": "cfg", "label": "Guidance strength", "type": "number", "default": 3.0,
+            # on Qwen 2.1 (including a no-negative control); APG holds exposure.
+            # Owner ruling 2026-10-03 moved the t2i default back to 1 (raw model
+            # output); the Balanced recipe below is where cfg 3 lives now.
+            {"id": "cfg", "label": "Guidance strength", "type": "number", "default": 1.0,
              "tier": "advanced", "group": "Quality", "order": 2,
              "units": "CFG", "range": [1, 10], "ui_range": [1.5, 4],
              "hint": "Higher makes the picture follow your prompt more strictly. "
-                     "\"Things to avoid\" needs more than 1 to work at all."},
+                     "\"Things to avoid\" needs more than 1 to work at all. The "
+                     "default of 1 is raw, with no guidance at all, so \"Things to "
+                     "avoid\" is ignored until you raise this."},
             {"id": "resolution", "label": "Encoder resolution", "type": "int", "default": 1024,
              "tier": "advanced", "group": "Quality", "order": 3,
              "units": "px", "range": [512, 2048], "ui_range": [768, 1280],
              "hint": "Feeds TextEncodeQwenImage21's own resolution input."},
-            {"id": "sampler", "label": "Sampling method", "type": "select", "default": "seeds_2",
+            {"id": "sampler", "label": "Sampling method", "type": "select", "default": "euler",
              "options": ["seeds_2", "euler"],
              "tier": "advanced", "group": "Quality", "order": 4},
-            {"id": "scheduler", "label": "Noise schedule", "type": "select", "default": "sgm_uniform",
+            {"id": "scheduler", "label": "Noise schedule", "type": "select", "default": "simple",
              "options": ["sgm_uniform", "simple", "beta"],
              "tier": "advanced", "group": "Quality", "order": 5},
-            # Q21: arm D of the A/B (our internal CFG/APG/FreSca A/B notes),
-            # confirmed by the owner 2026-09-23.
-            {"id": "guidance_style", "label": "Guidance style", "type": "select", "default": "Balanced",
+            # Q21 arm D (our internal CFG/APG/FreSca A/B notes), confirmed by the
+            # owner 2026-09-23 and demoted from the default to an opt-in recipe by
+            # the owner's 2026-10-03 ruling: at the default we ship raw model
+            # capability, so Plain is the default and changes nothing at cfg 1.
+            {"id": "guidance_style", "label": "Guidance style", "type": "select", "default": "Plain",
              "options": ["Balanced", "Plain"],
              "tier": "advanced", "group": "Quality", "order": 6,
-             "hint": "Balanced keeps pictures bright at higher guidance (APG + FreSca). "
-                     "Plain is classic guidance, which darkens pictures once Guidance "
-                     "strength reaches 2.5 or higher."},
+             "hint": "Plain is the default: classic guidance, and at Guidance "
+                     "strength 1 it changes nothing. Balanced adds extra detail "
+                     "(APG + FreSca) and keeps pictures bright at higher guidance, "
+                     "but costs about 2x the time and on some pictures leaves a "
+                     "fine mesh pattern over water, foam and sand."},
             {"id": "apg_eta", "label": "APG eta", "type": "number", "default": 1.0,
              "tier": "advanced", "group": "Quality", "order": 7,
              "units": "eta", "range": [0.0, 2.0], "ui_range": [0.5, 1.5],
@@ -1062,38 +1078,51 @@ ENGINE = {
              "values": {}},
         ],
         "t2i": [
-            # Q21: arm D of the A/B, owner-confirmed 2026-09-23 (internal
-            # research notes, measured on our hardware). Costs about 3x the time
-            # of cfg 1 (76s vs 26s at 1024^2 on the 5080), and it can add props
-            # the prompt didn't ask for (an umbrella appeared in 4 of 6 test
-            # renders).
-            {"id": "default", "label": "Default", "note":
-             "Balanced guidance (APG + FreSca), Guidance strength 3. Holds exposure "
-             "where plain guidance darkens pictures at this strength. Costs about "
-             "3x the time of Guidance strength 1 (76s vs 26s at 1024^2), and "
-             "it can add props the prompt didn't ask for (an umbrella "
-             "appeared in 4 of 6 test renders). Measured 2026-09-23.",
+            # Owner ruling 2026-10-03: at the default the Picture room renders RAW
+            # -- plain guidance, no extra effects, 40 steps. Measured on a 5080 at
+            # 1328x1328: ~60s, clean in every seed/prompt pair tried (n small -- a
+            # handful of pairs, not a sweep). The old default is kept below as the
+            # opt-in `balanced` recipe, unchanged.
+            {"id": "default", "label": "Default (raw)", "note":
+             "The raw model: plain guidance, Guidance strength 1, 40 steps, no extra "
+             "effects. About 60s at 1328x1328. \"Things to avoid\" has no effect at "
+             "Guidance strength 1; raise it above 2.5, or pick the Balanced recipe, "
+             "if you need it. Measured 2026-10-03.",
+             "values": {"width": 1328, "height": 1328, "steps": 40, "cfg": 1.0,
+                        "sampler": "euler", "scheduler": "simple", "guidance_style": "Plain"}},
+            # The old t2i default (Q21 arm D, owner-confirmed 2026-09-23), kept
+            # verbatim and now opt-in. Measured 2026-10-03 at 1328x1328: ~115s vs
+            # ~60s for the raw default (about 2x), clean of the mesh pattern on the
+            # same seeds where raw was clean -- but a beach picture on the OLD
+            # default printed a fine diamond MESH over water/foam/sand (n small: one
+            # seed, one prompt, plus paired raw renders).
+            {"id": "balanced", "label": "Balanced (extra detail, slower)", "note":
+             "The old default recipe: Balanced guidance (APG + FreSca), Guidance "
+             "strength 3. Honours \"Things to avoid\" and holds exposure at higher "
+             "guidance. About 2x the time (115s vs 60s at 1328x1328), can add props "
+             "the prompt didn't ask for, and can leave a fine mesh pattern over water "
+             "and sand on some pictures. Measured 2026-10-03.",
              "values": {"width": 1328, "height": 1328, "steps": 20, "cfg": 3.0,
                         "sampler": "seeds_2", "scheduler": "sgm_uniform", "guidance_style": "Balanced"}},
-            # Q21: about 3x faster than Default. At cfg 1 "Things to avoid" has no
-            # effect (measured: max pixel delta 0) -- listed here so that limit is
-            # visible rather than a silent surprise.
+            # About 1.6x faster than Default (raw): 25 steps instead of 40.
+            # At cfg 1 "Things to avoid" has no effect (measured: max pixel delta 0)
+            # -- listed here so that limit is visible rather than a silent surprise.
             {"id": "fast-plain", "label": "Fast / plain", "note":
-             "About 3x faster than Default. At Guidance strength 1, \"Things to "
-             "avoid\" has no effect (measured: max pixel delta 0). "
+             "A quick draft: same raw guidance as Default, 25 steps instead of 40, so "
+             "about 1.6x faster. \"Things to avoid\" has no effect. "
              "Measured 2026-09-23.",
              "values": {"cfg": 1.0, "sampler": "euler", "scheduler": "simple",
                         "steps": 25, "guidance_style": "Plain"}},
             # Sharp text: the vendor template's recipe (cfg 1, euler/simple) at 40 steps.
             # MEASURED 2026-10-02, n=1 (one seed, one prompt: a labelled engineering
-            # blueprint, 1664x928, Q6_K build): more legible lettering than Default and
-            # than 25 steps, 83s vs 200s for Default. Single seed -- not a multi-seed result.
+            # blueprint, 1664x928, Q6_K build): more legible lettering than 25 steps.
+            # Since 2026-10-03 these values ARE the Default recipe, so this preset is
+            # kept as a named choice for lettering work.
             {"id": "sharp-text", "label": "Sharp text", "note":
-             "For pictures with lettering or fine line detail (signs, labels, diagrams). "
-             "Plain guidance at Guidance strength 1, 40 steps: faster than Default, but "
-             "\"Things to avoid\" has no effect at this guidance. One test (a labelled "
-             "blueprint, one seed) read more clearly than Default; not a multi-seed result. "
-             "Measured 2026-10-02.",
+             "The same recipe as Default (raw), kept as a named choice for lettering "
+             "and fine line detail: signs, labels, diagrams. \"Things to avoid\" has no "
+             "effect at Guidance strength 1. One test, one seed, read more clearly than "
+             "a 25-step draft; not a multi-seed result. Measured 2026-10-02.",
              "values": {"cfg": 1.0, "sampler": "euler", "scheduler": "simple",
                         "steps": 40, "guidance_style": "Plain"}},
             # Full citation: 25 steps @ 1024^2 beats the vendor's own 40/2048 default

@@ -2,6 +2,14 @@
 
 All notable changes to Black Wire Forge are recorded here.
 
+## Unreleased
+
+### Changed
+
+- **The Picture room's default is now the raw model.** Plain guidance, Guidance strength 1, 40 steps, the plain euler sampler, no extra effects: what you type is what the model gets. On the same seeds and prompts on a 5080 it took about 60 s at 1328x1328 (the old default took about 115 s) and was clean in every pair we tried, while the old default printed a fine mesh pattern over water, foam and sand on one beach picture. The old mix (Balanced guidance with APG and FreSca, Guidance strength 3, 20 steps) is still there as the **Balanced (extra detail, slower)** recipe; choose it in the Recipe list.
+- **"Things to avoid" has no effect at the new default**, because the model only listens to it when Guidance strength is above about 2.5. The box's hint now says so; raise Guidance strength or choose the Balanced recipe to use it. The picture guide knows this too.
+- Pixel Art, edit mode and the character sheet are unchanged. "Fast / plain" is now a 25-step quick draft of the default; "Sharp text" has the same settings as the default and stays as a named choice for lettering.
+
 ## v1.2.2 — 2026-10-03
 
 ### Added
