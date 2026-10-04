@@ -2,6 +2,14 @@
 
 All notable changes to Black Wire Forge are recorded here.
 
+## Unreleased
+
+### Fixed
+
+- **Make someone up** (music video) drew its person with the older Balanced mix, which leaves thin lines
+  across faces, because it asked for a picture without naming a recipe. It now uses the Picture room's
+  Default recipe, the same as a picture made from the page.
+
 ## v1.2.4 — 2026-10-04
 
 ### Fixed

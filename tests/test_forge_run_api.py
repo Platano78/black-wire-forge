@@ -169,6 +169,22 @@ def post(body, path="/api/forge/music-video"):
     return call_api(body, path)
 
 
+print("\n--- the made-up person is drawn with the Picture room's Default recipe, not the field defaults ---")
+_sent = []
+_real_generate = srv.generate
+srv.generate = lambda p: (_sent.append(p), ({"ok": True, "job": {"id": "jp"}}, 200))[1]
+try:
+    srv._ForgeBackend("r", srv.LANE_BY_ID["t"], 576, 768).make_portrait("a person", 576, 768)
+finally:
+    srv.generate = _real_generate
+_default = next(x for x in srv.engines.presets("image", "t2i") if x.get("id") == "default")["values"]
+_p = _sent[0] if _sent else {}
+check("make_portrait sends the Default recipe's sampler, scheduler, steps, guidance and cfg",
+      all(_p.get(k) == _default[k] for k in ("sampler", "scheduler", "steps", "guidance_style", "cfg")),
+      {k: _p.get(k) for k in ("sampler", "scheduler", "steps", "guidance_style", "cfg")})
+check("...at the video's own size, with the prompt", _p.get("width") == 576 and _p.get("height") == 768
+      and _p.get("prompt") == "a person" and _p.get("recipe") == "default", _p)
+
 print("\n--- validation sentences (exact) ---")
 def err(body):
     payload, code = post(body)
