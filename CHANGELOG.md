@@ -2,6 +2,36 @@
 
 All notable changes to Black Wire Forge are recorded here.
 
+## Unreleased
+
+### Added
+
+- A **Producer room** in the Sound group (Music, Cover, Sound FX, Producer), for working on tracks
+  you already have. **Grid check** moves here from the Cover room, unchanged.
+
+- **Fit** (Producer room): read the beat grids of a source song and a target song, pair the beats
+  (source beat *k* with target beat *k*, from the bar anchors down), and stretch a part beat by
+  beat so each source beat lands on its paired target beat. It follows the target's tempo drift; a
+  constant stretch would not. Before pairing, both beat grids are repaired — a gap about twice the
+  local median (a beat the tracker missed) is filled in and one below half of it (an invented beat)
+  is dropped, so a single slip does not shift the rest of the part — and the summary line says so
+  when a repair happened. Out: `fitted.wav`, `preview.mp3`, `fit.json` (pairs, anchors, both
+  tempos, the stretch's min/median/max, the method used) and a one-line summary; a phasey fit
+  (median stretch far from 1.0) is flagged in that line. Runs on the same process lane as Grid
+  check (beat_this, no ComfyUI model); the stretch is ffmpeg `atempo`, or Rubber Band when the
+  binary is on `PATH` and the field asks for it. `docs/MODELS.md` (beat_this section) covers the
+  setup; the mode is listed in `engines/producer.py`'s `fit` entry with its own note and
+  `tests/test_producer_fit.py` holds the model-backed gate.
+
+- **Mix** (Producer room): lay up to four tracks over each other, each with its own gain and start time,
+  levelled to a loudness target (default -14 LUFS, true peak about -1 dBTP), as `mix.mp3` and `mix.wav`. Runs
+  on the processor with ffmpeg; no model.
+
+### Fixed
+
+- A WAV file's "recipe removed" download works: only its format and audio chunks are kept (text chunks such as LIST/INFO are dropped); before, every WAV download was refused.
+- A Producer job's other outputs (the fitted part, the mix as WAV) now each have a Download under the result; before, only the first one played and the rest could not be reached.
+
 ## v1.2.4 — 2026-10-04
 
 ### Fixed
@@ -102,24 +132,6 @@ Not checked on Windows: cutting with ffmpeg (ffmpeg was not installed on the tes
   is placed from that time, which fixes 5-beat bars. "Use the drum stem" (needs Demucs) tracks the
   drums alone; it is about five times slower and was no better on the song we measured, so try it
   only when the full mix confuses the beat.
-
-- **Fit** (Producer room): read the beat grids of a source song and a target song, pair the beats
-  (source beat *k* with target beat *k*, from the bar anchors down), and stretch a part beat by
-  beat so each source beat lands on its paired target beat. It follows the target's tempo drift; a
-  constant stretch would not. Before pairing, both beat grids are repaired — a gap about twice the
-  local median (a beat the tracker missed) is filled in and one below half of it (an invented beat)
-  is dropped, so a single slip does not shift the rest of the part — and the summary line says so
-  when a repair happened. Out: `fitted.wav`, `preview.mp3`, `fit.json` (pairs, anchors, both
-  tempos, the stretch's min/median/max, the method used) and a one-line summary; a phasey fit
-  (median stretch far from 1.0) is flagged in that line. Runs on the same process lane as Grid
-  check (beat_this, no ComfyUI model); the stretch is ffmpeg `atempo`, or Rubber Band when the
-  binary is on `PATH` and the field asks for it. `docs/MODELS.md` (beat_this section) covers the
-  setup; the mode is listed in `engines/producer.py`'s `fit` entry with its own note and
-  `tests/test_producer_fit.py` holds the model-backed gate.
-
-- **Mix** (Producer room): lay up to four tracks over each other, each with its own gain and start time,
-  levelled to a loudness target (default -14 LUFS, true peak about -1 dBTP), as `mix.mp3` and `mix.wav`. Runs
-  on the processor with ffmpeg; no model.
 
 - A first-run **Setup** page. Started with no `config.json`, the app listens on `127.0.0.1:3998`
   only and opens five steps: find ComfyUI (this machine's usual ports, or an address you type),
@@ -285,8 +297,6 @@ Not checked on Windows: cutting with ffmpeg (ffmpeg was not installed on the tes
 
 ### Fixed
 
-- A WAV file's "recipe removed" download works: only its format and audio chunks are kept (text chunks such as LIST/INFO are dropped); before, every WAV download was refused.
-- A Producer job's other outputs (the fitted part, the mix as WAV) now each have a Download under the result; before, only the first one played and the rest could not be reached.
 - A process lane is now up when at least one of its tools has every program it needs, so Grid check works on a lane that also lists `"3d"` without Blender installed; the turntable mode lists Blender as missing, and the lane is down only when no tool can run.
 - Setup step 2 no longer says a recommended file is "already installed" when a different file
   covers that model; the row now reads "covered by" and names the file it found.
