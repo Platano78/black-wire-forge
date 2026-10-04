@@ -50,6 +50,10 @@ This page lists the opt-in features that depend on something outside the app, wh
 
 **How to turn it on:** In the Cutting Room, check **Audio-led**. Pick a take on a sound shot, or click the master row to import your own sound file.
 
+**Per shot:** a video shot's "Follows the song (lip-sync)" box (on by default) can be unticked for an instrumental passage or a shot with no singing face; that shot is made without the master driving it (`set_lipsync`). The cut is unchanged.
+
+**Vocals only (optional):** with the song's vocals stem added in the Cut bar ("Add vocals only", `POST /api/sequence/vocals`, same formats and limit as the master), each shot is driven by its window of the stem, so faces follow the singing rather than the instruments; the cut still plays the full mix. The stem must be aligned to the master (made from the same song, same length). Remove it with `clear_master_vocals`.
+
 
 ---
 
@@ -124,4 +128,4 @@ Only `url` is required. `api_key_env` is the *name* of an environment variable t
 
 **Without it:** nothing changes. Record your own voice, or use any other tool's `.wav`; both work with the features above and need no service.
 
-**How to turn it on:** add the `speech` section and restart. `GET /api/speech/status` reports whether it is on; `POST /api/speech` with `{"lane", "text"}` returns the same file description `/api/upload` does.
+**How to turn it on:** add the `speech` section and restart. Every sound file field on the page then shows a line to type and a **Speak it** button. `GET /api/speech/status` reports whether it is on; `POST /api/speech` with `{"lane", "text"}` returns the same file description `/api/upload` does.

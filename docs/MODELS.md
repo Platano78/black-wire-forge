@@ -353,7 +353,7 @@ render with it. Not a Hugging Face download: install Blender from
 `command -v blender; command -v ffmpeg`); see AGENTS.md's "Decide the path" and the
 `engines/turntable.py` pack for the `"bins"` it needs.
 
-## beat_this and Demucs (`engines/producer.py`, grid and fit modes) — Grid check and Fit (process lane, no ComfyUI model)
+## beat_this and Demucs (`engines/producer.py`, grid, fit and arrange modes) — Grid check, Fit and Re-arrange (process lane, no ComfyUI model)
 
 | Tool | Weights it downloads on first run | Licence | Used for |
 |---|---|---|---|
@@ -386,8 +386,15 @@ song and a target song, pairs the beats, and stretches a part beat by beat so ea
 lands on its paired target beat (it follows the target's tempo drift; a constant ratio would not).
 The stretch is ffmpeg `atempo` (a chain when the ratio leaves 0.5-2.0), or Rubber Band when the
 binary is on `PATH` and the field asks for it; segments under 0.1 s are resampled by hand because
-`atempo` drops inputs that short. Same setup as Grid check: the process lane, this Python, `ffmpeg`
-on `PATH`; no extra weights.
+`atempo` drops inputs that short. Before pairing it compares the two tempos: when one song's beat
+runs about twice as fast as the other's (a tracker locked onto half or double time), it refuses and
+names the "Beat match" setting that pairs every other beat of the faster song. Same setup as Grid check:
+the process lane, this Python, `ffmpeg` on `PATH`; no extra weights.
+
+Re-arrange (`engines/producer_tools/arrange.py`) uses the same model and the same bar logic as Grid
+check ("Beats per bar" and "A bar starts at" work the same way), cuts the song at its bar starts and
+plays the bars back in the order you type (`1-4, 1-4, 9-16`), joined with short equal-power
+crossfades. Mix (`engines/producer_tools/mix.py`) needs no model at all: plain `python3` and `ffmpeg`.
 
 ## Custom-node packages
 
