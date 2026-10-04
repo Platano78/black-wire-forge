@@ -27,6 +27,8 @@ All notable changes to Black Wire Forge are recorded here.
   other (a tracker that locked onto half or double time), it refuses with one sentence naming the setting
   that fixes it, **Beat match**: `half_target` or `half_source` pairs every other beat of the faster song.
 
+- **Re-arrange by bars** (Producer room): cut a song at its bar starts and play the bars back in the order you type (`1-4, 1-4, 9-16`), joined with short crossfades. Out: `arranged.mp3`, `arranged.wav`, `arrange.json`.
+
 - **Mix** (Producer room): lay up to four tracks over each other, each with its own gain and start time,
   levelled to a loudness target (default -14 LUFS, true peak about -1 dBTP), as `mix.mp3` and `mix.wav`. Runs
   on the processor with ffmpeg; no model.

@@ -1,6 +1,7 @@
 """Engine pack: the Producer room's process modes (process lane, no ComfyUI graph):
 Grid check (beat_this), Fit (beat_this plus ffmpeg's atempo or Rubber Band),
-and Mix tracks (a plain system python3 with ffmpeg).
+Re-arrange (beat_this plus ffmpeg) and Mix tracks (a plain system python3 with
+ffmpeg).
 
 Where every beat and bar of a song actually sits, and a click track to hear it:
 the mode's "graph" is a one-step run plan for runner.py that calls
@@ -25,6 +26,7 @@ _HELPER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "producer_too
 _STEP_TIMEOUT_S = 3600      # a ceiling, not an estimate: CPU Demucs plus beat_this on a long song
 _PREFLIGHT_TIMEOUT_S = 30
 _BPM_RANGE = (30, 300)
+_ORDER_SENTENCE = "Type the bars to play, for example 1-4, 1-4, 9-12."
 
 
 def _expected_bpm(value):
@@ -194,6 +196,40 @@ def fit_plan(args, models):
     }
 
 
+def arrange_plan(args, models):
+    """The process run plan for the producer's "arrange" mode: find the song's
+    bar starts the way grid_check does, then cut the song there and play the
+    bars back in the order the job names (engines/producer_tools/arrange.py
+    under a Python that has beat_this, plus ffmpeg for the writes). The order
+    is typed by hand ("1-4, 1-4, 9-16"); an empty one is refused here, with
+    the same sentence the helper uses."""
+    order = args.get("order")
+    if order is None or not str(order).strip():
+        raise ValueError(_ORDER_SENTENCE)
+    fade = _mix_number(args, "fade_ms", "Join fade", 2, 50, "ms", default=10.0)
+    per_bar = _beats_per_bar(args.get("beats_per_bar"))
+    anchor = _first_downbeat(args.get("first_downbeat"))
+    python = (models or {}).get("producer_python")
+    # Discovery hands over which()'s path, always a real program; anything else (a placeholder
+    # in a test) is not run here, and the runner says what it could not start.
+    if python and os.path.isfile(python) and os.access(python, os.X_OK):
+        _preflight(python, False)
+    argv = ["{bin:producer_python}", "{pack}/producer_tools/arrange.py",
+            "--in", "{in:source_audio_name}", "--out", "{job}",
+            "--ffmpeg", "{bin:ffmpeg}", "--order", str(order),
+            "--fade-ms", "%g" % fade]
+    if per_bar is not None:
+        argv += ["--beats-per-bar", str(per_bar)]
+        if anchor is not None:          # ignored with auto: there is no phase to fix
+            argv += ["--first-downbeat", "%g" % anchor]
+    return {
+        "steps": [{"argv": argv, "timeout_s": _STEP_TIMEOUT_S}],
+        "outputs": ["arranged.mp3", "arranged.wav", "arrange.json"],   # the playable one first: it is what the page shows
+        "progress": r"PROGRESS (\d+)/(\d+)",
+        "summary": True,      # arrange.py prints its one-line result last: the job keeps it as its notes
+    }
+
+
 def mix_plan(args, models):
     """The process run plan for the producer's "mix" mode: lay up to four
     tracks over each other with a per-track gain and start, then two-pass
@@ -230,6 +266,7 @@ ENGINE = {
     # Mix runs on the plain system python3; Grid check needs beat_this's own Python.
     "provides": {"grid": ["producer_python", "ffmpeg"],
                  "fit": ["producer_python", "ffmpeg"],
+                 "arrange": ["producer_python", "ffmpeg"],
                  "mix": ["python3", "ffmpeg"]},
     "words": {
         "producer_python": "a Python with beat_this installed (put a program called bwf-producer-python "
@@ -240,6 +277,7 @@ ENGINE = {
     "graphs": {
         "grid": grid_plan,
         "fit": fit_plan,
+        "arrange": arrange_plan,
         "mix": mix_plan,
     },
     "describe": lambda models: (
@@ -248,12 +286,14 @@ ENGINE = {
     "mode_words": {
         "grid": "Grid check (beats and bars)",
         "fit": "Fit a part onto another beat",
+        "arrange": "Re-arrange by bars",
         "mix": "Mix tracks",
     },
-    "mode_rooms": {"grid": "producer", "fit": "producer", "mix": "producer"},
+    "mode_rooms": {"grid": "producer", "fit": "producer", "arrange": "producer", "mix": "producer"},
     "mode_notes": {
         "grid": "finds every beat and bar start in a song and gives you a click track to check them by ear; runs on the processor",  # source: engines/producer_tools/grid_check.py (module docstring: steps 3 and 5)
         "fit": "moves a part (for example a vocal) from the song it was made in onto another song's beats, stretching it beat by beat; runs on the processor",  # source: engines/producer_tools/fit.py (module docstring)
+        "arrange": "cuts a song at its bar starts and plays the bars back in the order you type, for example 1-4, 1-4, 9-16; runs on the processor",  # source: engines/producer_tools/arrange.py (module docstring)
         "mix": "lays up to four tracks over each other with a gain and a start time for each, then levels the loudness; runs on the processor",  # source: engines/producer_tools/mix.py (module docstring)
     },
     "fields": {
@@ -283,6 +323,26 @@ ENGINE = {
              "default": "every", "options": ["every", "half_target", "half_source"],
              "tier": "advanced", "group": "Stretch", "order": 2,
              "hint": "pair every beat (default); when one song's beat runs twice as fast, pair every other beat of it"},
+        ],
+        "arrange": [
+            {"id": "source_audio_name", "label": "Song to re-arrange", "type": "audio",
+             "tier": "primary", "group": "Content", "order": 1,
+             "hint": "a song you already have"},
+            {"id": "order", "label": "Bars to play, in order", "type": "text", "default": "",
+             "tier": "primary", "group": "Content", "order": 2,
+             "hint": "bar 1 is the first full bar; for example 1-4, 1-4, 9-16 repeats the first four bars, then jumps"},
+            {"id": "beats_per_bar", "label": "Beats per bar", "type": "select",
+             "default": "auto", "options": ["auto", 2, 3, 4, 5, 6, 7],
+             "tier": "primary", "group": "Content", "order": 3,
+             "hint": "auto trusts the model's bar starts, which are unreliable on odd meters; if you know the meter, set it and only the bar-start position is searched"},
+            {"id": "first_downbeat", "label": "A bar starts at (seconds)", "type": "number",
+             "range": [0, 3600], "ui_range": [0, 300], "units": "s",
+             "tier": "advanced", "group": "Content", "order": 4,
+             "hint": "play the grid check, find any bar's first beat, type its time; fixes where bars start (only used when Beats per bar is a number, ignored with auto)"},
+            {"id": "fade_ms", "label": "Join fade", "type": "number",
+             "default": 10, "range": [2, 50], "ui_range": [2, 30], "units": "ms",
+             "tier": "advanced", "group": "Content", "order": 5,
+             "hint": "how long the crossfade is where two pieces meet; longer hides a jump, shorter sounds tighter"},
         ],
         "mix": [
             {"id": "track_1", "label": "Track 1", "type": "audio",
@@ -355,6 +415,11 @@ ENGINE = {
              "note": "Every track at 0 dB from the start, levelled to -14 LUFS.",
              "values": {}},
         ],
+        "arrange": [
+            {"id": "default", "label": "Default",
+             "note": "Plays the bars in the order you type, joined by 10 ms crossfades.",
+             "values": {}},
+        ],
         "grid": [
             {"id": "default", "label": "Default",
              "note": "Tracks the full mix; no tempo asked for.",
@@ -370,6 +435,11 @@ ENGINE = {
         "mix": [
             {"id": "standard", "label": "Standard", "default": True,
              "why": "two-pass loudness levelling; a few seconds for a song",  # source: measured 2026-10-01, 6 s mix: 0.7 s wall
+             "values": {}},
+        ],
+        "arrange": [
+            {"id": "standard", "label": "Standard", "default": True,
+             "why": "a few seconds for a song on the processor",
              "values": {}},
         ],
         "grid": [
@@ -394,6 +464,13 @@ ENGINE = {
              "quality": None,
              "values": {"gain_2": -3, "offset_2": 4},
              "why": "a second part, 3 dB lower, coming in after the first bar",
+             "needs": "sound"},
+        ],
+        "arrange": [
+            {"id": "arrange-try", "label": "Repeat the first four bars", "recipe": None,
+             "quality": None,
+             "values": {"order": "1-4, 1-4"},
+             "why": "the first four bars twice, as a loop to write over",
              "needs": "sound"},
         ],
         "grid": [
