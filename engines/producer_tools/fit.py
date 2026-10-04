@@ -217,7 +217,7 @@ def make_rubberband_stretcher(ffmpeg, rubberband):
                 raise gc.GridError("The audio stretch failed on one beat: " + _detail(ok.stderr))
             proc = subprocess.run(
                 [rubberband, "-q", "-3", "-D", "%.6f" % (want / SR), src, dst],
-                capture_output=True, text=True)
+                capture_output=True, text=True, encoding="utf-8", errors="replace")
             if proc.returncode != 0 or not os.path.isfile(dst):
                 raise gc.GridError("The audio stretch failed on one beat: "
                                    + _detail(proc.stderr or "Rubber Band wrote no file"))
