@@ -10,6 +10,11 @@ All notable changes to Black Wire Forge are recorded here.
   across faces, because it asked for a picture without naming a recipe. It now uses the Picture room's
   Default recipe, the same as a picture made from the page.
 
+- The FAQ's "Which engine is a style for?" no longer names engines (it broke the engine-independence
+  check, `scripts/check-engine-independence.sh`, which v1.2.4 shipped failing); it now says how to find
+  a style's engine from the page itself.
+
+
 ## v1.2.4 — 2026-10-04
 
 ### Fixed
