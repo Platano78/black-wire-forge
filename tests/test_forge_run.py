@@ -80,6 +80,10 @@ class FakeBackend:
         self._record("make_still", prompt, photo_name, w, h)
         return self._next_id("still")
 
+    def make_portrait(self, prompt, w, h):
+        self._record("make_portrait", prompt, w, h)
+        return self._next_id("portrait")
+
     def wait_job(self, job_id, timeout):
         self._record("wait_job", job_id, timeout)
         if self.wait_job_raises_timeout:
@@ -534,6 +538,29 @@ def _test_still_retry_and_orientation():
     check("portrait canvas -> 'portrait orientation'", "portrait orientation" in [c for c in fb3.calls if c[0] == "make_still"][0][1][0])
 
 
+def _test_no_photo_makes_the_person():
+    print("\n--- no photo: the person is made first and used as the reference ---")
+    fb = FakeBackend()
+    MusicVideoRun(fb).run(song_job_id="a", photo_name=None, style_note="neon night", lyrics="", w=576, h=768,
+                          person="a woman with short red hair")
+    names = [c[0] for c in fb.calls]
+    check("make_portrait is called once, before the first still", names.count("make_portrait") == 1
+          and names.index("make_portrait") < names.index("make_still"), names[:8])
+    portrait = [c for c in fb.calls if c[0] == "make_portrait"][0][1][0]
+    check("the portrait prompt carries the description and the mood",
+          "a woman with short red hair" in portrait and "neon night" in portrait, portrait)
+    stills = [c for c in fb.calls if c[0] == "make_still"]
+    check("every still uses the carried portrait as its reference photo",
+          stills and all(c[1][1].startswith("carried_portrait") for c in stills), [c[1][1] for c in stills])
+    fb2 = FakeBackend()
+    MusicVideoRun(fb2).run(song_job_id="a", photo_name="me.png", style_note="", lyrics="", w=576, h=768)
+    check("with a photo no portrait is made", "make_portrait" not in [c[0] for c in fb2.calls])
+    fb3 = FakeBackend()
+    MusicVideoRun(fb3).run(song_job_id="a", photo_name=None, style_note="", lyrics="", w=576, h=768)
+    check("no description: it still makes someone who suits the song",
+          "suits the song" in [c for c in fb3.calls if c[0] == "make_portrait"][0][1][0])
+
+
 # ---------------------------------------------------------------------------
 # Run all
 # ---------------------------------------------------------------------------
@@ -548,6 +575,7 @@ if __name__ == "__main__":
     _test_helper_raises_fallback()
     _test_wait_job_timeout()
     _test_still_retry_and_orientation()
+    _test_no_photo_makes_the_person()
 
     print()
     if FAILED:

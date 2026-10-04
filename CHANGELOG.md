@@ -19,6 +19,11 @@ All notable changes to Black Wire Forge are recorded here.
   subfolder now download (saved flat under their own name, as the Installed badge already matches
   them; `..`, hidden-name, backslash and absolute paths are still refused), and the status line now
   stays pinned at the top of the window.
+- **Make a music video no longer needs a photo.** The dialog now asks "Who is in it?": **Use a photo**
+  as before, or **Make someone up** (with an optional line describing them). The person is made first
+  with the Picture room's text-to-picture engine, then used as the reference in every shot, so the
+  rest of the run is unchanged. The API takes `"make_photo": true` and an optional `"person"` in place of
+  `"photo"`; a photo, when given, wins.
 - The in-app FAQ now says how to use a style you have downloaded (pick it under Everything else, Style) and
   what to check when one does not show.
 

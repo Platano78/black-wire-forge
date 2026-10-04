@@ -177,17 +177,43 @@ class MusicVideoRun:
     def _say(self, stage, message, done, total):
         self.backend.say(stage, message, done, total)
 
+    def _make_portrait(self, person, style_note, w, h):
+        """No photo was given: make the person from words, with the Picture
+        engine's text-to-picture mode, and carry it to the lane as the photo."""
+        self._say("planning", "Making the person …", 0, 0)
+        orientation = "portrait" if h >= w else "landscape"
+        who = (person or "").strip() or "a singer who suits the song"
+        mood = (" The mood: " + style_note.strip() + ".") if (style_note or "").strip() else ""
+        prompt = (f"Photorealistic photo of {who}. Face and shoulders, facing the camera, "
+                  f"{orientation} orientation, natural light, sharp focus on the face.{mood}")
+        for attempt in range(2):
+            self._check_stop()
+            job_id = self.backend.make_portrait(prompt, w, h)
+            self._check_stop()
+            job = self.backend.wait_job(job_id, timeout=600)
+            if job.get("status") not in ("error", "failed"):
+                break
+        else:
+            raise RunError("The person could not be made. Try again, or add a photo.")
+        name = self.backend.carry_still(job_id)
+        self._check_stop()
+        return name
+
     # -- pipeline ---------------------------------------------------------
 
-    def run(self, song_job_id, photo_name, style_note, lyrics, w, h):
+    def run(self, song_job_id, photo_name, style_note, lyrics, w, h, person=None):
         """Execute the full music-video pipeline.
 
         Parameters
         ----------
         song_job_id : str
             A finished audio job in History.
-        photo_name : str
-            File name of the reference photo (uploaded to the lane).
+        photo_name : str or None
+            File name of the reference photo (uploaded to the lane). None
+            means "make someone up": the run makes a portrait first, from
+            ``person`` (a short description, may be empty), and uses that.
+        person : str or None
+            Who is in the video when no photo was given.
         style_note : str
             One-line style hint (may be empty).
         lyrics : str or None
@@ -201,6 +227,8 @@ class MusicVideoRun:
         """
         try:
             # --- planning stage ---
+            if not photo_name:
+                photo_name = self._make_portrait(person, style_note, w, h)
             self._say("planning", "Planning windows …", 0, 0)
             self._check_stop()
 

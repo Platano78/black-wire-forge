@@ -5389,7 +5389,7 @@ async function openCredits(){
    then poll GET /api/forge/run every 3 s until the run stops being running.
    OLDER servers have none of these routes -- a 404 is not an error here.
 --------------------------------------------------------------------- */
-const FORGE_VIDEO = {jobId: null, photo: null, style: '', runId: null, timer: null, run: null};
+const FORGE_VIDEO = {jobId: null, photo: null, style: '', make: false, person: '', runId: null, timer: null, run: null};
 
 function forgeVideoStageWords(stage){
   // Plain words for the record's stage -- the stage keys are the machine's
@@ -5399,15 +5399,24 @@ function forgeVideoStageWords(stage){
           cutting: 'Cutting it together', done: 'Ready'}[stage] || 'Working';
 }
 
+function forgeVideoCanStart(){ return !!(FORGE_VIDEO.photo || FORGE_VIDEO.make); }
+
 function forgeVideoFormHTML(){
+  const mk = FORGE_VIDEO.make;
   return '<p>It plans the shots from the song, makes a picture for each, animates them to the music and cuts it together. You can leave it running.</p>'
-    + '<div class="field-row"><label class="field-label" for="forgeVideoPhoto">A photo of who is in it</label>'
+    + '<div class="field-row"><span class="field-label">Who is in it?</span>'
+    + '<label><input type="radio" name="forgeVideoWho" id="forgeVideoWhoPhoto" value="photo"' + (mk ? '' : ' checked') + '> Use a photo</label> '
+    + '<label><input type="radio" name="forgeVideoWho" id="forgeVideoWhoMake" value="make"' + (mk ? ' checked' : '') + '> Make someone up</label></div>'
+    + '<div id="forgeVideoPhotoRow"' + (mk ? ' hidden' : '') + '><div class="field-row"><label class="field-label" for="forgeVideoPhoto">A photo of who is in it</label>'
     + '<input type="file" id="forgeVideoPhoto" accept="image/*"></div>'
-    + '<p class="hint">Only use a photo of someone who agrees to be in it.</p>'
+    + '<p class="hint">Only use a photo of someone who agrees to be in it.</p></div>'
+    + '<div id="forgeVideoMakeRow"' + (mk ? '' : ' hidden') + '><div class="field-row"><label class="field-label" for="forgeVideoPerson">Describe them (optional)</label>'
+    + '<input type="text" id="forgeVideoPerson" maxlength="200" placeholder="e.g. a woman in her thirties with short red hair" value="' + esc(FORGE_VIDEO.person) + '"></div>'
+    + '<p class="hint">A person is made first, then used in every shot. Leave it empty to let it pick someone who suits the song.</p></div>'
     + '<div class="field-row"><label class="field-label" for="forgeVideoStyle">Style (optional)</label>'
     + '<input type="text" id="forgeVideoStyle" maxlength="200" placeholder="e.g. neon carnival at night" value="' + esc(FORGE_VIDEO.style) + '"></div>'
     + '<p id="forgeVideoMsg" role="status"></p>'
-    + '<button class="btn btn-primary" id="forgeVideoStart" type="button"' + (FORGE_VIDEO.photo ? '' : ' disabled') + '>Start</button>'
+    + '<button class="btn btn-primary" id="forgeVideoStart" type="button"' + (forgeVideoCanStart() ? '' : ' disabled') + '>Start</button>'
     + '<button class="btn" id="forgeVideoCancel" type="button">Cancel</button>';
 }
 
@@ -5473,7 +5482,7 @@ function forgeVideoUpload(){
       if(!j || !j.ok){ if(msg) msg.textContent = (j && j.error) || 'Could not send the photo.'; return; }
       FORGE_VIDEO.photo = (j.files && j.files[0] && j.files[0].name) || null;
       const start = $('#forgeVideoStart');
-      if(start) start.disabled = !FORGE_VIDEO.photo;
+      if(start) start.disabled = !forgeVideoCanStart();
       if(FORGE_VIDEO.photo && msg) msg.textContent = '';
     })
     .catch(() => { if(msg) msg.textContent = 'Could not send the photo to ' + activeLaneName() + '.'; });
@@ -5487,11 +5496,12 @@ async function forgeVideoStart(){
     if(msg) msg.textContent = 'Pick a finished song first.';
     return;
   }
-  if(!fv.photo){ if(msg) msg.textContent = 'Add a photo of who is in the video.'; return; }
+  if(!forgeVideoCanStart()){ if(msg) msg.textContent = 'Add a photo, or choose Make someone up.'; return; }
+  const who = fv.make ? {make_photo: true, person: (fv.person || '').trim()} : {photo: fv.photo};
   let r;
   try{
     r = await postJSON('/api/forge/music-video',
-      {lane: STATE.activeLane, song_job: job.id, photo: fv.photo, style: (fv.style || '').trim()});
+      Object.assign({lane: STATE.activeLane, song_job: job.id, style: (fv.style || '').trim()}, who));
   }catch(e){ if(msg) msg.textContent = 'Could not reach the machine.'; return; }
   if(!r || !r.ok){ if(msg) msg.textContent = (r && r.error) || 'Could not start.'; return; }
   fv.runId = r.run_id;
@@ -5515,6 +5525,18 @@ function forgeVideoWireForm(){
   if(photo) photo.onchange = () => forgeVideoUpload();
   const style = $('#forgeVideoStyle');
   if(style) style.oninput = () => { FORGE_VIDEO.style = style.value; };
+  const person = $('#forgeVideoPerson');
+  if(person) person.oninput = () => { FORGE_VIDEO.person = person.value; };
+  ['#forgeVideoWhoPhoto', '#forgeVideoWhoMake'].forEach(sel => {
+    const r = $(sel);
+    if(r) r.onchange = () => {
+      FORGE_VIDEO.make = $('#forgeVideoWhoMake').checked;
+      $('#forgeVideoPhotoRow').hidden = FORGE_VIDEO.make;
+      $('#forgeVideoMakeRow').hidden = !FORGE_VIDEO.make;
+      $('#forgeVideoStart').disabled = !forgeVideoCanStart();
+      $('#forgeVideoMsg').textContent = '';
+    };
+  });
   if($('#forgeVideoStart')) $('#forgeVideoStart').onclick = forgeVideoStart;
   if($('#forgeVideoCancel')) $('#forgeVideoCancel').onclick = () => $('#forgeVideoDialog').close();
 }

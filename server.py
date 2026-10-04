@@ -10980,6 +10980,14 @@ class _ForgeBackend:
             raise forge_run.RunError(body.get("error") or "A picture could not be started.")
         return body["job"]["id"]
 
+    def make_portrait(self, prompt, w, h):
+        """No photo given: the Picture room's text-to-picture mode makes the person."""
+        body, code = generate({"lane": self.lane["id"], "kind": "image", "mode": "t2i", "confirm": True,
+                               "prompt": prompt, "width": w, "height": h})
+        if code != 200 or not body.get("ok"):
+            raise forge_run.RunError(body.get("error") or "A picture could not be started.")
+        return body["job"]["id"]
+
     def wait_job(self, job_id, timeout):
         def probe():
             with JOBS_LOCK:
@@ -11060,8 +11068,13 @@ def _forge_run_validation(p):
             return None, [(400, "Pick a finished song first.")]
 
     photo = (p.get("photo") or "").strip()
-    if not photo:
-        return None, [(400, "Add a photo of who is in the video.")]
+    person = (p.get("person") or "").strip()
+    if len(person) > 200:
+        return None, [(400, "The description of who is in it is too long (max 200 characters).")]
+    if not photo and p.get("make_photo") is not True:
+        return None, [(400, "Add a photo of who is in the video, or ask for one to be made.")]
+    if photo:
+        person = ""
 
     style = (p.get("style") or "").strip()
     if len(style) > 200:
@@ -11096,7 +11109,7 @@ def _forge_run_validation(p):
         return None, [(400, "Height must be a multiple of 16, between 256 and 1152.")]
 
     return {
-        "lane": lane, "song_job": song_job, "photo": photo,
+        "lane": lane, "song_job": song_job, "photo": photo or None, "person": person,
         "style": style, "lyrics": lyrics, "width": width, "height": height,
     }, []
 
@@ -11104,7 +11117,8 @@ def _forge_run_validation(p):
 def _forge_thread(run_id, v):
     be = _ForgeBackend(run_id, v["lane"], v["width"], v["height"])
     try:
-        out = forge_run.MusicVideoRun(be).run(v["song_job"], v["photo"], v["style"], v["lyrics"] or "", v["width"], v["height"])
+        out = forge_run.MusicVideoRun(be).run(v["song_job"], v["photo"], v["style"], v["lyrics"] or "", v["width"], v["height"],
+                                         person=v.get("person"))
         forge_run.update_run(run_id, status="done", stage="done", message="Your video is ready.", file=out["file"],
                              cut_id=out["cut_id"], sequence=out["sequence"], done=2 * out["shots"], total=2 * out["shots"])
     except forge_run.RunStopped:

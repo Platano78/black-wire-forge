@@ -94,6 +94,30 @@ try:
         check("Start is disabled before a photo",
               page.evaluate("() => $('#forgeVideoStart').disabled"))
 
+        check("The dialog offers Make someone up beside Use a photo",
+              page.evaluate("() => !!$('#forgeVideoWhoMake') && !!$('#forgeVideoWhoPhoto') && $('#forgeVideoWhoPhoto').checked"))
+        page.check("#forgeVideoWhoMake")
+        check("Make someone up: Start is enabled with no photo, the photo row is hidden, the description row shows",
+              page.evaluate("() => !$('#forgeVideoStart').disabled && $('#forgeVideoPhotoRow').hidden && !$('#forgeVideoMakeRow').hidden"))
+        made_posts = []
+
+        def route_made(route):
+            made_posts.append(json.loads(route.request.post_data))
+            route.fulfill(status=400, headers={"Content-Type": "application/json"},
+                          json={"ok": False, "error": "stub"})
+
+        page.route("**/api/forge/music-video*", route_made)
+        page.fill("#forgeVideoPerson", "a man with a beard")
+        page.click("#forgeVideoStart")
+        page.wait_for_function("() => { const m = $('#forgeVideoMsg'); return m && m.textContent.trim(); }", timeout=10000)
+        check("Make someone up posts make_photo and the description, and no photo",
+              made_posts and made_posts[0].get("make_photo") is True and made_posts[0].get("person") == "a man with a beard"
+              and "photo" not in made_posts[0], made_posts)
+        page.unroute("**/api/forge/music-video*")
+        page.check("#forgeVideoWhoPhoto")
+        check("Back to Use a photo: Start is disabled again until one is added",
+              page.evaluate("() => $('#forgeVideoStart').disabled && !$('#forgeVideoPhotoRow').hidden"))
+
         uploads = []
 
         def route_upload(route):
