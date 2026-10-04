@@ -42,7 +42,7 @@ PROCS = [subprocess.Popen([sys.executable, os.path.join(HERE, "fixtures", "fake_
 json.dump({"port": port, "bind": "127.0.0.1", "title": "shots", "timing": {"poll_seconds": 0.5, "job_poll_seconds": 1.0},
            "lanes": [{"id": "t", "name": "Fake lane", "host": "127.0.0.1", "port": lane_port, "caps": ["video"]}],
            "helper": {"url": "http://127.0.0.1:%d/v1" % brain.server_address[1], "model": "test-model", "timeout_s": 10,
-                      "vision": False}}, open(os.path.join(S, "config.json"), "w"))
+                      "vision": False, "guide_default": "on"}}, open(os.path.join(S, "config.json"), "w"))
 PROCS.append(subprocess.Popen([sys.executable, os.path.join(REPO, "server.py")], cwd=REPO, stdout=subprocess.DEVNULL,
                               stderr=subprocess.STDOUT, env=dict(os.environ, GENCENTER_CONFIG=os.path.join(S, "config.json"),
                                                                  GENCENTER_DATA=os.path.join(S, "data"))))

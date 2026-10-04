@@ -81,7 +81,7 @@ def start(jobs, local_files=()):
                               "caps": ["image", "video", "audio"]},
                              {"id": "cpu", "name": "This machine", "kind": "process", "caps": ["3d"]}],
                    "helper": {"url": "http://127.0.0.1:%d/v1" % helper.server_address[1], "model": "test-model",
-                              "timeout_s": 10, "vision": False},
+                              "timeout_s": 10, "vision": False, "guide_default": "on"},
                    "timing": {"poll_seconds": 0.5, "job_poll_seconds": 1.0}}, f)
     env = dict(os.environ, GENCENTER_CONFIG=cfg, GENCENTER_DATA=data)
     PROCS.append(subprocess.Popen([sys.executable, os.path.join(REPO, "server.py")], cwd=REPO, env=env,

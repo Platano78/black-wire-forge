@@ -273,6 +273,10 @@ def validate_config(cfg):
                                    or max_tokens < 1):
         raise ConfigError("\"helper\".\"max_tokens\" in %s must be a whole number, 1 or more (the fewest tokens "
             "every guide reply may use; a model that thinks first needs room for it), e.g. 8192." % CONFIG_FILE)
+    guide_default = helper.get("guide_default") if helper is not None else None
+    if guide_default is not None and guide_default not in ("on", "off"):
+        raise ConfigError("\"helper\".\"guide_default\" in %s must be \"on\" or \"off\" (whether the guide "
+            "starts switched on for a visitor who has not chosen yet), e.g. \"on\"." % CONFIG_FILE)
     return cfg
 
 
@@ -372,6 +376,11 @@ FLEET_LLM = CONFIG.get("status_only") or None
 # 404s, and /api/engines reports helper: false -- the page then draws no
 # "Help me write this" / "Describe this picture" buttons at all.
 HELPER = CONFIG.get("helper") or None
+# Whether the guide starts ON for a browser that has never chosen (the guide
+# on/off switch stores '0'/'1' once it has). Off unless the operator says
+# "guide_default": "on" inside "helper" -- a guide model alone is never
+# enough to put the guide on screen by itself.
+HELPER_GUIDE_ON = bool(HELPER) and HELPER.get("guide_default") == "on"
 
 # Optional speech source (off by default). Omit "speech" from config.json and
 # /api/speech 404s, /api/speech/status reports enabled: false, and nothing
@@ -5276,6 +5285,7 @@ def guide_payload(room_id):
                  "greeting": g["greeting"], "no_brain": g["no_brain"], "verbosity_default": "compact",
                  "projections": {v: {"tokens": p["tokens"]} for v, p in g["projections"].items()}}
     return {"room": room_id, "guide": guide, "helper": bool(HELPER),
+            "guide_default_on": HELPER_GUIDE_ON,
             "helper_context": _helper_context() if g else None,
             "helper_vision": _helper_vision() if g else None, "add_brain": GUIDE_ADD_BRAIN}, 200
 
@@ -10088,6 +10098,9 @@ class Handler(BaseHTTPRequestHandler):
         # L5: whether a prompt helper is configured at all. NOT a cap either --
         # same "skip this key" rule as "rooms".
         out["helper"] = bool(HELPER)
+        # Whether the guide starts on for a browser that has not chosen (see
+        # HELPER_GUIDE_ON). Not a cap either -- same "skip this key" rule.
+        out["helper_guide_on"] = HELPER_GUIDE_ON
         return out
 
 

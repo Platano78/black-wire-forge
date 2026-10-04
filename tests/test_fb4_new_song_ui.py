@@ -60,7 +60,7 @@ def start_server(name):
                       "models": {"ace_unet": "ace.safetensors", "ace_clip1": "a.safetensors",
                                  "ace_clip2": "b.safetensors", "ace_vae": "v.safetensors"}}],
            "helper": {"url": "http://127.0.0.1:%d/v1" % helper.server_address[1], "model": "test-model",
-                      "timeout_s": 10, "vision": False},
+                      "timeout_s": 10, "vision": False, "guide_default": "on"},
            "timing": {"poll_seconds": 0.5, "job_poll_seconds": 1.0}}
     path = os.path.join(ui.SCRATCH, "config_%s.json" % name)
     with open(path, "w") as f:

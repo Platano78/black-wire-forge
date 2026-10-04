@@ -100,7 +100,7 @@ def skill(body, *replies):
 
 try:
     modes = {(c, m["id"]): m for c, v in srv.Handler.engines_payload(srv.Handler.__new__(srv.Handler), {"lane": ["t"]}).items()
-             if c not in ("rooms", "helper") for m in v["modes"]}
+             if c not in ("rooms", "helper", "helper_guide_on") for m in v["modes"]}
     w = modes[("image", "charsheet")]["writer"]
     check("/api/engines: the sheet writer, its picture field, and that it fills the Sheet prompt",
           w.get("label") == "Sheet writer" and w.get("pictures") == "reference" and w.get("fills") == ["prompt"], w)

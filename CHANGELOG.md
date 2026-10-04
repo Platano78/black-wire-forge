@@ -6,7 +6,7 @@ All notable changes to Black Wire Forge are recorded here.
 
 ### Added
 
-- **Guide on / off.** A switch in the guide's header (shown when a guide model is set up) turns the guide off in this browser, for every room. Off, the room works exactly as with no guide model: the prompt box is the main field and Make sends exactly what you typed; nothing is sent to the guide model. The choice is remembered per browser. On a phone, the guide's name now has its own line so the switch fits.
+- **Guide on / off.** A switch in the guide's header (shown when a guide model is set up) turns the guide off in this browser, for every room. Off, the room works exactly as with no guide model: the prompt box is the main field and Make sends exactly what you typed; nothing is sent to the guide model. The guide now **starts off**: a guide model alone never changes how a room works, and the switch turns it on (remembered per browser). A server can start it on for everyone who has not chosen yet with `"guide_default": "on"` inside `"helper"` in `config.json`. On a phone, the guide's name now has its own line so the switch fits.
 
 ## v1.2.1 — 2026-10-03
 

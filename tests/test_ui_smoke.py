@@ -162,7 +162,7 @@ with open(cfg_path, "w") as f:
         "timing": {"poll_seconds": 1.0, "job_poll_seconds": 1.0,
                    "http_timeout": 4.0, "free_settle_seconds": 2.0,
                    "discover_seconds": 300.0},
-        "helper": {"url": "http://127.0.0.1:%d/v1" % helper_port, "model": "test", "timeout_s": 5},
+        "helper": {"url": "http://127.0.0.1:%d/v1" % helper_port, "model": "test", "timeout_s": 5, "guide_default": "on"},
     }, f)
 URL = "http://127.0.0.1:%d/" % server_port
 logf = open(os.path.join(tmp, "server.log"), "w")
@@ -175,7 +175,7 @@ server = subprocess.Popen(
 
 def lane_has_a_mode():
     d = http_json(URL + "/api/engines?lane=" + LANE_ID)
-    return any(m.get("available") for cap in d if cap not in ("rooms", "helper")
+    return any(m.get("available") for cap in d if cap not in ("rooms", "helper", "helper_guide_on")
                for m in d[cap].get("modes", []))
 
 if not wait_true("server is up and the fake lane offers at least one mode",
@@ -241,7 +241,7 @@ try:
         lane = page.evaluate("STATE.activeLane")
         engines_resp = page.evaluate("l => fetch('/api/engines' + (l ? '?lane=' + l : '')).then(r => r.json())", lane)
         rooms = engines_resp.get("rooms") or []
-        caps = [k for k in engines_resp if k not in ("rooms", "helper")]   # sit beside the caps, not one
+        caps = [k for k in engines_resp if k not in ("rooms", "helper", "helper_guide_on")]   # sit beside the caps, not one
         check("server declares at least one cap", bool(caps), str(list(engines_resp)))
         check("server declares rooms", bool(rooms), str(list(engines_resp)))
         mode_of = {(c, m["id"]): m for c in caps for m in engines_resp[c]["modes"]}
@@ -250,7 +250,7 @@ try:
         # checks below branch on it instead of assuming Blender is missing.
         proc_engines = page.evaluate("fetch('/api/engines?lane=here').then(r => r.json())")
         proc_on_box = {(c, m["id"]): m.get("available") is not False
-                       for c in proc_engines if c not in ("rooms", "helper")
+                       for c in proc_engines if c not in ("rooms", "helper", "helper_guide_on")
                        for m in proc_engines[c].get("modes", [])}
         check("default room is the first in order", page.evaluate("location.hash") == "#room=" + rooms[0]["id"],
               page.evaluate("location.hash"))

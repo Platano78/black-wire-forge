@@ -164,12 +164,12 @@ WRITERS = {("audio", "song"): "Song writer", ("image", "pixelart"): "Sprite writ
            ("video", "ref2v"): "Reference shot writer", ("video", "continue"): "Carry-on writer",
            ("image", "t2i"): "Picture prompt writer", ("image", "edit"): "Edit writer", ("image", "charsheet"): "Sheet writer",   # P3d, CHARS-1
            ("3d", "mesh"): "Source picture writer"}
-others = [(cap, m["id"]) for cap, v in body.items() if cap not in ("rooms", "helper") for m in v["modes"] if (cap, m["id"]) not in WRITERS and m.get("writer") is not None]
+others = [(cap, m["id"]) for cap, v in body.items() if cap not in ("rooms", "helper", "helper_guide_on") for m in v["modes"] if (cap, m["id"]) not in WRITERS and m.get("writer") is not None]
 check("contract: every other mode reports writer null", others == [], others)
 check("contract: each pack writer reports its label", all(
     next(m for m in body[cap]["modes"] if m["id"] == mode)["writer"]["label"] == label
     for (cap, mode), label in WRITERS.items()))
-check("contract: every mode carries a writer key", all("writer" in m for cap, v in body.items() if cap not in ("rooms", "helper") for m in v["modes"]))
+check("contract: every mode carries a writer key", all("writer" in m for cap, v in body.items() if cap not in ("rooms", "helper", "helper_guide_on") for m in v["modes"]))
 
 print("parser: line keys, LYRICS to the end, NONE")
 REPLY = "TAGS: warm pop, clear female vocals\nBPM: 96\nKEY: NONE\nDURATION: 150\nTIMESIG: 4\nLANGUAGE: en\nLYRICS:\n[Verse]\nline one\n\n[Chorus]\nline two\nTAGS: not a key here"

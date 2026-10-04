@@ -206,6 +206,9 @@ own.
   in the Cutting Room) in your browser and, so it survives a reload or another device, on the
   app's own machine under `data/guide_history/`; it is sent with each turn. With no `helper` configured the
   panel still shows the guide's plain guidance and how to add a helper. Guide chat waits up
+  **The guide starts switched off**, so a helper alone never changes how a room works: the prompt box is the main field and Make sends
+  what you type. A "Guide: on / off" switch in the guide's header turns it on (remembered per browser). To have it start on for everyone
+  who has not chosen yet, add `"guide_default": "on"` inside `"helper"`.
   to `timeout_s` (120 seconds when unset), since a verbose guide is slow on a small box. The
   panel states how much context each choice needs (the guide plus 4,096 tokens for the
   conversation). The app reads the helper's context from llama.cpp's `/props`, else from

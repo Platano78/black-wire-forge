@@ -127,7 +127,7 @@ def start_server(name, lane_port, with_helper, vision=None, jobs=None):
            "timing": {"poll_seconds": 0.5, "job_poll_seconds": 1.0}}
     if with_helper:
         cfg["helper"] = {"url": "http://127.0.0.1:%d/v1" % fake.server_address[1], "model": "test-model",
-                         "timeout_s": 10}
+                         "timeout_s": 10, "guide_default": "on"}
         if vision is not None:
             cfg["helper"]["vision"] = vision
     if jobs:

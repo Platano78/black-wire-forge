@@ -54,7 +54,7 @@ def poll(present):
         st = dict(srv.LANE_STATE["cpu"])
     h = srv.Handler.__new__(srv.Handler)
     modes = {(cap, m["id"]): m for cap, v in h.engines_payload({"lane": ["cpu"]}).items()
-             if cap not in ("rooms", "helper") for m in v["modes"]}
+             if cap not in ("rooms", "helper", "helper_guide_on") for m in v["modes"]}
     return st, modes
 
 

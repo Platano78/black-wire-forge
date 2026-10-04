@@ -153,7 +153,7 @@ check("contract: the prompt carries the Godzilla worked example",
       and "single-headed winged dragon" in R["prompt"])
 
 code, body = http("/api/engines?lane=t")
-modes = [(cap, m) for cap, v in body.items() if cap not in ("rooms", "helper") for m in v["modes"]]
+modes = [(cap, m) for cap, v in body.items() if cap not in ("rooms", "helper", "helper_guide_on") for m in v["modes"]]
 t2i = next(m for cap, m in modes if cap == "image" and m["id"] == "t2i")
 check("contract: /api/engines reports the t2i reviser's label", t2i.get("reviser") == {"label": "Picture fixer"}, t2i.get("reviser"))
 CLIP_FIXERS = {"ltx", "ltx_loop", "fl2va", "ref2v", "continue"}   # P3c

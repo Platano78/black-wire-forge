@@ -55,7 +55,7 @@ def start_server(name, with_helper):
            "timing": {"poll_seconds": 0.5, "job_poll_seconds": 1.0}}
     if with_helper:
         cfg["helper"] = {"url": "http://127.0.0.1:%d/v1" % helper.server_address[1], "model": "test-model",
-                         "timeout_s": 10, "vision": False}
+                         "timeout_s": 10, "vision": False, "guide_default": "on"}
     path = os.path.join(ui.SCRATCH, "config_%s.json" % name)
     with open(path, "w") as f:
         json.dump(cfg, f)

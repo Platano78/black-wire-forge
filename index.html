@@ -3400,9 +3400,21 @@ function guideStoreSet(k, v){
 function guideVerbosity(){ return guideStoreGet('bwf.guide.verbosity') === 'verbose' ? 'verbose' : 'compact'; }
 // The guide on / off switch. The choice is this browser's, for every room;
 // the SERVER's truth stays in GUIDE.helper_server, so a room with no helper
-// configured never shows the switch and never changes.
+// configured never shows the switch and never changes. Absent choice -> the
+// server's default (guide_default: "on" inside "helper"), which is OFF unless
+// the operator asked for it: not everyone has a guide model to hand.
 const GUIDE_OFF_NOTE = 'The guide is off, so type straight into the fields.';
-function guideIsOff(){ return guideStoreGet('bwf.guide.off') === '1'; }
+const GUIDE_OFF_BY_DEFAULT_NOTE = 'The guide is off. Type straight into the fields, or switch the guide on above.';
+function guideIsOff(){
+  const stored = guideStoreGet('bwf.guide.off');
+  if(stored === '1') return true;    // this browser switched it off
+  if(stored === '0') return false;   // ...or switched it on; the server default does not move it
+  return !(GUIDE ? GUIDE.guide_default_on : STATE.helperGuideOn);
+}
+// True when the guide is off because this browser has never chosen: the note
+// under the switch then invites switching it on (an explicit off keeps the
+// short sentence -- the person already knows).
+function guideOffByDefault(){ return guideStoreGet('bwf.guide.off') == null; }
 function guideOffChosen(){ return !!(GUIDE && GUIDE.helper_server && guideIsOff()); }
 function guideHistKey(){
   const room = currentRoom();
@@ -3628,7 +3640,7 @@ async function renderGuidePanel(){
     GUIDE_LOADING = getJSON('/api/guide?room=' + encodeURIComponent(room.id)).then(
       b => {
         if(GUIDE_ROOM !== room.id) return;
-        b.helper_server = b.helper;   // what the server says; the switch only ever turns it off
+        b.helper_server = b.helper;   // what the server says; the switch can step it aside
         if(guideIsOff()) b.helper = false;
         GUIDE = b;
       },
@@ -3674,7 +3686,8 @@ function renderGuideOnOff(){
   btn.setAttribute('aria-pressed', String(!off));
   btn.title = off ? 'The guide model is switched off: your own words go straight to Make.'
                   : 'Let the guide write the words for you.';
-  $('#guideOffNote').textContent = server ? 'The guide is off. Type straight into the fields.' : GUIDE_OFF_NOTE;
+  $('#guideOffNote').textContent = !server ? GUIDE_OFF_NOTE
+    : (guideOffByDefault() ? GUIDE_OFF_BY_DEFAULT_NOTE : 'The guide is off. Type straight into the fields.');
   // The helper IS configured here, so "add a helper to config.json" would be a lie.
   $('#guideAddBrain').hidden = guideOffChosen();
 }
@@ -4119,7 +4132,7 @@ $('#guideVerbosity').addEventListener('click', e => {
 // model were configured: the prompt box is the main field and Make sends what
 // was typed. A reply in flight is dropped, not shown afterwards.
 $('#guideOnOff').onclick = () => {
-  guideStoreSet('bwf.guide.off', guideIsOff() ? null : '1');
+  guideStoreSet('bwf.guide.off', guideIsOff() ? '0' : '1');
   if(GUIDE) GUIDE.helper = !!GUIDE.helper_server && !guideIsOff();
   STATE.helperOn = !!STATE.helperServer && !guideIsOff();
   if(GUIDE_ABORT) GUIDE_ABORT.abort();
@@ -7794,8 +7807,10 @@ async function loadEnginesFor(){
   const rooms = Array.isArray(d.rooms) ? d.rooms : [];
   delete d.rooms;
   STATE.helperServer = !!d.helper;   // the server's truth, kept under the switch's choice
+  STATE.helperGuideOn = !!d.helper_guide_on;   // and whether it starts on (see guideIsOff)
   STATE.helperOn = STATE.helperServer && !guideIsOff();   // a writer for another mode shows its topic box only with a brain
   delete d.helper;   // not a capability; the guide (GET /api/guide) says whether a helper is set up
+  delete d.helper_guide_on;   // same: the switch's server default lives in STATE.helperGuideOn
   STATE.engines = d;
   STATE.rooms = rooms.slice().sort((a, b) => (a.order == null ? 1000 : a.order) - (b.order == null ? 1000 : b.order));
   const key = JSON.stringify(STATE.rooms);

@@ -35,7 +35,7 @@ def user(i=0):
 try:
     print("engines payload")
     modes = {(c, m["id"]): m for c, v in srv.Handler.engines_payload(srv.Handler.__new__(srv.Handler), {"lane": ["t"]}).items()
-             if c not in ("rooms", "helper") for m in v["modes"]}
+             if c not in ("rooms", "helper", "helper_guide_on") for m in v["modes"]}
     # B3 (item 4): the writer payload now also carries "fills" (the field ids
     # it writes), so these check the specific keys this test cares about
     # rather than exact dict equality against the whole payload.

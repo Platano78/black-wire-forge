@@ -47,7 +47,7 @@ cfg = {"port": port, "bind": "127.0.0.1", "title": "motion", "timing": {"poll_se
        "lanes": [{"id": "t", "name": "Fake lane", "host": "127.0.0.1", "port": lane_port, "caps": ["video"],
                   "models": {"ltx_transformer": "ltx.gguf", "ltx_clip": "ltx_te.safetensors", "ltx_vae_video": "ltx_vae.safetensors",
                              "ltx_vae_audio": "ltx_audio_vae.safetensors", "ltx_upscaler": "ltx_spatial.safetensors"}}],
-       "helper": {"url": "http://127.0.0.1:%d/v1" % brain.server_address[1], "model": "test-model", "timeout_s": 10, "vision": False}}
+       "helper": {"url": "http://127.0.0.1:%d/v1" % brain.server_address[1], "model": "test-model", "timeout_s": 10, "vision": False, "guide_default": "on"}}
 json.dump(cfg, open(os.path.join(S, "config.json"), "w"))
 PROCS.append(subprocess.Popen([sys.executable, os.path.join(REPO, "server.py")], cwd=REPO, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT,
                               env=dict(os.environ, GENCENTER_CONFIG=os.path.join(S, "config.json"), GENCENTER_DATA=os.path.join(S, "data"))))

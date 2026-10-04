@@ -1,9 +1,11 @@
 """Browser gate for the guide on / off switch.
 
-Off = the room behaves exactly as if no guide model were configured: the person
-types straight into the fields and Make sends exactly what they typed. The
-switch is shown only when the server HAS a guide model (the server's truth is
-kept in GUIDE.helper_server), and the choice is this browser's, for every room.
+The guide is opt-in: with a helper configured but nothing said, the switch
+starts OFF and the prompt box is the main field; a server may ask for it to
+start on with "helper".{"guide_default": "on"}, but this browser's own stored
+choice ('0' on, '1' off) always wins. Either way the switch is shown only when
+the server HAS a guide model (the server's truth is kept in
+GUIDE.helper_server), and the choice is this browser's, for every room.
 
 Same setup as tests/test_guide_ui.py: its own server.py subprocesses (scratch
 config + scratch data, random free ports), its own fake ComfyUI lane, and an
@@ -103,7 +105,7 @@ def start_lane():
         raise SystemExit("fake lane did not come up")
     return port
 
-def start_server(name, lane_port, with_helper):
+def start_server(name, lane_port, with_helper, guide_default=None):
     port = free_port()
     cfg = {"title": "guide toggle test", "port": port, "bind": "127.0.0.1",
            "lanes": [{"id": "t", "name": "Fake lane", "host": "127.0.0.1", "port": lane_port,
@@ -116,6 +118,8 @@ def start_server(name, lane_port, with_helper):
     if with_helper:
         cfg["helper"] = {"url": "http://127.0.0.1:%d/v1" % fake.server_address[1], "model": "test-model",
                          "timeout_s": 10}
+        if guide_default:
+            cfg["helper"]["guide_default"] = guide_default
     cfg_path = os.path.join(SCRATCH, "config_%s.json" % name)
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
@@ -180,43 +184,45 @@ def make(page):
 
 PROMPT = "a lighthouse at sunset"
 
+INVITE_NOTE = "The guide is off. Type straight into the fields, or switch the guide on above."
+CHOSEN_NOTE = "The guide is off. Type straight into the fields."
+
+def stored_choice(page):
+    return page.evaluate("() => localStorage.getItem('bwf.guide.off')")
+
 try:
     lane = start_lane()
-    url_brain = start_server("brain", lane, True)
+    url_brain = start_server("brain", lane, True)             # a guide model, nothing said -> off
+    url_default_on = start_server("defon", lane, True, "on")   # "guide_default": "on" -> on
     url_none = start_server("nobrain", lane, False)
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
 
-        print("Music with a guide model: the switch is on, and says so")
+        print("A guide model and nothing said: the switch starts OFF, and says so")
         page = browser.new_page(viewport={"width": 1280, "height": 800})
         page.route("**/api/generate", lambda route: (GEN_BODIES.append(json.loads(route.request.post_data or "{}")),
                                                       route.continue_())[1])
         page.on("request", record("/api/guide/chat", HELPER_CALLS))
         enter_music(page, url_brain)
-        check("on: the switch is visible and reads on", switch_state(page) == ("Guide: on", "true", True), switch_state(page))
-        check("on: it is a plain button", page.get_attribute("#guideOnOff", "type") == "button"
+        check("off by default: the switch is visible and reads off",
+              switch_state(page) == ("Guide: off", "false", False), switch_state(page))
+        check("off by default: it is a plain button", page.get_attribute("#guideOnOff", "type") == "button"
               and page.eval_on_selector("#guideOnOff", "e => e.classList.contains('btn')"))
-        check("on: the guide's own box is there", page.is_visible("#guideInput")
-              and page.get_attribute("#guideInput", "placeholder") == "Tell the Music room what you want")
-        check("on: the prompt box is inside the guide's disclosure", not prompt_box_ok(page))
-
-        print("click it off: the prompt box is the main field again")
-        HELPER["requests"].clear()
-        del HELPER_CALLS[:]
-        page.click("#guideOnOff")
-        page.wait_for_function("() => document.querySelector('#guideOnOff').textContent === 'Guide: off'", timeout=10000)
-        check("off: the switch reads off", switch_state(page) == ("Guide: off", "false", False), switch_state(page))
-        check("off: the prompt box is visible, enabled, and not in a closed disclosure", prompt_box_ok(page))
+        check("off by default: the guide's own box is out of the way", not page.is_visible("#guideInput"))
+        check("off by default: the prompt box is visible, enabled, and not in a closed disclosure",
+              prompt_box_ok(page))
         note = text_of(page, "#guideOffNote")
-        check("off: the one-line note says so, with a way back in the switch",
-              page.is_visible("#guideOffNote") and "Type straight into the fields" in note, note)
-        check("off: no 'add a helper to config.json' -- there IS one",
+        check("off by default: the one-line note invites switching the guide on above",
+              page.is_visible("#guideOffNote") and note == INVITE_NOTE, note)
+        check("off by default: no 'add a helper to config.json' -- there IS one",
               not page.is_visible("#guideAddBrain") and not page.is_visible("#guideWriteNoBrain")
               and not page.is_visible("#guideReviseNoBrain"),
               (page.is_visible("#guideAddBrain"), page.is_visible("#guideWriteNoBrain"),
                page.is_visible("#guideReviseNoBrain")))
-        check("off: nothing went to the helper on the click", HELPER["requests"] == [] and HELPER_CALLS == [],
+        check("off by default: nothing went to the guide model", HELPER["requests"] == [] and HELPER_CALLS == [],
               (HELPER["requests"], HELPER_CALLS))
+        check("off by default: nothing was stored -- the server's default is doing this",
+              stored_choice(page) is None, repr(stored_choice(page)))
 
         print("off: Make sends exactly what was typed")
         page.fill("#promptBox", PROMPT)
@@ -227,20 +233,41 @@ try:
         neg = body.get("negative")
         check("off: nothing was added to the negative prompt",
               not (isinstance(neg, str) and neg.strip()), repr(neg))
-        check("off: the helper was never asked", HELPER["requests"] == [] and HELPER_CALLS == [],
+        check("off: the guide model was never asked", HELPER["requests"] == [] and HELPER_CALLS == [],
               (HELPER["requests"], HELPER_CALLS))
 
-        print("off: it is remembered, and comes back on")
+        print("click it on: the guide's box is back, and the choice is stored")
+        HELPER["requests"].clear()
+        del HELPER_CALLS[:]
+        page.click("#guideOnOff")
+        page.wait_for_function("() => document.querySelector('#guideOnOff').textContent === 'Guide: on'", timeout=10000)
+        check("on: the switch reads on", switch_state(page) == ("Guide: on", "true", True), switch_state(page))
+        check("on: the guide's own box is there", page.is_visible("#guideInput")
+              and page.get_attribute("#guideInput", "placeholder") == "Tell the Music room what you want")
+        check("on: the prompt box is back inside the guide's disclosure", not prompt_box_ok(page))
+        check("on: the choice is stored as '0', not left to the server default", stored_choice(page) == '0',
+              repr(stored_choice(page)))
+        check("on: nothing went to the guide model on the click", HELPER["requests"] == [] and HELPER_CALLS == [],
+              (HELPER["requests"], HELPER_CALLS))
+
+        print("it is remembered: on means on again after a reload")
+        page.reload(wait_until="networkidle")
+        enter_music(page, url_brain)
+        check("reload: still on", switch_state(page) == ("Guide: on", "true", True), switch_state(page))
+        check("reload: still stored as '0'", stored_choice(page) == '0', repr(stored_choice(page)))
+        page.click("#guideOnOff")
+        page.wait_for_function("() => document.querySelector('#guideOnOff').textContent === 'Guide: off'", timeout=10000)
+        check("off again: the switch reads off", switch_state(page) == ("Guide: off", "false", False), switch_state(page))
+        check("off again: the choice is stored as '1'", stored_choice(page) == '1', repr(stored_choice(page)))
+        check("off again: the prompt box is the main field", prompt_box_ok(page))
+        check("off again: the note is the short one -- the person chose this",
+              text_of(page, "#guideOffNote") == CHOSEN_NOTE, text_of(page, "#guideOffNote"))
+        HELPER["requests"].clear()
         page.reload(wait_until="networkidle")
         enter_music(page, url_brain)
         check("reload: still off", switch_state(page) == ("Guide: off", "false", False), switch_state(page))
         check("reload: the prompt box is still the main field", prompt_box_ok(page))
-        HELPER["requests"].clear()
-        page.click("#guideOnOff")
-        page.wait_for_function("() => document.querySelector('#guideOnOff').textContent === 'Guide: on'", timeout=10000)
-        check("on again: the guide's box is back", switch_state(page) == ("Guide: on", "true", True), switch_state(page))
-        check("on again: the prompt box is back under the guide", not prompt_box_ok(page))
-        check("on again: nothing went to the helper", HELPER["requests"] == [])
+        check("reload: the guide model was never asked", HELPER["requests"] == [], HELPER["requests"])
 
         print("390 wide: the same switch, a finger-sized one")
         page.set_viewport_size({"width": 390, "height": 844})
@@ -251,14 +278,36 @@ try:
               page.eval_on_selector("#guideOnOff", "e => e.getBoundingClientRect().height >= 44"),
               page.eval_on_selector("#guideOnOff", "e => e.getBoundingClientRect().height"))
         page.click("#guideOnOff")
+        page.wait_for_function("() => document.querySelector('#guideOnOff').textContent === 'Guide: on'", timeout=10000)
+        check("390: on, and the guide's box is the main field", page.is_visible("#guideInput"))
+        page.click("#guideOnOff")
         page.wait_for_function("() => document.querySelector('#guideOnOff').textContent === 'Guide: off'", timeout=10000)
-        check("390: off, and the prompt box is the main field",
+        check("390: off again, and the prompt box is the main field",
               switch_state(page) == ("Guide: off", "false", False) and prompt_box_ok(page), switch_state(page))
         check("390: the note still says so", "Type straight into the fields" in text_of(page, "#guideOffNote"))
         check("390: no horizontal scroll", page.evaluate("() => document.documentElement.scrollWidth <= window.innerWidth"))
-        page.click("#guideOnOff")
-        page.wait_for_function("() => document.querySelector('#guideOnOff').textContent === 'Guide: on'", timeout=10000)
-        check("390: and on again", page.is_visible("#guideInput"))
+        page.close()
+
+        print('a server that says "guide_default": "on" starts the guide ON')
+        page = browser.new_page(viewport={"width": 1280, "height": 800})
+        enter_music(page, url_default_on)
+        check("guide_default on: the switch reads on", switch_state(page) == ("Guide: on", "true", True),
+              switch_state(page))
+        check("guide_default on: the guide's own box is there", page.is_visible("#guideInput")
+              and page.get_attribute("#guideInput", "placeholder") == "Tell the Music room what you want")
+        check("guide_default on: the prompt box is inside the guide's disclosure", not prompt_box_ok(page))
+        check("guide_default on: nothing was stored for it", stored_choice(page) is None, repr(stored_choice(page)))
+        page.close()
+
+        print("...but this browser's own off choice beats the server's default")
+        page = browser.new_page(viewport={"width": 1280, "height": 800})
+        page.add_init_script("localStorage.setItem('bwf.guide.off','1')")
+        enter_music(page, url_default_on)
+        check("stored '1' beats guide_default on: the switch reads off",
+              switch_state(page) == ("Guide: off", "false", False), switch_state(page))
+        check("stored '1' beats guide_default on: the prompt box is the main field", prompt_box_ok(page))
+        check("stored '1' beats guide_default on: the note is the short one",
+              text_of(page, "#guideOffNote") == CHOSEN_NOTE, text_of(page, "#guideOffNote"))
         page.close()
 
         print("no guide model on the server: no switch, and the old note")
@@ -281,13 +330,16 @@ try:
         page.on("pageerror", lambda e: errors.append(str(e)))
         page.add_init_script("Storage.prototype.setItem = function(){ throw new Error('storage is full'); };")
         enter_music(page, url_brain)
-        page.click("#guideOnOff")
-        page.wait_for_function("() => document.querySelector('#guideOnOff').textContent === 'Guide: off'", timeout=10000)
-        check("blocked storage: the switch still turns off, in memory",
-              switch_state(page) == ("Guide: off", "false", False) and prompt_box_ok(page), switch_state(page))
+        check("blocked storage: it starts off, like everyone else here",
+              switch_state(page) == ("Guide: off", "false", False), switch_state(page))
         page.click("#guideOnOff")
         page.wait_for_function("() => document.querySelector('#guideOnOff').textContent === 'Guide: on'", timeout=10000)
-        check("blocked storage: and back on", page.is_visible("#guideInput"))
+        check("blocked storage: the switch still turns on, in memory",
+              switch_state(page) == ("Guide: on", "true", True) and page.is_visible("#guideInput"), switch_state(page))
+        page.click("#guideOnOff")
+        page.wait_for_function("() => document.querySelector('#guideOnOff').textContent === 'Guide: off'", timeout=10000)
+        check("blocked storage: and back off", switch_state(page) == ("Guide: off", "false", False)
+              and prompt_box_ok(page), switch_state(page))
         check("blocked storage: no page error", errors == [], errors)
         page.close()
         browser.close()
