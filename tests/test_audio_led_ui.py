@@ -165,6 +165,12 @@ def make_tiny_mp4(path):
                      "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", path], check=True)
 
 
+def make_tiny_wav(path):
+    subprocess.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+                    "-f", "lavfi", "-i", "sine=frequency=1000:sample_rate=44100:duration=4",
+                    "-ac", "2", path], check=True)
+
+
 def explain(e, name):
     """An HTTPError's own body and URL, plus the server's log tail -- so an
     intermittent setup failure says what the server refused and why."""
@@ -217,11 +223,13 @@ def build_sequence_with_a_picked_shot(url, lane_port):
 
 SCRATCH = tempfile.mkdtemp(prefix="bwf-ledui-")
 TINY_MP4 = os.path.join(SCRATCH, "tiny.mp4")
+TINY_WAV = os.path.join(SCRATCH, "tiny.wav")
 if not shutil.which("ffmpeg"):
     print("SKIP: ffmpeg not on PATH -- needed to build this suite's own fixture clip")
     shutil.rmtree(SCRATCH, ignore_errors=True)
     sys.exit(0)
 make_tiny_mp4(TINY_MP4)
+make_tiny_wav(TINY_WAV)
 
 try:
     fake_proc, fake_port, fake_store = start_fake_lane(SCRATCH, "led", output_clip_path=TINY_MP4)
@@ -291,6 +299,22 @@ try:
               [s.get("lipsync") for s in stored["slots"]])
         check("and the toggle stays unticked after the re-render",
               not page.eval_on_selector("#lipsyncToggle", "el => el.checked"))
+
+        # "Add vocals only": the vocals stem drives the faces, the full mix still plays.
+        posts = []
+        page.on("request", lambda r: posts.append((r.url, r.post_data or ""))
+                if r.method == "POST" and "/api/sequence/vocals" in r.url else None)
+        check("with audio-led on the cut bar has the 'Add vocals only' file input",
+              page.query_selector("#cutVocalsFile") is not None)
+        page.set_input_files("#cutVocalsFile", TINY_WAV)
+        page.wait_for_timeout(1500)
+        check("choosing a WAV sends exactly one POST to /api/sequence/vocals", len(posts) == 1, [p[0] for p in posts])
+        stored = http_json(url + "api/sequence?id=" + sid)
+        check("the sequence now carries master_vocals", bool((stored.get("master_vocals") or {}).get("file")),
+              stored.get("master_vocals"))
+        vocals_line = page.eval_on_selector("#cutVocalsName", "el => el.innerText").strip()
+        check("the bar shows the 'Vocals:' line saying they drive the faces",
+              vocals_line.startswith("Vocals:") and "drive the faces" in vocals_line, vocals_line)
         check("no page JS errors", not errors, errors)
         browser.close()
 except Exception as e:

@@ -6827,7 +6827,8 @@ async function doCut(){
   }catch(e){ /* the next poll tick picks it up */ }
   renderCutBar();
 }
-/* Audio-led only: your own sound file as the master (POST /api/sequence/master), where it starts, and removing it. */
+/* Audio-led only: your own sound file as the master (POST /api/sequence/master) and the song's
+vocals-only stem (POST /api/sequence/vocals), where the master starts, and removing either. */
 function masterControlsHTML(seq){
   const mf = seq.master && seq.master.file ? seq.master : null;
   let h = '<span id="cutMasterRow">';
@@ -6839,6 +6840,15 @@ function masterControlsHTML(seq){
   }
   h += '<label class="btn" id="cutMasterAddLabel">' + (mf ? 'Replace sound file' : 'Add a sound file')
     + '<input type="file" id="cutMasterFile" accept="audio/*,.m4a,.mp3,.wav,.aac,.flac,.ogg,.opus" hidden></label></span>';
+  const vf = seq.master_vocals && seq.master_vocals.file ? seq.master_vocals : null;
+  h += '<span id="cutVocalsRow">';
+  if(vf){
+    h += '<span id="cutVocalsName">Vocals: ' + esc(vf.name || 'vocals') + ' (' + Number(vf.seconds || 0).toFixed(1)
+      + ' s) — they drive the faces; the full mix still plays under the cut.</span>'
+      + '<button type="button" class="btn" id="cutVocalsClear">Remove</button>';
+  }
+  h += '<label class="btn" id="cutVocalsAddLabel">' + (vf ? 'Replace vocals' : 'Add vocals only')
+    + '<input type="file" id="cutVocalsFile" accept="audio/*,.m4a,.mp3,.wav,.aac,.flac,.ogg,.opus" hidden></label></span>';
   return h;
 }
 function wireMasterControls(){
@@ -6859,6 +6869,23 @@ function wireMasterControls(){
   };
   const clr = $('#cutMasterClear');
   if(clr) clr.onclick = async () => { await seqOp('clear_master', {}); renderTimeline(); };
+  const addVocals = $('#cutVocalsFile');
+  if(addVocals) addVocals.onchange = async () => {
+    const file = addVocals.files && addVocals.files[0];
+    if(!file || !STATE.seq) return;
+    const fd = new FormData();
+    fd.append('id', STATE.seq.id);
+    fd.append('rev', String(STATE.seq.rev));
+    fd.append('file', file, file.name);
+    let r;
+    try{ const resp = await fetch('/api/sequence/vocals', {method: 'POST', body: fd}); r = await resp.json(); }
+    catch(e){ r = {error: String(e.message || e)}; }
+    if(r && typeof r.rev === 'number' && r.id === STATE.seq.id){ STATE.seq = r; STATE.cutError = null; renderTimeline(); }
+    else if(r && r.sequence){ STATE.seq = r.sequence; msgSeq('This sequence changed elsewhere — refreshed. Add the file again.', 'err'); renderTimeline(); }
+    else { STATE.cutError = (r && r.error) || 'Could not add that file.'; renderCutBar(); }
+  };
+  const clrVocals = $('#cutVocalsClear');
+  if(clrVocals) clrVocals.onclick = async () => { await seqOp('clear_master_vocals', {}); renderTimeline(); };
   const st = $('#cutMasterStart');
   if(st) st.onchange = async () => {
     const r = await seqOp('set_master_start', {start: Number(st.value)});
