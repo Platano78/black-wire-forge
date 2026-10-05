@@ -132,6 +132,12 @@ def run_steps(steps, cwd, progress=None, on_progress=None, stop_event=None):
     """
     prog = re.compile(progress) if progress else None
     tail = deque(maxlen=20)
+    # ponytail: tail is the LAST 20 lines, so a remote client's real reason
+    # ("Film generation failed: ...") is pushed out by its own traceback.
+    # Keep the first failure line and put it in the error sentence, which the
+    # page always shows. Substring match, not a parser: the remote clients all
+    # print "<thing> failed: <reason>" as their first line.
+    first_err = []
 
     def kill_group(proc):
         if IS_WINDOWS:
@@ -192,6 +198,8 @@ def run_steps(steps, cwd, progress=None, on_progress=None, stop_event=None):
         for line in proc.stdout:
             text = line.rstrip("\n")
             tail.append(text)
+            if not first_err and "failed" in text.lower():
+                first_err.append(text[:200])
             if prog is not None and on_progress is not None:
                 m = prog.search(line)
                 if m:
@@ -204,5 +212,8 @@ def run_steps(steps, cwd, progress=None, on_progress=None, stop_event=None):
         if reason and reason[0] == "stop":
             return False, list(tail), "stopped"
         if proc.returncode != 0:
-            return False, list(tail), "step %d stopped with exit code %d" % (n, proc.returncode)
+            why = "step %d stopped with exit code %d" % (n, proc.returncode)
+            if first_err:
+                why += ": " + first_err[0]
+            return False, list(tail), why
     return True, list(tail), None
