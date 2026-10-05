@@ -454,13 +454,11 @@
   #makeConfirm p{margin:0 0 4px; font-weight:600}
   #makeConfirmList{margin:0 0 8px; padding-left:18px; font-size:13px}
   .make-confirm-actions{display:flex; gap:8px; flex-wrap:wrap}
-  #qualityLadder, #gpuPick{display:flex; border:1px solid var(--divider)}
-  #gpuPick{margin-bottom:12px}
-  #qualityLadder button, #gpuPick button{flex:1; min-height:40px; background:var(--surface2); color:var(--text-mid);
+  #qualityLadder{display:flex; border:1px solid var(--divider)}
+  #qualityLadder button{flex:1; min-height:40px; background:var(--surface2); color:var(--text-mid);
     border-right:1px solid var(--divider); font-size:12px; text-transform:uppercase; letter-spacing:.03em}
-  #qualityLadder button:last-child, #gpuPick button:last-child{border-right:none}
-  #qualityLadder button[aria-pressed="true"], #gpuPick button[aria-pressed="true"]{background:var(--accent); color:var(--on-accent)}
-  #gpuPick button[disabled]{color:var(--text-disabled); background:var(--surface3); cursor:not-allowed}
+  #qualityLadder button:last-child{border-right:none}
+  #qualityLadder button[aria-pressed="true"]{background:var(--accent); color:var(--on-accent)}
   #qualityLadder button[disabled]{color:var(--text-disabled); background:var(--surface3); cursor:not-allowed}
   #qualityWhy{font-size:12px; color:var(--text-mid); margin:6px 0 0}
   #qualityWhy .estimate{font-family:var(--mono); color:var(--text-hi)}
@@ -1006,14 +1004,6 @@
     <!-- The prompt box is the anchor: right under the engine picker (now a
          chip beside the room heading, above), its writing actions under it,
          and the room's guide right under those. -->
-    <!-- GPU toggle: shortcut for the two Film radios (Video room). -->
-    <div id="gpuWrap" hidden>
-      <div class="field-group-title">GPU</div>
-      <div id="gpuPick" role="group" aria-label="GPU">
-        <button type="button" data-mode="film5080">5080</button>
-        <button type="button" data-mode="film9700">R9700</button>
-      </div>
-    </div>
     <div id="promptWrap">
       <label class="field-label" for="promptBox" id="promptLabel">Prompt</label>
       <textarea id="promptBox"></textarea>
@@ -2426,21 +2416,6 @@ function renderEnginePickerSummary(ms, room){
   // RS1: the popover opens ONLY on the user's click (setEngineChipOpen via
   // #engineChipBtn) -- never by itself, least of all while discovery is still
   // running. A picked engine this machine cannot run says so in the lane note.
-  $$('#gpuPick button').forEach(b => b.setAttribute('aria-pressed', String(STATE.mode === b.dataset.mode)));
-}
-// ponytail: the GPU toggle only clicks the matching Film radio, so lane
-// switching and field rendering stay on the radio's one onchange path.
-function renderGpuPick(){
-  const radios = $$('#enginePicker input[type=radio]');
-  const both = ['film5080', 'film9700'].every(md => radios.some(r => r.dataset.mode === md));
-  $('#gpuWrap').hidden = !both;
-  if(!both) return;
-  $$('#gpuPick button').forEach(b => {
-    const r = radios.find(x => x.dataset.mode === b.dataset.mode);
-    b.disabled = r.disabled;
-    b.setAttribute('aria-pressed', String(STATE.mode === b.dataset.mode));
-    b.onclick = () => { if(r.checked) return; r.checked = true; r.dispatchEvent(new Event('change')); };
-  });
 }
 function renderEnginePicker(force){
   const room = currentRoom();
@@ -2524,7 +2499,6 @@ function renderEnginePicker(force){
     PICKER_KEY = pickerKey(ms);
     renderModeFields();
   });
-  renderGpuPick();
 }
 
 // B2: the last engine picked in a room, per room id -- storage may be
