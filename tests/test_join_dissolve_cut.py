@@ -153,8 +153,9 @@ def colour_clip(name, spans, seed):
     fc.append("".join("[%d:v]" % k for k in range(len(spans))) + "concat=n=%d:v=1:a=0[v]" % len(spans))
     ins += ["-f", "lavfi", "-i", "anoisesrc=color=white:amplitude=0.25:seed=%d:sample_rate=32000:duration=%.6f"
             % (seed, total / 24.0)]
+    # ponytail: bound by duration, not video frames; older ffmpeg otherwise ends audio early.
     ff(ins + ["-filter_complex", ";".join(fc), "-map", "[v]", "-map", "%d:a" % len(spans),
-              "-frames:v", str(total), "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "12",
+              "-t", "%.6f" % (total / 24.0), "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "12",
               "-c:a", "aac", "-b:a", "192k", os.path.join(OUT, name)])
     return name
 

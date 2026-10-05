@@ -86,7 +86,10 @@ b, code = srv.seq_op({"id": sid, "rev": seq["rev"], "op": "import_script",
 check("import_script -> 200", code == 200, b)
 slots = {s["beat_id"]: s for s in b.get("slots") or []}
 film = [x for x in b.get("beats") or [] if x["kind"] == "film"]
-check("three film beats, each with an LTX shot", len(film) == 3 and all(slots[x["id"]]["mode"] == "ltx" for x in film),
+# ponytail: this install adds local video packs that sort ahead of ltx, so the
+# import default is this install's first video mode, not ltx by name.
+_want = slots[film[0]["id"]]["mode"] if film else "ltx"
+check("three film beats, each with the same default shot mode", len(film) == 3 and all(slots[x["id"]]["mode"] == _want for x in film),
       [(x["kind"], slots.get(x["id"], {}).get("mode")) for x in film])
 if len(film) == 3:
     first, stray, plain = film

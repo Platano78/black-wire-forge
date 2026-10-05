@@ -248,7 +248,9 @@ def make_job(job_id, fname, data, kind, mode, media):
 
 def add_video(sid, mode, length):
     values = {f["id"]: f["default"] for f in engines.fields("video", mode) if f.get("default") is not None}
-    values.update(prompt="he sings to camera", length=length)
+    values.update(prompt="he sings to camera")
+    if any(f["id"] == "length" for f in engines.fields("video", mode)):
+        values["length"] = length
     if any(f["id"] == "first_frame" for f in engines.fields("video", mode)):
         values["first_frame"] = "start.png"
     b, c = op(sid, "add_slot", lane="video", cap="video", mode=mode, values=values)
