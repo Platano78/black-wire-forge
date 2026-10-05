@@ -2,6 +2,12 @@
 
 All notable changes to Black Wire Forge are recorded here.
 
+## Unreleased
+
+### Added
+
+- The music video can be started from the Video room too ("Make a music video"), and its dialog can pick a song you made in History as well as take a song file.
+
 ## v1.3.0 — 2026-10-04
 
 ### Added
