@@ -147,6 +147,10 @@ try:
                                 "jobs": [{"id": "cj1", "value": 12},
                                          {"id": "cj2", "value": 20}]})
 
+        # The page polls /api/jobs every 2 s; without this route a poll can replace the
+        # injected jobs below and hide the panel mid-check (a 1-in-5 flake).
+        page.route("**/api/jobs*", route_jobs)
+
         # Directly inject compare-tagged jobs into STATE.jobs and render the panel
         result = page.evaluate("""
         (jobs) => {
@@ -246,6 +250,7 @@ try:
             check("Panel stays closed after dismiss",
                   page.evaluate("() => $('#comparePanel') && $('#comparePanel').hidden"))
 
+        page.unroute("**/api/jobs*")
         # ------------------------------------------------------------------
         # 8. Make still posts exactly the same body as before the refactor.
         # ------------------------------------------------------------------
