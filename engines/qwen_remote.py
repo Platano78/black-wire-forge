@@ -1,9 +1,13 @@
 """Remote Qwen-Image-2.1 R9700 API process pack.
 
-Forge calls an existing authenticated image API.
-The credential stays in a server-side file and is never returned to the browser.
+Opt-in: the pack exists only when QWEN_IMAGE_BASE is set
+(docs/REMOTE-BACKENDS.md). Forge calls your own authenticated image API.
+The credential stays in a server-side file, is never returned to the browser,
+and only ever goes to the configured address.
 """
 import os
+
+_TIMEOUT_S = 3600
 
 
 def qwen_image(values, models):
@@ -15,15 +19,18 @@ def qwen_image(values, models):
     return {
         "steps": [{"argv": [
             "{bin:python}", "{pack}/qwen_remote_client.py",
-            "--base", os.environ.get("QWEN_IMAGE_BASE", "http://127.0.0.1:8098"),
+            "--base", os.environ.get("QWEN_IMAGE_BASE", ""),
+            "--base-setting", "QWEN_IMAGE_BASE",
             "--token-file", os.environ.get("QWEN_IMAGE_TOKEN_FILE", "/run/secrets/qwen-image21-r9700-token"),
+            "--token-setting", "QWEN_IMAGE_TOKEN_FILE",
             "--prompt", prompt,
             "--width", str(width),
             "--height", str(height),
             "--steps", str(steps),
             "--seed", str(seed),
+            "--deadline-s", str(_TIMEOUT_S - 60),
             "--output", "{job}/qwen-image-r9700.png",
-        ], "timeout_s": 3600}],
+        ], "timeout_s": _TIMEOUT_S}],
         "outputs": ["qwen-image-r9700.png"],
         "progress": r"PROGRESS (\d+)/(\d+)",
     }
@@ -53,6 +60,7 @@ FIELDS = [
 
 ENGINE = {
     "id": "qwen_remote",
+    "enabled": lambda: bool(os.environ.get("QWEN_IMAGE_BASE")),
     "cap": "image",
     "lane_kind": "process",
     "bins": {"python": "python3"},

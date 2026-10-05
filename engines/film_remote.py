@@ -1,14 +1,17 @@
 """Remote Film5080 and Film9700 video API process pack.
 
-The Forge remains on the Proxmox guest. This pack invokes the two existing
-LAN generation APIs with a local stdlib client; no backend credentials are
-sent to the browser or stored in jobs.
+Opt-in: the pack exists only when FILM5080_BASE or FILM9700_BASE is set
+(docs/REMOTE-BACKENDS.md). It invokes your own Film generation services with
+a local stdlib client; no backend credentials are sent to the browser or
+stored in jobs, and the token only ever goes to the configured address.
 """
 import os
-import urllib.request
+
+_TIMEOUT_S = 21600
 
 
-def _plan(base, token_file, model, values, name, seed_max=None):
+def _plan(env, model, values, name, seed_max=None):
+    base_var, token_var, token_default = env
     prompt = str(values.get("prompt") or "A cinematic video").strip()
     seed = int(values.get("seed", 42))
     if seed_max is not None:
@@ -17,57 +20,49 @@ def _plan(base, token_file, model, values, name, seed_max=None):
     image = values.get("image")
     argv = [
         "{bin:python}", "{pack}/film_remote_client.py",
-        "--base", base,
-        "--token-file", token_file,
+        "--base", os.environ.get(base_var, ""),
+        "--base-setting", base_var,
+        "--token-file", os.environ.get(token_var, token_default),
+        "--token-setting", token_var,
         "--model", model,
         "--prompt", prompt,
         "--seed", str(seed),
         "--duration", str(duration),
+        "--deadline-s", str(_TIMEOUT_S - 120),
         "--output", "{job}/%s.mp4" % name,
     ]
     if image:
         argv += ["--image", "{in:image}"]
     return {
-        "steps": [{"argv": argv, "timeout_s": 21600}],
+        "steps": [{"argv": argv, "timeout_s": _TIMEOUT_S}],
         "outputs": ["%s.mp4" % name],
         "progress": r"PROGRESS (\d+)/(\d+)",
     }
 
 
-def _alive(base, token_file):
-    """True when the backend answers /health. Any failure means not available."""
-    token = ""
-    try:
-        if token_file and os.path.isfile(token_file):
-            with open(token_file, encoding="utf-8") as handle:
-                token = handle.read().strip()
-        req = urllib.request.Request(
-            base.rstrip("/") + "/health",
-            headers={"Authorization": "Bearer " + token, "Accept": "application/json"})
-        with urllib.request.urlopen(req, timeout=5) as response:
-            return response.status == 200
-    except Exception:
-        return False
+# (base address variable, token file variable, default token file) per mode.
+_ENV = {
+    "film5080": ("FILM5080_BASE", "FILM5080_TOKEN_FILE", "/run/secrets/film5080-token"),
+    "film9700": ("FILM9700_BASE", "FILM9700_TOKEN_FILE", "/run/secrets/film9700-token"),
+}
 
 
 def film5080(values, models):
-    base = os.environ.get("FILM5080_BASE", "http://127.0.0.1:8094")
-    token_file = os.environ.get("FILM5080_TOKEN_FILE", "/run/secrets/film5080-token")
-    # ponytail: the owner picks the GPU in the Video room, so a dead 5080 is
-    # refused at submit (one 5s probe) instead of silently rerouted to the
-    # R9700, whose Wan audio rejects speech minutes later.
-    if not _alive(base, token_file):
-        raise ValueError("The RTX 5080 video backend is offline right now. "
-                         "Start it, or pick R9700 (no speech or lip-sync).")
-    return _plan(base, token_file, "MiniMax-H3-RYZN9-Preview", values,
+    # Whether the service is up is the client's first step (one short probe
+    # with a plain sentence), never the graph build's: building a plan must
+    # not wait on the network.
+    return _plan(_ENV["film5080"], "MiniMax-H3-RYZN9-Preview", values,
                  "film5080", seed_max=2147483647)
 
 
 def film9700(values, models):
-    return _plan(
-        os.environ.get("FILM9700_BASE", "http://127.0.0.1:8093"),
-        os.environ.get("FILM9700_TOKEN_FILE", "/run/secrets/film9700-token"),
-        "Wan2.2-Video-Uncensored-R9700", values, "film9700")
+    return _plan(_ENV["film9700"], "Wan2.2-Video-Uncensored-R9700", values, "film9700")
+
+
+def _needs_base(mode):
+    var = _ENV[mode][0]
+    return lambda: (None if os.environ.get(var) else
+                    "Set %s to the address of your Film service to use this mode." % var)
 
 
 _FIELDS = [
@@ -83,6 +78,8 @@ _FIELDS = [
 
 ENGINE = {
     "id": "film_remote",
+    "enabled": lambda: any(os.environ.get(env[0]) for env in _ENV.values()),
+    "mode_deps": {mode: _needs_base(mode) for mode in _ENV},
     "cap": "video",
     "lane_kind": "process",
     "bins": {"python": "python3"},

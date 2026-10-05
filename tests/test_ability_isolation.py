@@ -24,9 +24,6 @@ Run: python3 tests/test_ability_isolation.py
 import os, sys, types
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-# ponytail: this install's film5080 refuses when the 5080 is unreachable (it is,
-# from tests); this gate checks graph building, not reachability.
-import engines.film_remote as _fr; _fr._alive = lambda *a: True
 
 FAILED = []
 def check(name, cond, detail=""):

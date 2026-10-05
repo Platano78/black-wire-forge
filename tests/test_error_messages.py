@@ -213,11 +213,6 @@ def build_cases():
     matrix, built once and reused against both modules."""
     out = []
     for cap, mode in ALL_MODES:
-        # ponytail: this install adds process-lane packs (qwen_remote, film_remote,
-        # music_remote); the fake "Test lane" is a ComfyUI lane, so generate() stops
-        # at the lane-kind/discovery branch before it ever validates a field.
-        if engines.lane_kind(cap, mode) != "comfy":
-            continue
         fields = engines.fields(cap, mode)
         for f in fields:
             fid, ftype = f["id"], f["type"]

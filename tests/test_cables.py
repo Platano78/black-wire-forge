@@ -152,11 +152,7 @@ def image_fields(cap, mode):
 
 VIDEO_MODE_WITH_JACKS = None
 VIDEO_MODE_NO_JACKS = None
-# ponytail: this install adds process-lane video packs (film_remote); the fake
-# test lane is a ComfyUI lane, so only comfy modes can actually generate here.
 for m in engines.modes_for("video"):
-    if engines.lane_kind("video", m) != "comfy":
-        continue
     imgs = image_fields("video", m)
     if imgs and VIDEO_MODE_WITH_JACKS is None:
         VIDEO_MODE_WITH_JACKS = m

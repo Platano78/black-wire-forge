@@ -194,9 +194,6 @@ try:
          "licence": None, "nsfw": True, "description": "d", "trigger_words": None, "strength": None,
          "preview": None, "files": [{"filename": "b.safetensors", "size": 20}]},
     ])
-    # ponytail: these checks use fixture catalogs, never live Hugging Face.
-    for family in FIXTURE_FAMILIES:
-        srv.CATALOG_CACHE.setdefault(family["hf_base"], (time.time(), []))
     lane = {"id": "lv2", "name": "Lane v2", "caps": ["image"]}
     srv.LANE_BY_ID["lv2"] = lane
     with srv.DISCOVERY_LOCK:

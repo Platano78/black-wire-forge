@@ -51,9 +51,7 @@ else:
 
 print("every audio mode is declared with a non-empty field list")
 modes = engines.modes_for("audio")
-# ponytail: this install adds local remote-lane audio packs, so require the
-# built-in modes to be present rather than the whole list to be equal.
-check("all five audio modes present", set(BUILDER) <= set(modes),
+check("all five audio modes present", sorted(modes) == sorted(BUILDER),
       str(sorted(modes)))
 for mode in BUILDER:
     fields = engines.fields("audio", mode)
