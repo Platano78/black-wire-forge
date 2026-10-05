@@ -31,6 +31,11 @@ falsy — is ignored. The dict has exactly these keys:
                        carries the answer as a bool under the short id
                        (m.get("cs_attn")), so a lane without the node still
                        gets a graph that validates.
+  enabled   optional callable() -> bool. Asked once per scan; False leaves
+                       the whole pack out, as if its file were absent. For an
+                       opt-in pack that only makes sense once the user has set
+                       something (e.g. the address of their own service).
+                       Absent means always loaded.
   generic_modes  optional list[str]  modes of a "legacy_dispatch" pack that
                        take the generic field-driven path anyway.
   words     dict  role_name -> str
@@ -370,6 +375,12 @@ def _discover():
                 continue
             module = importlib.import_module(f"{pkg}.{mod.name}")
             engine = getattr(module, "ENGINE", None)
+            # An opt-in pack (one that needs a setting the user must make,
+            # e.g. a service address) says so with `enabled`; False leaves it
+            # out entirely, exactly as if its file were not there.
+            enabled = engine.get("enabled") if isinstance(engine, dict) else None
+            if callable(enabled) and not enabled():
+                continue
             if isinstance(engine, dict) and engine.get("id"):
                 found.append(engine)
                 _PACK_FILES[engine["id"]] = os.path.abspath(
