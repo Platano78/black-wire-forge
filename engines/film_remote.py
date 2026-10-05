@@ -37,6 +37,7 @@ def _plan(env, model, values, name, seed_max=None):
         "steps": [{"argv": argv, "timeout_s": _TIMEOUT_S}],
         "outputs": ["%s.mp4" % name],
         "progress": r"PROGRESS (\d+)/(\d+)",
+        "fail_marker": "ERROR: ",   # the client's one-line fatal reason (_remote_http.main_guard)
     }
 
 

@@ -74,6 +74,8 @@ try:
     for name, p in (("film", plan), ("yue", yue2_5080({}, {})), ("qwen", qwen_image({}, {}))):
         check("%s plan: the client gets a deadline under the step timeout" % name,
               0 < int(argv_of(p, "--deadline-s")) < p["steps"][0]["timeout_s"])
+        check("%s plan: the runner keeps the client's ERROR: line" % name,
+              p.get("fail_marker") == "ERROR: ")
 finally:
     for k, v in SAVED.items():
         if v is None:

@@ -1,4 +1,3 @@
-import sys
 """Acceptance gate for runner.py: resolving a run plan's placeholders,
 checking its declared outputs against the job dir, and running its steps
 as local programs -- exit codes, progress, timeout, stop (no orphans),
@@ -67,19 +66,20 @@ ok, tail, err = runner.run_steps(runner.resolve_plan(plan, {"py": PY}, job, {}, 
 check("non-zero exit: not ok", not ok, repr(err))
 check("non-zero exit: exact sentence", err == "step 1 stopped with exit code 3", repr(err))
 
-# ponytail: a remote client's traceback is longer than the 20-line tail, so the
-# one line that says WHY must ride along in the error sentence itself.
-ok2, tail2, err2 = runner.run_steps(
-    [{"argv": [sys.executable, "-c",
-               "import sys;print('Film generation failed: ComfyUI refused');"
-               "[print('noise line %d' % i) for i in range(40)];sys.exit(1)"],
-      "timeout_s": 60}],
-    cwd=".")
-check("failure reason survives a long traceback",
-      err2 == "step 1 stopped with exit code 1: Film generation failed: ComfyUI refused",
-      repr(err2))
-check("reason is kept even though tail scrolled past it",
-      not any("Film generation failed" in t for t in tail2), repr(tail2[:2]))
+# A plan's "fail_marker" carries a program's one-line fatal reason into the
+# sentence, even after later output scrolled it out of the 20-line tail.
+LOUD = ("import sys;print('Film generation failed: noise first');"
+        "print('ERROR: The Film service is not answering.');"
+        "[print('noise line %d' % i) for i in range(40)];sys.exit(1)")
+ok2, tail2, err2 = runner.run_steps([{"argv": [PY, "-c", LOUD], "timeout_s": 60}], job,
+                                    fail_marker="ERROR: ")
+check("fail_marker: the marked line rides along, marker removed",
+      err2 == "step 1 stopped with exit code 1: The Film service is not answering.", repr(err2))
+check("fail_marker: kept even though the tail scrolled past it",
+      not any(t.startswith("ERROR: ") for t in tail2), repr(tail2[:2]))
+ok3, tail3, err3 = runner.run_steps([{"argv": [PY, "-c", LOUD], "timeout_s": 60}], job)
+check("no fail_marker: the sentence is exactly as before, whatever the program printed",
+      err3 == "step 1 stopped with exit code 1", repr(err3))
 check("non-zero exit: tail kept", len(tail) > 0, repr(tail))
 
 # 3. timeout

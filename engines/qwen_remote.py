@@ -33,6 +33,7 @@ def qwen_image(values, models):
         ], "timeout_s": _TIMEOUT_S}],
         "outputs": ["qwen-image-r9700.png"],
         "progress": r"PROGRESS (\d+)/(\d+)",
+        "fail_marker": "ERROR: ",   # the client's one-line fatal reason (_remote_http.main_guard)
     }
 
 

@@ -212,7 +212,11 @@ at all.
 - **`lane_kind`** — `"comfy"` (the default) or `"process"`. A process pack runs a local
   program instead of a ComfyUI graph — see `engines/turntable.py`, which sets
   `"lane_kind": "process"` and `"bins": {"blender": "blender", "ffmpeg": "ffmpeg"}` (the
-  executable names, read by `runner.py`; never hardcoded in the core).
+  executable names, read by `runner.py`; never hardcoded in the core). A run plan may set
+  `"fail_marker": "ERROR: "`: a program that prints its fatal reason on a line starting with
+  that marker gets the reason added to the "stopped with exit code" sentence the page shows,
+  even when later output scrolls it out of the kept tail. Without the key the sentence is
+  unchanged.
 - **`enabled`** — `callable() -> bool`. Asked once each time the loader scans `engines/`;
   `False` leaves the whole pack out, exactly as if its file were not there (no modes, no
   rooms, no licence rows). For an opt-in pack that only makes sense after the user has set

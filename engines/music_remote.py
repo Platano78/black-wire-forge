@@ -35,6 +35,7 @@ def _plan(mode, model, values, name):
         ], "timeout_s": _TIMEOUT_S}],
         "outputs": ["%s.mp3" % name],
         "progress": r"PROGRESS (\d+)/(\d+)",
+        "fail_marker": "ERROR: ",   # the client's one-line fatal reason (_remote_http.main_guard)
     }
 
 
