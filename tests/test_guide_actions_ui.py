@@ -392,7 +392,7 @@ try:
                 check("Check 5: Open video shot 1 opens it",
                       page.query_selector('#tlTrackVideo [aria-pressed="true"]') is not None and \
                       page.query_selector('#tlTrackVideo [aria-pressed="true"]').get_attribute("data-slot-id") == FIRST,
-                      f"opened slot: {page.query_selector('#tlTrackVideo [aria-pressed=\"true\"]').get_attribute('data-slot-id') if page.query_selector('#tlTrackVideo [aria-pressed=\"true\"]') else None}")
+                      f"opened slot: {page.query_selector('#tlTrackVideo [aria-pressed=true]').get_attribute('data-slot-id') if page.query_selector('#tlTrackVideo [aria-pressed=true]') else None}")
                 # Click the 2nd: "Make video shot 1 sends that shot"
                 page.wait_for_timeout(800)
                 bar_buttons(page)[1].click()

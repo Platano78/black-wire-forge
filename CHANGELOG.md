@@ -11,6 +11,7 @@ All notable changes to Black Wire Forge are recorded here.
 ### Added
 
 - The music video can be started from the Video room too ("Make a music video"), and its dialog can pick a song you made in History as well as take a song file.
+- **Remote generation packs** (contributed by Edrick Polanco, #1): optional Film video, YuE2 music and Qwen picture packs that call your own remote services, loaded only when their service address is set (`docs/REMOTE-BACKENDS.md`). The token is only ever sent to that address.
 
 
 ## v1.3.0 — 2026-10-04

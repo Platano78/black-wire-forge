@@ -1915,7 +1915,8 @@ def run_process_job(lane, jid):
                 j["step"], j["total"] = step, total
     ok, tail, err = runner.run_steps(steps, cwd=job_dir,
                                      progress=plan.get("progress") if isinstance(plan, dict) else None,
-                                     on_progress=on_progress, stop_event=stop)
+                                     on_progress=on_progress, stop_event=stop,
+                                     fail_marker=plan.get("fail_marker") if isinstance(plan, dict) else None)
     if stop.is_set():
         _finish_process_job(jid, "error", "you stopped this one", tail)
         return

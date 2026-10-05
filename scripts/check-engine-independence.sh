@@ -25,9 +25,13 @@ ROOMS_PAT="$PAT|ltx|birefnet|esrgan|sdxl|rife"
 # runner.py is the engine-agnostic job runner -- it gets the rooms.json
 # treatment too, plus the render tools that packs load: it names none.
 RUNNER_PAT="$ROOMS_PAT|blender|ffmpeg"
+# Optional packs' own mode ids and the hardware they name (the remote
+# Film/YuE/Qwen packs): the page offers them through the engine picker, so
+# index.html and help.html never spell them out.
+PACK_MODE_PAT='film5080|film9700|r9700|rtx.?5080'
 # help.html reads its live sections from /api/engines and /api/credits, so
 # it must be exactly as engine-agnostic as rooms.json -- same pattern.
-HELP_PAT="$ROOMS_PAT"
+HELP_PAT="$ROOMS_PAT|$PACK_MODE_PAT"
 
 [ -f server.py ] || { echo "FAIL: server.py missing; ratchet would pass vacuously"; exit 2; }
 [ -f rooms.json ] || { echo "FAIL: rooms.json missing; ratchet would pass vacuously"; exit 2; }
@@ -35,7 +39,7 @@ HELP_PAT="$ROOMS_PAT"
 [ -f help.html ] || { echo "FAIL: help.html missing; ratchet would pass vacuously"; exit 2; }
 
 s=$(grep -ciE "$PAT" server.py)
-i=$(grep -ciE 'qwen|minimax|h3|ace.step' index.html)
+i=$(grep -ciE "qwen|minimax|h3|ace.step|$PACK_MODE_PAT" index.html)
 r=$(grep -ciE "$ROOMS_PAT" rooms.json)
 u=$(grep -ciE "$RUNNER_PAT" runner.py)
 h=$(grep -ciE "$HELP_PAT" help.html)

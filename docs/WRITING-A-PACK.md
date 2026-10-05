@@ -212,7 +212,17 @@ at all.
 - **`lane_kind`** — `"comfy"` (the default) or `"process"`. A process pack runs a local
   program instead of a ComfyUI graph — see `engines/turntable.py`, which sets
   `"lane_kind": "process"` and `"bins": {"blender": "blender", "ffmpeg": "ffmpeg"}` (the
-  executable names, read by `runner.py`; never hardcoded in the core).
+  executable names, read by `runner.py`; never hardcoded in the core). A run plan may set
+  `"fail_marker": "ERROR: "`: a program that prints its fatal reason on a line starting with
+  that marker gets the reason added to the "stopped with exit code" sentence the page shows,
+  even when later output scrolls it out of the kept tail. Without the key the sentence is
+  unchanged.
+- **`enabled`** — `callable() -> bool`. Asked once each time the loader scans `engines/`;
+  `False` leaves the whole pack out, exactly as if its file were not there (no modes, no
+  rooms, no licence rows). For an opt-in pack that only makes sense after the user has set
+  something, e.g. the address of their own service in an environment variable. Absent
+  means the pack is always loaded. A mode that is loaded but cannot run yet says why with
+  `mode_deps`, not with `enabled`.
 - **`legacy_dispatch`** — `True` only for packs the core's own hand-tuned dispatch logic
   still owns (cfg defaults, frame-grid snapping). New packs should not set this; it exists
   for two packs mid-migration to the generic field-driven path (`engines.legacy_dispatch()`).

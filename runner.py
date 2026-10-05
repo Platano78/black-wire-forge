@@ -123,15 +123,23 @@ def output_paths(plan, job_dir):
     return paths
 
 
-def run_steps(steps, cwd, progress=None, on_progress=None, stop_event=None):
+def run_steps(steps, cwd, progress=None, on_progress=None, stop_event=None,
+              fail_marker=None):
     """Run resolved steps in order as local programs, never via a shell.
 
     Returns (ok, tail, error): ok is True only if every step exits 0;
     tail holds the last 20 output lines across all steps; error is a
     plain sentence when something went wrong.
+
+    fail_marker (the plan's optional "fail_marker", e.g. "ERROR: "): a
+    program that prints its fatal reason on a line starting with this gets
+    that line (marker removed) added to the non-zero-exit sentence, even
+    when later output scrolls it out of the tail. Without it the sentence
+    is unchanged.
     """
     prog = re.compile(progress) if progress else None
     tail = deque(maxlen=20)
+    first_err = []
 
     def kill_group(proc):
         if IS_WINDOWS:
@@ -192,6 +200,8 @@ def run_steps(steps, cwd, progress=None, on_progress=None, stop_event=None):
         for line in proc.stdout:
             text = line.rstrip("\n")
             tail.append(text)
+            if fail_marker and not first_err and text.startswith(fail_marker):
+                first_err.append(text[len(fail_marker):].strip()[:300])
             if prog is not None and on_progress is not None:
                 m = prog.search(line)
                 if m:
@@ -204,5 +214,8 @@ def run_steps(steps, cwd, progress=None, on_progress=None, stop_event=None):
         if reason and reason[0] == "stop":
             return False, list(tail), "stopped"
         if proc.returncode != 0:
-            return False, list(tail), "step %d stopped with exit code %d" % (n, proc.returncode)
+            why = "step %d stopped with exit code %d" % (n, proc.returncode)
+            if first_err and first_err[0]:
+                why += ": " + first_err[0]
+            return False, list(tail), why
     return True, list(tail), None
