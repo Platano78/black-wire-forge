@@ -108,10 +108,13 @@ def main():
             "-map", "[m2]", "-f", "null", "-")
     if r.returncode != 0:
         fail("The mix could not be built: %s" % one_line(r.stderr))
-    m = re.search(r"\{.*\}", r.stderr, re.S)
-    if not m:
+    # ffmpeg prints every input's metadata into stderr, and BWF's own audio files carry the whole
+    # ComfyUI graph in a "prompt" tag, so the loudness block is the LAST brace-free {...} in
+    # stderr, not everything from the first brace (which is not even valid JSON).
+    blocks = re.findall(r"\{[^{}]*\}", r.stderr)
+    if not blocks:
         fail("The first loudness pass measured nothing: %s" % one_line(r.stderr))
-    m1 = json.loads(m.group(0))
+    m1 = json.loads(blocks[-1])
 
     print("PROGRESS 2/%d" % TOTAL_STEPS, flush=True)
     r = run(*inputs, "-filter_complex",

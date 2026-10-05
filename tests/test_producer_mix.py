@@ -146,6 +146,28 @@ check("mix.json shows the missing gain as 0 (gains [3, 0])",
 check("mix.json shows both offsets defaulted to 0",
       [t.get("offset_s") for t in doc2.get("tracks", [])] == [0.0, 0.0], doc2)
 
+print("a track whose tags hold JSON (a BWF song's prompt graph) still mixes")
+# BWF's own audio files carry the ComfyUI graph in a "prompt" tag, so ffmpeg
+# echoes brace-laden metadata into stderr before loudnorm's own flat JSON.
+C = os.path.join(WORK, "c.mp3")
+GRAPH = '{"104": {"inputs": {"a": 1}}, "105": {"b": "x\ty"}}'
+r = subprocess.run([FFMPEG, "-hide_banner", "-v", "error", "-y", "-i", A,
+                    "-c:a", "libmp3lame", "-b:a", "128k",
+                    "-metadata", "prompt=" + GRAPH, C],
+                   capture_output=True, text=True)
+check("made a track carrying a JSON-shaped prompt tag", os.path.isfile(C) and os.path.getsize(C) > 0,
+      r.stderr[-300:])
+OUT3 = os.path.join(WORK, "out3")
+r = subprocess.run([sys.executable, MIX,
+                    "--out", OUT3, "--ffmpeg", FFMPEG,
+                    "--track", C, "--track", B,
+                    "--gain", "0", "--gain", "-6",
+                    "--lufs", "-14"], capture_output=True, text=True)
+check("mixing two tracks whose tags hold JSON -> exit 0", r.returncode == 0,
+      "rc=%s\nstdout=%s\nstderr=%s" % (r.returncode, r.stdout[-500:], r.stderr[-500:]))
+check("...with no traceback in stderr", "Traceback" not in r.stderr, r.stderr[-500:])
+check("...and the output written", os.path.isfile(os.path.join(OUT3, "mix.wav")))
+
 print("refusals: one sentence, exit 2, no traceback")
 
 

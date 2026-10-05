@@ -72,6 +72,14 @@ if callable(fps):
           len(minimax_h3.h3_shot_check({"prompt": "[wind] rustling trees"}, {})) == 1)
     check("the H3 check still reads past a real prefix", minimax_h3.h3_shot_check(
         {"prompt": "[video editing + reference generation + audio reuse] Live-action, a fox runs."}, {}) == [])
+    check("H3's own [Shot n] markers are not flagged",
+          minimax_h3.h3_shot_check({"prompt": 'integrated_multimodal_description: [Shot 1] Live-action, '
+                                                     'a man turns his head. [Shot 2] He smiles.'}, {}) == [],
+          minimax_h3.h3_shot_check({"prompt": 'integrated_multimodal_description: [Shot 1] Live-action, '
+                                                     'a man turns his head. [Shot 2] He smiles.'}, {}))
+    check("...but [wind] beside a shot marker is still flagged (exactly one)",
+          len(minimax_h3.h3_shot_check({"prompt": "[Shot 1] a man walks [wind] past"}, {})) == 1,
+          minimax_h3.h3_shot_check({"prompt": "[Shot 1] a man walks [wind] past"}, {}))
     check("the strip and the H3 check use the same pattern",
           minimax_h3.ENGINE["task_prefix"] == minimax_h3._TASK_PREFIX_RE.pattern)
 

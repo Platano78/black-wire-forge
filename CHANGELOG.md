@@ -2,6 +2,13 @@
 
 All notable changes to Black Wire Forge are recorded here.
 
+## Unreleased
+
+### Fixed
+
+- Mix no longer fails with a JSON error when a track carries text in its tags (songs made here carry their recipe there): it now reads only ffmpeg's loudness numbers.
+- A video written in MiniMax-H3's own format ("[Shot 1] ...", "[Shot 2] ...") no longer asks you to confirm the shot: those shot numbers are part of that model's prompt style, not weights it reads out loud. Any other bracket, weight or double bracket is still flagged.
+
 ## v1.4.0 — 2026-10-05
 
 ### Fixed
