@@ -369,6 +369,71 @@ try:
               and "song_job" not in body and body.get("make_photo") is True, body)
         page4.close()
 
+        # ------------------------------------------------------------------
+        # 10. The Video room offers the same button ("Make a music video"),
+        #     and that dialog can start from a song you made in History:
+        #     picking one hides the lyrics row and POSTs song_job only; a
+        #     file chosen afterwards wins again and POSTs song_upload.
+        # ------------------------------------------------------------------
+        page5 = browser.new_page(viewport={"width": 1280, "height": 800})
+        page5.goto(URL + "#room=video", wait_until="networkidle", timeout=30000)
+        page5.wait_for_selector("#forgeVideoFromFileBtn", timeout=15000)
+        check("video room: its empty monitor offers the button in plain words",
+              page5.inner_text("#forgeVideoFromFileBtn") == "Make a music video")
+        page5.click("#forgeVideoFromFileBtn")
+        check("video room: clicking it opens the dialog",
+              page5.evaluate("() => $('#forgeVideoDialog').open && !!$('#forgeVideoSongPick')"))
+        page5.check("#forgeVideoWhoMake")
+
+        uploaded = iter(["abc_fromfile.mp3"])
+
+        def route_upload5(route):
+            route.fulfill(status=200, headers={"Content-Type": "application/json"},
+                          json={"ok": True, "files": [{"name": next(uploaded, "photo.png"), "original": "x"}]})
+
+        page5.route("**/api/upload*", route_upload5)
+        job_posts = []
+
+        def route_job_start(route):
+            job_posts.append(json.loads(route.request.post_data))
+            route.fulfill(status=400, headers={"Content-Type": "application/json"}, json={"ok": False, "error": "stub"})
+
+        page5.route("**/api/forge/music-video*", route_job_start)
+        page5.select_option("#forgeVideoSongPick", "song1")
+        check("picker: the finished song from History is offered",
+              "a slow neon-carnival song" in page5.inner_text("#forgeVideoSongPick"))
+        check("picker: choosing it hides the lyrics row (the song brings its own)",
+              page5.evaluate("() => $('#forgeVideoLyricsRow').hidden"))
+        check("picker: Start is ready with no song file at all",
+              page5.evaluate("() => !$('#forgeVideoStart').disabled"))
+        page5.click("#forgeVideoStart")
+        page5.wait_for_function("() => { const m = $('#forgeVideoMsg'); return m && m.textContent.trim(); }", timeout=10000)
+        body = job_posts[0] if job_posts else {}
+        check("picker: it POSTs song_job and neither song_upload nor lyrics",
+              body.get("song_job") == "song1" and "song_upload" not in body and "lyrics" not in body
+              and body.get("make_photo") is True, body)
+
+        # A file chosen afterwards wins again: the file is what gets sent.
+        page5.click("#forgeVideoCancel")
+        page5.click("#forgeVideoFromFileBtn")
+        page5.set_input_files("#forgeVideoSong", song_file)
+        page5.wait_for_function("() => !$('#forgeVideoStart').disabled", timeout=10000)
+        check("file after a pick: the picker is back to its own first choice",
+              page5.evaluate("() => $('#forgeVideoSongPick').value === '' && !$('#forgeVideoLyricsRow').hidden"))
+        page5.fill("#forgeVideoLyrics", "la la")
+        job_posts.clear()
+        page5.click("#forgeVideoStart")
+        page5.wait_for_function("() => { const m = $('#forgeVideoMsg'); return m && m.textContent.trim(); }", timeout=10000)
+        body = job_posts[0] if job_posts else {}
+        check("file after a pick: it POSTs song_upload and no song_job",
+              body.get("song_upload") == "abc_fromfile.mp3" and "song_job" not in body, body)
+
+        page5.goto(URL + "#room=music", wait_until="networkidle", timeout=30000)
+        page5.wait_for_selector("#forgeVideoFromFileBtn", timeout=15000)
+        check("sound room: it still names a song file",
+              page5.inner_text("#forgeVideoFromFileBtn") == "Make a music video from a song file")
+        page5.close()
+
         browser.close()
         print("All forge video UI checks complete")
 

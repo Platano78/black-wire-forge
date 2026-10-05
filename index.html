@@ -1773,8 +1773,11 @@ function monitorEmptyHTML(room){
   const ms = roomModes(room);
   let html = '<div class="monitor-empty"><p>' + esc(room.empty || 'Set it up on the right and press Make.') + '</p>';
   // A song made somewhere else can become a music video too (a History song has its own button).
-  if(room.group === 'SOUND')
-    html += '<p><button type="button" class="btn" id="forgeVideoFromFileBtn">Make a music video from a song file</button></p>';
+  // The Video room offers the same road in; it just has no song of its own to name a file after.
+  if(room.group === 'SOUND' || room.id === 'video')
+    html += '<p><button type="button" class="btn" id="forgeVideoFromFileBtn">'
+      + (room.id === 'video' ? 'Make a music video' : 'Make a music video from a song file')
+      + '</button></p>';
   // UX-2 #4: only for the picked mode, and only when it actually has both
   // boxes (audit B5 -- the YuE2 job that ran with no words because nothing
   // said Style and Lyrics were two different fields).
@@ -5565,7 +5568,8 @@ async function openCredits(){
    then poll GET /api/forge/run every 3 s until the run stops being running.
    OLDER servers have none of these routes -- a 404 is not an error here.
 --------------------------------------------------------------------- */
-const FORGE_VIDEO = {jobId: null, song: null, lyrics: '', photo: null, style: '', make: false, person: '', runId: null, timer: null, run: null};
+const FORGE_VIDEO = {jobId: null, song: null, lyrics: '', photo: null, style: '', make: false, person: '', runId: null, timer: null, run: null,
+                     fromPicker: false};   // opened without a History song: it asks for one, or for a file
 
 function forgeVideoStageWords(stage){
   // Plain words for the record's stage -- the stage keys are the machine's
@@ -5588,14 +5592,41 @@ function forgeVideoLane(){
   return any ? any.id : null;
 }
 
+// The songs History has finished, newest first, at most 40: the music video can start from one of them.
+function finishedVideoSongs(){
+  const jobs = [];
+  for(const job of STATE.jobs){
+    if(jobs.length >= 40) break;
+    if(job.kind !== 'audio' || job.status !== 'done') continue;
+    const out = (job.outputs || [])[0];
+    if(!isSoundOutput(out)) continue;
+    jobs.push({id: job.id, label: (modeInfo(job.kind, job.mode) || {}).label || job.mode || 'a song',
+               text: String(job.prompt || out.filename || '').slice(0, 40)});
+  }
+  return jobs;
+}
+function forgeVideoSongPickHTML(){
+  const jobs = finishedVideoSongs();
+  if(!jobs.length) return '';   // nothing to pick: the file alone is the way in
+  return '<div class="field-row"><label class="field-label" for="forgeVideoSongPick">The song</label>'
+    + '<select id="forgeVideoSongPick"><option value="">Choose a song you made\u2026</option>'
+    + jobs.map(j => '<option value="' + esc(j.id) + '">'
+        + esc(j.label + ' \u00b7 ' + j.text) + '</option>').join('')
+    + '</select></div>';
+}
+
 function forgeVideoFormHTML(){
   const mk = FORGE_VIDEO.make;
-  const fromFile = !FORGE_VIDEO.jobId;
+  const fromFile = FORGE_VIDEO.fromPicker;   // opened without a History song, so it can still pick one
   return '<p>It plans the shots from the song, makes a picture for each, animates them to the music and cuts it together. You can leave it running.</p>'
     + (fromFile
-      ? '<div class="field-row"><label class="field-label" for="forgeVideoSong">The song</label>'
+      ? forgeVideoSongPickHTML()
+      : '')
+    + (fromFile
+      ? '<div class="field-row"><label class="field-label" for="forgeVideoSong">'
+        + (finishedVideoSongs().length ? '\u2026or a song file' : 'The song') + '</label>'
         + '<input type="file" id="forgeVideoSong" accept="audio/*,.m4a,.mp3,.wav,.aac,.flac,.ogg,.opus"></div>'
-        + '<div class="field-row"><label class="field-label" for="forgeVideoLyrics">Its lyrics (optional)</label>'
+        + '<div class="field-row" id="forgeVideoLyricsRow"' + (FORGE_VIDEO.jobId ? ' hidden' : '') + '><label class="field-label" for="forgeVideoLyrics">Its lyrics (optional)</label>'
         + '<textarea id="forgeVideoLyrics" rows="4" maxlength="6000" placeholder="Paste the words, and the scenes follow them">'
         + esc(FORGE_VIDEO.lyrics) + '</textarea></div>'
       : '')
@@ -5741,9 +5772,32 @@ function forgeVideoSongUpload(){
     })
     .catch(() => { if(msg) msg.textContent = 'Could not send the song.'; });
 }
+function forgeVideoSongPicked(){
+  // A song from History brings its own lyrics, so the lyrics row goes away with it.
+  const pick = $('#forgeVideoSongPick');
+  const fv = FORGE_VIDEO;
+  fv.jobId = pick && pick.value ? pick.value : null;
+  fv.song = null;
+  const file = $('#forgeVideoSong');
+  if(file) file.value = '';
+  const lyr = $('#forgeVideoLyricsRow');
+  if(lyr) lyr.hidden = !!fv.jobId;
+  const start = $('#forgeVideoStart');
+  if(start) start.disabled = !forgeVideoCanStart();
+}
 function forgeVideoWireForm(){
+  const pick = $('#forgeVideoSongPick');
+  if(pick) pick.onchange = forgeVideoSongPicked;
   const song = $('#forgeVideoSong');
-  if(song) song.onchange = forgeVideoSongUpload;
+  // A file beats a picked song: the file is what gets sent.
+  if(song) song.onchange = () => {
+    if(!song.files || !song.files[0]) return;
+    FORGE_VIDEO.jobId = null;
+    const lyr = $('#forgeVideoLyricsRow');
+    if(lyr) lyr.hidden = false;
+    if(pick) pick.value = '';
+    forgeVideoSongUpload();
+  };
   const lyr = $('#forgeVideoLyrics');
   if(lyr) lyr.oninput = () => { FORGE_VIDEO.lyrics = lyr.value; };
   const photo = $('#forgeVideoPhoto');
@@ -5769,8 +5823,9 @@ function forgeVideoWireForm(){
 function openForgeVideo(job){
   const fv = FORGE_VIDEO;
   clearTimeout(fv.timer); fv.timer = null;
-  fv.jobId = job ? job.id : null;   // no job: a song file of your own
-  if(job) fv.song = null;
+  fv.jobId = job ? job.id : null;   // no job: a song you made, or a song file of your own
+  fv.fromPicker = !job;
+  fv.song = null;   // every opening starts clean: a song sent in an earlier dialog is not this one's
   fv.runId = null; fv.run = null;
   $('#forgeVideoBody').innerHTML = forgeVideoFormHTML();
   forgeVideoWireForm();

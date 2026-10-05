@@ -8,6 +8,11 @@ All notable changes to Black Wire Forge are recorded here.
 
 - The music video works across two machines: its pictures are made on a machine that makes pictures and its shots on one that makes video, instead of stopping when the picked machine does only one of them. It checks both before the run starts. (#2)
 
+### Added
+
+- The music video can be started from the Video room too ("Make a music video"), and its dialog can pick a song you made in History as well as take a song file.
+
+
 ## v1.3.0 — 2026-10-04
 
 ### Added
