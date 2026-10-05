@@ -174,7 +174,7 @@ try:
         page.locator("#upload_part_audio_name").set_input_files(songs["song_b.wav"])
         page.locator("#upload_target_audio_name").set_input_files(songs["song_c.wav"])
         page.wait_for_timeout(1500)
-        page.get_by_role("button", name="Make").first.click()
+        page.get_by_role("button", name="Make", exact=True).first.click()
         summary = wait_summary(FIT_SUMMARY)
         check("the finished Fit shows its summary on the page",
               summary.count() == 1 and summary.text_content() == FIT_SUMMARY,
@@ -216,7 +216,7 @@ try:
         page.locator("#f_gain_2").fill("-3")
         page.locator("#f_offset_2").fill("1.5")
         page.wait_for_timeout(300)
-        page.get_by_role("button", name="Make").first.click()
+        page.get_by_role("button", name="Make", exact=True).first.click()
         summary = wait_summary(MIX_SUMMARY)
         check("the finished Mix shows its summary on the page",
               summary.count() == 1 and summary.text_content() == MIX_SUMMARY,

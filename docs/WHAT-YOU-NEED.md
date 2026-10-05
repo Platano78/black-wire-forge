@@ -102,7 +102,7 @@ This page lists the opt-in features that depend on something outside the app, wh
 
 ## Make a music video from this song (Forge Master)
 
-**What it does:** from a finished song in History plus one photo (or a person it makes up for you), plans the shots, makes a picture of the person in each scene, animates each to its slice of the song, and cuts it into one video. No questions asked after Start.
+**What it does:** from a finished song in History (or a song file of your own, from "Make a music video from a song file" in the Sound rooms, with its lyrics pasted if you have them) plus one photo (or a person it makes up for you), plans the shots, makes a picture of the person in each scene, animates each to its slice of the song, and cuts it into one video. No questions asked after Start.
 
 **What you need:** a machine (lane) in `config.json` that can edit pictures (a Picture "edit" mode) and make video (the LTX video mode), a finished song made in the Music room (its lyrics, if any, are used for the scenes), a photo of someone who agrees to be in it (or choose "Make someone up", which also needs a Picture "text to picture" mode on the machine; the person is made first and used in every shot), and ffmpeg on the computer running the app (for the cut). A helper (the optional chat endpoint) writes the scenes; without one, plain fallback scenes are used.
 

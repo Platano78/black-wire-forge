@@ -192,7 +192,26 @@ def err(body):
 c, e, ok = err(dict(GOOD, lane="nonexistent"))
 check("unknown lane", c == 400 and e == "unknown lane 'nonexistent'" and ok is False, (c, e))
 c, e, ok = err({"lane": "t", "photo": "me.png"})
-check("no song", c == 400 and e == "Pick a finished song first.", (c, e))
+check("no song", c == 400 and e == "Pick a finished song first, or add a song file.", (c, e))
+v, errs = srv._forge_run_validation({"lane": "t", "song_upload": "abc_mysong.mp3", "photo": "me.png", "lyrics": "[Verse]\nla"})
+check("a song file of your own is accepted in place of a History song, with its lyrics",
+      not errs and v["song_job"] is None and v["song_upload"] == "abc_mysong.mp3" and v["lyrics"] == "[Verse]\nla", (errs, v))
+for bad in ("../x.mp3", "song.txt", "a\x00b.mp3"):
+    c, e, ok = err({"lane": "t", "song_upload": bad, "photo": "me.png"})
+    check("song file %r is refused with one sentence" % bad, c == 400 and "song file" in e, (c, e))
+_got = []
+_real_upload = srv._resolve_upload_bytes
+srv._resolve_upload_bytes = lambda lane_id, name: (_got.append((lane_id, name)), (b"RIFF", name))[1]
+_real_master = srv.seq_master_import
+srv.seq_master_import = lambda sid, rev, fname, data: ({"master": {"seconds": 12.0}}, 200)
+try:
+    be = srv._ForgeBackend("r", srv.LANE_BY_ID["t"], 576, 768, song_upload="abc_mysong.mp3")
+    be._rev = lambda sid: 1
+    secs = be.import_master("sid", None)
+finally:
+    srv._resolve_upload_bytes = _real_upload
+    srv.seq_master_import = _real_master
+check("the run reads the song file from the lane it was uploaded to", _got == [("t", "abc_mysong.mp3")] and secs == 12.0, (_got, secs))
 c, e, ok = err(dict(GOOD, song_job="song_running"))
 check("unfinished song", c == 400 and e == "Pick a finished song first.", (c, e))
 c, e, ok = err(dict(GOOD, song_job="pic1"))

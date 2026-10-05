@@ -328,6 +328,47 @@ try:
               all("404" in e for e in errors), errors[:5])
         page3.close()
 
+        # ------------------------------------------------------------------
+        # 9. A song file of your own: the Sound rooms' empty monitor offers
+        #    "Make a music video from a song file"; the dialog then asks for
+        #    the song (and optional lyrics) and POSTs song_upload, not song_job.
+        # ------------------------------------------------------------------
+        page4 = browser.new_page(viewport={"width": 1280, "height": 800})
+        page4.goto(URL + "#room=music", wait_until="networkidle", timeout=30000)
+        page4.wait_for_selector("#forgeVideoFromFileBtn", timeout=15000)
+        check("song file: the Music room's empty monitor offers it",
+              page4.inner_text("#forgeVideoFromFileBtn") == "Make a music video from a song file")
+        page4.click("#forgeVideoFromFileBtn")
+        check("song file: the dialog asks for the song and its lyrics",
+              page4.evaluate("() => $('#forgeVideoDialog').open && !!$('#forgeVideoSong') && !!$('#forgeVideoLyrics')"))
+        check("song file: Start waits for the song", page4.evaluate("() => $('#forgeVideoStart').disabled"))
+        names = iter(["abc_mysong.mp3"])
+        page4.route("**/api/upload*", lambda route: route.fulfill(
+            status=200, headers={"Content-Type": "application/json"},
+            json={"ok": True, "files": [{"name": next(names, "photo.png"), "original": "x"}]}))
+        song_file = os.path.join(TMP, "mysong.mp3")
+        with open(song_file, "wb") as f:
+            f.write(b"ID3fake")
+        page4.check("#forgeVideoWhoMake")
+        check("song file: a made-up person alone does not start it", page4.evaluate("() => $('#forgeVideoStart').disabled"))
+        page4.set_input_files("#forgeVideoSong", song_file)
+        page4.wait_for_function("() => !$('#forgeVideoStart').disabled", timeout=10000)
+        page4.fill("#forgeVideoLyrics", "[Verse]\nla la")
+        sent = []
+
+        def route_file_start(route):
+            sent.append(json.loads(route.request.post_data))
+            route.fulfill(status=400, headers={"Content-Type": "application/json"}, json={"ok": False, "error": "stub"})
+
+        page4.route("**/api/forge/music-video*", route_file_start)
+        page4.click("#forgeVideoStart")
+        page4.wait_for_function("() => { const m = $('#forgeVideoMsg'); return m && m.textContent.trim(); }", timeout=10000)
+        body = sent[0] if sent else {}
+        check("song file: it POSTs song_upload and the lyrics, and no song_job",
+              body.get("song_upload") == "abc_mysong.mp3" and body.get("lyrics") == "[Verse]\nla la"
+              and "song_job" not in body and body.get("make_photo") is True, body)
+        page4.close()
+
         browser.close()
         print("All forge video UI checks complete")
 

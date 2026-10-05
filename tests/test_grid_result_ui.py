@@ -70,7 +70,7 @@ try:
             page.locator("#enginePicker").get_by_text("Grid check", exact=False).first.click()
         page.locator("#roomForm input[type=file]").first.set_input_files(song)
         page.wait_for_timeout(1500)
-        page.get_by_role("button", name="Make").first.click()
+        page.get_by_role("button", name="Make", exact=True).first.click()
         summary = page.locator("#jobSummary")
         try:
             summary.wait_for(state="visible", timeout=20000)

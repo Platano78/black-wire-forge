@@ -11019,8 +11019,9 @@ class _ForgeBackend:
     """The backend forge_run.MusicVideoRun is written against (see its docstring). Every method calls an existing
     server function; anything a person should read is raised as forge_run.RunError."""
 
-    def __init__(self, run_id, lane, w, h):
+    def __init__(self, run_id, lane, w, h, song_upload=None):
         self.run_id, self.lane, self.w, self.h = run_id, lane, w, h
+        self.song_upload = song_upload   # a song file uploaded to this lane, in place of a History song
 
     # -- sequence -----------------------------------------------------------
     def _rev(self, sid):
@@ -11053,7 +11054,10 @@ class _ForgeBackend:
 
     def import_master(self, sid, song_job_id):
         try:
-            data, fname = _resolve_job_output_bytes(song_job_id, 0)
+            if self.song_upload:
+                data, fname = _resolve_upload_bytes(self.lane["id"], self.song_upload)
+            else:
+                data, fname = _resolve_job_output_bytes(song_job_id, 0)
         except ValueError as e:
             raise forge_run.RunError(str(e))
         body, code = seq_master_import(sid, self._rev(sid), fname, data)
@@ -11195,23 +11199,34 @@ def _forge_run_validation(p):
         return None, [(400, "%s is offline right now. Pick one of the lanes glowing green." % lane["name"])]
 
     song_job = (p.get("song_job") or "").strip()
-    if not song_job:
-        return None, [(400, "Pick a finished song first.")]
-    with JOBS_LOCK:
-        song_job_rec = JOBS.get(song_job)
-    if not song_job_rec or song_job_rec.get("status") != "done":
-        return None, [(400, "Pick a finished song first.")]
-    # Verify it's an audio job
-    outs = song_job_rec.get("outputs") or []
-    if not outs:
-        return None, [(400, "Pick a finished song first.")]
-    first_out = outs[0]
-    media = first_out.get("media", "")
-    if media != "audio":
-        # Check by extension as fallback
-        fn = first_out.get("filename", "").lower()
-        if not any(fn.endswith(e) for e in (".wav", ".mp3", ".m4a", ".aac", ".flac", ".ogg", ".opus")):
+    # A song file of your own (uploaded to this lane like any input), in place of a song from History.
+    song_upload = p.get("song_upload")
+    if not song_job and isinstance(song_upload, str) and song_upload.strip():
+        song_upload = song_upload.strip()
+        if "\x00" in song_upload or _has_dotdot(song_upload) \
+                or not song_upload.lower().endswith((".wav", ".mp3", ".m4a", ".aac", ".flac", ".ogg", ".opus")):
+            return None, [(400, "That is not a song file I can use (wav, mp3, m4a, aac, flac, ogg or opus).")]
+        song_job_rec = {"args": {}}
+    else:
+        song_upload = None
+    if not song_job and not song_upload:
+        return None, [(400, "Pick a finished song first, or add a song file.")]
+    if not song_upload:
+        with JOBS_LOCK:
+            song_job_rec = JOBS.get(song_job)
+        if not song_job_rec or song_job_rec.get("status") != "done":
             return None, [(400, "Pick a finished song first.")]
+        # Verify it's an audio job
+        outs = song_job_rec.get("outputs") or []
+        if not outs:
+            return None, [(400, "Pick a finished song first.")]
+        first_out = outs[0]
+        media = first_out.get("media", "")
+        if media != "audio":
+            # Check by extension as fallback
+            fn = first_out.get("filename", "").lower()
+            if not any(fn.endswith(e) for e in (".wav", ".mp3", ".m4a", ".aac", ".flac", ".ogg", ".opus")):
+                return None, [(400, "Pick a finished song first.")]
 
     photo = (p.get("photo") or "").strip()
     person = (p.get("person") or "").strip()
@@ -11255,13 +11270,13 @@ def _forge_run_validation(p):
         return None, [(400, "Height must be a multiple of 16, between 256 and 1152.")]
 
     return {
-        "lane": lane, "song_job": song_job, "photo": photo or None, "person": person,
+        "lane": lane, "song_job": song_job or None, "song_upload": song_upload, "photo": photo or None, "person": person,
         "style": style, "lyrics": lyrics, "width": width, "height": height,
     }, []
 
 
 def _forge_thread(run_id, v):
-    be = _ForgeBackend(run_id, v["lane"], v["width"], v["height"])
+    be = _ForgeBackend(run_id, v["lane"], v["width"], v["height"], song_upload=v.get("song_upload"))
     try:
         out = forge_run.MusicVideoRun(be).run(v["song_job"], v["photo"], v["style"], v["lyrics"] or "", v["width"], v["height"],
                                          person=v.get("person"))

@@ -1772,6 +1772,9 @@ function monitorEmptyHTML(room){
   }
   const ms = roomModes(room);
   let html = '<div class="monitor-empty"><p>' + esc(room.empty || 'Set it up on the right and press Make.') + '</p>';
+  // A song made somewhere else can become a music video too (a History song has its own button).
+  if(room.group === 'SOUND')
+    html += '<p><button type="button" class="btn" id="forgeVideoFromFileBtn">Make a music video from a song file</button></p>';
   // UX-2 #4: only for the picked mode, and only when it actually has both
   // boxes (audit B5 -- the YuE2 job that ran with no words because nothing
   // said Style and Lyrics were two different fields).
@@ -1811,6 +1814,7 @@ function renderMonitor(){
   const job = STATE.jobs.find(j => j.id === STATE.selectedJobId);
   if(!job || (cutting && !slot)){
     $('#monitor').innerHTML = monitorEmptyHTML(room);
+    if($('#forgeVideoFromFileBtn')) $('#forgeVideoFromFileBtn').onclick = () => openForgeVideo(null);
     return;
   }
   // `o` is the result every action works on; `shown` is what the stage shows
@@ -5561,7 +5565,7 @@ async function openCredits(){
    then poll GET /api/forge/run every 3 s until the run stops being running.
    OLDER servers have none of these routes -- a 404 is not an error here.
 --------------------------------------------------------------------- */
-const FORGE_VIDEO = {jobId: null, photo: null, style: '', make: false, person: '', runId: null, timer: null, run: null};
+const FORGE_VIDEO = {jobId: null, song: null, lyrics: '', photo: null, style: '', make: false, person: '', runId: null, timer: null, run: null};
 
 function forgeVideoStageWords(stage){
   // Plain words for the record's stage -- the stage keys are the machine's
@@ -5571,11 +5575,30 @@ function forgeVideoStageWords(stage){
           cutting: 'Cutting it together', done: 'Ready'}[stage] || 'Working';
 }
 
-function forgeVideoCanStart(){ return !!(FORGE_VIDEO.photo || FORGE_VIDEO.make); }
+function forgeVideoCanStart(){
+  return !!((FORGE_VIDEO.jobId || FORGE_VIDEO.song) && (FORGE_VIDEO.photo || FORGE_VIDEO.make));
+}
+// The machine the video is made on: the one picked, when it can make video; else the first
+// machine that is up and can (the Producer room's own machine is the processor, which cannot).
+function forgeVideoLane(){
+  const makesVideo = l => [].concat(l.caps || [], l.declared_caps || []).includes('video');
+  const cur = STATE.lanes.find(l => l.id === STATE.activeLane);
+  if(cur && makesVideo(cur)) return cur.id;   // asleep or not: the server says so in a sentence
+  const any = STATE.lanes.find(l => l.up && makesVideo(l)) || STATE.lanes.find(makesVideo);
+  return any ? any.id : null;
+}
 
 function forgeVideoFormHTML(){
   const mk = FORGE_VIDEO.make;
+  const fromFile = !FORGE_VIDEO.jobId;
   return '<p>It plans the shots from the song, makes a picture for each, animates them to the music and cuts it together. You can leave it running.</p>'
+    + (fromFile
+      ? '<div class="field-row"><label class="field-label" for="forgeVideoSong">The song</label>'
+        + '<input type="file" id="forgeVideoSong" accept="audio/*,.m4a,.mp3,.wav,.aac,.flac,.ogg,.opus"></div>'
+        + '<div class="field-row"><label class="field-label" for="forgeVideoLyrics">Its lyrics (optional)</label>'
+        + '<textarea id="forgeVideoLyrics" rows="4" maxlength="6000" placeholder="Paste the words, and the scenes follow them">'
+        + esc(FORGE_VIDEO.lyrics) + '</textarea></div>'
+      : '')
     + '<div class="field-row"><span class="field-label">Who is in it?</span>'
     + '<label><input type="radio" name="forgeVideoWho" id="forgeVideoWhoPhoto" value="photo"' + (mk ? '' : ' checked') + '> Use a photo</label> '
     + '<label><input type="radio" name="forgeVideoWho" id="forgeVideoWhoMake" value="make"' + (mk ? ' checked' : '') + '> Make someone up</label></div>'
@@ -5644,7 +5667,8 @@ function forgeVideoUpload(){
   const msg = $('#forgeVideoMsg');
   const file = input && input.files && input.files[0];
   if(!file){ if(msg) msg.textContent = 'Add a photo of who is in the video.'; return; }
-  const lane = STATE.activeLane;
+  const lane = forgeVideoLane();
+  if(!lane){ if(msg) msg.textContent = 'No machine here makes video.'; return; }
   const fd = new FormData();
   fd.append('lane', lane);
   fd.append('file', file, file.name);
@@ -5663,17 +5687,20 @@ function forgeVideoUpload(){
 async function forgeVideoStart(){
   const fv = FORGE_VIDEO;
   const msg = $('#forgeVideoMsg');
-  const job = STATE.jobs.find(j => j.id === fv.jobId);
-  if(!job || job.status !== 'done' || !STATE.activeLane){
-    if(msg) msg.textContent = 'Pick a finished song first.';
+  const lane = forgeVideoLane();
+  if(!lane){ if(msg) msg.textContent = 'No machine here makes video.'; return; }
+  const job = fv.jobId ? STATE.jobs.find(j => j.id === fv.jobId) : null;
+  if(fv.jobId ? (!job || job.status !== 'done') : !fv.song){
+    if(msg) msg.textContent = fv.jobId ? 'Pick a finished song first.' : 'Add the song file first.';
     return;
   }
   if(!forgeVideoCanStart()){ if(msg) msg.textContent = 'Add a photo, or choose Make someone up.'; return; }
   const who = fv.make ? {make_photo: true, person: (fv.person || '').trim()} : {photo: fv.photo};
   let r;
   try{
+    const song = job ? {song_job: job.id} : {song_upload: fv.song, lyrics: (fv.lyrics || '').trim()};
     r = await postJSON('/api/forge/music-video',
-      Object.assign({lane: STATE.activeLane, song_job: job.id, style: (fv.style || '').trim()}, who));
+      Object.assign({lane: lane, style: (fv.style || '').trim()}, song, who));
   }catch(e){ if(msg) msg.textContent = 'Could not reach the machine.'; return; }
   if(!r || !r.ok){ if(msg) msg.textContent = (r && r.error) || 'Could not start.'; return; }
   fv.runId = r.run_id;
@@ -5692,7 +5719,33 @@ async function forgeVideoStop(){
   try{ await postJSON('/api/forge/stop', {id: fv.runId}); }catch(e){ /* keep polling */ }
 }
 
+// The song file (dialog opened without a song from History): it goes to the machine the
+// video is made on, like the photo.
+function forgeVideoSongUpload(){
+  const input = $('#forgeVideoSong'), msg = $('#forgeVideoMsg');
+  const file = input && input.files && input.files[0];
+  if(!file) return;
+  const lane = forgeVideoLane();
+  if(!lane){ if(msg) msg.textContent = 'No machine here makes video.'; return; }
+  const fd = new FormData();
+  fd.append('lane', lane);
+  fd.append('file', file, file.name);
+  if(msg) msg.textContent = 'Sending the song...';
+  fetch('/api/upload', {method:'POST', body: fd})
+    .then(r => r.json())
+    .then(j => {
+      if(!j || !j.ok){ if(msg) msg.textContent = (j && j.error) || 'Could not send the song.'; return; }
+      FORGE_VIDEO.song = (j.files && j.files[0] && j.files[0].name) || null;
+      if(msg) msg.textContent = '';
+      $('#forgeVideoStart').disabled = !forgeVideoCanStart();
+    })
+    .catch(() => { if(msg) msg.textContent = 'Could not send the song.'; });
+}
 function forgeVideoWireForm(){
+  const song = $('#forgeVideoSong');
+  if(song) song.onchange = forgeVideoSongUpload;
+  const lyr = $('#forgeVideoLyrics');
+  if(lyr) lyr.oninput = () => { FORGE_VIDEO.lyrics = lyr.value; };
   const photo = $('#forgeVideoPhoto');
   if(photo) photo.onchange = () => forgeVideoUpload();
   const style = $('#forgeVideoStyle');
@@ -5716,7 +5769,8 @@ function forgeVideoWireForm(){
 function openForgeVideo(job){
   const fv = FORGE_VIDEO;
   clearTimeout(fv.timer); fv.timer = null;
-  fv.jobId = job.id;
+  fv.jobId = job ? job.id : null;   // no job: a song file of your own
+  if(job) fv.song = null;
   fv.runId = null; fv.run = null;
   $('#forgeVideoBody').innerHTML = forgeVideoFormHTML();
   forgeVideoWireForm();

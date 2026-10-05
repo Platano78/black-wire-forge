@@ -6,6 +6,10 @@ All notable changes to Black Wire Forge are recorded here.
 
 ### Added
 
+- **A music video from a song file**: the Sound rooms offer "Make a music video from a song file" (with no
+  result picked); the dialog then takes the song file and, optionally, its lyrics, so a song made elsewhere
+  works like one from History. The API takes `"song_upload"` (an uploaded name) in place of `"song_job"`.
+
 - **Use one I already made** for sound: a sound field (the Producer room, Cover, Talking Head's recording, a video driven by sound) can take a finished song or part from History, no download and upload again.
 
 - A **Producer room** in the Sound group (Music, Cover, Sound FX, Producer), for working on tracks
