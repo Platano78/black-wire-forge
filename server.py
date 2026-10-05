@@ -7044,7 +7044,17 @@ def seq_generate(payload):
         slot = _slot(seq, {"slot_id": slot_id})
     except ValueError as e:
         return {"ok": False, "error": str(e)}, 400
-    lane = slot_generate_lane(slot)
+    # A caller that already chose the machine (the music video, whose shots must run where the
+    # still was carried) pins it by id; otherwise the slot's own sticky/first-up rule applies.
+    pin = payload.get("lane")
+    if isinstance(pin, str) and pin:
+        lane = LANE_BY_ID.get(pin)
+        with STATE_LOCK:
+            pin_up = bool(lane and LANE_STATE.get(lane["id"], {}).get("up"))
+        if not lane or not pin_up or slot.get("cap") not in (lane.get("caps") or []):
+            lane = None
+    else:
+        lane = slot_generate_lane(slot)
     if lane is None:
         return {"ok": False, "error": "No lane that can make a %s shot is online right now."
                                % engines.cap_word(slot.get("cap"))}, 409
@@ -11015,13 +11025,54 @@ class Handler(BaseHTTPRequestHandler):
 # adapter over this server's own sequence / generate / carry functions, and the three routes.
 # ---------------------------------------------------------------------------
 
+_FORGE_SOUND_EXTS = (".wav", ".mp3", ".m4a", ".aac", ".flac", ".ogg", ".opus")
+
+
+def _upload_image_to_lane(lane, name, data):
+    """Put image bytes on a lane as an input (the way carry() does) -> the name the lane gave it."""
+    res = http_post_multipart(lane_url(lane, "/upload/image"), {"type": "input", "overwrite": "false"},
+                              [("image", os.path.basename(name), "image/png", data)])
+    if "_http_error" in res or not res.get("name"):
+        raise ValueError("%s would not take the picture." % lane["name"])
+    return (res["subfolder"] + "/" + res["name"]) if res.get("subfolder") else res["name"]
+
+
+def _lane_can(lane, cap, mode):
+    """Can this lane run `cap`/`mode` right now? The same test the page's /api/engines uses for a
+    mode's `available`: the lane is up and declares the cap, runs the pack's kind of lane, has the
+    models the mode's ability needs, and the pack's own dependency check passes."""
+    if lane_kind(lane) != engines.lane_kind(cap, mode) or cap not in (lane.get("caps") or []):
+        return False
+    with STATE_LOCK:
+        if not LANE_STATE.get(lane["id"], {}).get("up"):
+            return False
+    return bool(engines.abilities(models_for(lane)).get(engines.mode_ability(cap, mode))) \
+        and engines.mode_deps_reason(cap, mode) is None
+
+
+def _forge_pick_lane(request_lane, cap, mode):
+    """The picked machine when it can run the mode, else the first machine that is up and can."""
+    for lane in [request_lane] + [l for l in LANES if l["id"] != request_lane["id"]]:
+        if _lane_can(lane, cap, mode):
+            return lane
+    return None
+
+
 class _ForgeBackend:
     """The backend forge_run.MusicVideoRun is written against (see its docstring). Every method calls an existing
     server function; anything a person should read is raised as forge_run.RunError."""
 
-    def __init__(self, run_id, lane, w, h, song_upload=None):
+    def __init__(self, run_id, lane, w, h, song_upload=None, picture_lane=None, video_lane=None):
+        # `lane` is the machine the person picked: the photo and a song file of their own were uploaded
+        # there. The pictures are made on `picture_lane`, the shots are animated on `video_lane`
+        # (each defaults to `lane`, the single-machine case).
         self.run_id, self.lane, self.w, self.h = run_id, lane, w, h
+        self.picture_lane = picture_lane or lane
+        self.video_lane = video_lane or lane
         self.song_upload = song_upload   # a song file uploaded to this lane, in place of a History song
+        self._portrait_jobs = set()      # a made-up person goes back to the picture machine, not the video one
+        self._portrait_names = set()     # names already on the picture machine
+        self._photo_on_picture_lane = {}  # uploaded photo name on `lane` -> its name on the picture lane
 
     # -- sequence -----------------------------------------------------------
     def _rev(self, sid):
@@ -11065,7 +11116,13 @@ class _ForgeBackend:
             raise forge_run.RunError(body.get("error") or "The song could not be used.")
         return float((body.get("master") or {}).get("seconds") or 0)
 
+    @staticmethod
+    def _refuse_sound_as_picture(name):
+        if str(name or "").lower().endswith(_FORGE_SOUND_EXTS):
+            raise forge_run.RunError("A sound file cannot be used as a picture. The song is only the music.")
+
     def add_shot(self, sid, window, prompt, start_image_name, w, h):
+        self._refuse_sound_as_picture(start_image_name)
         body = self._op(sid, "add_slot", lane="video", cap="video", mode="ltx",
                         values={"prompt": prompt, "start_image": start_image_name, "length": window["frames"],
                                 "width": w, "height": h, "two_stage": True, "image_strength": 0.9})
@@ -11075,7 +11132,7 @@ class _ForgeBackend:
         self._op(sid, "pick_take", slot_id=slot_id, job_id=job_id)
 
     def generate_shot(self, sid, slot_id):
-        body, code = seq_generate({"id": sid, "slot_id": slot_id})
+        body, code = seq_generate({"id": sid, "slot_id": slot_id, "lane": self.video_lane["id"]})
         if code != 200 or not body.get("ok"):
             raise forge_run.RunError(body.get("error") or "A shot could not be started.")
         return body["job"]["id"]
@@ -11120,9 +11177,23 @@ class _ForgeBackend:
         return self._poll(timeout, 2.0, probe) or {"status": "timeout"}
 
     # -- stills ---------------------------------------------------------------
+    def _photo_for_picture_lane(self, photo_name):
+        """The photo was uploaded to the machine the person picked; the pictures are made on another
+        one when that machine does not make pictures, so the photo is copied over once."""
+        if self.picture_lane["id"] == self.lane["id"] or photo_name in self._portrait_names:
+            return photo_name
+        if photo_name not in self._photo_on_picture_lane:
+            try:
+                data, fname = _resolve_upload_bytes(self.lane["id"], photo_name)
+                self._photo_on_picture_lane[photo_name] = _upload_image_to_lane(self.picture_lane, fname, data)
+            except ValueError as e:
+                raise forge_run.RunError(str(e))
+        return self._photo_on_picture_lane[photo_name]
+
     def make_still(self, prompt, photo_name, w, h):
-        body, code = generate({"lane": self.lane["id"], "kind": "image", "mode": "edit", "confirm": True,
-                               "prompt": prompt, "ref_images": [photo_name]})
+        self._refuse_sound_as_picture(photo_name)
+        body, code = generate({"lane": self.picture_lane["id"], "kind": "image", "mode": "edit", "confirm": True,
+                               "prompt": prompt, "ref_images": [self._photo_for_picture_lane(photo_name)]})
         if code != 200 or not body.get("ok"):
             raise forge_run.RunError(body.get("error") or "A picture could not be started.")
         return body["job"]["id"]
@@ -11132,10 +11203,11 @@ class _ForgeBackend:
         Default recipe (the page applies a recipe's values itself; a bare call gets the fields' own
         defaults, which are the older Balanced mix and draw lines across faces)."""
         recipe = next((x.get("values") or {} for x in engines.presets("image", "t2i") if x.get("id") == "default"), {})
-        body, code = generate(dict(recipe, lane=self.lane["id"], kind="image", mode="t2i", confirm=True,
+        body, code = generate(dict(recipe, lane=self.picture_lane["id"], kind="image", mode="t2i", confirm=True,
                                    recipe="default", prompt=prompt, width=w, height=h))
         if code != 200 or not body.get("ok"):
             raise forge_run.RunError(body.get("error") or "A picture could not be started.")
+        self._portrait_jobs.add(body["job"]["id"])
         return body["job"]["id"]
 
     def wait_job(self, job_id, timeout):
@@ -11151,10 +11223,15 @@ class _ForgeBackend:
     def carry_still(self, job_id):
         with JOBS_LOCK:
             job = copy.deepcopy(JOBS.get(job_id) or {})
+        # A still is the shot's start image, so it goes to the machine that animates it. The made-up
+        # person is the reference for the stills, so it stays on the machine that makes them.
+        target = self.picture_lane if job_id in self._portrait_jobs else self.video_lane
         try:
-            name, _note = carry(job, 0, self.lane, fit=(self.w, self.h))
+            name, _note = carry(job, 0, target, fit=(self.w, self.h))
         except ValueError as e:
             raise forge_run.RunError(str(e))
+        if job_id in self._portrait_jobs:
+            self._portrait_names.add(name)
         return name
 
     # -- helpers --------------------------------------------------------------
@@ -11184,7 +11261,9 @@ class _ForgeBackend:
 def _forge_run_validation(p):
     """Validate the forge/music-video request body.
 
-    Returns (lane, errors) where errors is a list of (status_code, sentence).
+    Returns (values, errors) where errors is a list of (status_code, sentence). The values carry
+    `lane` (the machine picked), `picture_lane` and `video_lane` (resolved separately: one machine
+    often makes only pictures or only video).
     """
     if not isinstance(p, dict):
         return None, [(400, "Send a JSON object.")]
@@ -11269,14 +11348,27 @@ def _forge_run_validation(p):
     if height < 256 or height > 1152 or height % 16 != 0:
         return None, [(400, "Height must be a multiple of 16, between 256 and 1152.")]
 
+    picture_lane = _forge_pick_lane(lane, "image", "edit")
+    if picture_lane is not None and p.get("make_photo") is True and not photo \
+            and not _lane_can(picture_lane, "image", "t2i"):
+        picture_lane = next((l for l in LANES if _lane_can(l, "image", "edit") and _lane_can(l, "image", "t2i")), None)
+    if picture_lane is None:
+        return None, [(400, "No machine that is up can make the pictures (it needs the picture edit mode%s). "
+                            "Start one, then try again." % (" and the make-a-person mode" if p.get("make_photo") is True and not photo else ""))]
+    video_lane = _forge_pick_lane(lane, "video", "ltx")
+    if video_lane is None:
+        return None, [(400, "No machine that is up can make the video (it needs the LTX video mode). "
+                            "Start one, then try again.")]
+
     return {
-        "lane": lane, "song_job": song_job or None, "song_upload": song_upload, "photo": photo or None, "person": person,
+        "lane": lane, "picture_lane": picture_lane, "video_lane": video_lane, "song_job": song_job or None, "song_upload": song_upload, "photo": photo or None, "person": person,
         "style": style, "lyrics": lyrics, "width": width, "height": height,
     }, []
 
 
 def _forge_thread(run_id, v):
-    be = _ForgeBackend(run_id, v["lane"], v["width"], v["height"], song_upload=v.get("song_upload"))
+    be = _ForgeBackend(run_id, v["lane"], v["width"], v["height"], song_upload=v.get("song_upload"),
+                       picture_lane=v.get("picture_lane"), video_lane=v.get("video_lane"))
     try:
         out = forge_run.MusicVideoRun(be).run(v["song_job"], v["photo"], v["style"], v["lyrics"] or "", v["width"], v["height"],
                                          person=v.get("person"))

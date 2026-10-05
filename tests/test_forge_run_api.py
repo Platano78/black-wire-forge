@@ -78,7 +78,9 @@ json.dump({
     "port": app_port, "bind": "127.0.0.1", "title": "forge run api test",
     "timing": {"poll_seconds": 30, "job_poll_seconds": 30, "http_timeout": 2.0},
     "lanes": [{"id": "t", "name": "Test lane", "host": "127.0.0.1", "port": PORT_LANE,
-               "caps": ["image", "video", "audio"]}]
+               "caps": ["image", "video", "audio"]},
+              {"id": "v", "name": "Video machine", "host": "127.0.0.1", "port": PORT_LANE, "caps": ["video"]},
+              {"id": "p", "name": "Picture machine", "host": "127.0.0.1", "port": PORT_LANE, "caps": ["image"]}]
 }, open(CFG_PATH, "w"))
 os.environ["GENCENTER_CONFIG"] = CFG_PATH
 os.environ["GENCENTER_DATA"] = os.path.join(SCRATCH, "data")
@@ -94,10 +96,16 @@ spec = importlib.util.spec_from_file_location("srv", os.path.join(ROOT, "server.
 srv = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(srv)
 
-# Give the lane models so generate() considers it able.
-srv.LANE_BY_ID["t"]["models"] = dict(MODELS)
+# Give the lane models so generate() considers it able. "t" does everything (pictures and LTX video);
+# "v" only LTX video, "p" only pictures (the issue #2 shape: one machine rarely does both).
+LTX_MODELS = json.load(open(os.path.join(HERE, "golden", "ltx_models.json")))
+srv.LANE_BY_ID["t"]["models"] = dict(MODELS, **LTX_MODELS)
+srv.LANE_BY_ID["v"]["models"] = dict(LTX_MODELS)
+srv.LANE_BY_ID["p"]["models"] = {k: v for k, v in MODELS.items() if k.startswith("qwen")}
 with srv.STATE_LOCK:
     srv.LANE_STATE["t"] = {"up": True, "checked": time.time(), "err": ""}
+    srv.LANE_STATE["v"] = {"up": True, "checked": time.time(), "err": ""}
+    srv.LANE_STATE["p"] = {"up": True, "checked": time.time(), "err": ""}
 
 # ---------------------------------------------------------------------------
 # Start HTTP server in a thread
@@ -250,6 +258,90 @@ check("default canvas 576x768", (v["width"], v["height"]) == (576, 768), v)
 check("lyrics come from the song job's args", "la la la" in (v["lyrics"] or ""), v["lyrics"])
 v2, _ = srv._forge_run_validation(dict(GOOD, lyrics="my words"))
 check("lyrics in the request win", v2["lyrics"] == "my words")
+
+
+print("\n--- issue #2: the picture machine and the video machine are resolved apart ---")
+def lanes_up(**up):
+    with srv.STATE_LOCK:
+        for k, val in up.items():
+            srv.LANE_STATE[k]["up"] = val
+lanes_up(t=False, v=True, p=True)
+v, errs = srv._forge_run_validation(dict(GOOD, lane="v"))
+check("(a) a video-only lane as the request's lane + an up picture lane validates", not errs and v, errs)
+check("(a) picture_lane is the picture lane, video_lane is the request's lane",
+      v and v["picture_lane"]["id"] == "p" and v["video_lane"]["id"] == "v" and v["lane"]["id"] == "v",
+      v and (v["picture_lane"]["id"], v["video_lane"]["id"]))
+v, errs = srv._forge_run_validation(dict(GOOD, lane="v", photo="", make_photo=True))
+check("(a) make_photo needs t2i as well: the picture lane still resolves", not errs and v["picture_lane"]["id"] == "p", errs)
+lanes_up(t=True, v=True, p=True)
+v, errs = srv._forge_run_validation(dict(GOOD, lane="t"))
+check("one lane that does both keeps doing both", not errs and v["picture_lane"]["id"] == "t" and v["video_lane"]["id"] == "t", errs)
+
+_sent = []
+srv.generate = lambda p: (_sent.append(p), ({"ok": True, "job": {"id": "jp%d" % len(_sent)}}, 200))[1]
+try:
+    be = srv._ForgeBackend("r", srv.LANE_BY_ID["v"], 576, 768, picture_lane=srv.LANE_BY_ID["p"], video_lane=srv.LANE_BY_ID["v"])
+    be._photo_for_picture_lane = lambda name: name
+    still_job = be.make_still("a scene", "me.png", 576, 768)
+    portrait_job = be.make_portrait("a person", 576, 768)
+finally:
+    srv.generate = _real_generate
+check("(b) make_still posts to the picture lane", _sent[0]["lane"] == "p" and _sent[0]["mode"] == "edit", _sent[0])
+check("(b) make_portrait posts to the picture lane", _sent[1]["lane"] == "p" and _sent[1]["mode"] == "t2i", _sent[1])
+
+_carried = []
+_real_carry = srv.carry
+srv.carry = lambda job, idx, lane, fit=None, cache_path=None: (_carried.append(lane["id"]), ("on_" + lane["id"] + ".png", ""))[1]
+with srv.JOBS_LOCK:
+    srv.JOBS[still_job] = {"id": still_job, "lane": "p", "status": "done", "outputs": [{"filename": "x.png", "media": "image"}]}
+    srv.JOBS[portrait_job] = {"id": portrait_job, "lane": "p", "status": "done", "outputs": [{"filename": "y.png", "media": "image"}]}
+try:
+    still_name = be.carry_still(still_job)
+    portrait_name = be.carry_still(portrait_job)
+finally:
+    srv.carry = _real_carry
+check("(c) carry_still carries a still onto the video lane", _carried[0] == "v" and still_name == "on_v.png", _carried)
+check("(c) a made-up person is carried back onto the picture lane (it is the stills' reference)",
+      _carried[1] == "p" and portrait_name == "on_p.png", _carried)
+
+_seq = []
+_real_seq_generate = srv.seq_generate
+srv.seq_generate = lambda p: (_seq.append(p), ({"ok": True, "job": {"id": "jshot"}}, 200))[1]
+try:
+    be.generate_shot("sid", "slot")
+finally:
+    srv.seq_generate = _real_seq_generate
+check("(c) the shots are pinned to the video lane", _seq and _seq[0].get("lane") == "v", _seq)
+
+lanes_up(t=False, v=True, p=False)
+with forge_run.FORGE_RUN_LOCK:
+    _runs_before = len(forge_run.FORGE_RUNS)
+payload, code = post(dict(GOOD, lane="v"))
+check("(d) no picture-capable lane up -> one plain sentence, before any run starts",
+      code == 400 and payload.get("ok") is False and payload.get("error") ==
+      "No machine that is up can make the pictures (it needs the picture edit mode). Start one, then try again.", (code, payload))
+with forge_run.FORGE_RUN_LOCK:
+    _runs_after = len(forge_run.FORGE_RUNS)
+check("(d) ...and no run was created", _runs_after == _runs_before, (_runs_before, _runs_after))
+lanes_up(t=False, v=False, p=True)
+payload, code = post(dict(GOOD, lane="p"))
+check("no video-capable lane up -> one plain sentence naming the video",
+      code == 400 and "make the video" in payload.get("error", "") and payload["error"].count(".") == 2, (code, payload))
+lanes_up(t=True, v=True, p=True)
+
+for bad in ("song.mp3", "voice.WAV", "x.flac"):
+    try:
+        be.make_still("a scene", bad, 576, 768)
+        refused = None
+    except forge_run.RunError as e:
+        refused = str(e)
+    check("(e) make_still refuses a sound file %r as a picture" % bad, refused and "sound file" in refused, refused)
+    try:
+        be.add_shot("sid", {"frames": 97}, "p", bad, 576, 768)
+        refused = None
+    except forge_run.RunError as e:
+        refused = str(e)
+    check("(e) add_shot refuses a sound file %r as a start image" % bad, refused and "sound file" in refused, refused)
 
 print("\n--- one run at a time, GET, stop (the run thread is stubbed) ---")
 release = threading.Event()

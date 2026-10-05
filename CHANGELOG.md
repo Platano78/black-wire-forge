@@ -2,6 +2,12 @@
 
 All notable changes to Black Wire Forge are recorded here.
 
+## Unreleased
+
+### Fixed
+
+- The music video works across two machines: its pictures are made on a machine that makes pictures and its shots on one that makes video, instead of stopping when the picked machine does only one of them. It checks both before the run starts. (#2)
+
 ## v1.3.0 — 2026-10-04
 
 ### Added
