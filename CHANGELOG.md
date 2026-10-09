@@ -2,6 +2,17 @@
 
 All notable changes to Black Wire Forge are recorded here.
 
+## Unreleased
+
+### Fixed
+
+- The Style (LoRA) picker in the video rooms did nothing: the chosen style never reached the render. It now does, for every video mode, and a style the machine does not have is refused with a plain sentence instead of being ignored.
+- A style strength of 0 was silently turned into 1.0 (zero counted as "not set"), in the video, picture and sound styles alike. 0 now means off.
+
+### Added
+
+- **Data packs**: drop a ComfyUI workflow (API format) and a small manifest into `data/packs/<name>/` and it shows up as a mode with its own form, the same way the built-in ones do, with no code change. A pack that is wrong is skipped with one plain line saying why (`engines.user_pack_problems()`), never a crash; packs are read once at start-up and nothing over the network can add one. How to write one: `docs/WRITING-A-PACK.md`, "Data packs".
+
 ## v1.4.1 — 2026-10-05
 
 ### Fixed

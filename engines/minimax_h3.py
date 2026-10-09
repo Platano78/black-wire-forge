@@ -39,7 +39,8 @@ def apply_style_loras(g, p, model_ref):
         if not name:
             continue
         nid = str(229 + i)  # "230", "231"
-        strength = float(p.get(strength_key) or 1.0)
+        v = p.get(strength_key)
+        strength = 1.0 if v is None else float(v)  # 0 is a real value (LoRA off)
         g[nid] = {"class_type": "LoraLoaderModelOnly",
                   "inputs": {"model": model_ref, "lora_name": name, "strength_model": strength}}
         model_ref = [nid, 0]

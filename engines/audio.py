@@ -158,7 +158,8 @@ def apply_style_loras(g, p, model_ref):
         if not name:
             continue
         nid = str(199 + i)  # "200", "201"
-        strength = float(p.get(strength_key) or 1.0)
+        v = p.get(strength_key)
+        strength = 1.0 if v is None else float(v)  # 0 is a real value (LoRA off)
         g[nid] = {"class_type": "LoraLoaderModelOnly",
                   "inputs": {"model": model_ref, "lora_name": name, "strength_model": strength}}
         model_ref = [nid, 0]
@@ -182,7 +183,8 @@ def apply_style_loras_clip(g, p, model_ref, clip_ref):
         if not name:
             continue
         nid = str(199 + i)  # "200", "201"
-        strength = float(p.get(strength_key) or 1.0)
+        v = p.get(strength_key)
+        strength = 1.0 if v is None else float(v)  # 0 is a real value (LoRA off)
         g[nid] = {"class_type": "LoraLoader",
                   "inputs": {"model": model_ref, "clip": clip_ref, "lora_name": name,
                              "strength_model": strength, "strength_clip": strength}}

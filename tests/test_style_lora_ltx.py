@@ -72,5 +72,13 @@ for mode in ("ltx", "ltx_loop", "talking"):
           ids == {"style_1", "style_1_strength", "style_2", "style_2_strength"}, ids)
 
 print()
+print("strength 0 is a real value (LoRA off), not 'unset' -- only absent means 1.0")
+g0 = engines.graph_for("video", "ltx", dict(ARGS["t2v"], style_1="cool_ltx25.safetensors", style_1_strength=0.0), MODELS)
+l0 = by_class(g0, "LoraLoaderModelOnly")
+check("ltx: strength 0.0 reaches the node as 0.0", len(l0) == 1 and l0[0]["inputs"]["strength_model"] == 0.0, l0)
+gd = engines.graph_for("video", "ltx", dict(ARGS["t2v"], style_1="cool_ltx25.safetensors"), MODELS)
+check("ltx: absent strength defaults to 1.0", by_class(gd, "LoraLoaderModelOnly")[0]["inputs"]["strength_model"] == 1.0)
+
+print()
 print(("FAILED: %d" % len(FAILED)) if FAILED else "ALL PASS")
 sys.exit(1 if FAILED else 0)

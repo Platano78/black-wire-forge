@@ -6323,34 +6323,11 @@ def _generate_legacy(p, lane, m, able, kind, mode, qmode, prompt, seed, steps):
                 "ref_images": p.get("ref_images") or [], "resolution": resolution}
         # Q21 rule 1: the legacy image path passes only the fixed args above
         # to the pack, so any field a pack declares beyond those is silently
-        # dropped -- fill in every declared field not already in args, via
-        # the exact same request-value lookup + type coercion the generic
-        # dispatch path uses (never a second copy of that logic). Engine
-        # independence stays 0: no field id or mode is named here.
-        req_values = p.get("values")
-        req_values = req_values if isinstance(req_values, dict) else {}
-        try:
-            for f in engines.fields("image", qmode):
-                fid, ftype = f["id"], f["type"]
-                if fid in args:
-                    continue
-                val = _field_request_value(p, req_values, fid)
-                if ftype in ("select", "pool_select") and val == "":
-                    val = None
-                if ftype in ("audio", "image", "image_list", "video_list", "model") and (
-                        (isinstance(val, str) and not val.strip()) or val == []):
-                    val = None
-                if val is None:
-                    continue
-                # LORA-1: a "pool_select" value must be one the lane's own
-                # discovered pool actually offers right now, same discipline
-                # as "select"'s options check -- never a filename passed
-                # straight into the graph unchecked.
-                if ftype == "pool_select" and val not in pool_select_options(lane, f):
-                    raise ValueError("%s is not available on %s." % (f.get("label", fid), lane["name"]))
-                args[fid] = _coerce_field_value(f, val)
-        except ValueError as e:
-            return {"ok": False, "error": str(e)}, 400
+        # dropped -- fill in every declared field not already in args (see
+        # _fill_declared_fields).
+        err = _fill_declared_fields(p, lane, "image", qmode, args)
+        if err:
+            return err
         try:
             graph = engines.graph_for("image", "edit" if mode == "edit" else "t2i", args, m)
         except ValueError as e:
@@ -6366,6 +6343,56 @@ def _generate_legacy(p, lane, m, able, kind, mode, qmode, prompt, seed, steps):
         return _generate_video(p, lane, m, able, mode, qmode, prompt, seed, steps)
 
     return {"ok": False, "error": "unknown kind %r" % kind}, 400
+
+
+def _fill_declared_fields(p, lane, kind, qmode, args, types=None):
+    """Q21 rule 1: a legacy_dispatch caller builds `args` by hand, so any
+    field its pack declares beyond those is silently dropped. Fill in every
+    declared field not already in `args`, via the exact same request-value
+    lookup + type coercion the generic dispatch path uses (never a second
+    copy of that logic). `types` limits the fill to those field types (None =
+    all); a field whose `enabled_when.field` names a field this call already
+    filled is also filled whatever its type, so a number that belongs to a
+    chosen pool_select (a Style's strength) travels with it. Returns an
+    (error payload, 400) tuple, or None. Engine independence stays 0: no
+    field id or mode is named here."""
+    req_values = p.get("values")
+    req_values = req_values if isinstance(req_values, dict) else {}
+    fields = engines.fields(kind, qmode)
+    filled = set()
+
+    def fill(f):
+        fid, ftype = f["id"], f["type"]
+        if fid in args:
+            return
+        val = _field_request_value(p, req_values, fid)
+        if ftype in ("select", "pool_select") and val == "":
+            val = None
+        if ftype in ("audio", "image", "image_list", "video_list", "model") and (
+                (isinstance(val, str) and not val.strip()) or val == []):
+            val = None
+        if val is None:
+            return
+        # LORA-1: a "pool_select" value must be one the lane's own
+        # discovered pool actually offers right now, same discipline
+        # as "select"'s options check -- never a filename passed
+        # straight into the graph unchecked.
+        if ftype == "pool_select" and val not in pool_select_options(lane, f):
+            raise ValueError("%s is not available on %s." % (f.get("label", fid), lane["name"]))
+        args[fid] = _coerce_field_value(f, val)
+        filled.add(fid)
+
+    try:
+        for f in fields:
+            if types is None or f["type"] in types:
+                fill(f)
+        if types is not None:
+            for f in fields:
+                if (f.get("enabled_when") or {}).get("field") in filled:
+                    fill(f)
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}, 400
+    return None
 
 
 def _generate_video(p, lane, m, able, mode, qmode, prompt, seed, steps):
@@ -6431,6 +6458,9 @@ def _generate_video(p, lane, m, able, mode, qmode, prompt, seed, steps):
         if not args["ref_images"] and not args["ref_videos"]:
             return {"ok": False, "error":
                                    "Add at least one picture or clip for it to work from."}, 400
+        err = _fill_declared_fields(p, lane, "video", qmode, args, ("pool_select",))
+        if err:
+            return err
         graph = engines.graph_for("video", "ref2v", args, m)
         model = describe_video(lane) + " reference"
     elif mode == "fl2va":
@@ -6441,6 +6471,9 @@ def _generate_video(p, lane, m, able, mode, qmode, prompt, seed, steps):
         if not args["first_frame"] and not args["last_frame"]:
             return {"ok": False, "error":
                                    "Add a starting picture (an ending picture is optional)."}, 400
+        err = _fill_declared_fields(p, lane, "video", qmode, args, ("pool_select",))
+        if err:
+            return err
         graph = engines.graph_for("video", "fl2va", args, m)
         model = describe_video(lane) + " first frame"
     elif mode == "continue":
@@ -6452,6 +6485,9 @@ def _generate_video(p, lane, m, able, mode, qmode, prompt, seed, steps):
         # last_frame -- a cabled-but-unresolvable source already refused
         # earlier, in resolve_slot_cables (K3); a shot with no cable at all
         # (the first of a chain) just renders without it.
+        err = _fill_declared_fields(p, lane, "video", qmode, args, ("pool_select",))
+        if err:
+            return err
         graph = engines.graph_for("video", "continue", args, m)
         model = describe_video(lane) + " continue"
     else:
@@ -6460,6 +6496,9 @@ def _generate_video(p, lane, m, able, mode, qmode, prompt, seed, steps):
                                    "%s does not have the H3 text-to-video model installed (missing %s)."
                                    % (lane["name"], join_words(missing_for(lane, "video")))}, 400
         args["first_frame"] = args["last_frame"] = None
+        err = _fill_declared_fields(p, lane, "video", qmode, args, ("pool_select",))
+        if err:
+            return err
         graph = engines.graph_for("video", "fl2va", args, m)
         model = describe_video(lane) + " text-to-video"
     meta = {"prompt": prompt, "seed": seed, "steps": steps, "turbo_lora": turbo, "width": w, "height": h,

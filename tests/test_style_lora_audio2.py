@@ -98,5 +98,21 @@ check("audio/sfx declares NO style fields (out of scope)",
       not any(f.get("group") == "Style" for f in engines.fields("audio", "sfx")))
 
 print()
+print("strength 0 is a real value (LoRA off), not 'unset' -- only absent means 1.0")
+for mode, style in (("song", "cool_ace_step15.safetensors"), ("music", "cool_music3.safetensors")):
+    g0 = engines.graph_for("audio", mode, dict(ARGS[mode], style_1=style, style_1_strength=0.0), MODELS)
+    l0 = by_class(g0, "LoraLoaderModelOnly")
+    check("%s: strength 0.0 reaches the node as 0.0" % mode, len(l0) == 1 and l0[0]["inputs"]["strength_model"] == 0.0, l0)
+    gd = engines.graph_for("audio", mode, dict(ARGS[mode], style_1=style), MODELS)
+    check("%s: absent strength defaults to 1.0" % mode, by_class(gd, "LoraLoaderModelOnly")[0]["inputs"]["strength_model"] == 1.0)
+for mode in ("yue2", "cover"):
+    g0 = engines.graph_for("audio", mode, dict(ARGS[mode], style_1="cool_yue2.safetensors", style_1_strength=0.0), MODELS)
+    l0 = by_class(g0, "LoraLoader")
+    check("%s: model and clip strength 0.0" % mode, len(l0) == 1
+          and l0[0]["inputs"]["strength_model"] == 0.0 and l0[0]["inputs"]["strength_clip"] == 0.0, l0)
+    gd = engines.graph_for("audio", mode, dict(ARGS[mode], style_1="cool_yue2.safetensors"), MODELS)
+    check("%s: absent strength defaults to 1.0" % mode, by_class(gd, "LoraLoader")[0]["inputs"]["strength_model"] == 1.0)
+
+print()
 print(("FAILED: %d" % len(FAILED)) if FAILED else "ALL PASS")
 sys.exit(1 if FAILED else 0)

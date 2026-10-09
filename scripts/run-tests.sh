@@ -88,6 +88,9 @@ for suite_path in "${SUITES[@]}"; do
     ts="$(date +%Y%m%d-%H%M%S)"
     CURRENT_SCRATCH="$SCRATCH_ROOT/${name%.py}-$ts"
     mkdir -p "$CURRENT_SCRATCH"
+    # Never read the real data/ (it can hold a user's own data packs, which every
+    # suite that walks all packs would then run): each suite gets an empty data dir.
+    export GENCENTER_DATA="$CURRENT_SCRATCH/data"
 
     start=$(date +%s)
     if [ -n "$TIMEOUT_BIN" ]; then

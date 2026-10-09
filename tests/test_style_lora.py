@@ -99,5 +99,13 @@ for cap, mode in (("image", "t2i"), ("image", "edit"), ("image", "pixelart")):
           s1.get("match", {}).get("any") == ["qwen_image", "qwen-image"], s1.get("match"))
 
 print()
+print("strength 0 is a real value (LoRA off), not 'unset' -- only absent means 1.0")
+g0 = engines.graph_for("image", "t2i", dict(ARGS["img"], style_1="cool_style_qwen_image.safetensors", style_1_strength=0.0), MODELS)
+l0 = by_class(g0, "LoraLoaderModelOnly")
+check("qwen t2i: strength 0.0 reaches the node as 0.0", len(l0) == 1 and l0[0]["inputs"]["strength_model"] == 0.0, l0)
+gd = engines.graph_for("image", "t2i", dict(ARGS["img"], style_1="cool_style_qwen_image.safetensors"), MODELS)
+check("qwen t2i: absent strength defaults to 1.0", by_class(gd, "LoraLoaderModelOnly")[0]["inputs"]["strength_model"] == 1.0)
+
+print()
 print(("FAILED: %d" % len(FAILED)) if FAILED else "ALL PASS")
 sys.exit(1 if FAILED else 0)

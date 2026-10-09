@@ -358,6 +358,8 @@ import re
 
 # Cache so the directory scan happens once per process.
 _PACKS = None
+# Why each data pack (DATA_DIR/packs/<id>/, see _userpacks.py) was skipped at the last scan.
+_USER_PROBLEMS = []
 # pack id -> the pack module's file, so a process lane can pass its run plan
 # the pack's own asset directory ({pack} in argv).
 _PACK_FILES = {}
@@ -385,9 +387,39 @@ def _discover():
                 found.append(engine)
                 _PACK_FILES[engine["id"]] = os.path.abspath(
                     os.path.join(here, mod.name + ".py"))
+        found.extend(_load_data_packs(found, here))
         found.sort(key=lambda e: e["id"])
         _PACKS = found
     return _PACKS
+
+
+def _data_dir(here):
+    """The data folder, resolved exactly as server.py does (GENCENTER_DATA, else <app>/data)."""
+    return os.environ.get("GENCENTER_DATA") or os.path.join(os.path.dirname(here), "data")
+
+
+def _load_data_packs(builtin, here):
+    """Data packs from <data>/packs, as ENGINE dicts. User content never raises."""
+    global _USER_PROBLEMS
+    _USER_PROBLEMS = []
+    try:
+        from . import _userpacks
+        loaded, problems = _userpacks.load_user_packs(_data_dir(here), builtin)
+    except Exception as e:      # a loader fault must not take the app down
+        logging.getLogger(__name__).warning("data packs not loaded: %s", e)
+        _USER_PROBLEMS = ["packs: not loaded (%s)" % e]
+        return []
+    _USER_PROBLEMS = list(problems)
+    base = os.path.join(_data_dir(here), "packs")
+    for engine in loaded:
+        _PACK_FILES[engine["id"]] = os.path.abspath(os.path.join(base, engine["id"], "manifest.json"))
+    return loaded
+
+
+def user_pack_problems():
+    """One "<folder>: <reason>" line per data pack skipped at the last scan."""
+    _discover()
+    return list(_USER_PROBLEMS)
 
 
 def packs():

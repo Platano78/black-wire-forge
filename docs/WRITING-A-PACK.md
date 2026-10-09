@@ -288,3 +288,69 @@ function, and reading the wrong one wrong is a real bug source:**
   the cap's headline is never accidentally claimed by a tool pack that happens to sort first.
 
 Read the function itself before assuming either rule for one not listed above.
+
+## Data packs (user workflow packs)
+
+A pack can be data instead of Python: a folder `<data dir>/packs/<id>/` holding a manifest file named manifest.json
+and one ComfyUI API-format graph. `engines/_userpacks.py` reads every such folder **once, at
+startup** (nothing uploads or reloads them while the app runs), validates it, and turns each
+valid one into an ordinary `ENGINE` dict. The mode then gets the same field-driven page, the
+generic dispatch path, the ability and "X is missing" sentences and the licence stamp as a pack
+written in Python. The data dir is `GENCENTER_DATA`, else `data/` next to `server.py`
+(gitignored, so recipes stay private and survive an update).
+
+```jsonc
+{
+  "schema": 1,
+  "id": "my-recipe",              // equals the folder name
+  "cap": "video", "mode": "mine", // where it appears; must not repeat a built-in (cap, mode)
+  "label": "My recipe", "note": "One line on when to pick it.",
+  "graph": "graph.api.json",
+  "fields": [
+    {"id": "prompt", "label": "Prompt", "type": "textarea", "default": "...",
+     "tier": "primary", "group": "Content", "order": 1,
+     "bind": [{"node": "6", "input": "text"}]},
+    {"id": "clip", "label": "Source clip", "type": "video_list", "max": 1, "required": true,
+     "bind": [{"node": "12", "input": "file", "index": 0}]}
+  ],
+  "requires": [
+    {"role": "unet", "pool": "unet", "node": "3", "input": "unet_name",
+     "match": {"all": ["fragment"], "none": ["gguf"], "prefer": ["int8"]},
+     "words": "the main model"}
+  ],
+  "licence": {"name": "Licence name", "shippable": false, "attribution": "", "url": ""}
+}
+```
+
+- **Fields** use the descriptor from the engine contract above (`id label type default hint tier
+  group order units range ui_range options max enabled_when disabled_reason`) plus `bind`: a list
+  of `{node, input}` pairs. At build time the request's value (else the field's `default`) is
+  written into `graph[node].inputs[input]`; nothing else in the graph changes. For an
+  `image_list` / `video_list` value, a bind's `index` picks the item (default 0). `required: true`
+  turns a missing value into the usual "X is needed for this." answer instead of keeping the
+  graph's own. A field called `seed` receives the request's seed.
+- **`presets`** (optional) is a list of `{id, label, note, values}`: named starting values for the
+  mode's recipe row, each `values` key a field id and each value a fit for that field (never an
+  upload). Leave it out and the mode gets one empty `Default` recipe. `room` (optional) names an
+  existing room from `rooms.json` to join; without it the mode gets a room of its own named after
+  its label.
+- **`requires`** lists the model files the mode loads. Each becomes a role (namespaced to the pack)
+  with the given `pool` (one of the loader pools the core scans: `unet clip vae lora checkpoint
+  audio_encoder bg_removal upscale_model clip_vision latent_upscaler`) and `match` rule
+  (`all`/`any`/`none`/`prefer` name fragments, lower case; `all` or `any` must be non-empty). The
+  mode is available only when every role resolves on the lane, `words` is what the "missing"
+  sentence calls it, and the resolved file name is written into `graph[node].inputs[input]`.
+- **Validated, then skipped, never raised.** A pack is skipped (one line in the log, also listed
+  by `engines.user_pack_problems()`) for: invalid JSON, an unknown `schema`, a bind or `requires`
+  entry naming a node or input the graph lacks (or one that is wired to another node), a duplicate
+  field id or a default of the wrong type, an `id` that is not the folder name or repeats a
+  built-in, a (cap, mode) / ability / capability name that repeats a built-in or another data pack,
+  a pool outside the list above, a graph or manifest over 2 MB, and any path that leaves the pack
+  folder (`..`, absolute, or a symlink pointing out). The rest of the app starts normally.
+- **Getting the graph.** Export it from ComfyUI with "Save (API format)" (the plain "Save" gives the UI
+  format, which this loader refuses with a plain sentence). Write the manifest by hand from the example
+  above, bind each field to the node input it should set, list the model files under `requires`, then
+  restart. Anything the manifest cannot express (an extra node that is only sometimes wired in)
+  needs a Python pack.
+- **Tests** run with `GENCENTER_DATA` pointed at an empty scratch folder (`scripts/run-tests.sh`
+  does this), so a real data pack never changes what the suites see.

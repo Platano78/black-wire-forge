@@ -173,6 +173,8 @@ def sample_value(f):
         return ["sample.png"]
     if t == "video_list":
         return ["sample.mp4"]
+    if t == "pool_select":
+        return ""   # a pool name no lane offers would (rightly) be refused
     if t == "audio":
         return "sample.wav"
     if t == "model":
