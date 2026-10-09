@@ -2,7 +2,7 @@
 
 All notable changes to Black Wire Forge are recorded here.
 
-## Unreleased
+## v1.4.2 — 2026-10-09
 
 ### Fixed
 
