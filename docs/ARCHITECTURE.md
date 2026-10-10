@@ -33,7 +33,8 @@ fields, presets, quality tiers, examples, licence. `engines/__init__.py` is the 
 core (`server.py`) never imports a pack directly or names a model; it calls the loader's
 functions (`graph_for`, `fields`, `abilities`, ...) and the loader answers from whichever
 packs are installed. Adding a model family means adding a file under `engines/`, not
-editing the core.
+editing the core. A ComfyUI workflow can also be added with no code at all, as a data pack
+(a manifest plus an API-format graph in `data/packs/`); see "Data packs" in `docs/WRITING-A-PACK.md`.
 
 ## Rooms
 
