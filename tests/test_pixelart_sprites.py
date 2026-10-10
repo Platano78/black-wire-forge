@@ -212,7 +212,7 @@ srv.LANE_BY_ID[LANE["id"]] = LANE
 if LANE not in srv.LANES: srv.LANES.append(LANE)
 with srv.STATE_LOCK: srv.LANE_STATE[LANE["id"]] = {"up": True}
 with srv.DISCOVERY_LOCK:
-    srv.DISCOVERY[LANE["id"]] = {"models": {"qwen_unet": "qwen_image_2.1.gguf", "qwen_clip": "qwen3vl_8b.safetensors",
+    srv.DISCOVERY[LANE["id"]] = {"models": {"qwen_unet": "qwen_image_2.1.gguf", "pixel_unet": "qwen_image_2.1.gguf", "qwen_clip": "qwen3vl_8b.safetensors",
                                             "qwen_vae": "qwen_image_2.1_vae.safetensors", "birefnet_model": "birefnet.safetensors"},
                                  "pools": {}, "checked": 1.0, "err": ""}
 sent = []

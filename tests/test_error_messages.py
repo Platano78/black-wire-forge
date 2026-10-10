@@ -67,7 +67,7 @@ MODELS = {
     "ace_unet": "a", "ace_clip1": "a", "ace_clip2": "a", "ace_vae": "a",
     "music3_unet": "a", "music3_clip": "a", "music3_vae": "a",
     "sao_ckpt": "a", "sao_clip": "a", "yue2_ckpt": "a", "yue2_audio_encoder": "a",
-    "qwen_unet": "a", "qwen_clip": "a", "qwen_vae": "a",
+    "qwen_unet": "a", "pixel_unet": "a", "qwen_clip": "a", "qwen_vae": "a",
     "birefnet_model": "a", "upscale_model": "a",
     "h3_unet_fl2va": "a", "h3_unet_ref2va": "a", "h3_clip_nvfp4": "a", "h3_clip_int8": "a",
     "h3_vae_video": "a", "h3_vae_audio": "a", "h3_turbo_lora": "a",

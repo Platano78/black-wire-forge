@@ -35,7 +35,8 @@ from playwright.sync_api import sync_playwright  # noqa: E402
 
 REPO = os.path.dirname(HERE)
 RIG = json.load(open(os.path.join(HERE, "golden", "pools_rig.json")))
-RECOMMENDED_UNET = "qwen_image_2.1_Q6_K.gguf"
+RECOMMENDED_UNET_FILE = "diffusion_models/qwen_image_2.1_int8_convrot.safetensors"   # the first source row
+RECOMMENDED_UNET = RECOMMENDED_UNET_FILE.split("/")[-1]
 OTHER_UNET = "qwen_image_2.1_nvfp4.safetensors"     # covers the same role, is not the recommended file
 PICTURE_FILES = {"unet": OTHER_UNET, "clip": "text_encoders/qwen3vl_8b_int8_convrot.safetensors",
                  "vae": "vae/qwen_image_2.1_vae_bf16.safetensors"}
@@ -119,7 +120,7 @@ def setup_section():
     unet, clip = roles["qwen_unet"], roles["qwen_clip"]
     check("the Picture unet role is installed (by the nvfp4 file)", unet.get("installed") is True, unet.get("installed"))
     check("the role says which file covers it", unet.get("found") == OTHER_UNET, unet.get("found"))
-    check("the role's recommended file is still the GGUF", unet["sources"][0]["file"] == RECOMMENDED_UNET,
+    check("the role's recommended file is the int8 build", unet["sources"][0]["file"] == RECOMMENDED_UNET_FILE,
           unet["sources"][0]["file"])
     check("a role covered by the recommended file names that file",
           clip.get("found") == PICTURE_FILES["clip"].split("/")[-1], clip.get("found"))
@@ -206,7 +207,7 @@ def setup_section():
         rows = [wraps.nth(i).locator(":scope > .file").first.inner_text() for i in range(wraps.count())]
         unet_row = next((r for r in rows if RECOMMENDED_UNET in r), "")
         clip_row = next((r for r in rows if "qwen3vl_8b_int8_convrot" in r), "")
-        check("rough 1: the unet row does not claim the GGUF is in ComfyUI",
+        check("rough 1: the unet row does not claim the recommended file is in ComfyUI",
               unet_row and "already installed" not in unet_row and "already in your ComfyUI" not in unet_row, unet_row)
         check("rough 1: ...it says the role is covered by the file found",
               "covered by " + OTHER_UNET in unet_row, unet_row)

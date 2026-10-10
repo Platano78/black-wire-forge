@@ -154,7 +154,8 @@ card, then general web craft — see "Research log" for what came from where.
   resolution, default 1024), `sampler` (`euler`), `scheduler` (`simple`), `guidance_style`
   (`Plain` default — changes nothing at `cfg` 1; `Balanced` adds extra detail via APG+FreSca,
   holds exposure at higher guidance but costs ~2x the render time and can add unrequested props or
-  leave a fine mesh pattern over water and sand). — observed, `engines/qwen_image.py`
+  leave a fine mesh pattern over water and sand). The picture model is Comfy-Org's int8 build of Qwen-Image 2.1 when the machine has it (about 3x faster than the GGUF build at the same steps, and measured to draw the same picture), the GGUF build otherwise; Qwen-Image-2.1-Turbo was measured and refused, because it drops fine background detail. — observed,
+  `engines/qwen_image.py`
   `fields.t2i`, `presets.t2i["default"]`, `["fast-plain"]`, `["balanced"]` (defaults changed
   2026-10-03).
 - `t2i` presets: `default` — "Default (raw)" (cfg 1, 40 steps, plain guidance, ~60s at

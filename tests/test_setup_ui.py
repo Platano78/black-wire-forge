@@ -56,7 +56,7 @@ def rooms_step(page, tag):
     card = page.locator("details.room[data-room=pixelart]")
     summary = card.locator(":scope > summary").text_content()
     check("%s: a card shows its total size, licence in plain words and a badge" % tag,
-          "16.3 GB in all" in summary and "Qwen Research License: Non-commercial use only." in summary
+          "17.7 GB in all" in summary and "Qwen Research License: Non-commercial use only." in summary
           and ("Installed" in summary or "Needs " in summary), summary)
     check("%s: a free-to-use room says so" % tag,
           "MIT: Free to use commercially." in page.locator("details.room[data-room=cleanup] summary").text_content())
@@ -68,7 +68,7 @@ def rooms_step(page, tag):
     check("%s: Enter on a card's heading opens it" % tag, card.evaluate("d => d.open"))
     cmds = card.locator("code.cmd").all_text_contents()
     check("%s: each file has an hf download command with the <ComfyUI> placeholder" % tag,
-          len(cmds) == 4 and all(c.startswith("hf download ") and ' --local-dir "<ComfyUI>/models/' in c
+          len(cmds) == 5 and all(c.startswith("hf download ") and ' --local-dir "<ComfyUI>/models/' in c
                                  for c in cmds), cmds)
     card.get_by_role("button", name="Copy").first.click()
     page.wait_for_function("document.querySelector('details.room[data-room=pixelart] .file .btn').textContent "

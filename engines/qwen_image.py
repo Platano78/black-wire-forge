@@ -62,11 +62,54 @@ STYLE_FIELDS = [
 ]
 
 
+# The Turbo build (a distilled checkpoint, found by "turbo" in the chosen unet's
+# filename) is driven by its vendor's SAVED 8-step sigma schedule, never by a
+# plain KSampler at steps=8. MEASURED 2026-10-10 on a 16 GB card, same weights,
+# 1024x1024: the saved schedule renders in a median 3.2 s and matches the base
+# model's faces, lettering and scene adherence; a plain KSampler euler/simple
+# 8-step run was visibly darker (tile mean grey 29.7 vs 35.4) and seamed worse.
+# The checkpoint is distilled, so guidance above 1 clips: no CFG, no APG/FreSca,
+# and the negative prompt means nothing on it. Do not turn this into "steps=8".
+# Discovery never selects a turbo file (see the qwen_unet rule below), so this path is
+# exercised only by tests and by a hand-set model name.
+TURBO_SIGMAS = "1.0, 0.978453, 0.95418, 0.926626, 0.89508, 0.845148, 0.704534, 0.414568, 0.0"
+
+
+def is_turbo(m):
+    """True when the unet this graph will load is the Turbo build (filename-driven,
+    like every discovery rule here)."""
+    return "turbo" in (m.get("qwen_unet") or "").lower()
+
+
+def _sampler_nodes(g, m, p, model_out, latent, positive, negative,
+                   steps, cfg, sampler_name, scheduler, denoise=1.0):
+    """Add the sampling stage to `g` and return the ref the VAEDecode reads.
+
+    Not Turbo: exactly the KSampler (node "8") every graph here has always had.
+    Turbo: the sigma chain on nodes "50"-"54" (none of 7/8/11/12 -- ids no other
+    node in this pack or pixelart.py uses), conditioned by `positive` alone."""
+    if not is_turbo(m):
+        g["8"] = {"class_type": "KSampler", "inputs": {
+            "model": model_out, "positive": positive, "negative": negative, "latent_image": latent,
+            "seed": p["seed"], "steps": steps, "cfg": cfg,
+            "sampler_name": sampler_name, "scheduler": scheduler, "denoise": denoise}}
+        return ["8", 0]
+    g["50"] = {"class_type": "RandomNoise", "inputs": {"noise_seed": p["seed"]}}
+    g["51"] = {"class_type": "BasicGuider", "inputs": {"model": model_out, "conditioning": positive}}
+    g["52"] = {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "euler"}}
+    g["53"] = {"class_type": "ManualSigmas", "inputs": {"sigmas": TURBO_SIGMAS}}
+    g["54"] = {"class_type": "SamplerCustomAdvanced", "inputs": {
+        "noise": ["50", 0], "guider": ["51", 0], "sampler": ["52", 0],
+        "sigmas": ["53", 0], "latent_image": latent}}
+    return ["54", 0]
+
+
 def _describe(models):
     name = (models.get("qwen_unet") or "").lower()
     ver = " 2.1" if "2.1" in name else ""
+    turbo = " Turbo" if "turbo" in name else ""
     q = quant_words(name)
-    return "Qwen-Image" + ver + (" (%s)" % q if q else "")
+    return "Qwen-Image" + ver + turbo + (" (%s)" % q if q else "")
 
 
 def qwen_t2i_graph(p, m):
@@ -101,7 +144,7 @@ def qwen_t2i_graph(p, m):
               "inputs": {"width": p["width"], "height": p["height"], "batch_size": 1}},
     }
     model_out = apply_style_loras(g, p, ["1", 0])
-    if guidance_style == "Balanced":
+    if guidance_style == "Balanced" and not is_turbo(m):
         g["11"] = {"class_type": "APG", "inputs": {
             "model": model_out,
             "eta": float(p.get("apg_eta", 1.0)),
@@ -113,11 +156,9 @@ def qwen_t2i_graph(p, m):
             "scale_high": float(p.get("fresca_scale_high", 2.0)),
             "freq_cutoff": int(p.get("fresca_freq_cutoff", 8))}}
         model_out = ["12", 0]
-    g["8"] = {"class_type": "KSampler", "inputs": {
-        "model": model_out, "positive": ["4", 0], "negative": ["4", 1], "latent_image": ["6", 0],
-        "seed": p["seed"], "steps": p["steps"], "cfg": p["cfg"],
-        "sampler_name": sampler_name, "scheduler": scheduler, "denoise": 1.0}}
-    g["9"] = {"class_type": "VAEDecode", "inputs": {"samples": ["8", 0], "vae": ["3", 0]}}
+    samples = _sampler_nodes(g, m, p, model_out, ["6", 0], ["4", 0], ["4", 1],
+                             p["steps"], p["cfg"], sampler_name, scheduler)
+    g["9"] = {"class_type": "VAEDecode", "inputs": {"samples": samples, "vae": ["3", 0]}}
     g["10"] = {"class_type": "SaveImage", "inputs": {"images": ["9", 0], "filename_prefix": "blackwire/IMG"}}
     return g
 
@@ -145,7 +186,7 @@ def qwen_edit_graph(p, m):
             "resolution": int(p.get("resolution", 1024)), "vae": ["3", 0]}},
     }
     model_out = apply_style_loras(g, p, ["1", 0])
-    if guidance_style == "Balanced":
+    if guidance_style == "Balanced" and not is_turbo(m):
         g["11"] = {"class_type": "APG", "inputs": {
             "model": model_out,
             "eta": float(p.get("apg_eta", 1.0)),
@@ -163,12 +204,14 @@ def qwen_edit_graph(p, m):
     # brighter and more saturated. Our own internal edit graph omits it;
     # neither output is wrong, so upstream's default is kept and the difference
     # is recorded rather than guessed at. Owner eye-gate if it ever matters.
-    g["7"] = {"class_type": "ModelSamplingAuraFlow", "inputs": {"model": model_out, "shift": 3.1}}
-    g["8"] = {"class_type": "KSampler", "inputs": {
-        "model": ["7", 0], "positive": ["4", 0], "negative": ["4", 1], "latent_image": ["4", 2],
-        "seed": p["seed"], "steps": p["steps"], "cfg": p["cfg"],
-        "sampler_name": sampler_name, "scheduler": scheduler, "denoise": 1.0}}
-    g["9"] = {"class_type": "VAEDecode", "inputs": {"samples": ["8", 0], "vae": ["3", 0]}}
+    # The Turbo build runs its own sigma schedule instead (see TURBO_SIGMAS): the
+    # shift node belongs to the KSampler path and stays on it, untouched.
+    if not is_turbo(m):
+        g["7"] = {"class_type": "ModelSamplingAuraFlow", "inputs": {"model": model_out, "shift": 3.1}}
+        model_out = ["7", 0]
+    samples = _sampler_nodes(g, m, p, model_out, ["4", 2], ["4", 0], ["4", 1],
+                             p["steps"], p["cfg"], sampler_name, scheduler)
+    g["9"] = {"class_type": "VAEDecode", "inputs": {"samples": samples, "vae": ["3", 0]}}
     g["10"] = {"class_type": "SaveImage", "inputs": {"images": ["9", 0], "filename_prefix": "blackwire/EDIT"}}
     for i, name in enumerate(refs[:10], start=1):
         nid = str(100 + i)
@@ -240,11 +283,9 @@ def qwen_charsheet_graph(p, m):
         g["12"] = {"class_type": "QwenImage21Cache",
                    "inputs": {"model": model_out, "device": "auto", "dtype": "default"}}
         model_out = ["12", 0]
-    g["8"] = {"class_type": "KSampler", "inputs": {
-        "model": model_out, "positive": ["4", 0], "negative": ["4", 1], "latent_image": ["6", 0],
-        "seed": p["seed"], "steps": 25, "cfg": 1, "sampler_name": "euler", "scheduler": "simple",
-        "denoise": 1}}
-    g["9"] = {"class_type": "VAEDecode", "inputs": {"samples": ["8", 0], "vae": ["3", 0]}}
+    samples = _sampler_nodes(g, m, p, model_out, ["6", 0], ["4", 0], ["4", 1],
+                             25, 1, "euler", "simple", denoise=1)
+    g["9"] = {"class_type": "VAEDecode", "inputs": {"samples": samples, "vae": ["3", 0]}}
     g["10"] = {"class_type": "SaveImage", "inputs": {"images": ["9", 0], "filename_prefix": "blackwire/CHARSHEET"}}
     return g
 
@@ -757,7 +798,8 @@ ENGINE = {
     # the generic field-driven path (engines.legacy_dispatch checks this).
     "generic_modes": ["charsheet"],
     "roles": {
-        "qwen_unet": ("unet", {"all": ["qwen_image"], "none": ["minimax", "vae"], "prefer": ["2.1"]}),
+        # Turbo graphs are built and tested above, but discovery refuses turbo files: measured 2026-10-10, Turbo drops fine background detail.
+        "qwen_unet": ("unet", {"all": ["qwen_image"], "none": ["minimax", "vae", "turbo"], "prefer": ["int8", "2.1"]}),
         "qwen_clip": ("clip", {"all": ["qwen3vl"], "none": ["minimax"], "prefer": ["8b"]}),
         "qwen_vae": ("vae", {"all": ["qwen_image", "vae"], "none": ["minimax"], "prefer": ["2.1"]}),
     },
@@ -766,6 +808,7 @@ ENGINE = {
     # nothing here is fetched by the app.
     "sources": {
         "qwen_unet": [
+            {"repo": "Comfy-Org/Qwen-Image-2.1", "file": "diffusion_models/qwen_image_2.1_int8_convrot.safetensors", "size": 7_256_783_064, "folder": "diffusion_models", "run_by_us": True, "licence": "Qwen Research License"},
             {"repo": "Abiray/Qwen-Image-2.1-GGUF", "file": "qwen_image_2.1_Q6_K.gguf", "size": 5_876_578_464, "folder": "unet", "run_by_us": True, "licence": "Qwen Research License"},
         ],
         "qwen_clip": [

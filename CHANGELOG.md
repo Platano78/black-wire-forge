@@ -2,6 +2,13 @@
 
 All notable changes to Black Wire Forge are recorded here.
 
+## v1.4.3 — 2026-10-10
+
+### Changed
+
+- The picture, edit, character-sheet and pixel-art modes prefer the official int8 build of Qwen-Image 2.1 when the machine has it: about 3x faster at the same steps (8.8 s against 24.8 s at 25 steps, measured on a 16 GB card), and measured to draw the same picture as the GGUF build. The GGUF build is still used when the int8 file is absent.
+- Qwen-Image-2.1-Turbo was measured and not adopted: it drops fine background detail. Discovery refuses turbo files.
+
 ## v1.4.2 — 2026-10-09
 
 ### Fixed

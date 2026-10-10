@@ -8,6 +8,7 @@
  "h3_vae_video": "h3_vae_video.safetensors",
  "qwen_clip": "qwen3vl_8b_int8_convrot.safetensors",
  "qwen_unet": "qwen_image_2.1_Q6_K.gguf",
+ "pixel_unet": "qwen_image_2.1_Q6_K.gguf",
  "qwen_vae": "qwen_image_2.1_vae_bf16.safetensors",
  "birefnet_model": "model.safetensors",
  "upscale_model": "RealESRGAN_x4plus.pth",

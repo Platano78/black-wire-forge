@@ -195,10 +195,12 @@ try:
 
     print("(c) total_bytes counts each file once")
     qwen = sum(main_source(r)["size"] for r in picture_roles)
-    check("Picture = the three picture files (15,902,886,512 bytes)", by["picture"]["total_bytes"] == qwen == 15902886512,
-          by["picture"]["total_bytes"])
-    check("Pixel Art = those three + background removal, counted once (16,347,360,108)",
-          pix["total_bytes"] == qwen + bg["size"] == 16347360108, pix["total_bytes"])
+    check("Picture = the three picture files, the int8 build first (17,283,091,112 bytes)",
+          by["picture"]["total_bytes"] == qwen == 17283091112, by["picture"]["total_bytes"])
+    pixel = (main_source("pixel_unet")["size"] + main_source("qwen_clip")["size"]
+             + main_source("qwen_vae")["size"])
+    check("Pixel Art = the same picture files (via pixel_unet) + background removal, counted once (17,727,564,708)",
+          pix["total_bytes"] == pixel + bg["size"] == 17727564708, pix["total_bytes"])
     shared = [rid for rid, r in by.items() if any(x["role"] == "birefnet_model" for x in r["roles"])]
     check("three rooms share the background-removal file", sorted(shared) == ["3d", "cleanup", "pixelart"], shared)
     check("Clean-up = background removal + upscaler (511,514,585)",

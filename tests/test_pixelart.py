@@ -53,7 +53,7 @@ check("pixelart's own describe() never names an engine",
       next(p for p in engines.packs() if p["id"] == "pixelart")["describe"]({}) == "")
 pixelart_pack = next(p for p in engines.packs() if p["id"] == "pixelart")
 check("pixelart provides mode 'pixelart' requiring the picture models AND background removal",
-      set(pixelart_pack["provides"]["pixelart"]) == {"qwen_unet", "qwen_clip", "qwen_vae", "birefnet_model"})
+      set(pixelart_pack["provides"]["pixelart"]) == {"pixel_unet", "qwen_clip", "qwen_vae", "birefnet_model"})
 qual = engines.quality("image", "pixelart")
 check("exactly one default quality tier", sum(1 for t in qual if t.get("default")) == 1, str(qual))
 check("at least one preset", len(engines.presets("image", "pixelart")) >= 1)

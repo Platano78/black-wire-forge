@@ -32,22 +32,39 @@ Licence: **Qwen RESEARCH LICENSE AGREEMENT**: its §1 defines "Non-Commercial" a
 
 | Role | Source (HF repo · file) | HF size | Verified size | Match | ComfyUI folder | Discovery match |
 |---|---|---|---|---|---|---|
+| `qwen_unet` | `Comfy-Org/Qwen-Image-2.1` · `diffusion_models/qwen_image_2.1_int8_convrot.safetensors` | 7,256,783,064 | 7,256,783,064 | yes | `models/diffusion_models` (`UNETLoader`) | PASS — contains `qwen_image` (preferred: contains `int8`) |
 | `qwen_unet` | `Abiray/Qwen-Image-2.1-GGUF` · `qwen_image_2.1_Q6_K.gguf` | 5,876,578,464 | 5,876,578,464 | yes | `models/unet` (`UnetLoaderGGUF`) | PASS — contains `qwen_image` |
+| `pixel_unet` | `Comfy-Org/Qwen-Image-2.1` · `diffusion_models/qwen_image_2.1_int8_convrot.safetensors` | 7,256,783,064 | 7,256,783,064 | yes | `models/diffusion_models` (`UNETLoader`) | PASS — contains `qwen_image`, no `turbo` (preferred: contains `int8`) |
+| `pixel_unet` | `Abiray/Qwen-Image-2.1-GGUF` · `qwen_image_2.1_Q6_K.gguf` | 5,876,578,464 | 5,876,578,464 | yes | `models/unet` (`UnetLoaderGGUF`) | PASS — contains `qwen_image`, no `turbo` |
 | `qwen_clip` | `Comfy-Org/Qwen-Image-2.1` · `text_encoders/qwen3vl_8b_int8_convrot.safetensors` | 9,350,798,360 | 9,350,798,360 | yes | `models/text_encoders` (`CLIPLoader`) | PASS — contains `qwen3vl`, `8b` |
 | `qwen_vae` | `Comfy-Org/Qwen-Image-2.1` · `vae/qwen_image_2.1_vae_bf16.safetensors` | 675,509,688 | 675,509,688 | yes | `models/vae` (`VAELoader`) | PASS — contains `qwen_image`, `vae`, `2.1` |
 
-Verified working source: `Abiray/Qwen-Image-2.1-GGUF`'s `qwen_image_2.1_Q6_K.gguf`
+**The picture model is the int8 build.** Picture, edit, character-sheet and Pixel Art modes use
+Comfy-Org's int8 file (`qwen_image_2.1_int8_convrot.safetensors`) when the machine has it, and the
+GGUF build otherwise: discovery prefers a filename containing `int8`, then `2.1`. Measured
+2026-10-10 on a 16 GB card, the int8 file draws the same picture as the GGUF (correlation 0.986 at
+the same seed, same sharpness) in about a third of the time: 8.8 s against 24.8 s at 25 steps, and
+12.6 s against 38.0 s at 40. Both rows work; Pixel Art reads the same two files through its own
+`pixel_unet` role.
+
+**Turbo files are refused.** Qwen-Image-2.1-Turbo (a distilled build that runs 8 fixed steps with no
+guidance) was measured and not adopted: it is faster but drops fine background detail (sharpness
+1344 against 1709 on a detailed bench scene, and fewer small figures in a street scene). Both
+unet rules exclude any filename containing `turbo`, so a Turbo file in the folder is never picked.
+
+Verified working source for the GGUF build: `Abiray/Qwen-Image-2.1-GGUF`'s `qwen_image_2.1_Q6_K.gguf`
 (5,876,578,464 bytes) — not `leejet/Qwen-Image-2.1-GGUF`'s `qwen_image_2.1-Q6_K.gguf`
 (5,996,851,232 bytes), a different build that does not size-match a working install.
 
-**Also required: Pixel Art mode.** `engines/pixelart.py` reuses these same three roles plus
-BiRefNet (`birefnet_model` — see the BiRefNet section below); downloading only the three rows
-above leaves Pixel Art unavailable.
+**Also required: Pixel Art mode.** `engines/pixelart.py` reuses `qwen_clip` and `qwen_vae` plus
+BiRefNet (`birefnet_model` — see the BiRefNet section below), and loads the picture model through
+its own `pixel_unet` role (the same two files as `qwen_unet`). Downloading only the three picture
+rows leaves Pixel Art unavailable.
 
 ### Character sheet mode (`charsheet`, the Characters room)
 
 One reference picture and a name become one 3:2 character design sheet. It needs **no model
-beyond the three roles above** (`qwen_unet`, `qwen_clip`, `qwen_vae`), and it renders through the
+beyond the three picture roles above** (`qwen_unet`, `qwen_clip`, `qwen_vae`), and it renders through the
 2.1 edit encoder (`TextEncodeQwenImage21`, the reference on its `images.image_1` input) with a
 plain `VAEDecode`.
 
@@ -57,7 +74,7 @@ attention") and `QwenImage21Cache`. Discovery looks each one up by name on `/obj
 declared as the pack's `optional_nodes`; nothing needs installing for the mode to work.
 
 The recipe is fixed: 25 steps, guidance 1, `euler`, `simple`. Sheet size is a field, by megapixels
-at 3:2 with both sides a multiple of 32. Measured on a 16 GB card, single job, empty queue:
+at 3:2 with both sides a multiple of 32. Measured on a 16 GB card, single job, empty queue, GGUF build:
 
 | Sheet size | Pixels | Time |
 |---|---|---|

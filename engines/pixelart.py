@@ -89,6 +89,9 @@ def pixelart_graph(p, m):
     ph = int(p.get("pixel_height", 0) or 0)
     if ph and not 16 <= ph <= 256:
         raise ValueError("Sprite height needs to be 0 (as tall as wide) or between 16 and 256.")
+    # Pixel art reads its own role, whose rule refuses "turbo": it was proven on
+    # Balanced guidance (APG + FreSca), which a distilled Turbo build cannot run.
+    qm = dict(m, qwen_unet=m["pixel_unet"])
     shape = p.get("shape_image")
     if shape:
         # The user's own prompt describes WHAT to draw; this wraps it into the
@@ -99,9 +102,9 @@ def pixelart_graph(p, m):
                         "Keep the silhouette's exact outer edges unchanged. Replace the "
                         "white area with a plain white background. Do not change the "
                         "shape's outline." % p["prompt"])
-        base = qwen_edit_graph(dict(p, prompt=instruction, ref_images=[shape]), m)
+        base = qwen_edit_graph(dict(p, prompt=instruction, ref_images=[shape]), qm)
     else:
-        base = qwen_t2i_graph(p, m)
+        base = qwen_t2i_graph(p, qm)
     del base["10"]   # the qwen graph's own SaveImage -- replaced below
     base["20"] = {"class_type": "LoadBackgroundRemovalModel", "inputs": {"bg_removal_name": m["birefnet_model"]}}
     base["21"] = {"class_type": "RemoveBackground", "inputs": {"bg_removal_model": ["20", 0], "image": ["9", 0]}}
@@ -292,22 +295,29 @@ ENGINE = {
     # first pack that actually DECLARES one wins" rule, same discipline as
     # engines/cleanup.py).
     "roles": {
-        "qwen_unet": ("unet", {"all": ["qwen_image"], "none": ["minimax", "vae"], "prefer": ["2.1"]}),
+        "pixel_unet": ("unet", {"all": ["qwen_image"], "none": ["minimax", "vae", "turbo"], "prefer": ["int8", "2.1"]}),
         "qwen_clip": ("clip", {"all": ["qwen3vl"], "none": ["minimax"], "prefer": ["8b"]}),
         "qwen_vae": ("vae", {"all": ["qwen_image", "vae"], "none": ["minimax"], "prefer": ["2.1"]}),
         "birefnet_model": ("bg_removal", {"all": []}),
     },
-    # W2: this pack's roles are qwen-image's and cleanup's, so their "sources" live there;
-    # the custom-node package docs/MODELS.md lists for it (tests/test_model_sources.py).
+    # W2: qwen_clip/qwen_vae/birefnet_model are qwen-image's and cleanup's, so their "sources"
+    # live there; pixel_unet's source (the base model) is this pack's own. Also the
+    # custom-node package docs/MODELS.md lists for it (tests/test_model_sources.py).
+    "sources": {
+        "pixel_unet": [
+            {"repo": "Comfy-Org/Qwen-Image-2.1", "file": "diffusion_models/qwen_image_2.1_int8_convrot.safetensors", "size": 7_256_783_064, "folder": "diffusion_models", "run_by_us": True, "licence": "Qwen Research License"},
+            {"repo": "Abiray/Qwen-Image-2.1-GGUF", "file": "qwen_image_2.1_Q6_K.gguf", "size": 5_876_578_464, "folder": "unet", "run_by_us": True, "licence": "Qwen Research License"},
+        ],
+    },
     "nodes": [
         {"name": "ComfyUI-GGUF", "url": "https://github.com/city96/ComfyUI-GGUF"},
     ],
-    "primary": {"pixelart": "qwen_unet"},
+    "primary": {"pixelart": "pixel_unet"},
     "provides": {
-        "pixelart": ["qwen_unet", "qwen_clip", "qwen_vae", "birefnet_model"],
+        "pixelart": ["pixel_unet", "qwen_clip", "qwen_vae", "birefnet_model"],
     },
     "words": {
-        "qwen_unet": "the picture model",
+        "pixel_unet": "the picture model",
         "qwen_clip": "its text encoder",
         "qwen_vae": "its image decoder",
         "birefnet_model": "the background removal model",
