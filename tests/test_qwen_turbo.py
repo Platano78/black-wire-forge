@@ -176,7 +176,7 @@ for small in (True, False):
 MB_POOL = ["qwen_image_2.1_bf16.safetensors", "qwen_image_2.1_turbo_bf16.safetensors"]
 for role in RULES:
     got = srv.pick_model(MB_POOL, RULES[role], False)
-    check("the motherbrain pool (base bf16, turbo bf16), big card: %s -> the base bf16" % role,
+    check("a big-card pool (base bf16, turbo bf16), big card: %s -> the base bf16" % role,
           got == "qwen_image_2.1_bf16.safetensors", got)
 check("Pixel Art is unavailable with only a turbo file under pixel_unet",
       engines.abilities(dict(MODELS, pixel_unet="", birefnet_model="m")).get("pixelart") is False
