@@ -1522,6 +1522,20 @@ function machineState(lane){
     }
     // The queue on its worker slots IS the rest of the story.
     if(lane.running > 0 || lane.pending > 0) return {state:'working', label:'WORKING'};
+    // `lane.up` means SOME pack here can run, not this one: when the process
+    // mode on screen is missing a program on this lane, the tile must not say
+    // READY ("answering, has what it needs"). STATE.engines is scoped to the
+    // active lane, so its available/missing are this lane's truth.
+    if(lane.id === STATE.activeLane){
+      const mi = modeInfo(STATE.cap, STATE.mode);
+      if(mi && mi.lane_kind === 'process' && mi.available === false){
+        // an entry can carry a how-to hint in brackets ("a Python with beat_this
+        // installed (put a program called ... on PATH)"): the tile names the
+        // program, the hint stays in the lane note under the form.
+        const miss = (mi.missing || []).map(w => String(w).replace(/\s*\(.*$/, '')).filter(Boolean);
+        return {state:'not-for-this', label: miss.length ? 'NEEDS ' + miss.join(', ') : 'UP, NOT FOR THIS'};
+      }
+    }
     return {state:'ready', label:'READY'};
   }
   if(!lane.up){
@@ -2491,11 +2505,13 @@ function renderEnginePicker(force){
         const changed = await loadEnginesFor();
         if(changed) renderRoomStrip(); else refreshRoomStrip();
       }catch(e){ /* stale manifest stays; the next poll retries */ }
+      refreshMachineModules();   // the new lane's available/missing are in STATE.engines now
       renderEnginePicker(true);
       renderMonitor();
       if(!$('#roomForm').hidden) renderModeFields();
       return;
     }
+    refreshMachineModules();   // the mode on screen changed; a process tile reads it
     PICKER_KEY = pickerKey(ms);
     renderModeFields();
   });
@@ -2566,6 +2582,7 @@ async function selectRoom(id, opts){
     if(!opts.keepJob && !(sel && jobRoom(sel) === room.id)) STATE.selectedJobId = null;
   }
   refreshRoomStrip();
+  refreshMachineModules();   // a process tile reads the mode now on screen
   const cutting = cuttingRoom;
   const nothing = !cutting && roomModes(room).length === 0;
   $('#roomHeading').textContent = room.name || '';
@@ -6768,6 +6785,23 @@ async function selectSlot(slotId){
   STATE.monitorCut = null;   // picking a shot always leaves "watch the cut" mode
   STATE.cap = slot.cap;
   STATE.mode = slot.mode;
+  // The Cutting Room is not cap-scoped, so nothing else moves the active machine to the one
+  // this shot's engine runs on. If the page opened while only "This machine" (a process lane)
+  // was answering, it would stay the active lane for the whole session and a picture carried
+  // into the shot would be refused ("takes files you upload, not results"). Follow the shot's
+  // kind of machine, the way picking a cross-kind engine does.
+  const shotKind = (modeInfo(slot.cap, slot.mode) || {}).lane_kind || 'comfy';
+  const shotHome = laneForKind(shotKind);
+  if(shotHome && shotHome.id !== STATE.activeLane
+      && laneKindOf(STATE.lanes.find(l => l.id === STATE.activeLane)) !== shotKind){
+    STATE.activeLane = shotHome.id;
+    renderMachineModules();
+    PICKER_KEY = '';
+    try{
+      const changed = await loadEnginesFor();
+      if(changed) renderRoomStrip(); else refreshRoomStrip();
+    }catch(e){ /* stale manifest stays; the next poll retries */ }
+  }
   $('#roomForm').hidden = false;
   renderEnginePicker(true);   // Cutting Room has no room modes, so this stays hidden
   await renderModeFields();

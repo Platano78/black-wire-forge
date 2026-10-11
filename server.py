@@ -6382,6 +6382,28 @@ def _fill_declared_fields(p, lane, kind, qmode, args, types=None):
         args[fid] = _coerce_field_value(f, val)
         filled.add(fid)
 
+    def enabled(f):
+        # enabled_when against what this call has settled so far (absent = None).
+        ew = f.get("enabled_when") or {}
+        if not ew:
+            return True
+        cur = args.get(ew.get("field"))
+        if "truthy" in ew:
+            return bool(cur) == bool(ew["truthy"])
+        if "equals" in ew:
+            return cur == ew["equals"]
+        return True
+
+    def fill_default(f):
+        # v1.4.4: the API must behave like the page. A scalar field the request
+        # left out takes its OWN declared default (same coercion), instead of
+        # whatever last-resort fallback the graph builder keeps for callers that
+        # declare no such field (pixel art, the goldens).
+        fid, ftype = f["id"], f["type"]
+        if fid in args or "default" not in f or ftype in NO_DEFAULT_FILL_TYPES or not enabled(f):
+            return
+        args[fid] = _coerce_field_value(f, f["default"])
+
     try:
         for f in fields:
             if types is None or f["type"] in types:
@@ -6390,9 +6412,23 @@ def _fill_declared_fields(p, lane, kind, qmode, args, types=None):
             for f in fields:
                 if (f.get("enabled_when") or {}).get("field") in filled:
                     fill(f)
+        else:
+            # independent fields first, then the ones whose enabled_when reads them
+            for f in fields:
+                if not f.get("enabled_when"):
+                    fill_default(f)
+            for f in fields:
+                if f.get("enabled_when"):
+                    fill_default(f)
     except ValueError as e:
         return {"ok": False, "error": str(e)}, 400
     return None
+
+
+# Field types a declared default is never filled for: a file, a model or a pool
+# choice has no default that is safe to invent (a pool_select default could name
+# a file the lane lacks).
+NO_DEFAULT_FILL_TYPES = ("audio", "image", "image_list", "video_list", "model", "pool_select")
 
 
 def _generate_video(p, lane, m, able, mode, qmode, prompt, seed, steps):

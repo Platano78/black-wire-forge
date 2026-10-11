@@ -2,6 +2,16 @@
 
 All notable changes to Black Wire Forge are recorded here.
 
+## v1.4.4 — 2026-10-10
+
+### Fixed
+
+- An API call that left out the guidance settings (guidance style, sampling method, noise schedule) got the old Balanced recipe instead of the Default the page uses. It now gets the Default; asking for Balanced by name still works.
+- The "This box" tile said READY for a mode whose program is missing. It now says NEEDS and names the program (or UP, NOT FOR THIS when the list is empty).
+- The note on the Default picture recipe named file formats; it is in plain words again.
+- Opening a video shot in the Cutting Room could leave "This machine" as the active machine when it was the only one answering at page load, so choosing a picture you made for the shot failed with "This machine takes files you upload, not results". The page now moves to a machine that can run the shot.
+- Test fixtures could outlive a suite that timed out. They now exit when the process that started them is gone, and `scripts/run-tests.sh` stops any a finished suite left behind.
+
 ## v1.4.3 — 2026-10-10
 
 ### Changed

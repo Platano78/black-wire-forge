@@ -31,6 +31,7 @@ Run: python3 tests/test_ui_smoke.py
 """
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -252,6 +253,9 @@ try:
         proc_on_box = {(c, m["id"]): m.get("available") is not False
                        for c in proc_engines if c not in ("rooms", "helper", "helper_guide_on")
                        for m in proc_engines[c].get("modes", [])}
+        proc_missing = {(c, m["id"]): m.get("missing") or []
+                        for c in proc_engines if c not in ("rooms", "helper", "helper_guide_on")
+                        for m in proc_engines[c].get("modes", [])}
         check("default room is the first in order", page.evaluate("location.hash") == "#room=" + rooms[0]["id"],
               page.evaluate("location.hash"))
 
@@ -360,7 +364,7 @@ try:
                                                 "document.querySelectorAll('#machineModules .machine')," +
                                                 "x => x.innerText.indexOf('This box') >= 0);" +
                                                 " return e ? {vram: /vram/i.test(e.innerText)," +
-                                                " ready: /READY/.test(e.innerText)} : null; }")
+                                                " ready: /READY/.test(e.innerText), text: e.innerText} : null; }")
                         # READY only when the box really has its programs: a process
                         # lane whose bins are missing reports up=false, and its tile
                         # must not claim READY (help.html's own definition of READY).
@@ -369,6 +373,15 @@ try:
                               " (installed here: %s)" % box_can,
                               bool(box_mod) and not box_mod["vram"] and box_mod["ready"] == box_can,
                               repr(box_mod))
+                        if not box_can:
+                            # R2 (v1.4.4): not READY, and the tile names what is missing
+                            # (NEEDS <program>) or says UP, NOT FOR THIS when the list is empty.
+                            names = [re.sub(r"\s*\(.*$", "", w) for w in proc_missing.get((mm["cap"], mm["mode"])) or []]
+                            want_label = ("NEEDS " + ", ".join(names)) if names else "UP, NOT FOR THIS"
+                            check("process machine module %s/%s: missing a program -> '%s', not READY"
+                                  % (mm["cap"], mm["mode"], want_label),
+                                  bool(box_mod) and want_label.upper() in (box_mod.get("text") or "").upper(),
+                                  repr(box_mod))
                         row_text = page.eval_on_selector(
                             '#enginePicker input[data-cap="%s"][data-mode="%s"]' % (mm["cap"], mm["mode"]),
                             "el => el.closest('label').innerText")

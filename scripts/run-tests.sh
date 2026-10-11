@@ -72,7 +72,45 @@ cleanup_current() {
     fi
 }
 
+# A suite killed by `timeout` gets SIGTERM on its own python only; fixtures it
+# started with subprocess.Popen (tests/fixtures/fake_comfy.py) survive it. A fixture
+# of THIS suite is one whose argv carries `--store <path under CURRENT_SCRATCH>`:
+# the per-suite scratch is unique to it, so by construction those are its own.
+# PIDs are read from /proc/<pid>/cmdline (never `pgrep -f`, never by name alone) and
+# only the recorded PIDs are signalled. Where there is no /proc (macOS, Git Bash on
+# Windows) this does nothing; the fixture's own parent watchdog covers POSIX anyway.
+reap_suite_fixtures() {
+    [ -n "$CURRENT_SCRATCH" ] && [ -r /proc/self/cmdline ] || return 0
+    local d pid arg prev is_fixture owned
+    local -a pids=()
+    for d in /proc/[0-9]*; do
+        pid="${d#/proc/}"
+        [ "$pid" = "$$" ] && continue
+        is_fixture=0; owned=0; prev=""
+        while IFS= read -r -d '' arg; do
+            case "$arg" in */fake_comfy.py|fake_comfy.py) is_fixture=1 ;; esac
+            if [ "$prev" = "--store" ]; then
+                case "$arg" in "$CURRENT_SCRATCH"|"$CURRENT_SCRATCH"/*) owned=1 ;; esac
+            fi
+            prev="$arg"
+        done 2>/dev/null < "$d/cmdline"
+        [ "$is_fixture" -eq 1 ] && [ "$owned" -eq 1 ] && pids+=("$pid")
+    done
+    [ "${#pids[@]}" -gt 0 ] || return 0
+    for pid in "${pids[@]}"; do
+        kill "$pid" 2>/dev/null && echo "reaped fake_comfy pid $pid"
+    done
+    sleep 1
+    for pid in "${pids[@]}"; do
+        # still there after SIGTERM and still the same kind of process: force it
+        if [ -r "/proc/$pid/cmdline" ] && tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -q 'fake_comfy\.py'; then
+            kill -9 "$pid" 2>/dev/null
+        fi
+    done
+}
+
 on_interrupt() {
+    reap_suite_fixtures
     cleanup_current
     echo "interrupted"
     exit 130
@@ -103,6 +141,7 @@ for suite_path in "${SUITES[@]}"; do
     secs=$((end - start))
 
     # Delete scratch unconditionally, whatever the exit code (including timeout=124, killed=137).
+    reap_suite_fixtures
     cleanup_current
     CURRENT_SCRATCH=""
 

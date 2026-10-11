@@ -207,6 +207,11 @@ try:
 
         page.goto(URL + "#room=cutting&seq=s_0000dddd", wait_until="networkidle")
         page.wait_for_selector('[data-slot-id="v1"]', timeout=15000)
+        # The page's first lane poll can land while only "This machine" (the process lane) is
+        # answering, which makes it the active lane for the session (index.html pollLanes). That
+        # used to flake this suite on a loaded box; pin the situation instead of racing for it:
+        # opening a video shot must move the page to a machine that can take a carried picture.
+        page.evaluate("() => { STATE.activeLane = 'cpu'; }")
         page.click('[data-slot-id="v1"]')
         page.wait_for_selector("#roomForm", timeout=15000)
         time.sleep(1)

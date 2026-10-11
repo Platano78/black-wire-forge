@@ -1129,9 +1129,9 @@ ENGINE = {
             # opt-in `balanced` recipe, unchanged.
             {"id": "default", "label": "Default (raw)", "note":
              "The raw model: plain guidance, Guidance strength 1, 40 steps, no extra "
-             "effects. About 30s at 1328x1328 on the int8 build (60s on the GGUF). \"Things to avoid\" has no effect at "
+             "effects. About 30s at 1328x1328. \"Things to avoid\" has no effect at "
              "Guidance strength 1; raise it above 2.5, or pick the Balanced recipe, "
-             "if you need it. Measured 2026-10-03; int8 timing 2026-10-10.",
+             "if you need it. Measured 2026-10-03; timing re-measured 2026-10-10.",
              "values": {"width": 1328, "height": 1328, "steps": 40, "cfg": 1.0,
                         "sampler": "euler", "scheduler": "simple", "guidance_style": "Plain"}},
             # The old t2i default (Q21 arm D, owner-confirmed 2026-09-23), kept

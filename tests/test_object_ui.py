@@ -30,6 +30,15 @@ try:
         for w, h in ((1280, 800), (3440, 1440)):
             page = browser.new_page(viewport={"width": w, "height": h})
             page.goto(URL + "#room=3d", wait_until="networkidle")
+            # Which 3D engine the room opens on is not this test's business: the page picks
+            # the first one the active lane can offer, and "This machine" (the process lane
+            # that runs the turntable) only comes up ~2 s after the server starts -- so the
+            # default was mesh or turntable depending on how fast the page loaded. Pick the
+            # picture mode the way a person does.
+            page.wait_for_function("() => STATE.room === '3d' && !!STATE.mode", timeout=15000)
+            if page.evaluate("STATE.mode") != "mesh":
+                page.evaluate("() => setEngineChipOpen(true)")
+                page.check('#enginePicker input[data-cap="3d"][data-mode="mesh"]')
             page.wait_for_function("() => STATE.mode === 'mesh' && !document.querySelector('#helperBar').hidden", timeout=15000)
             check("%d: the 3D picture mode shows a topic box, not a field" % w, page.is_visible("#promptBox")
                   and page.get_attribute("#promptBox", "data-field-id") is None

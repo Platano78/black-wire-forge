@@ -82,6 +82,14 @@ line, so quantised builds win discovery exactly as they would on a real rig.
 The 1 byte ram_free is deliberate too: it makes the page show an honest "RAM
 not measured" instead of inventing a free-RAM figure.
 
+Parent watchdog (POSIX): a suite that scripts/run-tests.sh kills with `timeout`
+gets SIGTERM only on its own python -- the fixtures it started with
+subprocess.Popen survive it and sit on a random port for days. So the server
+notes its parent pid at start and, every 2 s, exits at once (os._exit(0)) if
+os.getppid() has changed -- it was re-parented to init or a subreaper, i.e.
+whoever started it is gone. A no-op on Windows (os.getppid() there does not
+re-parent). tests/test_fixture_reaping.py pins this.
+
 Run standalone (useful to eyeball it):
 
     python3 tests/fixtures/fake_comfy.py --port 8123
@@ -93,6 +101,7 @@ import json
 import os
 import re
 import sys
+import threading
 import time
 import urllib.parse
 import uuid
@@ -412,6 +421,21 @@ class Handler(BaseHTTPRequestHandler):
         pass    # keep the test's stdout clean
 
 
+def _watch_parent(interval=2.0):
+    """See the module docstring: exit when whoever started this process is gone."""
+    if os.name != "posix":
+        return
+    start_ppid = os.getppid()
+
+    def loop():
+        while True:
+            time.sleep(interval)
+            if os.getppid() != start_ppid:
+                os._exit(0)
+
+    threading.Thread(target=loop, daemon=True).start()
+
+
 def main():
     global STORE_DIR
     ap = argparse.ArgumentParser(description=__doc__)
@@ -446,6 +470,7 @@ def main():
         STORE_DIR = tempfile.mkdtemp(prefix="fake_comfy_")
     srv = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     srv.daemon_threads = True
+    _watch_parent()
     print("fake comfyui lane on 127.0.0.1:%d (%d nodes, store %s)" % (args.port, len(NODES), STORE_DIR),
           flush=True)
     srv.serve_forever()

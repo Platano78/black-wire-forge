@@ -72,6 +72,21 @@ def start_fake(name):
 
 FAKE_LANE, PORT_LANE, STORE_LANE = start_fake("lane")
 
+
+def _stop_fake_lane():
+    # sys.exit() and a crash both land here: the fixture must not outlive this suite
+    if FAKE_LANE.poll() is None:
+        FAKE_LANE.terminate()
+        try:
+            FAKE_LANE.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            FAKE_LANE.kill()
+            FAKE_LANE.wait()
+
+
+import atexit
+atexit.register(_stop_fake_lane)
+
 CFG_PATH = os.path.join(SCRATCH, "config.json")
 app_port = free_port()
 json.dump({

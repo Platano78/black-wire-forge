@@ -269,7 +269,10 @@ is deleted after every suite regardless of outcome. Pass suite paths as args to 
 `SKIP="test_storyboard*"` to skip by glob, `TIMEOUT=<secs>` (default 900) per suite, and
 `SCRATCH_ROOT=` to change where scratch lands (default `~/.cache/bwf-tests`). GNU `timeout` enforces that
 per-suite limit; without it (stock macOS has none) the runner falls back to `gtimeout`, else
-runs with no time limit at all and prints one note saying so, rather than failing outright.
+runs with no time limit at all and prints one note saying so, rather than failing outright. After each suite
+the runner also stops any `tests/fixtures/fake_comfy.py` that suite left running (matched by its own
+scratch dir in `--store`, printing `reaped fake_comfy pid N`); on Linux/macOS the fixture itself also exits
+within a couple of seconds once the process that started it is gone.
 No `config.json` is required to run
 the suite: every test either spins up its own scratch config (`tests/_scratch_config.py`, for the
 ones that `exec_module` `server.py` directly) or never imports `server.py` as a running app at
