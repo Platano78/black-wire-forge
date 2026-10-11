@@ -83,8 +83,9 @@ at all.
   all and declares `"bins"` instead (see `lane_kind` below). What server-side discovery
   looks for on a lane: which model *pool* to scan (`checkpoint`, `unet`, `clip`, `vae`,
   `lora`, ...) and a rule (`all` / `none` / `any` name fragments to filter, `prefer` to
-  rank) that picks one file out of that pool. `engines.role_pool()`/`role_rules()` merge
-  every pack's roles into the one table discovery scans against.
+  rank) that picks one file out of that pool. A rule may add `none_why` (`{none term: one
+  sentence}`), the reason shown beside each file that term leaves out. `engines.role_pool()`/
+  `role_rules()` merge every pack's roles into the one table discovery scans against.
 - **`provides`** (`dict[str, list]`) — ability name -> list of roles. A **process** pack
   still declares this (e.g. `engines/turntable.py`'s `{"turntable": ["blender", "ffmpeg"]}`)
   even though it has no `roles` dict of its own to satisfy those entries against — its
@@ -92,7 +93,9 @@ at all.
   resolves them the same way regardless of pack kind. An ability is true only when *every*
   listed role resolved (to a real model file for a ComfyUI pack, or a resolvable binary
   for a process pack). A role entry can itself be a list, meaning "any one of these is
-  enough" (e.g. an int8 or an nvfp4 text encoder — either satisfies the role).
+  enough" (e.g. an int8 or an nvfp4 text encoder — either satisfies the role); list those
+  roles in the order your graph reads them, since the page shows the first one resolved as
+  the file that runs.
 - **`words`** (`dict[str, str]`) — role -> plain-English label, used in "X is missing"
   messages (`engines.missing_words()`).
 - **`graphs`** (`dict[str, callable(args, models) -> dict]`) — mode name -> a function
@@ -105,8 +108,10 @@ at all.
 
 - **`licence`** — one dict, or a list of dicts (one per licence regime a pack ships
   under), each with `name`, `shippable` (bool) and `attribution`. A list entry may name
-  which `modes` it covers; without that key it covers the whole pack. Read at every
-  finished job by `engines.licence_for(cap, mode)`.
+  which `modes` it covers; without that key it covers the whole pack. Add
+  `"noncommercial": true` when the licence forbids commercial use, and `"territory"` (a short
+  phrase) when it does not reach everywhere: the page's licence stamp reads these, never the
+  licence's name. Read at every finished job by `engines.licence_for(cap, mode)`.
 - **`cap_word`** — a bare noun for the cap in a sentence ("sound" for `"audio"`, "picture"
   for `"image"`), no article — callers plug it into "the ___ models". Falls back to the
   cap name.

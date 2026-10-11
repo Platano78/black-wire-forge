@@ -24,6 +24,16 @@ sentence ("the LTX video model is missing"). A lane's `caps` in `config.json` sa
 it's *for*; discovery says what it can *actually* do right now — the UI offers the
 intersection.
 
+Ranking is one function, `role_candidates()`: every file that fits a role, best first, each
+with the reasons built from the rule's own terms. `pick_model()` is its first entry, and
+Setup uses it with the same card test, so discovery, Setup and the page cannot disagree.
+Discovery keeps the ranked list and the files a `none` term left out (`role_refused()`, with
+the rule's optional `none_why` reason). `config.json` `"models"` pins go on top
+(`layer_pins()`): a pin the lane's pool lacks resolves nothing and its mode reads unavailable
+with a sentence naming the file; a pin in the pool runs even when it does not fit the rule.
+`/api/engines` carries this per mode as `"parts"` (`mode_parts()`), which the page shows
+read-only as **What will run**.
+
 ## Packs
 
 `engines/` holds one module per model family (Qwen-Image, LTX, MiniMax-H3, the audio

@@ -5,11 +5,8 @@ abilities()/missing_for() labels, describe_video(), and the h3_*_graph
 builders. Logic is verbatim; only the lane->models indirection is replaced
 by the contract's direct ``models`` dict.
 
-Note on the text encoder: server.py requires h3_clip_nvfp4 OR h3_clip_int8,
-but the contract's ``provides`` can only list roles that must ALL resolve,
-so this pack lists h3_clip_nvfp4 (the role server.py's own missing_for
-treats as "the H3 text encoder" in the golden rig). A rig with only the int8
-clip would report fl2va/ref2v missing here, whereas server.py would not.
+Note on the text encoder: each mode needs h3_clip_int8 OR h3_clip_nvfp4 (an
+any-of entry in ``provides``, listed in the order the graphs read them).
 Both roles match any H3 encoder file, so a lane with one encoder uses it for
 both. With both present the graphs take the int8 one, which runs on any card;
 the nvfp4 build needs a GPU with FP4 support. The "encoder" field overrides.
@@ -144,7 +141,7 @@ def h3_fl2va_graph(p, m):
 
 
 def h3_continue_graph(p, m):
-    """The 'continue' recipe: same fl2va unet + NVFP4 AWQ encoder +
+    """The 'continue' recipe: same fl2va unet + H3 text encoder +
     MiniMaxH3ImageToVideo as h3_fl2va_graph, but with NO starting picture --
     instead the previous shot's harvested clip (frames + audio) is fed
     through MiniMaxH3MotionContext (route C, L2's frames+audio arm --
@@ -629,13 +626,13 @@ ENGINE = {
     "primary": {"fl2va": "h3_unet_fl2va", "ref2v": "h3_unet_ref2va"},
     "cap_from": ["fl2va", "ref2v"],
     "provides": {
-        "fl2va": ["h3_unet_fl2va", "h3_vae_video", "h3_vae_audio", ["h3_clip_nvfp4", "h3_clip_int8"]],
-        "ref2v": ["h3_unet_ref2va", "h3_vae_video", "h3_vae_audio", ["h3_clip_nvfp4", "h3_clip_int8"]],
+        "fl2va": ["h3_unet_fl2va", "h3_vae_video", "h3_vae_audio", ["h3_clip_int8", "h3_clip_nvfp4"]],
+        "ref2v": ["h3_unet_ref2va", "h3_vae_video", "h3_vae_audio", ["h3_clip_int8", "h3_clip_nvfp4"]],
         "turbo": ["h3_turbo_lora"],
         # C3.4b: the continue graph is the fl2va unet + MotionContext nodes
         # from the installed NikoDemon80/ComfyUI-H3-Motion-Context pack (no
         # extra model file of its own) -- same models fl2va needs, no more.
-        "continue": ["h3_unet_fl2va", "h3_vae_video", "h3_vae_audio", ["h3_clip_nvfp4", "h3_clip_int8"]],
+        "continue": ["h3_unet_fl2va", "h3_vae_video", "h3_vae_audio", ["h3_clip_int8", "h3_clip_nvfp4"]],
     },
     "words": {
         "h3_unet_fl2va": "the H3 video model",
@@ -757,7 +754,8 @@ ENGINE = {
              "tier": "advanced", "group": "Quality", "order": 2,
              "hint": "A faster mode that only works at low detail settings. "
                      "Turns itself off above 8 steps."},
-            # Defaults to the NVFP4 AWQ encoder here; ref2v below defaults to INT8.
+            # Blank uses the int8 encoder when the lane has one, else the nvfp4 one
+            # (h3_fl2va_graph's `clip` line); ref2v below reads them in the same order.
             {"id": "encoder", "label": "Text encoder override", "type": "text",
              "tier": "advanced", "group": "Quality", "order": 3,
              "hint": "Leave blank to use the default."},
@@ -843,7 +841,7 @@ ENGINE = {
              "default": "match", "options": ["match", "max"],
              "tier": "advanced", "group": "Quality", "order": 3,
              "hint": "Max reads faces much better and is slower (measured 1.8x)."},
-            # Defaults to the INT8 encoder here (fl2va above defaults to NVFP4).
+            # Blank: the int8 encoder when the lane has one, else the nvfp4 one (same as fl2va).
             {"id": "encoder", "label": "Text encoder override", "type": "text",
              "tier": "advanced", "group": "Quality", "order": 4,
              "hint": "Leave blank to use the default."},
@@ -1009,6 +1007,7 @@ ENGINE = {
                    "from MiniMax; a commercial product must display \"MiniMax H3\".",
         "note": "Open weights are licensed outside the EU, UK, South Korea and the USA; "
                 "elsewhere MiniMax asks you to apply (platform.minimax.io/h3-license).",
+        "territory": "not in the EU, UK, South Korea or USA without applying",
     },
     # LORA-2A CONTRACT v2 (engines.style_catalogs()).
     "style_catalogs": [

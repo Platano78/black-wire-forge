@@ -230,6 +230,12 @@ Every engine pack under `engines/` declares its own model **roles** and the Comf
 | `engines/turntable.py` | 3d | **not ComfyUI nodes** — a `"process"` lane needing the `blender` and `ffmpeg` binaries on `PATH` (its own `"bins"` dict) | n/a (runs Blender via a CLI script + an `ffmpeg` encode step, `runner.py`) |
 | `engines/producer.py` | producer | **not ComfyUI nodes** — a `"process"` lane needing `ffmpeg` and a Python with beat_this (`"bins"`: `producer_python`, found as `BWF_PRODUCER_PYTHON` or `bwf-producer-python` on `PATH`) | n/a (runs `engines/producer_tools/grid_check.py` under that Python) |
 
+Which file each part of a mode will load on a lane: `/api/engines?lane=<id>` → the mode's
+`"parts"`, one per model file: `"file"` (exactly what its loader gets), `"source"`
+(`"auto"`, or `"config"` for a `"models"` pin), `"candidates"` (every file that fits, ranked,
+each with a `"why"`), `"refused"` (left out on purpose, with the term), `"pinned"`, and
+`"problem"` (a sentence when nothing fills it). `[]` on a process lane.
+
 Model **filenames** discovery looks for are governed by each pack's `roles` dict (name
 fragments, e.g. `engines/qwen_image.py`'s UNet role wants a filename containing `qwen_image`, and
 prefers one containing `int8`, then `2.1`, and refuses any containing `turbo`; the Pixel Art pack's `pixel_unet` role has the same rule) — do not guess a filename requirement not in that dict.
@@ -241,6 +247,7 @@ prefers one containing `int8`, then `2.1`, and refuses any containing `turbo`; t
 | A "Set up Black Wire Forge" page instead of the rooms; the rooms' APIs answer 503 `Finish Setup first.` (health, Setup and Setup's model-download routes still answer) | `config.json` doesn't exist yet (Setup mode, `127.0.0.1:3998` only) | answer the page, or stop the server, `cp config.example.json config.json`, edit it and start again |
 | `<config> needs a non-empty "lanes" list -- one entry per ComfyUI instance.` | `"lanes"` is missing or `[]` | add at least one lane object |
 | `<config> is not valid JSON: ...` | malformed JSON (commented-out lines, trailing comma) | fix the JSON; it allows neither |
+| `config.json names <file>, which <lane> does not have. ...` (a mode's `"missing"`) | a `"models"` pin in `config.json` names a file that lane's ComfyUI does not list | install the file there, or remove that pin |
 | `Port <N> is already in use.` | another process (maybe a previous run) already has the port | `lsof -nP -iTCP:<N> -sTCP:LISTEN`, or change `"port"` in `config.json` |
 | A lane's `"up"` is `false` in `/api/lanes`, `"err"` non-empty | that lane's ComfyUI isn't reachable at its configured `host`/`port` | start ComfyUI there, or fix the lane's `host`/`port` |
 | A mode's `"missing"` list is non-empty in `/api/engines` | the lane lacks a model file (or local package) a pack's role needs | see "Fixing what's missing" above; install/point discovery at the right file |

@@ -250,9 +250,13 @@ own.
 **Qwen-Image 2.1 preference, not enforcement.** Discovery's role rule for the image UNet/VAE
 *prefers* filenames containing `2.1` but matches any file whose name contains `qwen_image`;
 it does not require `2.1` in the name. If a lane holds another `qwen_image`-named file,
-discovery may select that one, and the 2.1-specific graph will be built against it. Verify or
-override the selected model filenames (`"models"` in `config.json`) if you need to be certain
-which file is used.
+discovery may select that one, and the 2.1-specific graph will be built against it. Each room's
+**What will run** panel shows the exact file every part loads, why it was picked, every other
+file that fits and every file left out on purpose. To fix a file, pin it under `"models"` in
+`config.json` (top level for every machine, or on one lane): the panel tags it CONFIG. A pin
+naming a file the lane does not have makes the mode unavailable with a sentence saying so,
+rather than failing inside ComfyUI; a pin the lane has runs even if its name does not fit the
+part's name rule.
 
 ## Reading order
 

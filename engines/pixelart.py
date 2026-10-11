@@ -295,7 +295,8 @@ ENGINE = {
     # first pack that actually DECLARES one wins" rule, same discipline as
     # engines/cleanup.py).
     "roles": {
-        "pixel_unet": ("unet", {"all": ["qwen_image"], "none": ["minimax", "vae", "turbo"], "prefer": ["int8", "2.1"]}),
+        "pixel_unet": ("unet", {"all": ["qwen_image"], "none": ["minimax", "vae", "turbo"], "prefer": ["int8", "2.1"],
+                                "none_why": {"turbo": "Measured 2026-10-10: Turbo drops fine background detail."}}),
         "qwen_clip": ("clip", {"all": ["qwen3vl"], "none": ["minimax"], "prefer": ["8b"]}),
         "qwen_vae": ("vae", {"all": ["qwen_image", "vae"], "none": ["minimax"], "prefer": ["2.1"]}),
         "birefnet_model": ("bg_removal", {"all": []}),
@@ -464,5 +465,6 @@ ENGINE = {
         "attribution": "Qwen-Image 2.1 by Alibaba Qwen team",
         "url": "https://huggingface.co/Qwen/Qwen-Image-2.1/blob/main/LICENSE",
         "summary": "Non-commercial use only.",
+        "noncommercial": True,
     },
 }

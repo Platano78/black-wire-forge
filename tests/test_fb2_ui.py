@@ -50,8 +50,8 @@ def start_server(name, with_helper):
     cfg = {"title": "fb2 ui", "port": port, "bind": "127.0.0.1",
            "lanes": [{"id": "t", "name": "Fake lane", "host": "127.0.0.1", "port": lane_port,
                       "caps": ["image", "video", "audio"],
-                      "models": {"ace_unet": "ace.safetensors", "ace_clip1": "a.safetensors",
-                                 "ace_clip2": "b.safetensors", "ace_vae": "v.safetensors"}}],
+                      "models": {"ace_unet": "ace_step_1.5/acestep_v1.5_turbo.safetensors", "ace_clip1": "ace_step_1.5/qwen_0.6b_ace15.safetensors",
+                                 "ace_clip2": "ace_step_1.5/qwen_1.7b_ace15.safetensors", "ace_vae": "ace_step_1.5/ace_1.5_vae.safetensors"}}],
            "timing": {"poll_seconds": 0.5, "job_poll_seconds": 1.0}}
     if with_helper:
         cfg["helper"] = {"url": "http://127.0.0.1:%d/v1" % helper.server_address[1], "model": "test-model",

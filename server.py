@@ -1462,12 +1462,91 @@ def _rule_matches(pool, rule):
     return hits
 
 
+def small_card_for(vram):
+    """Discovery's card test, shared with Setup: under ~25GB, prefer a quantised
+    build over bf16/fp16. Unknown counts as small: erring towards the lighter
+    file is the safer mistake."""
+    return (vram or 0) < 25e9
+
+
+_ORDINALS = ("first", "2nd", "3rd")
+
+
+def _rank_reasons(name, rule, small_card):
+    """The plain reasons behind _rank()'s score for one file, built only from
+    the rule's own terms (the pack's data) -- never a model name of ours."""
+    n = name.lower()
+    out = []
+    prefer = rule.get("prefer") or []
+    hits = ['"%s"%s' % (t, " (wanted most)" if i == 0 else "") for i, t in enumerate(prefer) if t in n]
+    if hits:
+        out.append("its name has " + ", ".join(hits))
+    if small_card:
+        if any(q in n for q in SMALL_QUANTS):
+            out.append("a smaller build, and smaller builds rank first on a card with under 25 GB")
+        elif any(q in n for q in BIG_QUANTS):
+            out.append("a full-size build, and this card has under 25 GB, so smaller builds rank first")
+    path = name.replace("\\", "/")
+    if "/" in path:
+        folder, base = path.rsplit("/", 1)
+        base = base.lower()
+        terms = (rule.get("all") or []) + (rule.get("any") or [])
+        if any(t in n and t not in base for t in terms):
+            out.append('matched through its folder name "%s/"' % folder)
+    return out
+
+
+def role_candidates(pool, rule, small_card):
+    """Every filename in `pool` that fits one role, best first, as
+    [{"file", "quant", "reasons": [...], "why": sentence}]. The ONE ranking:
+    pick_model() is its first entry, so discovery, Setup and the page's
+    "What will run" can never disagree about which file runs."""
+    hits = sorted(_rule_matches(pool, rule), key=lambda x: (-_rank(x, rule, small_card), x))
+    score = {h: round(_rank(h, rule, small_card) + len(h) * 0.01, 6) for h in hits}
+    out = []
+    for i, h in enumerate(hits):
+        reasons = _rank_reasons(h, rule, small_card)
+        tied = [o for o in hits if o != h and score[o] == score[h]]
+        if tied:
+            o = tied[0]
+            if len(o) == len(h):
+                reasons.append("level with %s, names the same length, so it goes by alphabetical order" % o)
+            elif hits.index(o) > i:
+                reasons.append("level with %s apart from name length, and the shorter name ranks first" % o)
+            else:
+                reasons.append("level with %s apart from name length, and its name is longer" % o)
+        if len(hits) == 1:
+            folder = [r for r in reasons if r.startswith("matched through")]
+            why = "The only file on this machine that fits%s." % ("; it " + folder[0] if folder else "")
+        else:
+            place = _ORDINALS[i] if i < len(_ORDINALS) else "%dth" % (i + 1)
+            why = "Ranked %s: %s." % (place, "; ".join(reasons) or "it fits, and nothing in its name is preferred")
+        out.append({"file": h, "quant": engines.quant_words(h), "reasons": reasons, "why": why})
+    return out
+
+
+def role_refused(pool, rule):
+    """Files in `pool` that fit a role's name rule except for a `none` term:
+    left out on purpose, so the page can say so instead of dropping them in
+    silence. [{"file", "term", "why"}]; `why` is the pack's own reason for
+    that term (rule "none_why"), or None when it gives none."""
+    must_none = rule.get("none") or []
+    if not must_none:
+        return []
+    reasons = rule.get("none_why") or {}
+    out = []
+    for name in _rule_matches(pool, dict(rule, none=[])):
+        n = name.lower()
+        term = next((t for t in must_none if t in n), None)
+        if term:
+            out.append({"file": name, "term": term, "why": reasons.get(term)})
+    return out
+
+
 def pick_model(pool, rule, small_card):
     """Best filename in `pool` for one role, or None."""
-    hits = _rule_matches(pool, rule)
-    if not hits:
-        return None
-    return sorted(hits, key=lambda x: (-_rank(x, rule, small_card), x))[0]
+    ranked = role_candidates(pool, rule, small_card)
+    return ranked[0]["file"] if ranked else None
 
 
 def pool_select_options(lane, f):
@@ -1547,11 +1626,9 @@ def discover_lane(lane):
     """Ask a lane what it has, and work out what it can therefore do."""
     with STATE_LOCK:
         vram = LANE_STATE.get(lane["id"], {}).get("vram_total", 0)
-    # Under ~25GB, prefer a quantised build over bf16/fp16. Unknown counts as
-    # small: erring towards the lighter file is the safer mistake.
-    small_card = (vram or 0) < 25e9
+    small_card = small_card_for(vram)
 
-    pools, found = {}, {}
+    pools, found, ranked, refused = {}, {}, {}, {}
     for pool in POOL_NODES:
         pools[pool] = fetch_pool(lane, pool)
     if not any(pools.values()):
@@ -1565,9 +1642,12 @@ def discover_lane(lane):
             log("%s: role %r names pool %r, which no POOL_NODES entry covers"
                 % (lane["name"], role, pool_name), "error")
             continue
-        hit = pick_model(pools[pool_name], rule, small_card)
-        if hit:
-            found[role] = hit
+        # Every file that fits, ranked, and every file left out on purpose:
+        # kept so the page can show what runs, what else would, and why.
+        ranked[role] = role_candidates(pools[pool_name], rule, small_card)
+        refused[role] = role_refused(pools[pool_name], rule)
+        if ranked[role]:
+            found[role] = ranked[role][0]["file"]
 
     # CHARS-1: optional speed nodes, no model file of their own -- presence
     # is a plain /object_info hit, True/False per short id, read back through
@@ -1584,6 +1664,7 @@ def discover_lane(lane):
         entry = DISCOVERY.get(lane["id"]) or {}
         prev, first = entry.get("models") or {}, not entry.get("checked")
         DISCOVERY[lane["id"]] = {"models": found, "pools": pools, "nodes": node_flags,
+                                 "candidates": ranked, "refused": refused, "small_card": small_card,
                                  "checked": time.time(), "err": ""}
     # Say something the first time we look at a lane, and whenever the answer
     # changes. A lane with nothing usable is worth saying out loud, once.
@@ -1600,12 +1681,164 @@ def discover_lane(lane):
             log("%s has %s" % (lane["name"], ", ".join(bits)), "models")
 
 
-def models_for(lane):
-    """Resolved filenames for a lane: detected, then config overrides on top."""
+def config_pins(lane):
+    """config.json's "models" pins that apply to a lane: role -> (file, level),
+    the lane's own ("lane") over the top-level ones ("global")."""
+    out = {k: (v, "global") for k, v in CONFIG_MODELS.items()}
+    out.update({k: (v, "lane") for k, v in ((lane or {}).get("models") or {}).items() if v})
+    return out
+
+
+def layer_pins(found, pins, pools):
+    """Discovery's picks with config.json pins on top -> (models, absent).
+
+    `pools` is the lane's discovered pools, or None while they are not known
+    (discovery has not answered yet): then no pin is judged. A pin naming a
+    file its role's pool does not hold is never applied and never replaced
+    by the discovered file: the role is left unresolved and reported in
+    `absent` (role -> file), so the mode reads unavailable with the reason
+    instead of failing inside ComfyUI. A pin that is in the pool runs even
+    when its name does not fit the role's rule -- the owner's escape hatch.
+    Shared by models_for() and Setup, so both layer pins the same way."""
+    out, absent = dict(found), {}
+    for role, (f, _level) in pins.items():
+        pool = ROLE_POOL.get(role)
+        if pools is not None and pool in pools and f not in pools[pool]:
+            out.pop(role, None)
+            absent[role] = f
+        else:
+            out[role] = f
+    return out, absent
+
+
+def _judged_pools(lane):
+    """The lane's discovered pools when pins can be judged against them, else
+    None: a ComfyUI lane whose /object_info discovery has answered."""
+    if lane_kind(lane) == "process":
+        return None
     with DISCOVERY_LOCK:
-        out = dict((DISCOVERY.get(lane["id"]) or {}).get("models") or {})
-    out.update(CONFIG_MODELS)
-    out.update({k: v for k, v in (lane.get("models") or {}).items() if v})
+        disc = DISCOVERY.get(lane["id"]) or {}
+        if not disc.get("checked") or disc.get("err") or "pools" not in disc:
+            return None
+        return {k: list(v) for k, v in disc["pools"].items()}
+
+
+def models_for(lane):
+    """Resolved filenames for a lane: detected, then config overrides on top
+    (a pin naming a file the lane does not have resolves nothing; see
+    layer_pins)."""
+    with DISCOVERY_LOCK:
+        found = dict((DISCOVERY.get(lane["id"]) or {}).get("models") or {})
+    return layer_pins(found, config_pins(lane), _judged_pools(lane))[0]
+
+
+def pin_absent(lane):
+    """role -> pinned file, for each config.json pin naming a file this lane's
+    discovered pool does not hold. Empty until discovery has answered."""
+    return layer_pins({}, config_pins(lane), _judged_pools(lane))[1]
+
+
+def pin_absent_sentence(lane, f):
+    return ("config.json names %s, which %s does not have. Renders need it installed there, "
+            "or that line removed from config.json." % (f, lane["name"]))
+
+
+def missing_with_pins(lane, models, ability, kind=None):
+    """engines.missing_words() for a lane, with each config.json pin the lane
+    lacks named in its own sentence (first) instead of as a missing part --
+    only where that pin's role is one the answer depends on."""
+    absent = pin_absent(lane)
+    if not absent:
+        return engines.missing_words(models, ability, kind)
+    reads = engines.ability_roles(ability)
+    base = engines.missing_words(dict(models, **absent), ability, kind)
+    return [pin_absent_sentence(lane, f) for role, f in absent.items() if role in reads] + base
+
+
+# Plain words for each loader pool, the kind of part a file is. Generic
+# ComfyUI loader categories; which model fills them is the packs' business.
+POOL_WORDS = {"unet": "model", "checkpoint": "model", "clip": "text encoder", "vae": "decoder",
+              "lora": "add-on (LoRA)", "audio_encoder": "audio encoder", "bg_removal": "background remover",
+              "upscale_model": "upscaler", "clip_vision": "image encoder", "latent_upscaler": "upscaler"}
+
+
+def mode_parts(lane, cap, mode, m):
+    """What will run: one entry per part (model file) a mode's graph loads on
+    this lane, for the page's read-only "What will run" panel.
+
+    Each part: {"roles", "kind", "words", "file" (what the graph will load,
+    or None), "source" ("auto" | "config" | None), "why", "candidates"
+    (every file that fits, ranked, "auto": discovery's pick), "refused"
+    (fits but for a `none` term), "pinned" (the config.json pin, or None),
+    "problem" (a sentence when the part cannot be filled), "tiers" (quality
+    tier ids that load it, None when every run does), "licence"}. An any-of
+    part lists its roles in the order the pack's graphs read them, so the
+    first one resolved is the file that runs. [] for a process lane, a lane
+    of the wrong kind, or before discovery has read the lane."""
+    if not lane or lane_kind(lane) == "process" or engines.lane_kind(cap, mode) != "comfy":
+        return []
+    with DISCOVERY_LOCK:
+        disc = DISCOVERY.get(lane["id"]) or {}
+        if not disc.get("checked"):
+            return []
+        found = dict(disc.get("models") or {})
+        ranked = {r: list(v) for r, v in (disc.get("candidates") or {}).items()}
+        refused = {r: list(v) for r, v in (disc.get("refused") or {}).items()}
+    pins, absent = config_pins(lane), pin_absent(lane)
+    where = {"lane": "Set in config.json for %s." % lane["name"],
+             "global": "Set in config.json for every machine."}
+    out = []
+    for part in engines.mode_parts(cap, mode):
+        roles = part["roles"]
+        # A pin the lane lacks is what the owner asked for: no other member
+        # of the part stands in for it (layer_pins, abilities(blocked=)).
+        run_role = None if set(roles) & set(absent) else next((r for r in roles if m.get(r)), None)
+        f = m.get(run_role) if run_role else None
+        cands, seen = [], set()
+        for r in roles:
+            for c in ranked.get(r) or []:
+                if c["file"] not in seen:
+                    seen.add(c["file"])
+                    cands.append(dict(c, auto=(c["file"] == found.get(run_role or roles[0]))))
+        refs, seen_ref = [], set()
+        for r in roles:
+            for x in refused.get(r) or []:
+                if x["file"] not in seen_ref and x["file"] not in seen:
+                    seen_ref.add(x["file"])
+                    refs.append(x)
+        pinned, problem = None, None
+        pin_role = next((r for r in roles if r in pins), None)
+        if pin_role:
+            pf, level = pins[pin_role]
+            pool = (_judged_pools(lane) or {}).get(ROLE_POOL.get(pin_role))
+            pinned = {"file": pf, "level": level, "words": where[level],
+                      "in_pool": None if pool is None else pf in pool,
+                      "fits_rule": bool(_rule_matches([pf], ROLE_RULES.get(pin_role) or {}))}
+            if pin_role in absent:
+                problem = pin_absent_sentence(lane, pf)
+        source = None
+        if f:
+            source = "config" if pin_role and pins[pin_role][0] == f and pin_role == run_role else "auto"
+        if source == "config":
+            why = pinned["words"] + ("" if pinned["fits_rule"]
+                                     else " Its name does not fit this part's name rule; it runs because config.json says so.")
+        elif f:
+            why = next((c["why"] for c in cands if c["file"] == f), "")
+        elif not problem:
+            problem = ("No file on %s fits this part, so the settings that load it are off." if part["tiers"]
+                       else "No file on %s fits this part.") % lane["name"]
+            why = ""
+        else:
+            why = ""
+        pool_name = ROLE_POOL.get(roles[0])
+        kind = POOL_WORDS.get(pool_name, "file")
+        if kind == "model":
+            word = engines.cap_word(cap)
+            kind = word if word.lower().endswith("model") else "%s model" % word
+        out.append({"roles": roles, "kind": kind,
+                    "words": part["words"], "file": f, "source": source, "why": why,
+                    "candidates": cands, "refused": refs, "pinned": pinned, "problem": problem,
+                    "tiers": part["tiers"], "licence": engines.file_licence(cap, mode, run_role or roles[0], f)})
     return out
 
 
@@ -1625,7 +1858,7 @@ def abilities(lane):
     The UI offers the intersection. WHICH files make which ability true is
     declared by the engine packs, not known here.
     """
-    return engines.abilities(models_for(lane))
+    return engines.abilities(models_for(lane), blocked=pin_absent(lane))
 
 
 def describe_video(lane):
@@ -1647,7 +1880,7 @@ def missing_for(lane, mode):
     lane's kind are asked, so a process lane names its programs, never a
     ComfyUI pack's model files.
     """
-    return engines.missing_words(models_for(lane), mode, lane_kind(lane))
+    return missing_with_pins(lane, models_for(lane), mode, lane_kind(lane))
 
 
 
@@ -8284,6 +8517,7 @@ SETUP_LOCK = threading.Lock()
 SETUP_HELPER_TRIED = {}   # (url, model) -> True when "Test it" got a reply
 SETUP_COMFY_SEEN = set()  # (host, port) a ComfyUI probe found: the only addresses W2's rooms step reads
 SETUP_POOLS = {}          # (host, port) -> its model pools, read once per Setup session
+SETUP_VRAM = {}           # (host, port) -> its card's vram_total as the probe read it (None: not reported)
 SETUP_POOLS_TIMEOUT = 20.0              # the whole /object_info: big installs take seconds to list
 SETUP_POOLS_READ_LIMIT = 64 * 1024 * 1024
 
@@ -8352,6 +8586,7 @@ def _setup_comfy_stats(host, port):
     # name alone is the suggested lane name, which the user can change.
     name = re.sub(r"^\S+:\d+\s+", "", gpu).split(" : ")[0].strip()
     SETUP_COMFY_SEEN.add((host, port))
+    SETUP_VRAM[(host, port)] = vram if vram_gb is not None else None
     return {"host": host, "port": port, "gpu": gpu or None, "vram_gb": vram_gb,
             "version": _setup_short(stats["system"].get("comfyui_version"), 40) or None,
             "name": name or "ComfyUI"}
@@ -8654,6 +8889,23 @@ def setup_rooms(query):
             host = ""
         if host and (host, port) in SETUP_COMFY_SEEN:
             pools = _setup_pools(host, port)
+    # The file Setup says a role found is the one discovery would load on that
+    # machine: the same ranking with the same card test (the probe read the
+    # card's VRAM, exactly as the lane poller will), and config.json pins
+    # layered the same way models_for() layers them.
+    models = {}
+    if pools is not None:
+        small_card = small_card_for(SETUP_VRAM.get((host, port)))
+        found = {}
+        for role, rule in ROLE_RULES.items():
+            hit = pick_model(pools.get(ROLE_POOL[role], []), rule, small_card)
+            if hit:
+                found[role] = hit
+        # The configured lane at this address brings its own pins; any other
+        # address gets only the top-level ones.
+        here = next((l for l in LANES if lane_kind(l) != "process" and l.get("host") == host
+                     and str(l.get("port")) == str(port)), None)
+        models = layer_pins(found, config_pins(here), pools)[0]
     with MODEL_DL_LOCK:
         models_root = MODEL_DL["models"]
     out = []
@@ -8679,9 +8931,7 @@ def setup_rooms(query):
             group = e if isinstance(e, list) else [e]
             srcs = [s for r in group for s in sources.get(r, [])]
             srcs.sort(key=lambda s: not s["run_by_us"])          # the recommended file first
-            picks = ([] if pools is None else
-                     [pick_model(pools.get(ROLE_POOL[r], []), ROLE_RULES[r], False) for r in group])
-            found = next((x for x in picks if x), None)       # the file that actually covers the role
+            found = next((models[r] for r in group if models.get(r)), None)   # the file that actually covers the role
             installed = None if pools is None else bool(found)
             if models_root and not installed:   # W3: a file in the declared models folder, at its exact size
                 on_disk = next((s for s in srcs if _model_on_disk(models_root, s)), None)
@@ -10174,7 +10424,7 @@ class Handler(BaseHTTPRequestHandler):
         """
         lane = LANE_BY_ID.get((q.get("lane") or [""])[0])
         m = models_for(lane) if lane else {}
-        able = engines.abilities(m)
+        able = engines.abilities(m, blocked=pin_absent(lane) if lane else ())
         out = {}
         for cap in engines.caps():
             words = engines.mode_words(cap)
@@ -10210,7 +10460,8 @@ class Handler(BaseHTTPRequestHandler):
                             "ComfyUI lane's host/port at it in config.json")
                     model_missing = [mismatch_reason]
                 else:
-                    model_missing = [] if able.get(ability) else engines.missing_words(m, ability)
+                    model_missing = [] if able.get(ability) else (
+                        missing_with_pins(lane, m, ability) if lane is not None else engines.missing_words(m, ability))
                 # FB-1: which model this mode runs -- the pack's own words for
                 # its primary role, and the file discovery resolved for that role
                 # on the QUERIED lane (the same m.get(role) dispatch reads), as a
@@ -10226,6 +10477,10 @@ class Handler(BaseHTTPRequestHandler):
                     "label": words.get(mode, mode),
                     "model": engines.mode_model_words(cap, mode),
                     "model_file": model_file,
+                    # What will run: every part the mode's graph loads on the
+                    # QUERIED lane, the file each will load and why ([] with
+                    # no lane, a process lane, or before discovery).
+                    "parts": [] if kind_mismatch else mode_parts(lane, cap, mode, m),
                     "available": bool(able.get(ability)) and deps_reason is None and not kind_mismatch,
                     "missing": model_missing if kind_mismatch else
                                model_missing + ([deps_reason] if deps_reason else []),
@@ -11122,7 +11377,7 @@ def _lane_can(lane, cap, mode):
     with STATE_LOCK:
         if not LANE_STATE.get(lane["id"], {}).get("up"):
             return False
-    return bool(engines.abilities(models_for(lane)).get(engines.mode_ability(cap, mode))) \
+    return bool(abilities(lane).get(engines.mode_ability(cap, mode))) \
         and engines.mode_deps_reason(cap, mode) is None
 
 

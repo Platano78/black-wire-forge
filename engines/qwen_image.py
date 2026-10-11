@@ -798,8 +798,10 @@ ENGINE = {
     # the generic field-driven path (engines.legacy_dispatch checks this).
     "generic_modes": ["charsheet"],
     "roles": {
-        # Turbo graphs are built and tested above, but discovery refuses turbo files: measured 2026-10-10, Turbo drops fine background detail.
-        "qwen_unet": ("unet", {"all": ["qwen_image"], "none": ["minimax", "vae", "turbo"], "prefer": ["int8", "2.1"]}),
+        # Turbo graphs are built and tested above, but discovery refuses turbo files; the reason is
+        # data (none_why) so the page can show it beside each file left out.
+        "qwen_unet": ("unet", {"all": ["qwen_image"], "none": ["minimax", "vae", "turbo"], "prefer": ["int8", "2.1"],
+                               "none_why": {"turbo": "Measured 2026-10-10: Turbo drops fine background detail."}}),
         "qwen_clip": ("clip", {"all": ["qwen3vl"], "none": ["minimax"], "prefer": ["8b"]}),
         "qwen_vae": ("vae", {"all": ["qwen_image", "vae"], "none": ["minimax"], "prefer": ["2.1"]}),
     },
@@ -1278,6 +1280,7 @@ ENGINE = {
         "attribution": "Qwen-Image 2.1 by Alibaba Qwen team",
         "url": "https://huggingface.co/Qwen/Qwen-Image-2.1/blob/main/LICENSE",
         "summary": "Non-commercial use only.",
+        "noncommercial": True,
     },
     # LORA-1 Build B: which Hugging Face Hub base-model id a lane's "Browse
     # styles" catalog should query, and how to tell this pack owns that

@@ -1998,6 +1998,7 @@ ENGINE = {
             "shippable": False,
             "attribution": "YuE2-3B — non-commercial use only",
             "summary": "Non-commercial use only.",
+            "noncommercial": True,
             "modes": ["yue2", "cover"],
         },
     ],

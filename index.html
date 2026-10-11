@@ -246,6 +246,62 @@
      row; the dashed-box look (border, rotation, mono caps) is untouched. */
   .licence-stamp.mini{padding:2px 8px; letter-spacing:.02em; max-width:100%; white-space:normal; overflow-wrap:anywhere}
 
+  /* ---- What will run: one row per part (model file) the mode's graph loads,
+     under the room heading and before the prompt. Read-only: which file each
+     part loads, why, what else fits, what was left out on purpose. A left
+     rail says which kind of choice it is, with a word beside it so colour is
+     never the only signal: green AUTO PICK, amber CONFIG, grey a part that
+     cannot be filled, dotted a part only some quality settings load. */
+  #whatWillRun{border:1px solid var(--divider); background:var(--panel)}
+  .wwr-sum{display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 8px; padding:8px 10px; min-height:44px;
+    width:100%; text-align:left; background:var(--surface3); border:none; border-bottom:1px solid var(--divider); color:inherit}
+  #whatWillRun.closed .wwr-sum{border-bottom:none}
+  .wwr-tw{font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--text-mid); white-space:nowrap}
+  .wwr-tw::before{content:'\25BE  '; color:var(--accent)}
+  #whatWillRun.closed .wwr-tw::before{content:'\25B8  '}
+  .wwr-head{font-family:var(--mono); font-size:13px; color:var(--text-hi); overflow-wrap:anywhere; min-width:0}
+  .wwr-more{font-size:12px; color:var(--text-mid)}
+  .wwr-state{margin-left:auto; font-family:var(--mono); font-size:11px; text-transform:uppercase; letter-spacing:.05em; white-space:nowrap}
+  .wwr-state.auto{color:var(--ready)}
+  .wwr-state.cfg{color:var(--stale)}
+  .wwr-state.bad{color:var(--error)}
+  .wwr-part{position:relative; padding:7px 10px 7px 13px; border-top:1px solid var(--hairline)}
+  .wwr-part:first-child{border-top:none}
+  .wwr-part::before{content:''; position:absolute; left:0; top:7px; bottom:7px; width:3px; background:var(--ready)}
+  .wwr-part[data-rail="config"]::before{background:var(--stale)}
+  .wwr-part[data-rail="none"]::before{background:var(--text-disabled)}
+  .wwr-part[data-rail="idle"]::before{background:transparent; border-left:3px dotted var(--divider); width:0}
+  .wwr-line{display:flex; flex-wrap:wrap; align-items:center; gap:2px 10px}
+  .wwr-kind{font-size:11px; font-family:var(--mono); letter-spacing:.06em; text-transform:uppercase; color:var(--text-mid)}
+  .wwr-words{font-size:13px; color:var(--text-hi); flex:1 1 auto; min-width:0}
+  .wwr-fn{font-family:var(--mono); font-size:13px; color:var(--text-hi); overflow-wrap:anywhere; margin-top:2px}
+  .wwr-problem{font-size:13px; color:var(--error); margin-top:2px; max-width:72ch}
+  .wwr-note{font-size:12px; color:var(--text-mid); margin-top:2px; max-width:72ch}
+  .wwr-tag{font-family:var(--mono); font-size:10.5px; letter-spacing:.05em; text-transform:uppercase; padding:1px 6px;
+    border:1px solid var(--divider); color:var(--text-mid); white-space:nowrap}
+  .wwr-tag.auto{border-color:var(--ready); color:var(--ready)}
+  .wwr-tag.cfg{border-color:var(--stale); color:var(--stale)}
+  .wwr-tag.no{border-color:var(--text-disabled); color:var(--text-disabled)}
+  .wwr-other{font-size:12px; color:var(--accent); text-decoration:underline; background:none; border:none; padding:0;
+    min-height:24px; white-space:nowrap}
+  .wwr-only{font-size:12px; color:var(--text-disabled); white-space:nowrap}
+  .wwr-cands{margin-top:6px; border-top:1px dashed var(--hairline)}
+  .wwr-cand{display:grid; grid-template-columns:minmax(0,1fr) auto; gap:2px 8px; align-items:start; padding:6px 0}
+  .wwr-cand + .wwr-cand{border-top:1px dashed var(--hairline)}
+  .wwr-cand .wwr-fn{margin-top:0}
+  .wwr-cand.alt .wwr-fn{color:var(--text-mid)}
+  .wwr-tags{display:flex; gap:4px; flex-wrap:wrap; justify-content:flex-end}
+  .wwr-why{grid-column:1 / 3; font-size:12px; color:var(--text-mid); max-width:72ch}
+  .wwr-cand.refused .wwr-fn{color:var(--text-disabled); text-decoration:line-through}
+  .wwr-foot{border-top:1px solid var(--divider); padding:8px 10px; display:flex; flex-wrap:wrap; gap:6px 14px;
+    align-items:center; font-size:12px; color:var(--text-mid)}
+  @media (max-width:520px){
+    .wwr-cand{grid-template-columns:minmax(0,1fr)}
+    .wwr-tags{justify-content:flex-start}
+    .wwr-why{grid-column:1}
+    .wwr-state{margin-left:0}
+  }
+
   /* ---- inspector ---- */
   #inspector{padding:14px; display:flex; flex-direction:column; gap:14px}
   #laneNote{font-size:12px; color:var(--text-mid); max-width:72ch}
@@ -1096,6 +1152,7 @@
       <summary id="guideFilledSummary">What the guide filled in</summary>
     </details>
 
+
     <!-- A mode with no text field (e.g. a cutout/upscale tool) has nothing
          for a prompt box to say -- its input picker takes this slot instead,
          expanded, so it's the first thing a first-timer sees, not a nested
@@ -1110,6 +1167,12 @@
          understands (UX review #4/#2). Collapsed to one line by default;
          opens on its own when a non-default recipe is picked, or when the
          current mode has nothing else to show first (no prompt field). -->
+    <!-- What will run: built by renderWhatWillRun() from the mode's "parts"
+         in /api/engines. Every ComfyUI mode; never a process-lane mode. Sits
+         after the prompt, the room's guide and the mode's own file inputs,
+         directly before Recipe: primary inputs stay up with the prompt, and
+         the prompt and guide stay in view on entry (tests/test_guide_ui.py). -->
+    <section id="whatWillRun" aria-label="What will run" hidden></section>
     <details id="recipeDetails">
       <summary id="recipeSummary">Recipe: <span id="recipeSummaryLabel">Default</span></summary>
       <div class="field-row">
@@ -1757,21 +1820,29 @@ function licenceIsNonCommercial(licence){
   // shippable:false is NOT the same claim as non-commercial -- some
   // community licences permit commercial use under a revenue cap; others
   // carry their own separate terms. Only say "non-commercial" where the
-  // licence NAME itself says so, never inferred from the boolean.
+  // pack says so in its structured `noncommercial` field, never inferred
+  // from the boolean. The licence NAME is read too, for a job recorded
+  // before the field existed.
+  if(licence && licence.noncommercial === true) return true;
   const name = (licence && licence.name) || '';
   return /\bnc\b/i.test(name) || /non-commercial/i.test(name);
+}
+// Where the licence does not reach, when the pack names it (`territory`).
+function licenceTerritory(licence){
+  return (licence && typeof licence.territory === 'string' && licence.territory) ? licence.territory : '';
 }
 function licenceStampHTML(licence){
   if(!licence || !licence.name)
     return '<span class="licence-stamp unknown">Licence: cannot tell</span>';
+  const where = licenceTerritory(licence) ? ' (' + esc(licenceTerritory(licence)) + ')' : '';
   if(licence.shippable)
-    return '<span class="licence-stamp shippable">' + esc(licence.name) + ', yours to use</span>';
+    return '<span class="licence-stamp shippable">' + esc(licence.name) + ', yours to use' + where + '</span>';
   if(licenceIsNonCommercial(licence))
-    return '<span class="licence-stamp noncommercial">' + esc(licence.name) + ', non-commercial</span>';
+    return '<span class="licence-stamp noncommercial">' + esc(licence.name) + ', non-commercial' + where + '</span>';
   const readText = licence.url
     ? '<a href="' + esc(licence.url) + '" target="_blank" rel="noopener">Read the licence.</a>'
     : 'Read the licence.';
-  return '<span class="licence-stamp">' + esc(licence.name) + ', conditions apply. ' + readText + '</span>';
+  return '<span class="licence-stamp">' + esc(licence.name) + ', conditions apply' + where + '. ' + readText + '</span>';
 }
 function monitorEmptyHTML(room){
   // Guidance comes only from rooms.json (`empty`) and the packs (label +
@@ -2352,11 +2423,12 @@ function miniLicenceStampHTML(licence){
   // shortened so a long licence name never wraps the meta line.
   if(!licence || !licence.name)
     return '<span class="licence-stamp mini unknown">Licence: cannot tell</span>';
+  const where = licenceTerritory(licence) ? ' \u00b7 ' + esc(licenceTerritory(licence)) : '';
   if(licence.shippable)
-    return '<span class="licence-stamp mini shippable">' + esc(licence.name) + ' - yours to use</span>';
+    return '<span class="licence-stamp mini shippable">' + esc(licence.name) + ' - yours to use' + where + '</span>';
   if(licenceIsNonCommercial(licence))
-    return '<span class="licence-stamp mini noncommercial">' + esc(licence.name) + '</span>';
-  return '<span class="licence-stamp mini" title="' + esc(licence.name) + '">conditions apply</span>';
+    return '<span class="licence-stamp mini noncommercial">' + esc(licence.name) + ' \u00b7 non-commercial' + where + '</span>';
+  return '<span class="licence-stamp mini" title="' + esc(licence.name) + '">conditions apply' + where + '</span>';
 }
 // UX-2 #3: "1-3 min" from the recent sample's spread, not a single point
 // figure that reads as a promise -- server.py's estimate_range (same 72h/5
@@ -2431,7 +2503,120 @@ function renderEnginePickerSummary(ms, room){
   // #engineChipBtn) -- never by itself, least of all while discovery is still
   // running. A picked engine this machine cannot run says so in the lane note.
 }
+/* What will run (after the prompt, guide and file inputs, directly before Recipe): the mode's parts on the active machine, from /api/engines
+   "parts" (server.py mode_parts) -- the exact file each part's loader will
+   be given, the pick's reason, every other file that fits, and every file
+   left out on purpose. Read-only. The parts list is open by default: no
+   part's file needs a click; its alternatives are one click away. Closing
+   the whole panel is the user's own choice, remembered per room. */
+let WWR_KEY = '';
+const WWR_OPEN = new Set();   // parts whose candidate list is expanded (lane|cap|mode|roles)
+function wwrClosedKey(roomId){ return 'bwf.wwr.closed.' + roomId; }
+function wwrClosed(roomId){
+  try{ return localStorage.getItem(wwrClosedKey(roomId)) === '1'; } catch(e){ return false; }
+}
+function wwrSetClosed(roomId, closed){
+  try{ if(closed) localStorage.setItem(wwrClosedKey(roomId), '1'); else localStorage.removeItem(wwrClosedKey(roomId)); }
+  catch(e){ /* storage off: the panel just opens again next time */ }
+}
+function wwrSameLicence(a, b){
+  const k = l => l ? [l.name, !!l.shippable, licenceIsNonCommercial(l), licenceTerritory(l)].join('|') : '';
+  return k(a) === k(b);
+}
+function wwrPartHTML(part, info, partKey){
+  const open = WWR_OPEN.has(partKey);
+  const others = part.candidates.filter(c => c.file !== part.file).length;
+  const idle = !!(part.tiers && part.tiers.length);
+  const rail = part.source === 'config' ? 'config' : (!part.file ? 'none' : (idle ? 'idle' : 'auto'));
+  const tag = part.source === 'config' ? '<span class="wwr-tag cfg">config</span>'
+    : (part.source === 'auto' ? '<span class="wwr-tag auto">auto pick</span>' : '');
+  const more = others + part.refused.length;
+  const label = others ? others + (others === 1 ? ' other fits' : ' others fit')
+    : (part.refused.length ? part.refused.length + ' left out' : '');
+  const toggle = more
+    ? '<button type="button" class="wwr-other" data-wwr-part="' + esc(partKey) + '" aria-expanded="' + open + '">'
+      + esc(label) + (open ? ' \u25BE' : ' \u25B8') + '</button>'
+    : (part.file ? '<span class="wwr-only">only file</span>' : '');
+  const tierWords = idle
+    ? (info.quality || []).filter(t => part.tiers.includes(t.id)).map(t => t.label).join(', ') : '';
+  let html = '<div class="wwr-part" data-rail="' + rail + '">'
+    + '<div class="wwr-line"><span class="wwr-kind">' + esc(part.kind) + '</span>'
+    + '<span class="wwr-words">' + esc(part.words) + '</span>' + tag + toggle + '</div>'
+    + (part.file ? '<div class="wwr-fn">' + esc(part.file) + '</div>' : '')
+    + (part.problem ? '<div class="' + (idle && !(part.pinned && part.pinned.in_pool === false)
+                                        ? 'wwr-note' : 'wwr-problem') + '">' + esc(part.problem) + '</div>' : '')
+    + (idle ? '<div class="wwr-note">Loaded only at ' + esc(tierWords || 'some quality settings') + '.</div>' : '')
+    + (part.source === 'config' ? '<div class="wwr-note">' + esc(part.why) + '</div>' : '')
+    + (!wwrSameLicence(part.licence, info.licence) ? '<div class="wwr-note">' + miniLicenceStampHTML(part.licence) + '</div>' : '');
+  if(open){
+    html += '<div class="wwr-cands">'
+      + part.candidates.map(c => {
+          const runs = c.file === part.file;
+          const tags = '<span class="wwr-tags">' + (c.quant ? '<span class="wwr-tag">' + esc(c.quant) + '</span>' : '')
+            + (runs && part.source === 'auto' ? '<span class="wwr-tag auto">auto pick</span>' : '')
+            + (!runs && c.auto ? '<span class="wwr-tag auto">auto would pick</span>' : '')
+            + (runs && part.source === 'config' ? '<span class="wwr-tag cfg">config</span>' : '') + '</span>';
+          return '<div class="wwr-cand' + (runs ? '' : ' alt') + '"><span class="wwr-fn">' + esc(c.file) + '</span>'
+            + tags + '<span class="wwr-why">' + esc(runs || !c.why ? c.why : 'Fits too. ' + c.why) + '</span></div>';
+        }).join('')
+      + part.refused.map(x => '<div class="wwr-cand refused"><span class="wwr-fn">' + esc(x.file) + '</span>'
+          + '<span class="wwr-tags"><span class="wwr-tag no">not offered</span></span>'
+          + '<span class="wwr-why">Left out on purpose: its name has "' + esc(x.term) + '".'
+          + (x.why ? ' ' + esc(x.why) : '') + '</span></div>').join('')
+      + (part.pinned && part.source === 'config' && part.pinned.in_pool && !part.candidates.some(c => c.file === part.file)
+          ? '<div class="wwr-cand"><span class="wwr-fn">' + esc(part.file) + '</span><span class="wwr-tags">'
+            + '<span class="wwr-tag cfg">config</span></span><span class="wwr-why">' + esc(part.why) + '</span></div>' : '')
+      + '<div class="wwr-note">' + licenceStampHTML(part.licence) + '</div>'
+      + '</div>';
+  }
+  return html + '</div>';
+}
+function renderWhatWillRun(){
+  const box = $('#whatWillRun');
+  const room = currentRoom();
+  const info = currentMode();
+  const lane = STATE.lanes.find(l => l.id === STATE.activeLane);
+  const parts = (info && info.parts) || [];
+  // Process-lane modes have programs, not model files: no panel. Nor while
+  // the machine's files have not been read (the lane note says "checking").
+  if(!room || isCutting(room) || !info || (info.lane_kind || 'comfy') !== 'comfy'
+     || laneKindOf(lane) !== 'comfy' || !lane || !lane.discovered || !parts.length){
+    box.hidden = true;
+    box.innerHTML = '';
+    WWR_KEY = '';
+    return;
+  }
+  const base = [lane.id, STATE.cap, STATE.mode].join('|');
+  const closed = wwrClosed(room.id);
+  const key = JSON.stringify([base, closed, parts, info.licence, info.quality, Array.from(WWR_OPEN)]);
+  if(key === WWR_KEY && !box.hidden) return;   // a poll with nothing new must not rebuild under the reader
+  WWR_KEY = key;
+  const files = parts.filter(p => p.file).length;
+  const pinned = parts.filter(p => p.source === 'config').length;
+  const bad = parts.some(p => p.problem && !(p.tiers && p.tiers.length && !(p.pinned && p.pinned.in_pool === false)));
+  const head = (parts.find(p => p.file) || {}).file || '';
+  const state = bad ? '<span class="wwr-state bad">needs a file</span>'
+    : (pinned ? '<span class="wwr-state cfg">' + pinned + ' from config</span>' : '<span class="wwr-state auto">auto</span>');
+  const summary = closed
+    ? '<span class="wwr-head">' + esc(head) + '</span>'
+      + (files > 1 ? '<span class="wwr-more">+ ' + (files - 1) + (files === 2 ? ' file' : ' files') + '</span>' : '')
+    : '<span class="wwr-more">' + files + (files === 1 ? ' file on ' : ' files on ') + esc(lane.name) + '</span>';
+  box.className = closed ? 'closed' : '';
+  box.innerHTML = '<button type="button" class="wwr-sum" aria-expanded="' + !closed + '">'
+    + '<span class="wwr-tw">What will run</span>' + summary + state + '</button>'
+    + (closed ? '' : '<div class="wwr-parts">'
+        + parts.map(p => wwrPartHTML(p, info, base + '|' + p.roles.join('+'))).join('') + '</div>'
+        + '<div class="wwr-foot">' + miniLicenceStampHTML(info.licence) + '</div>');
+  box.hidden = false;
+  box.querySelector('.wwr-sum').onclick = () => { wwrSetClosed(room.id, !closed); renderWhatWillRun(); };
+  box.querySelectorAll('[data-wwr-part]').forEach(b => b.onclick = () => {
+    const k = b.dataset.wwrPart;
+    if(WWR_OPEN.has(k)) WWR_OPEN.delete(k); else WWR_OPEN.add(k);
+    renderWhatWillRun();
+  });
+}
 function renderEnginePicker(force){
+  renderWhatWillRun();
   const room = currentRoom();
   const ms = roomModes(room);
   const wrap = $('#enginePickerWrap');
@@ -2491,6 +2676,7 @@ function renderEnginePicker(force){
     saveRoomEngine(STATE.room, STATE.cap, STATE.mode);   // B2: remembered on the next room entry
     setEngineChipOpen(false);   // the pick is made; close the popover
     renderEnginePickerSummary(roomModes(currentRoom()), currentRoom());
+    renderWhatWillRun();
     const mk = (modeInfo(r.dataset.cap, r.dataset.mode) || {}).lane_kind || 'comfy';
     const home = laneForKind(mk);
     const cur = STATE.lanes.find(l => l.id === STATE.activeLane);

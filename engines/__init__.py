@@ -15,10 +15,16 @@ falsy — is ignored. The dict has exactly these keys:
   cap       str                       lane capability, e.g. "image" or "video"
   roles     dict  role_name -> (pool_name, rule_dict)
                        server-side discovery: which pool to scan and with
-                       what rule (all / none / any name fragments, prefer)
+                       what rule (all / none / any name fragments, prefer).
+                       A rule may add "none_why": {none term: one plain
+                       sentence}, the reason that term is refused; the page
+                       shows it beside each file left out for it.
   provides  dict  ability_name -> list[role_name]
                        an ability is satisfied iff EVERY listed role
-                       resolved to a model in the models dict
+                       resolved to a model in the models dict. An entry may
+                       be a LIST (any one of these roles is enough), given in
+                       the order the pack's graphs read them: the first one
+                       resolved is the file that runs, and the page says so.
   stage_classes  optional list[str]  ComfyUI class_types (beyond the
                        default KSampler family, see stage_class_types())
                        whose `progress` websocket events count as one
@@ -49,7 +55,11 @@ falsy — is ignored. The dict has exactly these keys:
                        from docs/MODELS.md, shown by Setup), url (the licence text,
                        where MODELS.md links one), and optionally
                        "modes" (list[str]) naming which modes a list entry
-                       covers -- absent means the whole pack
+                       covers -- absent means the whole pack,
+                       "noncommercial" (True when the licence forbids
+                       commercial use) and "territory" (a short phrase
+                       naming where the licence does not reach). The page
+                       stamps from these two, never from the licence's name.
   sources   optional dict  role_name -> list of {repo, file, size, folder,
                        subdir (optional), run_by_us, licence}: where the file
                        for a role comes from, exactly as docs/MODELS.md's
@@ -344,7 +354,7 @@ falsy — is ignored. The dict has exactly these keys:
 
 The public API of this module (packs, role_pool, role_rules, model_keys,
 abilities, missing_words, mode_ability, describe, graph_for, modes_for,
-licences, licence_for, caps, cap_word, cap_order, mode_words, mode_room,
+licences, licence_for, file_licence, mode_parts, caps, cap_word, cap_order, mode_words, mode_room,
 mode_note, prompt_guide, foreign_prefix_stripped, writer, parse_writer_reply, reviser, parse_reviser_reply, reviser_fixes, edit_in, rooms, fields, presets, quality, examples, post_for,
 unet_loader, quant_words) is all the core needs to stay model-agnostic.
 """
@@ -482,8 +492,12 @@ def model_keys():
     return tuple(role_pool())
 
 
-def abilities(models):
+def abilities(models, blocked=()):
     """What a lane can do, from the files it actually has.
+
+    `blocked`: roles that must not count as resolved, nor be stood in for by
+    another member of an any-of group (a config pin naming a file the lane
+    lacks: the owner asked for THAT file).
 
     A role entry may be a LIST, meaning "any one of these is enough" -- H3 accepts
     either its nvfp4 or its int8 text encoder, and requiring one specific file told
@@ -495,8 +509,10 @@ def abilities(models):
     """
     def resolved(entry):
         if isinstance(entry, (list, tuple)):
+            if any(r in blocked for r in entry):
+                return False
             return any(models.get(r) for r in entry)   # any-of
-        return bool(models.get(entry))
+        return entry not in blocked and bool(models.get(entry))
 
     # Two passes, not one -- D2's ordering discipline applies here too. A
     # pack's own ability may be named the SAME as its cap (qwen-image's
@@ -594,6 +610,20 @@ def missing_words(models, ability, kind=None):
                 len(pack_best) == len(best) and tie_key(pack) < tie_key(best_pack)):
             best, best_pack = pack_best, pack
     return best or []
+
+
+def ability_roles(ability):
+    """Every role (any-of members included) an ability reads, across the
+    packs that declare it; for a CAP name, every role of every ability its
+    packs count towards it. A set."""
+    out = set()
+    for pack in _discover():
+        names = [ability] if ability in pack["provides"] else (
+            (pack.get("cap_from") or list(pack["provides"])) if pack["cap"] == ability else [])
+        for a in names:
+            for e in pack["provides"].get(a) or []:
+                out.update(e if isinstance(e, (list, tuple)) else [e])
+    return out
 
 
 def mode_ability(cap, mode):
@@ -1280,10 +1310,76 @@ def licence_for(cap, mode):
             return None
         for entry in (lic if isinstance(lic, list) else [lic]):
             if entry.get("modes") is None or mode in entry["modes"]:
-                return {"name": entry["name"], "shippable": entry["shippable"],
-                        "attribution": entry["attribution"]}
+                return _stamp(entry)
         return None
     return None
+
+
+def _stamp(entry):
+    """The licence fields a finished job and the page's stamp carry. The
+    structured `noncommercial` / `territory` only when the pack states them:
+    the page stamps from these, never from the licence's name."""
+    out = {"name": entry["name"], "shippable": entry["shippable"], "attribution": entry["attribution"]}
+    for k in ("noncommercial", "territory"):
+        if entry.get(k):
+            out[k] = entry[k]
+    return out
+
+
+def file_licence(cap, mode, role, filename):
+    """The licence for one part of a mode: the `sources` entry whose file has
+    this file's name, when a pack lists one (None when that entry states no
+    licence -- the page then says it cannot tell); otherwise the mode's own
+    licence (licence_for), which holds for another build of the same model."""
+    base = (filename or "").replace("\\", "/").rsplit("/", 1)[-1].lower()
+    if base:
+        for pack in _discover():
+            for src in (pack.get("sources") or {}).get(role) or []:
+                if src["file"].rsplit("/", 1)[-1].lower() != base:
+                    continue
+                name = src.get("licence")
+                if not name:
+                    return None
+                named = [e for e in licences() if e["name"] == name]
+                entry = next((e for e in named if e["engine"] == pack["id"]), named[0] if named else None)
+                if entry:
+                    return _stamp(entry)
+                return {"name": name, "shippable": False, "attribution": ""}
+    return licence_for(cap, mode)
+
+
+def mode_parts(cap, mode):
+    """The parts (model files) a mode's graph can load, from its owning pack:
+    [{"roles": [role, ...], "words", "tiers"}]. A part is one role, or an
+    any-of group (in the order the pack's graphs read it). The roles of the
+    mode's ability come first, `tiers` None; then the roles a quality tier
+    `requires` that the mode does not always load, with the ids of the tiers
+    that load them. [] for a process pack (its programs are not files)."""
+    pack = _owner(cap, mode)
+    if not pack or (pack.get("lane_kind") or "comfy") == "process":
+        return []
+    any_words = {}
+    for p in _discover():
+        for role, w in (p.get("words") or {}).items():
+            any_words.setdefault(role, w)
+    own = pack.get("words") or {}
+
+    def part(entry, tiers):
+        roles = list(entry) if isinstance(entry, (list, tuple)) else [entry]
+        return {"roles": roles, "words": own.get(roles[0]) or any_words.get(roles[0]) or roles[0], "tiers": tiers}
+
+    out = [part(e, None) for e in pack["provides"].get(mode_ability(cap, mode)) or []]
+    seen = {r for x in out for r in x["roles"]}
+    extra = {}
+    for tier in quality(cap, mode):
+        if not tier.get("requires"):
+            continue
+        for e in pack["provides"].get(tier["requires"]) or []:
+            key = tuple(e) if isinstance(e, (list, tuple)) else (e,)
+            if not set(key) & seen:
+                extra.setdefault(key, []).append(tier["id"])
+    out.extend(part(list(key), tiers) for key, tiers in extra.items())
+    return out
 
 
 def unet_loader(name):

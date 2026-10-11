@@ -217,6 +217,36 @@ try:
           and by["video"]["total_bytes"] == 14831573088 + 15372971786 + 1472223346 + 364866540 + 995778752
           + 2 * 11564180576 + 15687142551 + 5207808496 + 605254808, (by["video"]["total_bytes"], len(video_main)))
 
+    print("(f) Setup names the file discovery would load: the card's own VRAM test, the same ranking")
+    # fake_comfy reports one 16 GiB card: discovery ranks small builds first there. On a card
+    # treated as big (Setup's old fixed small_card=False) the bf16 build wins on name length.
+    small_build = "qwen_image_2.1_Q6_K-community-requant.gguf"
+    big_build = "qwen_image_2.1_bf16.safetensors"
+    store_f = os.path.join(fx.SCRATCH, "small-card-lane")
+    port_f = comfy_with(dict(PICTURE_FILES), store_f)
+    pools_f = json.load(open(os.path.join(store_f, "pools.json")))
+    pools_f["unet"] = {sorted(RIG["unet"])[0]: [[big_build, small_build]]}
+    json.dump(pools_f, open(os.path.join(store_f, "pools.json"), "w"))
+    fx.PROCS[-1].terminate()
+    fx.PROCS[-1].wait()
+    fx.PROCS.append(subprocess.Popen([sys.executable, os.path.join(HERE, "fixtures", "fake_comfy.py"), "--port",
+                                      str(port_f), "--store", store_f, "--pools", os.path.join(store_f, "pools.json")],
+                                     cwd=os.path.dirname(HERE), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+    for _ in range(100):
+        try:
+            import urllib.request
+            urllib.request.urlopen("http://127.0.0.1:%d/system_stats" % port_f, timeout=1)
+            break
+        except Exception:
+            time.sleep(0.1)
+    code, found = fx.http("POST", "/api/setup/probe-comfy", {"host": "127.0.0.1", "port": port_f})
+    check("step 1 finds the 16 GiB fake ComfyUI", code == 200 and found.get("ok")
+          and found["found"]["vram_gb"] == 16.0, found)
+    code, body_f, by_f = rooms("?host=127.0.0.1&port=%d" % port_f)
+    unet_role = next((r for r in by_f.get("picture", {}).get("roles", []) if r["role"] == "qwen_unet"), {})
+    check("Setup's found picture model is the small build discovery loads on a 16 GiB card",
+          unet_role.get("found") == small_build, unet_role.get("found"))
+
     print("(d) /object_info read once; a bad one is given up on within the bound")
     rooms("?host=127.0.0.1&port=%d" % port)
     check("two rooms reads, one /object_info fetch", object_info_hits(store) == 1, object_info_hits(store))
