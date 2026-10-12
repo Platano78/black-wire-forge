@@ -34,7 +34,7 @@ All notable changes to Black Wire Forge are recorded here.
 - A machine that runs local programs and was missing them (no Blender, no Python with beat_this) said ASLEEP. It now says NEEDS and names the program.
 - The sequence list was rebuilt every few seconds while a sequence was open, so the second click of "Click again to delete" could land on a button that had just been replaced, and nothing was deleted. The list now changes only when something in it changed, and keeps focus when it does.
 - The test suite no longer depends on what the developer's machine has installed: suites that need Blender, ffmpeg or ffprobe use stand-ins or print a plain SKIP.
-- Docs: AGENTS.md has a ready-to-paste lane for a ComfyUI you already run; Talking Head lists the LTX upscaler it needs; Forge Master may use one machine for pictures and another for video; `hf` is installed into the app's own environment; `"producer"` is in the list of caps. The room guides' knowledge files keep their lessons without maintainer quotes or review history.
+- Docs: AGENTS.md has a ready-to-paste lane for a ComfyUI you already run; Talking Head lists the LTX upscaler it needs; the music video may use one machine for pictures and another for video; `hf` is installed into the app's own environment; `"producer"` is in the list of caps. The room guides' knowledge files keep their lessons without maintainer quotes or review history.
 
 ## v1.4.4 — 2026-10-10
 
@@ -219,7 +219,7 @@ Not checked on Windows: cutting with ffmpeg (ffmpeg was not installed on the tes
 
 ### Added
 
-- **Make a music video from this song** (Forge Master). On a finished song in the Music room, a button opens a small
+- **Make a music video from this song**. On a finished song in the Music room, a button opens a small
   dialog: add a photo of who is in it (someone who agrees to be), optionally a style line, press Start. It plans
   shots of about 4 seconds from the song, writes a scene for each from the lyrics, makes a picture from your photo,
   animates each picture to its slice of the song and cuts the shots together, with no further questions. It needs a

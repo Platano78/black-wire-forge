@@ -14,7 +14,7 @@ Forked from [2Wild-Image-Video-Gen-Studio](https://github.com/tonyd2wild/2Wild-I
 - **Rooms.** Sound: Music, Cover, Sound FX, Producer. Picture: Picture, Characters (a design sheet
   from one picture of a character), Pixel Art, Clean-up, Textures (no built-in engine makes textures
   yet). Motion: Video, Talking Head. Object: 3D. Most rooms come with a guide (below).
-- **A music video in one click** (Forge Master). On a finished song, "Make a music video from this song"
+- **A music video in one click.** On a finished song, "Make a music video from this song"
   plans shots of about 4 seconds, makes a picture of the person for each (from a photo of someone who
   agrees to be in it, or someone it makes up), animates each picture to its slice of the song and cuts
   them together. Pictures and video may come from different machines; the cut needs ffmpeg

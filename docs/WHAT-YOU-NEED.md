@@ -100,7 +100,7 @@ This page lists the opt-in features that depend on something outside the app, wh
 
 ---
 
-## Make a music video from this song (Forge Master)
+## Make a music video from this song
 
 **What it does:** from a finished song in History (or a song file of your own, from "Make a music video from a song file" in the Sound rooms, with its lyrics pasted if you have them) plus one photo (or a person it makes up for you), plans the shots, makes a picture of the person in each scene, animates each to its slice of the song, and cuts it into one video. No questions asked after Start.
 
