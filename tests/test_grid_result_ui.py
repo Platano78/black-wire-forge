@@ -28,10 +28,11 @@ S = tempfile.mkdtemp(prefix="bwf_grid_ui_")
 # the shebang line is for POSIX only; the Python itself is the py_body
 STUB = ("#!%s\n" % sys.executable +
         "import json, os, sys\na = sys.argv[2:]\nif '--check' in a: sys.exit(0)\n"
+        "json.dump(a, open(%r, 'w'))\n"
         "out = a[a.index('--out') + 1]; os.makedirs(out, exist_ok=True)\n"
         "json.dump({'summary': %r}, open(os.path.join(out, 'grid.json'), 'w'))\n"
         "open(os.path.join(out, 'grid-check.mp3'), 'wb').write(b'ID3' + bytes(64))\n"
-        "print('PROGRESS 4/4', flush=True); print(%r, flush=True)\n") % (SUMMARY, SUMMARY)
+        "print('PROGRESS 4/4', flush=True); print(%r, flush=True)\n") % (os.path.join(S, "argv.json"), SUMMARY, SUMMARY)
 
 
 os.makedirs(os.path.join(S, "bin"))
@@ -69,6 +70,8 @@ try:
             chip.click()
             page.locator("#enginePicker").get_by_text("Grid check", exact=False).first.click()
         page.locator("#roomForm input[type=file]").first.set_input_files(song)
+        # A known meter: Beats per bar's options are "auto" then numbers, and a number must go through.
+        page.select_option("#f_beats_per_bar", "4")
         page.wait_for_timeout(1500)
         page.get_by_role("button", name="Make", exact=True).first.click()
         summary = page.locator("#jobSummary")
@@ -86,6 +89,12 @@ try:
             with urllib.request.urlopen(url.rstrip("/") + link.get_attribute("href"), timeout=10) as r:
                 check("that Download serves the job's grid.json", json.loads(r.read()).get("summary") == SUMMARY)
         check("the mp3 still plays on the stage", page.locator("#monitor audio").count() == 1)
+        try:
+            argv = json.load(open(os.path.join(S, "argv.json")))
+        except (OSError, ValueError):
+            argv = None
+        check("Beats per bar 4 picked on the page reaches the program as --beats-per-bar 4",
+              bool(argv) and "--beats-per-bar" in argv and argv[argv.index("--beats-per-bar") + 1] == "4", argv)
         check("no page errors", not errors, errors)
         browser.close()
 finally:
