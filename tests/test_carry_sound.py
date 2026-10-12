@@ -135,7 +135,10 @@ path = os.path.join(srv.UPLOADS_DIR, "cpu", name)
 check("the file landed under UPLOADS_DIR/<lane id>",
       bool(name) and os.path.isfile(path) and open(path, "rb").read() == WAV, path)
 check("its original name is the output's own filename", files[0].get("original") == "take.wav", files[0])
-check("it carries the sound's length", abs(float(files[0].get("seconds", 0)) - 0.5) < 0.05, files[0])
+if srv.FFPROBE_BIN:   # the length is read with ffprobe, resolved the way server.py does
+    check("it carries the sound's length", abs(float(files[0].get("seconds", 0)) - 0.5) < 0.05, files[0])
+else:
+    print("  SKIP  it carries the sound's length -- no ffprobe on PATH, so the upload has no length")
 
 print("\n--- refusals ---")
 p, c = post({"job_id": "pic1", "output": 0, "lane": "cpu"})

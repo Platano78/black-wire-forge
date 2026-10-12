@@ -22,8 +22,8 @@ back only the fields the page shows. Setup never replaces an existing `config.js
 
 ## What the request guard blocks
 
-The app has no login, so every request has to prove where it came from
-(`request_refusal()` in `server.py`). This is **defense in depth against common
+The app has no login, so every request must pass the request guard's host check and, for a
+`POST`, its cross-site checks (`request_refusal()` in `server.py`). This is **defense in depth against common
 browser-based DNS-rebinding and cross-site `POST`s — it is not authentication, and it
 must not be relied on to make an internet-exposed deployment safe**:
 

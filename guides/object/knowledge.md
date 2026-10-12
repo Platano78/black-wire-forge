@@ -38,9 +38,7 @@ the app's own words — the guide must speak in these.
 - TRELLIS.2's own README (fetched directly) documents single-image usage only
   (`pipeline.run(image)`) and doesn't mention multi-image conditioning at all — whether an
   experimental multi-image mode exists anywhere in TRELLIS's wider lineage is unconfirmed from the
-  TRELLIS.2 repo itself (an earlier claim citing "stochastic fusion/multidiffusion" as an observed
-  TRELLIS.2 feature didn't hold up on a direct re-check and has been dropped as unsourced). What's
-  certain either way: this app's `mesh3d` pack only ever wires up one image field, so the practical
+  TRELLIS.2 repo itself, so do not claim one. What's certain either way: this app's `mesh3d` pack only ever wires up one image field, so the practical
   point stands regardless — a user cannot send more than one picture to `mesh` in this app. —
   observed, https://github.com/microsoft/TRELLIS.2 (README, direct fetch); observed,
   `engines/mesh3d.py` `ENGINE["fields"]["mesh"]`.

@@ -37,7 +37,8 @@ http://127.0.0.1:3998 (this computer only) that finds ComfyUI, shows the file an
 If you tell it ComfyUI runs on the same computer and where its models folder is, each room can
 download its model files there in one click (sizes and licences shown first; set `HF_TOKEN` for
 gated repos); otherwise it shows an `hf download` command per file (`hf` comes with
-`pip install huggingface_hub`).
+`huggingface_hub`: install it into the app's own environment, `.venv/bin/python -m pip install
+huggingface_hub`, or on Windows `.venv\Scripts\python -m pip install huggingface_hub`).
 `requirements.txt` is optional (see "Install" below) and, on modern distro Python, needs its
 own virtual environment rather than a global `pip install` — same command either way.
 
@@ -126,7 +127,7 @@ working config, one ComfyUI instance running on the same machine:
 
 - **lane**: one ComfyUI instance the app can send a job to. Each needs an `id` (unique),
   `name` (shown in the UI), `host`/`port` (where its own ComfyUI API answers). `caps` --
-  which kinds of job it's for (`"image"`, `"video"`, `"audio"`, `"3d"`) -- is *optional* for
+  which kinds of job it's for (`"image"`, `"video"`, `"audio"`, `"3d"`, `"producer"`) -- is *optional* for
   a ComfyUI lane: leave it out and the lane is considered for every capability, and
   discovery decides what it can actually run from the model files it finds. Set `caps` to
   a non-empty subset to restrict the lane's purpose on purpose. A **process** lane (a local
@@ -207,9 +208,6 @@ own.
   in the Cutting Room) in your browser and, so it survives a reload or another device, on the
   app's own machine under `data/guide_history/`; it is sent with each turn. With no `helper` configured the
   panel still shows the guide's plain guidance and how to add a helper. Guide chat waits up
-  **The guide starts switched off**, so a helper alone never changes how a room works: the prompt box is the main field and Make sends
-  what you type. A "Guide: on / off" switch in the guide's header turns it on (remembered per browser). To have it start on for everyone
-  who has not chosen yet, add `"guide_default": "on"` inside `"helper"`.
   to `timeout_s` (120 seconds when unset), since a verbose guide is slow on a small box. The
   panel states how much context each choice needs (the guide plus 4,096 tokens for the
   conversation). The app reads the helper's context from llama.cpp's `/props`, else from
@@ -220,6 +218,10 @@ own.
   the budget (at most 16,384 tokens), and if that is still empty it says so in the panel. Set
   `"max_tokens": 8192` (a whole number of tokens) in `helper` to give every guide reply at least
   that much room; it never lowers a guide's own budget.
+
+  **The guide starts switched off**, so a helper alone never changes how a room works: the prompt box is the main field and Make sends
+  what you type. A "Guide: on / off" switch in the guide's header turns it on (remembered per browser). To have it start on for everyone
+  who has not chosen yet, add `"guide_default": "on"` inside `"helper"`.
 
   **"Not right? Tell the guide"** on a finished picture sends the picture, the prompt that
   made it and what you say is wrong to the helper, which answers with what went wrong and a

@@ -60,6 +60,28 @@ def safe_click(sel, page, timeout=5000):
         return False
 
 
+def loud_click(sel, page, label, between=None):
+    """Click sel, failing the check `label` (never silently) when it is not there or the click
+    does not land. `between(page)` runs after the element is found and before the click: a
+    poll-driven re-render landing between finding a button and clicking it, as a real one can."""
+    el = page.query_selector(sel)
+    if el is None:
+        check(label + ": the button is there", False, sel)
+        return False
+    if between:
+        between(page)
+    try:
+        el.click(timeout=3000)
+        return True
+    except Exception as e:
+        check(label + ": the click lands", False, str(e).splitlines()[0])
+        return False
+
+
+# What the page's own poll does with a sequence open (pollJobs: STATE.seq = sd; ... renderSeqPickerList()).
+POLL_RERENDER = lambda page: page.evaluate("() => { renderTimeline(); renderRefRoom(); renderSeqPickerList(); }")
+
+
 def safe_fill(sel, text, page, timeout=5000):
     """Fill sel with text or return False."""
     try:
@@ -406,7 +428,7 @@ try:
         # ======================================================================
 
         # 12. Click [data-seq-delete="s_0000bbbb"] once
-        del_btn_ok = safe_click('[data-seq-delete="s_0000bbbb"]', page)
+        del_btn_ok = loud_click('[data-seq-delete="s_0000bbbb"]', page, "D12: first Delete click")
         del_btn = page.query_selector('[data-seq-delete="s_0000bbbb"]')
         del_btn_text = del_btn.inner_text() if del_btn else ""
         check("D12a: delete: asks once more",
@@ -415,7 +437,7 @@ try:
               any(s["id"] == "s_0000bbbb" for s in seq_rows()))
 
         # 13. Click it again
-        safe_click('[data-seq-delete="s_0000bbbb"]', page)
+        loud_click('[data-seq-delete="s_0000bbbb"]', page, "D13: second Delete click")
         try:
             page.wait_for_timeout(2000)
         except Exception:
@@ -432,16 +454,17 @@ try:
 
         # 14. Delete the open one: click [data-seq-delete="NEWID"] twice
         if NEWID:
-            safe_click('[data-seq-delete="%s"]' % NEWID, page)
-            try:
-                page.wait_for_timeout(500)
-            except Exception:
-                pass
-            safe_click('[data-seq-delete="%s"]' % NEWID, page)
-            try:
-                page.wait_for_timeout(3000)
-            except Exception:
-                pass
+            loud_click('[data-seq-delete="%s"]' % NEWID, page, "D14: first Delete click")
+            page.wait_for_timeout(500)
+            # The second click, with the poll's re-render landing between finding the armed
+            # button and clicking it: the button must still be the one on the page.
+            loud_click('[data-seq-delete="%s"]' % NEWID, page, "D14: second Delete click, after a poll re-render",
+                       between=POLL_RERENDER)
+            page.wait_for_timeout(3000)
+            check("D14: delete open: the armed Delete is cleared",
+                  page.evaluate("STATE.seqDeleteArmed") is None, page.evaluate("STATE.seqDeleteArmed"))
+            check("D14: delete open: the server list no longer has it",
+                  not any(s["id"] == NEWID for s in seq_rows()))
             check("D14a: delete open: the sequence closes",
                   page.query_selector("#seqOpenNote") is None)
             check("D14b: delete open: gone from the list",

@@ -82,12 +82,12 @@ Per-engine text shape, in the moment order a user actually fills them:
   prose. Write it as **plain text** (the labels on their own lines, no Markdown asterisks or
   headings) and describe **only what can be heard**; sung or rapped words always go in `lyrics`.
   A Markdown caption padded with a setting and a smell, with empty lyrics, rendered a rap request
-  as something the maintainer called "hot garbage" (2026-09-24). — **observed**, the vendor's
-  example template (plain labels), the maintainer's listening report. — **observed**, MiniMax-AI/MiniMax-Music3 (GitHub), the caption-rewriter skill's
+  badly: it did not sound like the request. — **observed**, the vendor's example template (plain
+  labels), a listening test of this app's renders. — **observed**, MiniMax-AI/MiniMax-Music3 (GitHub), the caption-rewriter skill's
   "Output Contract", `engines/audio.py` `music_graph` docstring. Vendor's own framing: this is a
   **five-minute full-song vocal model with expressive vocals**, not an "ambience generator" — the
   app's own old code comment calling it that described the old, wrong wiring, not the model. —
-  **observed**, the maintainer's music-lane audit (2026-09-21).
+  **observed**, a review of this app's music wiring.
 - **Stage directions and duets (`music`; directions apply to every engine with lyrics).** Every lyric
   line is sung as words: "(Heavy boom bap beat kicks in)", "(High energy dancehall flow)" and inline
   "(Rap) " / "(Dancehall) " prefixes were all sung by every audio engine — **observed**, the

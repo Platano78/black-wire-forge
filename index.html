@@ -1579,9 +1579,19 @@ function machineState(lane){
     // FIRST -- reporting READY on an idle-but-down lane hid a real "needs
     // ..." condition behind a state that means "answering, has what it
     // needs".
+    // A down process lane is never ASLEEP (that means "not answering"): it is
+    // down because no pack on it has every program, so the tile says which.
+    // The mode on screen names its own programs; otherwise the lane's
+    // missing_<cap> lists from /api/lanes do.
     if(!lane.up){
-      if(ownJobsWaiting) return {state:'asleep-waiting', label:'ASLEEP, WORK WAITING'};
-      return {state:'asleep', label:'ASLEEP'};
+      let miss = [];
+      const mi = lane.id === STATE.activeLane ? modeInfo(STATE.cap, STATE.mode) : null;
+      if(mi && mi.lane_kind === 'process' && (mi.missing || []).length) miss = mi.missing;
+      else Object.keys(lane).filter(k => k.indexOf('missing_') === 0 && Array.isArray(lane[k]))
+        .forEach(k => lane[k].forEach(w => { if(!miss.includes(w)) miss.push(w); }));
+      miss = miss.map(w => String(w).replace(/\s*\(.*$/, '')).filter(Boolean);
+      const needs = miss.length ? 'NEEDS ' + miss.join(', ') : 'NEEDS A PROGRAM';
+      return {state:'not-for-this', label: needs + (ownJobsWaiting ? ', WORK WAITING' : '')};
     }
     // The queue on its worker slots IS the rest of the story.
     if(lane.running > 0 || lane.pending > 0) return {state:'working', label:'WORKING'};
@@ -6403,7 +6413,7 @@ function renderSeqPickerList(){
       + delBtn
       + '</div>';
   }).join('');
-  body.innerHTML = '<div id="seqList">' + (rows || '<p class="muted">No sequences yet.</p>') + '</div>'
+  const html = '<div id="seqList">' + (rows || '<p class="muted">No sequences yet.</p>') + '</div>'
     + '<div id="seqNewRow"><input type="text" id="seqNewTitle" placeholder="New sequence title">'
     + '<select id="seqNewMode" aria-label="What kind of sequence">'
     + '<option value="sequence"' + (STATE.newSeqMode === 'storyboard' ? '' : ' selected') + '>sequence</option>'
@@ -6423,6 +6433,21 @@ function renderSeqPickerList(){
       + '<option value="storyboard"' + (STATE.seq.mode === 'storyboard' ? ' selected' : '') + '>storyboard</option>'
       + '</select>'
       + '<button type="button" class="btn" id="seqCloseBtn">Close</button></p>' : '');
+  // A poll calls this on every job/lane refresh. Rebuilding rows that would
+  // come out the same detaches the button under the user's pointer: the second
+  // click of Delete's click-again-to-confirm then lands on nothing and the
+  // sequence is never deleted. So an unchanged list (rows, armed Delete, rename
+  // box -- all in the HTML) is left alone; a changed one is rebuilt and the
+  // focused control gets its focus back.
+  if(body._lastHTML === html) return;
+  const was = document.activeElement && body.contains(document.activeElement) ? document.activeElement : null;
+  const focusSel = !was ? null
+    : was.dataset.seqDelete ? '[data-seq-delete="' + was.dataset.seqDelete + '"]'
+    : was.dataset.seqRename ? '[data-seq-rename="' + was.dataset.seqRename + '"]'
+    : was.dataset.seqId ? '[data-seq-id="' + was.dataset.seqId + '"]'
+    : was.id ? '#' + was.id : null;
+  setHTML(body, html);
+  if(focusSel){ const f = body.querySelector(focusSel); if(f && !f.matches('.seq-rename-input')) f.focus(); }
   $$('#seqList [data-seq-id]').forEach(b => b.onclick = e => {
     if(e.target.closest('.seq-rename-input')) return;   // typing a new name, not opening it
     seqOpenById(b.dataset.seqId);

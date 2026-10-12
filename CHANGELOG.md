@@ -12,7 +12,7 @@ All notable changes to Black Wire Forge are recorded here.
 
 - A `"models"` pin in `config.json` naming a file the lane does not have made the mode look ready, then failed inside ComfyUI. The mode now reads unavailable with "config.json names <file>, which <lane> does not have. ..." and the render is refused with the same sentence. This holds for a part that either of two files can fill, too: the other file never stands in for a pinned one.
 - Setup could name a different "found" file than the one that runs: it ranked files as if every card were a big one. It now uses discovery's ranking with the card's VRAM from the probe, and layers pins the same way, including the pins of the configured machine at that address.
-- The licence stamp said "conditions apply" for Qwen-Image, whose licence is non-commercial: the page only read the licence's name. Packs now state `noncommercial` (Qwen-Image, Pixel Art, YuE2-3B and SheetSage2) and `territory` (MiniMax-H3), and every stamp reads those.
+- The licence stamp said "conditions apply" for Qwen-Image, whose licence is non-commercial: the page only read the licence's name. Packs now state `noncommercial` (Qwen-Image, Pixel Art, YuE2-3B and SheetSage2) and `territory` (MiniMax-H3), and every stamp reads those, falling back to the licence's name only for a pack or an old job record that lacks them.
 - The MiniMax-H3 text-encoder comments said fl2va defaults to the nvfp4 encoder; the code reads the int8 one first. The comments and the any-of order in `provides` now match the code.
 
 ## v1.4.4 — 2026-10-10

@@ -48,8 +48,17 @@ json.dump({"title": "wwr ui", "port": port, "bind": "127.0.0.1",
                       "caps": ["image", "video", "audio"]},
                      {"id": "cpu", "name": "This machine", "kind": "process", "caps": ["3d"]}],
            "timing": {"poll_seconds": 0.5, "job_poll_seconds": 1.0}}, open(cfg, "w"))
+# Stand-in programs for the process lane, so the 3D room's process mode is there whatever this
+# machine has installed (nothing here ever runs them: the check only opens the room).
+stub_bin = os.path.join(ui.SCRATCH, "bin")
+os.makedirs(stub_bin, exist_ok=True)
+for prog in ("blender", "ffmpeg"):
+    with open(os.path.join(stub_bin, prog), "w") as f:
+        f.write("#!/bin/sh\nexit 0\n")
+    os.chmod(os.path.join(stub_bin, prog), 0o755)
 ui.PROCS.append(subprocess.Popen([sys.executable, os.path.join(ui.REPO, "server.py")], cwd=ui.REPO,
-                                 env=dict(os.environ, GENCENTER_CONFIG=cfg, GENCENTER_DATA=data),
+                                 env=dict(os.environ, GENCENTER_CONFIG=cfg, GENCENTER_DATA=data,
+                                          PATH=stub_bin + os.pathsep + os.environ.get("PATH", "")),
                                  stdout=open(os.path.join(ui.SCRATCH, "server.log"), "w"), stderr=subprocess.STDOUT))
 URL = "http://127.0.0.1:%d/" % port
 ui.wait_up(URL + "api/health")
@@ -166,14 +175,15 @@ try:
             check("%d: video panel: no row overflows, no sideways scroll" % width, not o["wide"] and o["page"] <= 0, o)
             page.close()
 
+        # The 3D room's process mode, picked explicitly; its programs are the stubs above.
         page = browser.new_page(viewport={"width": 1440, "height": 1000})
+        page.add_init_script("localStorage.setItem('bwf.room.engine.3d', JSON.stringify(%s))"
+                             % json.dumps({"cap": "3d", "mode": "turntable"}))
         page.goto(URL + "#room=3d", wait_until="networkidle", timeout=30000)
         page.wait_for_timeout(1500)
         info = page.evaluate("() => [STATE.cap, STATE.mode, (currentMode() || {}).lane_kind]")
-        if info[2] == "process":
-            check("a process-lane mode shows no panel", page.locator("#whatWillRun").is_hidden(), info)
-        else:
-            check("the 3D room opens on its process-lane mode for this check", False, info)
+        check("a process-lane mode shows no panel",
+              info[2] == "process" and page.locator("#whatWillRun").is_hidden(), info)
         browser.close()
 finally:
     ui.finish()

@@ -503,10 +503,13 @@ def join_words(items):
     return "%s and %s" % (", ".join(items[:-1]), items[-1])
 
 
-def suggest_lanes(cap):
+def suggest_lanes(cap, ability=None, exclude=None):
     """Name the lanes that can actually do `cap` right now, for a plain-words
-    error. A lane only counts if it is set up for the job AND has the models."""
-    names = [l["name"] for l in LANES if cap in l["caps"] and abilities(l)[cap]]
+    error. A lane only counts if it is set up for the job AND has the models
+    for `ability` (the refused mode's own ability; a cap can be true from a
+    tool pack alone). The lane `exclude` (the one refusing) never counts."""
+    names = [l["name"] for l in LANES if l["id"] != exclude and cap in l["caps"]
+             and abilities(l).get(ability or cap)]
     if not names:
         return ("No machine here has the %s models installed yet." % engines.cap_word(cap))
     if len(names) == 1:
@@ -6512,7 +6515,8 @@ def _generate_legacy(p, lane, m, able, kind, mode, qmode, prompt, seed, steps):
     if kind == "image":
         if "image" not in lane["caps"]:
             return {"ok": False, "error": "%s is not set up as a picture lane. %s"
-                                   % (lane["name"], suggest_lanes("image"))}, 400
+                                   % (lane["name"], suggest_lanes("image", engines.mode_ability("image", qmode),
+                                                                  lane["id"]))}, 400
         # the picture generator's ability is now MODE-specific
         # (t2i/edit), not the cap name "image" itself -- a lane whose
         # only "image"-cap files belong to a tool pack (cleanup) must
@@ -6522,7 +6526,7 @@ def _generate_legacy(p, lane, m, able, kind, mode, qmode, prompt, seed, steps):
             return {"ok": False, "error":
                                    "%s does not have the picture models installed (missing %s). %s"
                                    % (lane["name"], join_words(missing_for(lane, ability)),
-                                      suggest_lanes("image"))}, 400
+                                      suggest_lanes("image", ability, lane["id"]))}, 400
         # MEASURED 2026-09-22: at cfg 1 there is no classifier-free guidance,
         # so the UI's "THINGS TO AVOID" box is INERT -- same prompt and seed
         # with and without a negative gave max pixel delta 0, correlation
@@ -6669,12 +6673,13 @@ def _generate_video(p, lane, m, able, mode, qmode, prompt, seed, steps):
     `self.send_json(X[, code])` -> `return X, code`."""
     if "video" not in lane["caps"]:
         return {"ok": False, "error": "%s is not set up as a video lane. %s"
-                               % (lane["name"], suggest_lanes("video"))}, 400
+                               % (lane["name"], suggest_lanes("video", engines.mode_ability("video", qmode),
+                                                              lane["id"]))}, 400
     if not able["video"]:
         return {"ok": False, "error":
                                "%s does not have the video models installed (missing %s). %s"
                                % (lane["name"], join_words(missing_for(lane, "video")),
-                                  suggest_lanes("video"))}, 400
+                                  suggest_lanes("video", engines.mode_ability("video", qmode), lane["id"]))}, 400
     try:
         w = int(p.get("width") or 960)
     except ValueError:
@@ -6871,7 +6876,8 @@ def _dispatch_generic(lane, m, able, p, kind, mode):
         return {"ok": False, "error": qerr}, 400
     if kind not in lane["caps"]:
         return {"ok": False, "error": "%s is not set up as a %s lane. %s"
-                               % (lane["name"], engines.cap_word(kind), suggest_lanes(kind))}, 400
+                               % (lane["name"], engines.cap_word(kind),
+                                  suggest_lanes(kind, engines.mode_ability(kind, mode), lane["id"]))}, 400
     ability = engines.mode_ability(kind, mode)
     if not able.get(ability):
         # Right after start, discovery may not have read this lane's model list
@@ -6888,7 +6894,7 @@ def _dispatch_generic(lane, m, able, p, kind, mode):
         return {"ok": False, "error":
                                "%s does not have that %s mode's models installed (missing %s). %s"
                                % (lane["name"], engines.cap_word(kind), join_words(missing_for(lane, mode)),
-                                  suggest_lanes(kind))}, 400
+                                  suggest_lanes(kind, ability, lane["id"]))}, 400
     try:
         seed = int(p.get("seed") or 0) or random.randint(1, 2 ** 48)
     except ValueError:

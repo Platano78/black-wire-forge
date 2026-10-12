@@ -123,7 +123,7 @@ check("that -vsync literal is inside _cfr_args",
       enclosing(hits[0]) if hits else None)
 
 # 7. live: the chosen flag really works on this machine's ffmpeg
-if shutil.which(srv.FFMPEG_BIN):
+if srv.FFMPEG_BIN and shutil.which(srv.FFMPEG_BIN):
     srv._CFR_ARGS = None
     flags = srv._cfr_args()
     r = real_subprocess.run([srv.FFMPEG_BIN, "-y", "-hide_banner", "-loglevel", "error",

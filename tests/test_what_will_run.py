@@ -182,6 +182,19 @@ check("before discovery has answered, no pin is judged",
       srv.pin_absent(early) == {} and srv.models_for(early).get("qwen_vae") == "not_here_vae.safetensors")
 del srv.CONFIG_MODELS["qwen_unet"]
 
+print("\n3a. a refusal never suggests the lane that refused, nor one that cannot run the mode")
+saved_lanes = list(srv.LANES)
+srv.LANES[:] = [srv.LANE_BY_ID["gone"]]   # can still clean up pictures, cannot make one (absent pin)
+body, code = srv.generate({"lane": "gone", "kind": "image", "mode": "t2i", "prompt": "a lighthouse"})
+check("one lane, refusing t2i: the error does not say 'Use Lane gone.'",
+      code == 400 and "Use Lane gone." not in body.get("error", "")
+      and "No machine here has the picture models installed yet." in body.get("error", ""), body)
+srv.LANES[:] = [srv.LANE_BY_ID["gone"], srv.LANE_BY_ID["rig"]]
+body, code = srv.generate({"lane": "gone", "kind": "image", "mode": "t2i", "prompt": "a lighthouse"})
+check("two lanes: the one that can make the picture is suggested, the refusing one is not",
+      code == 400 and body.get("error", "").endswith("Use Lane rig."), body)
+srv.LANES[:] = saved_lanes
+
 print("\n3b. Setup layers the pins of the configured lane at the probed address")
 pools_rig = {p: srv.pool_names(p, lambda node: fake_http_get_json("/object_info/" + node), "x") for p in srv.POOL_NODES}
 srv._setup_pools = lambda h, p: pools_rig

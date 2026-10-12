@@ -18,7 +18,7 @@ This page lists the opt-in features that depend on something outside the app, wh
 
 **What it does:** Generates a talking-head video from a face picture and a text line; the model invents the speech.
 
-**What you need:** An LTX video lane (transformer, CLIP, video VAE, audio VAE) discovered on a ComfyUI lane.
+**What you need:** An LTX video lane (transformer, CLIP, video VAE, audio VAE, and the LTX upscaler) discovered on a ComfyUI lane.
 
 **Without it:** The Talking Head room still opens; you can enter a line and pick a face, but generation will report the missing model roles.
 
@@ -104,7 +104,7 @@ This page lists the opt-in features that depend on something outside the app, wh
 
 **What it does:** from a finished song in History (or a song file of your own, from "Make a music video from a song file" in the Sound rooms, with its lyrics pasted if you have them) plus one photo (or a person it makes up for you), plans the shots, makes a picture of the person in each scene, animates each to its slice of the song, and cuts it into one video. No questions asked after Start.
 
-**What you need:** a machine (lane) in `config.json` that can edit pictures (a Picture "edit" mode) and make video (the LTX video mode), a finished song made in the Music room (its lyrics, if any, are used for the scenes), a photo of someone who agrees to be in it (or choose "Make someone up", which also needs a Picture "text to picture" mode on the machine; the person is made first and used in every shot), and ffmpeg on the computer running the app (for the cut). A helper (the optional chat endpoint) writes the scenes; without one, plain fallback scenes are used.
+**What you need:** a machine (lane) in `config.json` that can edit pictures (a Picture "edit" mode) and a machine that can make video (the LTX video mode); they may be the same machine or two different ones, each found on its own (the one you picked first, else the first machine that is up and can), a finished song made in the Music room (its lyrics, if any, are used for the scenes), a photo of someone who agrees to be in it (or choose "Make someone up", which also needs a Picture "text to picture" mode on the machine that edits the pictures; the person is made first and used in every shot), and ffmpeg on the computer running the app (for the cut). A helper (the optional chat endpoint) writes the scenes; without one, plain fallback scenes are used.
 
 **Time and size:** about a minute per 4-second shot on a 16 GB card (measured once), so a 150-second song takes roughly an hour.
 

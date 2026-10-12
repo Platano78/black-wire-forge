@@ -328,13 +328,12 @@ copied into any shipped file — restated and cited.
   of it was trialled against this app's actual renders; and a short web survey of Midjourney's
   Describe, Ideogram's Magic Prompt, Leonardo AI's prompt tooling, and Krea's realtime Enhance for
   comparison (see the paid-tools section above).
-- Then live measurement: inspected three real BWF renders directly (the Godzilla/MechaKing Ghidorah
-  battle, a rain-soaked-alley portrait, a snow cabin), established ground truth by eye first, then
-  probed the guide's own endpoint against each. This is
-  what surfaced the count-reliability limit, the fabricated-critique risk, and the
+- Then live measurement: three real renders from this app (a battle between two giant monsters, a
+  rain-soaked-alley portrait, a snow cabin), checked by eye first, then shown to a guide model.
+  This is what surfaced the count-reliability limit, the fabricated-critique risk, and the
   confirm-before-answering rule, none of which were visible from reading code alone.
 - Could not confirm by a render: that `<image1>`/`<image2>` in the edit prompt pick out the right
   pictures better than ordinal prose. The encoder labels the pictures that way (above), but no
-  render was trialled either way, chat-only by this pass's scope. Whether the guide's endpoint's count failure
+  render was trialled either way; only the chat was tested. Whether the guide model's count failure
   (measuring 2 large, well-separated subjects as 4) is specific to this 12B model or a broader small-
   VLM limitation was not tested against a second endpoint.

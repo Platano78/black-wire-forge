@@ -59,7 +59,8 @@ falsy — is ignored. The dict has exactly these keys:
                        "noncommercial" (True when the licence forbids
                        commercial use) and "territory" (a short phrase
                        naming where the licence does not reach). The page
-                       stamps from these two, never from the licence's name.
+                       stamps from these two, falling back to the licence's
+                       name only for a pack or an old job record without them.
   sources   optional dict  role_name -> list of {repo, file, size, folder,
                        subdir (optional), run_by_us, licence}: where the file
                        for a role comes from, exactly as docs/MODELS.md's
@@ -1318,7 +1319,8 @@ def licence_for(cap, mode):
 def _stamp(entry):
     """The licence fields a finished job and the page's stamp carry. The
     structured `noncommercial` / `territory` only when the pack states them:
-    the page stamps from these, never from the licence's name."""
+    the page stamps from these (its licence-name check is only the fallback
+    for a pack or an old job record without them)."""
     out = {"name": entry["name"], "shippable": entry["shippable"], "attribution": entry["attribution"]}
     for k in ("noncommercial", "territory"):
         if entry.get(k):

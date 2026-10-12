@@ -110,8 +110,8 @@ at all.
   under), each with `name`, `shippable` (bool) and `attribution`. A list entry may name
   which `modes` it covers; without that key it covers the whole pack. Add
   `"noncommercial": true` when the licence forbids commercial use, and `"territory"` (a short
-  phrase) when it does not reach everywhere: the page's licence stamp reads these, never the
-  licence's name. Read at every finished job by `engines.licence_for(cap, mode)`.
+  phrase) when it does not reach everywhere: the page's licence stamp reads these, and falls back to
+  the licence's name only for a pack or an old job record without them. Read at every finished job by `engines.licence_for(cap, mode)`.
 - **`cap_word`** — a bare noun for the cap in a sentence ("sound" for `"audio"`, "picture"
   for `"image"`), no article — callers plug it into "the ___ models". Falls back to the
   cap name.

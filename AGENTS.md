@@ -34,10 +34,22 @@ Black Wire Forge is a **web front end** for one or more ComfyUI instances. It:
 
 ## Decide the path with the user first
 
-Ask, in this order, and stop at the first one that applies:
+Ask, in this order, and stop at the first one that applies. Whatever the path, `config.json` is
+read once at start: restart the server after editing it.
 
-1. **They already run ComfyUI somewhere** (this machine or another on their network) → go to
-   "Install + start" and point a lane at that ComfyUI's `host`/`port` in `config.json`.
+1. **They already run ComfyUI somewhere** (this machine or another on their network) → do
+   "Install + start" with this lane. No `config.json` yet: this is the whole file; one exists: add
+   just the lane object to its `"lanes"`:
+
+   ```json
+   {"port": 3998, "bind": "127.0.0.1",
+    "lanes": [{"id": "local", "name": "My ComfyUI", "host": "<host>", "port": <port>}]}
+   ```
+
+   `caps` is optional here (discovery decides from the files found). `id` is the `"lane"` in every
+   API call. Check `/api/lanes` → that lane `"up": true`, then `/api/engines?lane=<id>` → a mode
+   with `"available": true` before generating; its `"fields"` are that mode's field ids (t2i's
+   too), so there is no need to read engine code.
 2. **They have no GPU at all** → two things work, on a CPU-only **process lane**: an orbiting
    turntable video of an existing `.glb` (Blender + `ffmpeg`, `engines/turntable.py`, below) and
    Producer's Grid check (a song's beats; "Getting the models"). Everything else needs a GPU-backed
@@ -54,8 +66,8 @@ Ask, in this order, and stop at the first one that applies:
    ```
 
    It needs no `host`/`port` but **must** declare a non-empty `caps` (nothing about it is
-   discoverable until its binaries are). The config is read once at start: restart the server
-   after editing it, and check `/api/lanes` lists `cpu` with `"up": true`. Then the whole render is:
+   discoverable until its binaries are). After the restart, check `/api/lanes` lists `cpu` with
+   `"up": true`. Then the whole render is:
 
    ```
    # 1. upload; keep the "name" it answers with
@@ -103,11 +115,8 @@ python3 -m venv .venv
   but cannot build a cut yet.
 - `config.json` is **required**, `"lanes"` non-empty. Missing, the app opens only a local
   Setup page that writes it (you may write it yourself instead); broken, the app exits (see
-  "Troubleshooting"). It is gitignored; never commit or share it.
-  `test -e config.json || cp ...` creates it only if missing — a bare `cp` would clobber a real
-  one on a re-run.
-- The example config binds `127.0.0.1` (localhost only). `server.py` runs in the
-  **foreground**: leave it running in one terminal (or background it: `... server.py &`) and
+  "Troubleshooting").
+- `server.py` runs in the **foreground**: leave it running in one terminal (or background it: `... server.py &`) and
   run every "Verify" command from another. Success on stdout (`server.py`'s `main()`):
 
   ```
@@ -147,12 +156,6 @@ Against the running server (port 3998 by default; use the `"port"` in `config.js
   does not match, `"missing"` says so in one sentence (e.g. "this mode runs on a process lane,
   not a ComfyUI lane: add ... to config.json") — nothing to install. `"fields"` — the exact form
   fields the mode's graph builder expects (id/label/type/...).
-- `curl -s "http://127.0.0.1:3998/api/guide?room=cutting"` → `"room"`, `"guide"` (`null` if
-  none), `"helper"`, `"helper_context"` (`null` if unknown), `"helper_vision"`, `"add_brain"`;
-  an unknown room is `404` "There is no room called <room>.". `POST /api/guide/chat` `{"room",
-  "verbosity": "compact"|"verbose", "messages": [...]}` is one guide turn (`409`, `"no_brain":
-  true`, with no `"helper"`); optional `"context": {"mode": ..., "fields": {<id>: <value>}}`
-  gives the room's mode and values (`400` if it names a mode or field the room lacks).
 
 ## Make something and get the file
 
@@ -355,3 +358,9 @@ it answers with, then generate `{"lane": "cpu", "kind": "producer", "mode": "gri
 - `docs/API-EXAMPLES.md` — a worked song request (submit, poll, download) run on a real lane, and each Music room mode's fields
 - `docs/WRITING-A-PACK.md` — the engine-pack contract, for adding a new model family
 - `SECURITY.md` — exactly what the request guard does and does not protect against
+- The room guides (not needed to set up or render): `curl -s "http://127.0.0.1:3998/api/guide?room=cutting"` → `"room"`, `"guide"` (`null` if
+  none), `"helper"`, `"helper_context"` (`null` if unknown), `"helper_vision"`, `"add_brain"`;
+  an unknown room is `404` "There is no room called <room>.". `POST /api/guide/chat` `{"room",
+  "verbosity": "compact"|"verbose", "messages": [...]}` is one guide turn (`409`, `"no_brain":
+  true`, with no `"helper"`); optional `"context": {"mode": ..., "fields": {<id>: <value>}}`
+  gives the room's mode and values (`400` if it names a mode or field the room lacks).
