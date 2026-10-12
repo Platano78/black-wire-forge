@@ -193,7 +193,7 @@ or UI text is copied verbatim (licence caution), only the underlying advice, res
   timeout budget (30s at or under 512px, 60s above 512px) is a ceiling built in for that reason, not
   an estimate of typical render time. — observed, `engines/turntable.py` (`_PER_FRAME = (30, 60)`,
   `budget = _PER_FRAME[0] if size <= 512 else _PER_FRAME[1]` — 512px itself gets the 30s budget) and
-  module docstring (measured 2026-09-22 on the reference box).
+  module docstring (measured on the reference box).
 - Why Cycles runs on the CPU at all, not a plausible-sounding guess: the pack's own code sets it
   deliberately (`scene.cycles.device = "CPU"`, with a fallback that disables GPU compute entirely)
   rather than defaulting to it — slower per frame than a GPU render would be, but it means this mode

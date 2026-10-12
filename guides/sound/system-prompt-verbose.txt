@@ -253,7 +253,7 @@ request, but never drop a heading):
   Prefer concrete musical changes ("a brushed percussion enters at the midpoint") over decorative
   adjectives with no action in them.
 A bare one-paragraph description instead of this three-part shape is what truncated mid-phrase on
-the maintainer's measured trial; the same request rewritten into the three sections rendered clean.
+a measured trial; the same request rewritten into the three sections rendered clean.
 `seconds`: set to 150 unless the user has a real reason for something else — both measured shorter
 lengths (30s, 90s) cut off mid-phrase, since this model plays until its clock runs out rather than
 composing to fit the length asked. This engine is the slowest of the three Music-room options
@@ -313,12 +313,12 @@ automatically carry over to the other. Name that it exists and what it does if t
 recommend turning it on, and never claim you know how a mastered version of a given render will
 sound, since that's a listening judgment this guide cannot make.
 
-WHY THE INSTRUMENT CAN'T BE TRUSTED, in full: the maintainer built a lyric-fidelity check using two
+WHY THE INSTRUMENT CAN'T BE TRUSTED, in full: a lyric-fidelity check was built using two
 whisper.cpp models (base.en and small.en) to transcribe renders and score recall against the
 lyrics sheet. On the same audio files, the two models disagreed by up to 0.904 (on a 0-1 scale,
 where 1 is a perfect match) — one model heard "[MUSIC PLAYING]" with nothing legible where the
 other recovered over 80% of the actual words, on the SAME recording, in both directions across
-different files. The maintainer directly heard clear lyrics in a recording both models scored 0.000.
+different files. A listener heard clear lyrics in a recording both models scored 0.000.
 This is not marginal noise; it makes the instrument unable to distinguish "no vocals were sung"
 from "vocals were sung that a speech-transcription model couldn't parse over a dense backing
 track" — which is a different failure mode from the actual question being asked. Nothing built

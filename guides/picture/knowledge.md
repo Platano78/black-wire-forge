@@ -49,12 +49,12 @@ card, then general web craft — see "Research log" for what came from where.
 
 - **Positive prompt only, always.** Put anything to avoid in the separate "Things to avoid" field
   (`negative`), never folded into the main prompt — and it only takes effect once "Guidance
-  strength" (`cfg`) is at least ~2.5. **At t2i's default it is therefore IGNORED**: as of
-  2026-10-03 the t2i default `cfg` is 1.0 (see SETTINGS below), where the
+  strength" (`cfg`) is at least ~2.5. **At t2i's default it is therefore IGNORED**: the t2i
+  default `cfg` is 1.0 (see SETTINGS below), where the
   "Things to avoid" text measured **zero** effect (max pixel delta 0). To make it count, raise
   `cfg` above ~2.5 or switch to the `balanced` recipe (`cfg` 3). — observed,
   `engines/qwen_image.py` fields (`negative` hint, `cfg` default 1.0 for t2i) + presets
-  `fast-plain` / `balanced` notes (measured 2026-09-23/22, default changed 2026-10-03).
+  `fast-plain` / `balanced` notes.
 - **`edit` mode**: describe the change as a **positive instruction** anchored on what the uploaded
   picture(s) actually show — "Remove the background" works directly as a prompt, no separate
   before/after framing needed. — observed, `engines/qwen_image.py` `prompt_guides.edit`.
@@ -65,7 +65,7 @@ card, then general web craft — see "Research log" for what came from where.
   the model draws a pixel-art-styled picture and the quantise step then locks the grid and palette.
   Colour count and size stay separate fields (`pixel_colors`/`pixel_size`). — observed,
   `engines/pixelart.py` `prompt_guides.pixelart` and its sprite writer.
-- **Pixel Art's photo-detail failure**: owner case 2026-09-24, "godzilla pixel art" looked like
+- **Pixel Art's photo-detail failure**: a reported case, "godzilla pixel art", looked like
   Godzilla but not like pixel art. The old advice ("the subject, not the pixel style") let the
   prompt ask for cinematic lighting and fine scales on a close crop; at 64px that became noise. The
   sprite writer's check flags cinematic, photo, depth-of-field and close-up words at Make time. —
@@ -87,7 +87,7 @@ card, then general web craft — see "Research log" for what came from where.
   says otherwise. **UNTESTED by a render:** no edit has yet compared the tags with ordinal prose
   ("the second picture") on this engine.
 - **Named subjects the model doesn't recognise render wrong — describe appearance, not just the
-  name.** A live BWF render (job `c78e51eab415`, 2026-09-24, prompt "...battle between Godzilla and
+  name.** A live render from this app (prompt "...battle between Godzilla and
   MechaKing Ghidorah..."), inspected at full resolution: **three creatures** came back instead of
   two — two Godzilla-like reptilian kaiju (one with blue dorsal spines, one without, each firing its
   own energy beam) plus a **single-headed winged dragon with golden horns**, also firing a beam.
@@ -96,8 +96,8 @@ card, then general web craft — see "Research log" for what came from where.
   unrequested monster, and substituted a generic "dragon" reading for the one that was meant to be
   MechaKing Ghidorah. Fix: describe the unfamiliar subject's actual appearance directly ("a golden
   three-headed mechanical dragon with bat wings and armour plating") rather than leaning on the
-  name, and state every count explicitly. — observed, live BWF render `c78e51eab415`, inspected
-  directly at full resolution, 2026-09-24, in the guide's live vision probes.
+  name, and state every count explicitly. — observed, a live render from this app, inspected
+  directly at full resolution.
 - **Identity from a reference image should be pointed at, not re-described in words** — restating a
   person or character's features in prose, instead of just pointing at the uploaded reference, tends
   to regenerate and degrade the likeness rather than hold it. — **inferred**, restated from the idea
@@ -156,13 +156,12 @@ card, then general web craft — see "Research log" for what came from where.
   holds exposure at higher guidance but costs ~2x the render time and can add unrequested props or
   leave a fine mesh pattern over water and sand). The picture model is Comfy-Org's int8 build of Qwen-Image 2.1 when the machine has it (about 3x faster than the GGUF build at the same steps, and measured to draw the same picture), the GGUF build otherwise; Qwen-Image-2.1-Turbo was measured and refused, because it drops fine background detail. — observed,
   `engines/qwen_image.py`
-  `fields.t2i`, `presets.t2i["default"]`, `["fast-plain"]`, `["balanced"]` (defaults changed
-  2026-10-03).
+  `fields.t2i`, `presets.t2i["default"]`, `["fast-plain"]`, `["balanced"]`.
 - `t2i` presets: `default` — "Default (raw)" (cfg 1, 40 steps, plain guidance, ~60s at
   1328×1328), `balanced` (cfg 3, 20 steps, Balanced guidance — the old default, ~2x the time),
   `fast-plain` (cfg 1, 25 steps, ~1.6x faster, negatives inert),
   `sharp-text` (cfg 1, 40 steps, plain guidance — the same recipe as Default, kept as a named
-  choice for lettering and fine line detail; one-seed measurement, 2026-10-02),
+  choice for lettering and fine line detail; one-seed measurement),
   `seamless-tile` (25 steps @ 1024², plain guidance — measured to beat higher-step/higher-res
   renders for tiling, which drift warm and worsen seams), `set-plate` (no-people negative, for a
   reference plate reused across shots — asymmetric framing matters more than the prompt saying "no
@@ -170,8 +169,7 @@ card, then general web craft — see "Research log" for what came from where.
   observed, `engines/qwen_image.py` `presets.t2i`.
 - `edit` fields: same core set, but **no width/height** — output size comes from the uploaded
   picture via the encoder's own latent (`resolution`, default 1024, governs working size only).
-  `cfg` defaults to 2.5 (vs 1.0 for `t2i`); `guidance_style` defaults to `Plain` (as does `t2i`'s
-  since 2026-10-03) — `edit`'s own default is a deliberate, still-open app choice: the Balanced
+  `cfg` defaults to 2.5 (vs 1.0 for `t2i`); `guidance_style` defaults to `Plain` (as does `t2i`'s) — `edit`'s own default is a deliberate, still-open app choice: the Balanced
   arm was only ever measured on `t2i`,
   never benchmarked against edit. — observed, `engines/qwen_image.py` `fields.edit` (`ref_images`,
   `resolution`, `cfg` default), code comment on `guidance_style` default.
@@ -194,7 +192,7 @@ card, then general web craft — see "Research log" for what came from where.
   the target outline; a free render (no shape) only reaches 0.57 — push a user toward a shape image
   when they need a specific pose/silhouette (a game sprite that must fit a hitbox, say), rather than
   trying to describe the pose in words alone. — observed, `engines/pixelart.py` module docstring
-  (measured 2026-09-22, 3 seeds).
+  (measured, 3 seeds).
 - `pixelart` presets: `default` (8 colours, no dither), `richer-palette` (16 colours, for a busier
   subject). Same four-step quality ladder as Picture. — observed, `engines/pixelart.py`
   `presets.pixelart`, `quality.pixelart`.
@@ -293,8 +291,8 @@ copied into any shipped file — restated and cited.
   already-complete, detailed user prompt with invented extras.
 - **Leonardo AI's prompt-generation tooling**: mostly third-party GPT wrappers around Leonardo's own
   API rather than a first-party in-app assistant with clear official documentation — search turned
-  up no first-party "PromptGen" feature with a citable spec. — observed (absence), search survey
-  2026-09-24. Nothing to borrow or disconfirm here; flagged as unverified rather than asserted either
+  up no first-party "PromptGen" feature with a citable spec. — observed (absence), a search
+  survey. Nothing to borrow or disconfirm here; flagged as unverified rather than asserted either
   way.
 - **Krea's realtime "Enhance"**: a live, streaming canvas where every prompt/brushstroke change is
   reflected in the output as it renders, built for fast visual exploration rather than a one-shot

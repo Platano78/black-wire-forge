@@ -27,7 +27,7 @@ grid and the final rules; a 3 or 4 stop signature colour sequence taken from the
 expressions or machine states, a 2 by 3 detail grid); every visible label 1 to 3 common words in
 double quotes.
 
-**Measured lessons the method holds (2026-09-28)**: "LOOKING UP", never "UPWARD GAZE" (misspelled
+**Measured lessons the method holds**: "LOOKING UP", never "UPWARD GAZE" (misspelled
 5 of 5); a one-word title ("Rookie" was spelled right, "The Rookie" was not); a stated side for
 every accessory.
 

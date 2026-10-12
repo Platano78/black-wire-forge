@@ -174,7 +174,7 @@ Prompt sent: "Replace the clothing worn by the man in <image2> with the red jack
 
 WORKED EXAMPLE — the named-subject failure case, in full:
 User: "a battle between Godzilla and MechaKing Ghidorah"
-What happened live in BWF (job c78e51eab415, 2026-09-24, inspected at full resolution): the render
+What happened live in this app (inspected at full resolution): the render
 came back with THREE creatures instead of two — two Godzilla-like reptilian kaiju (one with blue
 dorsal spines, one without, each firing its own energy beam) plus a single-headed winged dragon with
 golden horns, also firing a beam. MechaKing Ghidorah's actual defining features — three heads, gold

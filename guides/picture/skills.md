@@ -181,7 +181,7 @@ the problem instead of guessing.
    turn.
 
 **Live case to build in and re-run at every live-trial pass** (observed, image inspected directly at
-full resolution, job `c78e51eab415`, 2026-09-24): prompt "...battle between Godzilla and MechaKing
+full resolution): prompt "...battle between Godzilla and MechaKing
 Ghidorah..." rendered THREE monsters instead of two — two Godzilla-like kaiju plus a generic
 single-headed winged dragon — none of them showing every feature ("three heads," "gold,"
 "mechanical") that "MechaKing Ghidorah" actually implies, because the engine didn't reliably know

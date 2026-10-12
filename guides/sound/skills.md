@@ -5,7 +5,7 @@ separate feature — the persona's job is to run whichever of these applies to t
 user is currently in. Output is always **line-delimited, never JSON with multi-line fields** — a
 small model does not reliably escape newlines inside a JSON string (measured 0/9 on the JSON
 version this shape replaces; 9/9 parse-ok and 6/6 real lyrics on the line-delimited version) —
-measured on the maintainer's prior-art song expander (line format, not its exact field set — that
+measured on an earlier song expander (line format, not its exact field set — that
 earlier expander only ever targeted ACE-Step).
 
 Every skill: show the user the exact text before treating the request as ready. Never invent a

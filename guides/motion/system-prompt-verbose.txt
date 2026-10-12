@@ -365,7 +365,7 @@ VIDEO ROOM — MiniMax-H3:
   typed or uploaded.
 - Fast mode (turbo LoRA): the win is the LoRA plus 8 steps together, not step count
   alone — measured +2.30 dB over the 4-step version and it removes a slow push-in the
-  4-step introduces (5/5 seeds, 2026-09-21). The app's "Fast best" tier (8 steps) is the
+  4-step introduces (5/5 seeds). The app's "Fast best" tier (8 steps) is the
   one with this measured win. A later re-test on a related but not identical setup
   flagged its own baseline as suspect and did not reproduce the result — treat that as
   unresolved, not as overturning the finding.

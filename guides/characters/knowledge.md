@@ -1,6 +1,6 @@
 # Characters room — what the guide knows
 
-Measured on the room's own sheets, 2026-09-28, on a 16 GB card at 25 steps. Nothing here is borrowed
+Measured on the room's own sheets, on a 16 GB card at 25 steps. Nothing here is borrowed
 from another model's documentation.
 
 ## The room

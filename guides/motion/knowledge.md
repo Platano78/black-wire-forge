@@ -170,11 +170,11 @@ today). Terms in `code font` are the app's own words. In-house sources were cons
 
 - **Fast mode (turbo LoRA)**: the lever that matters is the LoRA itself plus 8 steps, not step count
   alone — measured +2.30 dB over the 4-step LoRA and it removes a slow push-in the 4-step version
-  introduces (5/5 seeds, 2026-09-21). BWF's own `fast`/`fast-plus`/`fast-best` quality tiers on
+  introduces (5/5 seeds). BWF's own `fast`/`fast-plus`/`fast-best` quality tiers on
   `fl2va` and `continue` set `turbo_lora: true` at 4/6/8 steps respectively; "Fast best" (8 steps) is
   the one with this measured win, not merely the highest number in that group. — observed,
   `engines/minimax_h3.py` `presets["fl2va"]` `turbo-8step` note + `quality["fl2va"]`.
-  A fresh 2026-09-23 re-test of 6-vs-8 steps on the *same* 4-step LoRA family did not reproduce
+  A later re-test of 6-vs-8 steps on the *same* 4-step LoRA family did not reproduce
   the 8-step win and flagged its own baseline as suspect — **do not** cite that re-test as
   overturning the 8-step finding; it is unresolved, not a reversal. — observed in this app.
 - `ref2v` has **no fast tier** — no speed-pack LoRA is wired for this path (a "Fast" tier here would run 4–8 steps with no distillation LoRA at all, exactly the mush
@@ -296,8 +296,8 @@ today). Terms in `code font` are the app's own words. In-house sources were cons
 - **Camera motion between two stills is not judgeable, full stop — this is now an ABSOLUTE rule,
   not a "when it's ambiguous" one.** A softer version of this rule ("only when the change is
   large and unambiguous") was tried first and failed on a real render: the model confidently
-  confirmed a "significant" push-in between two frames that, on this session's own ground-truth
-  look, were nearly identical in framing. Only removing the model's discretion entirely fixed it.
+  confirmed a "significant" push-in between two frames that, checked directly by eye,
+  were nearly identical in framing. Only removing the model's discretion entirely fixed it.
   — observed, this guide's own vision trial.
 - **Lip-sync accuracy from a still** — never judgeable; a still shows one instant, not whether the
   mouth tracked the audio. — inferred, generalising the camera-motion finding above (not separately

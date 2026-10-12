@@ -46,10 +46,11 @@ read once at start: restart the server after editing it.
     "lanes": [{"id": "local", "name": "My ComfyUI", "host": "<host>", "port": <port>}]}
    ```
 
-   `caps` is optional here (discovery decides from the files found). `id` is the `"lane"` in every
-   API call. Check `/api/lanes` → that lane `"up": true`, then `/api/engines?lane=<id>` → a mode
-   with `"available": true` before generating; its `"fields"` are that mode's field ids (t2i's
-   too), so there is no need to read engine code.
+   `caps` is optional here (discovery decides from the files found). The lane `id` is the `"lane"`
+   value in every call that takes one. Check `/api/lanes` → that lane `"up": true`, then
+   `/api/engines?lane=<id>` → a mode with `"available": true` before generating; each mode's
+   `"fields"` lists its fields, each with its `"id"` (t2i's too), so there is no need to read
+   engine code.
 2. **They have no GPU at all** → two things work, on a CPU-only **process lane**: an orbiting
    turntable video of an existing `.glb` (Blender + `ffmpeg`, `engines/turntable.py`, below) and
    Producer's Grid check (a song's beats; "Getting the models"). Everything else needs a GPU-backed

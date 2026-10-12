@@ -406,7 +406,7 @@ pre-removal -- none of these are real controls in this app's single-image, singl
 - Measured cost: on the reference box, a simple factory scene at 32 samples measured 0.92s/frame at
   512px and 3.01s/frame at 1024px; a real, detailed mesh costs more. The per-frame timeout budget
   (30s under 512px, 60s at or above) is a ceiling, not an estimate of typical render time. -
-  observed, engines/turntable.py module docstring (measured 2026-09-22 on the reference box).
+  observed, engines/turntable.py module docstring (measured on the reference box).
 - Cycles runs on the CPU by the pack's own explicit setup (scene.cycles.device = "CPU", with a
   fallback disabling GPU compute entirely), not a default that happens to be there -- slower per
   frame than a GPU render, but it means this mode needs no GPU at all and runs on any machine BWF is

@@ -4,7 +4,7 @@ Rule-per-line, grouped by the **moment** the user is in — idea → words → s
 judging the result — the same shape as the Film Room Guide's knowledge.md (idea → script → shots →
 takes → cut), not grouped by engine first. Each moment spans all three rooms (Music, Cover, Sound
 FX) and names which room/engine a rule belongs to inline. Each line is labelled **observed** (read
-at the cited source, or measured by the maintainer) or **inferred** (craft generalisation, or a claim
+at the cited source, or measured on this app's own renders) or **inferred** (craft generalisation, or a claim
 carried over from a different model/version/product). Terms in `code font` are the app's own field
 ids and room names. In-house sources (the project's own vendored docs, pack code, and measured
 notes) were read before the web; the web fills only what no in-house source covers — see "Research
@@ -19,7 +19,7 @@ log" at the end for exactly which claims came from where.
 - Each engine needs its own prompt shape — there is no one style/lyrics format that works across
   all three Music-room engines, let alone Cover and Sound FX too. Reusing one engine's expander on
   another measured a mean score of 0.632 on its own engine and 0.011 fed to a different one. —
-  **observed**, the maintainer's music-lane audit (2026-09-21).
+  **observed**, a review of this app's music wiring.
 - **No spoken-word / voice-acting / narration engine lives in this group.** All five modes here are
   music or sound-effect models; none do text-to-speech or scripted dialogue. A request for a voice
   actor reading a line, a narration, or a talking-head script belongs in the app's own **Talking
@@ -35,15 +35,15 @@ log" at the end for exactly which claims came from where.
 - A picture attached to a write here is a **mood and setting to write the song from** — never a
 caption to read out line by line. — **observed**, `server.py` `guide_skill` ("Write from a picture").
 
-**The one rule that matters most: a voice is a choice, not a default.** The maintainer's own ear,
-2026-09-24, same shipped "Try this" lyrics (5 lines, 150 s), seeds 1111/2222/3333: ACE-Step tags
+**The one rule that matters most: a voice is a choice, not a default.** A listening test of the
+same shipped "Try this" lyrics (5 lines, 150 s), seeds 1111/2222/3333: ACE-Step tags
 naming no voice ("warm acoustic pop, gentle drums, sunny afternoon") came back **instrumental
 3/3**; the same tags plus "clear female vocals, singing" came back **sung 3/3**. This is the
-single highest-value fix in this guide. The failure it replaces, seen twice before the ear-gate:
-2026-09-19 "Expander: skipped" when `[Section]` lyrics were given with no voice named; 2026-09-18
-"90 s of instrumental before any vocal" from short lyrics over a long duration — the same root
-cause seen from two angles (no voice named, or not enough lyric content for the length asked). —
-**observed**, the maintainer's listening A/B (2026-09-24).
+single highest-value fix in this guide. The failure it replaces shows up two ways: the lyric
+helper skipped when `[Section]` lyrics were given with no voice named, and 90 s of instrumental
+before any vocal from short lyrics over a long duration — the same root cause seen from two angles
+(no voice named, or not enough lyric content for the length asked). — **observed**, a listening
+A/B on this app's renders.
 The fix generalises to every engine with a lyrics field in this group (`song`, `music`, `yue2`, and
 `cover` when new words are wanted): name a voice in the prompt whenever the user wants words sung,
 unless they explicitly asked for instrumental. **The one question to ask when this is ambiguous:
@@ -90,8 +90,8 @@ Per-engine text shape, in the moment order a user actually fills them:
   **observed**, a review of this app's music wiring.
 - **Stage directions and duets (`music`; directions apply to every engine with lyrics).** Every lyric
   line is sung as words: "(Heavy boom bap beat kicks in)", "(High energy dancehall flow)" and inline
-  "(Rap) " / "(Dancehall) " prefixes were all sung by every audio engine — **observed**, the
-  maintainer's session 2026-09-29. Directions belong in the style/description; the app flags such a
+  "(Rap) " / "(Dancehall) " prefixes were all sung by every audio engine — **observed**, on this
+  app's renders. Directions belong in the style/description; the app flags such a
   line as a problem but does not delete it (an ad-lib in parentheses may be wanted). Two voices work
   only on Music3, and by casting, not by command: declare Singer A / Singer B in the caption's Vocal
   Details (Vocal Gender & Timbre, Vocal Style, Harmony/Backing Vocals, Vocal FX) with gender,
@@ -100,13 +100,13 @@ Per-engine text shape, in the moment order a user actually fills them:
   expect roughly 60–80% of renders to cast correctly, so make it twice and keep the better one —
   **reported**, MiniMax's own discussion of duets (https://huggingface.co/MiniMaxAI/MiniMax-Music3/discussions/18)
   and the vendor caption template. Same-gender duets work (two male rappers on one
-  genre, no style pack, came through) — **observed**, the maintainer's listening, 2026-09-28. In the
+  genre, no style pack, came through) — **observed**, a listening test. In the
   lyrics, a short lowercase role tag alone under each section tag names who performs it, such as
   `[rap vocal]` / `[sung vocal]` or `[male vocal]` / `[female vocal]`. A `[Singer B]` tag line was SUNG
-  as words in 3 places ("finger B", "Sing a B", "singer B") — **observed**, 2026-09-29; the role-tag
+  as words in 3 places ("finger B", "Sing a B", "singer B") — **observed**; the role-tag
   wording is **not yet measured here**. A style pack can garble a long vocal take (a reggae pack at 0.8
-  was "garbled in some parts" on a duet; the same song without a pack was chosen) — **observed**,
-  2026-09-29: for a duet or a long song, make it without a style pack first. ACE-Step and YuE2 sing
+  was garbled in some parts on a duet; the same song without a pack was better) — **observed**:
+  for a duet or a long song, make it without a style pack first. ACE-Step and YuE2 sing
   with one voice: for a duet, suggest the Music3 mode ("Background music, with or without singing").
   Two languages work in a Music3 duet (one singer in Spanish, the other in English): name each
   singer's language in the caption's Vocal Details, never in a lyric section tag, because a tag such
@@ -114,8 +114,8 @@ Per-engine text shape, in the moment order a user actually fills them:
   takes, while the same song with tags that carry only the performer's name did not. Trading single
   lines inside one section came out repeated and muddled; trading every 2 or more lines, or by
   section, was clean. Even name-only tags were spoken on 1 of 2 full-length takes, so make two and
-  keep the cleaner one. — **observed**, the maintainer's renders and their transcripts, 2026-09-30
-  (four 50–55 s tests and two 3-minute takes).
+  keep the cleaner one. — **observed**, renders and their transcripts (four 50–55 s tests and two
+  3-minute takes).
 - **`yue2` (YuE2-3B, Music room).** `style` is ONE field carrying genre, instruments, voice,
   language, AND tempo together — this engine's own documented convention, not a limitation to work
   around. Vendor's own shipped example: `"English, warm piano pop, expressive female voice,
@@ -158,24 +158,23 @@ Per-engine text shape, in the moment order a user actually fills them:
   ACE-Step songwriting guide, "Duration Calculation"; **inferred** for `music`/`yue2` — no
   equivalent vendor sizing table exists for those two, the ACE-Step table is the best available
   craft heuristic for them.
-- **`song` `duration`:** the maintainer's measured sweet spot is **150 s** — the `full-verse`
+- **`song` `duration`:** the measured sweet spot is **150 s** — the `full-verse`
   preset, clean ending at 52 s render time (ACE-Step resolves its ending 18/18 times measured, the
   only one of the three Music-room engines that reliably does). Below ~60 s or above ~240 s the
   render gets slower per second of audio. — **observed**, `engines/audio.py` `song_graph` preset
-  comment, measured directly against the live ACE-Step engine by the maintainer, 2026-09-21.
+  comment, measured directly against the live ACE-Step engine.
 - **`music` `seconds`:** set to **150** by default — both measured shorter lengths (30 s, 90 s) cut
   off mid-phrase (2/2 abrupt endings); this engine does not compose to fit the requested length, it
   plays until the clock runs out. **Never silently pass through a shorter duration the user asked
   for** — name the truncation risk and use 150, or ask, rather than guessing it'll be fine. —
-  **observed**, measured directly against the live MiniMax-Music3 engine by the maintainer,
-  2026-09-21 ("ACE composes to length, Music3 and a cramped YuE2 just stop"), `engines/audio.py`
+  **observed**, measured directly against the live MiniMax-Music3 engine, `engines/audio.py`
   `music_graph` `presets["music"]`.
 - **`yue2` `max_duration`:** a ceiling the model can finish short of, not a target — measured: a
   360 s ask returned 354.9 s with a clean ending (the model reached its own natural end before the
   cap), while a too-tight cap (previously 120 s) visibly clipped songs, which is why the app's own
   default was raised 120→180→300 over three fixes. Give it room rather than dialing in an exact
   number. — **observed**, `engines/audio.py` `yue2_graph` docstring, measured directly against the
-  live YuE2 engine by the maintainer, 2026-09-21. **This field belongs to `yue2` only** — Cover's own
+  live YuE2 engine. **This field belongs to `yue2` only** — Cover's own
   exposed fields are `source_audio_name`/`style`/`lyrics`/`mode`, with no duration control at all;
   Cover's own internal `max_duration` (a fixed 180.0 the graph uses under the hood) is not a field
   the Guide can name or change. — **observed**, `engines/audio.py` `cover_graph` field list.
@@ -212,26 +211,25 @@ Per-engine text shape, in the moment order a user actually fills them:
   (~0.2× real time: 240 s of song in 48 s), YuE2 next (~0.3× real time with its int8 files), and
   MiniMax-Music3 slowest (~0.7–1.6× real time: a 3-minute song takes about 3–4 minutes). Mention
   this if speed matters to the user's choice; never refuse or discourage a choice on this basis
-  alone, it's theirs to make. — **observed**, measured on the maintainer's RTX 5080, 2026-09-27
-  (an earlier 2026-09-21 measurement put Music3 near 7× real time; that was an older CUDA build),
-  and Music3 again on 2026-09-30 (a 185 s song in about 222 s).
+  alone, it's theirs to make. — **observed**, measured on a 16 GB RTX 5080 (Music3: a 185 s song
+  in about 222 s; an older CUDA build was far slower, so speeds vary with the setup).
 - **How each engine ends, when it ends wrong:** ACE-Step resolves its ending cleanly every time
   measured (18/18). MiniMax-Music3 does not compose to fit the requested length — it stops when the
   clock runs out, which is why its `seconds` default matters so much (see "SETTINGS"). YuE2 can cut
-  off short at a tight `max_duration` but ends cleanly once given room. — **observed**, same source,
-  "ACE composes to length. Music3 and a cramped YuE2 just stop." Music3 sings at its own
+  off short at a tight `max_duration` but ends cleanly once given room. — **observed**, the same
+  measurements. Music3 sings at its own
   natural pace: too short a length cuts the song off, too long fills the rest with an extended jam,
-  so size it to the lyrics plus about 30 s. — **observed**, the maintainer, 2026-09-27.
+  so size it to the lyrics plus about 30 s. — **observed**, a listening test.
 
 ## JUDGE THE RESULT — what I can't judge, say so, don't guess
 
-- **I cannot hear a render, and neither can this app's own automated check.** The maintainer built a
-  lyric-fidelity check using two whisper.cpp models to transcribe renders and score recall against
+- **I cannot hear a render, and neither can an automated check.** A lyric-fidelity check was built
+  using two whisper.cpp models to transcribe renders and score recall against
   the lyrics sheet — the two models disagreed by up to **0.904** (on a 0–1 scale) on the same audio,
-  in both directions, and the maintainer directly heard clear lyrics in a recording both models scored
+  in both directions, and a listener heard clear lyrics in a recording both models scored
   **0.000**. It cannot tell "no vocals were sung" from "vocals were sung that a speech-transcription
-  model couldn't parse over a dense backing track." — **observed**, measured directly on the
-  maintainer's own render output, 2026-09-21 ("Lyric fidelity — the instrument is NOT reliable").
+  model couldn't parse over a dense backing track." — **observed**, measured directly on this
+  app's render output: the check is not reliable.
 - So: the Guide never claims a render sounds sung, instrumental, clean, or wrong. It only knows
   what request was sent and what the job status reports. If the user says a render came back wrong,
   the fix is a better prompt (a named voice, clearer section tags, more lyric content, a longer
@@ -296,8 +294,7 @@ non-commercial/licence rules elsewhere in this repo).
 **In-house sources read first, before any web lookup:** the ACE-Step 1.5 songwriting guide and API
 doc (vendored copies of each engine's own repo), the MiniMax-Music3 caption-rewriter contract and
 README (same vendor dir), YuE2's generation guide and its one shipped example request (same vendor
-dir), the maintainer's own 2026-09-21 capability sweep (full test, audit and measurements),
-the maintainer's 2026-09-24 listening A/B and the persona-first design decision, the maintainer's music-lane audit (2026-09-21), and `engines/audio.py` itself
+dir), measurements and listening tests on this app's own renders, and `engines/audio.py` itself
 (every field, default, preset and docstring cited above was read from this file, not guessed).
 
 **Web used only where no in-house source existed:** Stability AI's `stable-audio-open-1.0` model
@@ -310,6 +307,6 @@ and every claim there is labelled claimed/documented with its URL, not folded in
 file as fact about this app's own engines.
 
 **Could not confirm:** any A/B evidence for the "name a voice" rule on `music`/`yue2`/`cover`
-specifically — only `song` (ACE-Step) has a maintainer-run trial; the extension to the other three
+specifically — only `song` (ACE-Step) has a measured trial; the extension to the other three
 engines is a reasoned generalisation, marked inferred throughout. Also could not confirm current
 Stable Audio Open-specific prompting guidance beyond its own model card.
