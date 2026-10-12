@@ -14,6 +14,11 @@ All notable changes to Black Wire Forge are recorded here.
 - Setup could name a different "found" file than the one that runs: it ranked files as if every card were a big one. It now uses discovery's ranking with the card's VRAM from the probe, and layers pins the same way, including the pins of the configured machine at that address.
 - The licence stamp said "conditions apply" for Qwen-Image, whose licence is non-commercial: the page only read the licence's name. Packs now state `noncommercial` (Qwen-Image, Pixel Art, YuE2-3B and SheetSage2) and `territory` (MiniMax-H3), and every stamp reads those, falling back to the licence's name only for a pack or an old job record that lacks them.
 - The MiniMax-H3 text-encoder comments said fl2va defaults to the nvfp4 encoder; the code reads the int8 one first. The comments and the any-of order in `provides` now match the code.
+- A refusal could tell you to use the very machine that had just refused ("... Use Rig."): it counted any machine able to do the room's kind of work. It now names only other machines that can run that exact mode, or says no machine here has the models yet.
+- A machine that runs local programs and was missing them (no Blender, no Python with beat_this) said ASLEEP. It now says NEEDS and names the program.
+- The sequence list was rebuilt every few seconds while a sequence was open, so the second click of "Click again to delete" could land on a button that had just been replaced, and nothing was deleted. The list now changes only when something in it changed, and keeps focus when it does.
+- The test suite no longer depends on what the developer's machine has installed: suites that need Blender, ffmpeg or ffprobe use stand-ins or print a plain SKIP.
+- Docs: AGENTS.md has a ready-to-paste lane for a ComfyUI you already run; Talking Head lists the LTX upscaler it needs; Forge Master may use one machine for pictures and another for video; `hf` is installed into the app's own environment; `"producer"` is in the list of caps. The room guides' knowledge files keep their lessons without maintainer quotes or review history.
 
 ## v1.4.4 — 2026-10-10
 
