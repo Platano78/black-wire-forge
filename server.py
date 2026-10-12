@@ -6834,19 +6834,19 @@ def _coerce_field_value(f, val):
     if ftype == "checkbox":
         return bool(val)
     if ftype == "select":
-        # E2: a select's value must be one of its declared options,
-        # compared as the OPTION's own type (turntable's "size" is a
-        # select of ints) -- never passed through unchecked into the
-        # graph the way every other pack-declared type already was.
+        # E2: a select's value must be one of its declared options --
+        # never passed through unchecked into the graph the way every other
+        # pack-declared type already was. Each option is compared as its OWN
+        # type and the option itself is returned, so the graph gets the
+        # declared type: a list may mix types (Producer's beats_per_bar is
+        # "auto" then ints), and 4 or "4" must both find the int 4.
         options = f.get("options") or []
-        opt_type = type(options[0]) if options else str
-        try:
-            coerced = val if isinstance(val, opt_type) else opt_type(val)
-        except (TypeError, ValueError):
-            coerced = val
-        if options and coerced not in options:
-            raise ValueError("%s must be one of %s." % (label, ", ".join(str(o) for o in options)))
-        return coerced
+        if not options:
+            return val if isinstance(val, str) else str(val)
+        for opt in options:
+            if (val == opt and not isinstance(val, bool)) or str(val).strip() == str(opt):
+                return opt
+        raise ValueError("%s must be one of %s." % (label, ", ".join(str(o) for o in options)))
     return val
 
 

@@ -2,6 +2,12 @@
 
 All notable changes to Black Wire Forge are recorded here.
 
+## Unreleased
+
+### Fixed
+
+- Producer's Grid check and Re-arrange refused every number in Beats per bar ("Beats per bar must be one of auto, 2, 3, 4, 5, 6, 7."), from the page and from `/api/generate` alike, so a known meter could not be set. A choice is now matched against each listed option as that option's own type, and the option itself is what the job gets.
+
 ## v1.5.0 — 2026-10-11
 
 ### Added
