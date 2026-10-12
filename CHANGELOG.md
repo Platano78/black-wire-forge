@@ -2,7 +2,11 @@
 
 All notable changes to Black Wire Forge are recorded here.
 
-## Unreleased
+## v1.5.1 — 2026-10-12
+
+### Changed
+
+- The README has a "What's in it" section (every room, the music video in one click, the Producer room, the Cutting Room, the Workflows tab, What will run, and the API other apps and agents can call), and every clip and screenshot was reshot on the current page, with two new clips: a music video in one click and the Producer room's Grid check.
 
 ### Fixed
 
