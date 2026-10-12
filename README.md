@@ -14,7 +14,8 @@ Forked from [2Wild-Image-Video-Gen-Studio](https://github.com/tonyd2wild/2Wild-I
 - **Rooms, each with a guide.** Sound: Music, Cover, Sound FX, Producer. Picture: Picture, Characters (a
   design sheet from one picture of a character), Pixel Art, Clean-up, Textures (no built-in engine makes
   textures yet). Motion: Video, Talking Head. Object: 3D. The guide is a chat model you point the app at:
-  tell it what you want and it fills in the room's form; you still press Make. It starts switched off.
+  tell it what you want and it fills in the room's form; you still press Make. It starts switched off
+  unless the config says otherwise (`helper.guide_default`).
 - **A music video in one click** (Forge Master). On a finished song, "Make a music video from this song"
   plans shots of about 4 seconds, makes a picture of the person for each (from a photo of someone who
   agrees to be in it, or someone it makes up), animates each picture to its slice of the song and cuts
@@ -28,7 +29,8 @@ Forked from [2Wild-Image-Video-Gen-Studio](https://github.com/tonyd2wild/2Wild-I
   scene heading stays a heading); change a line and its shot is marked stale; cut the film with title
   cards (needs ffmpeg and a title font, `cut.fontfile`).
 - **The Workflows tab** lists the templates your ComfyUI ships and the workflows you saved in it, each
-  marked Ready or with the model files, nodes or ComfyUI version it still needs. It installs and
+  marked Ready, or with the model files, nodes or ComfyUI version it still needs, or saying it can't tell
+  right now when that can't be checked. It installs and
   downloads nothing; "Save to ComfyUI and open" puts a copy of a template into ComfyUI.
 - **What will run**, in every ComfyUI room: the exact model file each part of the mode loads, why it
   was picked, every other file that fits and any left out on purpose. Pin a file in `config.json` to
@@ -132,24 +134,24 @@ saying how long they took; nothing is sped up.
 
 | | |
 |---|---|
-| ![Music: a finished song open in the monitor](docs/images/rooms/01-music.png) | ![Cover: a new take on a song you already have](docs/images/rooms/02-cover.png) |
+| ![Music: the song from the song clip open in the monitor, with its model, seed and licence stamp](docs/images/rooms/01-music.png) | ![Cover, empty: it asks for a song to add and how it should sound now](docs/images/rooms/02-cover.png) |
 | **Music** | **Cover** |
-| ![Sound FX: short sounds, with What will run](docs/images/rooms/03-sfx.png) | ![Producer: Grid check, Fit, Re-arrange by bars and Mix](docs/images/rooms/04-producer.png) |
+| ![Sound FX, empty, with What will run showing the Stable Audio Open files it loads](docs/images/rooms/03-sfx.png) | ![Producer, nothing open: its four modes listed (Grid check, Fit, Re-arrange by bars, Mix) and the song field](docs/images/rooms/04-producer.png) |
 | **Sound FX** | **Producer** |
-| ![Picture: a finished picture open](docs/images/rooms/05-picture.png) | ![Characters: a design sheet from one picture of a character](docs/images/rooms/06-characters.png) |
+| ![Picture: the lighthouse painting open, with What will run on the right](docs/images/rooms/05-picture.png) | ![Characters, empty: it asks for a picture of a character and a name](docs/images/rooms/06-characters.png) |
 | **Picture** | **Characters** |
-| ![Pixel Art: a sprite with a locked palette](docs/images/rooms/07-pixelart.png) | ![Clean-up: cut a picture out or scale it up](docs/images/rooms/08-cleanup.png) |
+| ![Pixel Art, empty: the prompt, the optional shape to hold and What will run](docs/images/rooms/07-pixelart.png) | ![Clean-up, empty: remove a background or make a picture 4 times bigger](docs/images/rooms/08-cleanup.png) |
 | **Pixel Art** | **Clean-up** |
-| ![Textures: no built-in engine makes textures yet, and the room says so](docs/images/rooms/09-textures.png) | ![Video: a shot of the music video open](docs/images/rooms/10-video.png) |
+| ![Textures: no built-in engine makes textures yet, and the room says so](docs/images/rooms/09-textures.png) | ![Video: one shot of the music video open, with History listing the run's shots](docs/images/rooms/10-video.png) |
 | **Textures** | **Video** |
-| ![Talking Head: a face that says one line, or your own recording](docs/images/rooms/11-talking.png) | ![3D: a picture turned into an object](docs/images/rooms/12-3d.png) |
+| ![Talking Head, empty: a face picture, the line to speak, or your own recording](docs/images/rooms/11-talking.png) | ![3D, empty: it asks for a picture, with What will run showing the TRELLIS2 files](docs/images/rooms/12-3d.png) |
 | **Talking Head** | **3D** |
-| ![The Cutting Room with a storyboard open](docs/images/rooms/13-cutting.png) | |
+| ![The Cutting Room with the storyboard The Lighthouse Keeper open: script beats and three shots](docs/images/rooms/13-cutting.png) | |
 | **Cutting Room** | |
 
 </details>
 
-Every picture, video frame and sound in this section was made with Black Wire Forge and is machine-generated, except the
+The generated pictures, video frames and sounds in this section were made with Black Wire Forge, except the
 ComfyUI template thumbnails in the Workflows clip and screenshot (see the credits); which
 model made which is listed under [Credits for the media in this README](#credits-for-the-media-in-this-readme).
 
@@ -370,13 +372,13 @@ suites that do not need them.
 
 ## Credits for the media in this README
 
-The media in "What it looks like" is machine-generated with open-weight models, each under its own licence:
+The generated media in "What it looks like" was made with the models and tools below, each under its own licence:
 
 | Media | Made with | Licence |
 |---|---|---|
 | The song (the song clip; the sound of the music video and Producer clips) | ACE-Step 1.5 (ACE Studio and StepFun) | [MIT](https://github.com/ace-step/ACE-Step-1.5) |
 | Pictures (the picture clip, the Picture screenshots; in the music video clip, the made-up singer and the picture each shot starts from) | Qwen-Image 2.1 (Qwen team, Alibaba) | [Qwen Research License](https://huggingface.co/Qwen/Qwen-Image-2.1/blob/main/LICENSE), research or evaluation use only |
-| Video (the storyboard and music video clips, the Cutting Room and Video screenshots) | LTX-2.5 (Lightricks) | [LTX-2.x Community License](https://github.com/Lightricks/LTX-2/blob/main/LICENSE-2_x) |
+| Video (the storyboard and music video clips, the Cutting Room and Video screenshots) | LTX-2.5 (Lightricks) | [LTX-2.x Community License](https://github.com/Lightricks/LTX-2/blob/main/LICENSE-2_x): free to use, including commercially, below $10M a year in revenue; above that, a paid licence from Lightricks |
 | Beat and bar times (the Producer clip) | beat_this, `final0` checkpoint (CPJKU) | [MIT](https://github.com/CPJKU/beat_this) |
 | Guide replies, and the music video's scene for each shot | the chat model (the helper) the guide was pointed at | its own licence |
 | Template thumbnails in the Workflows clip and screenshot | ComfyUI's own workflow templates, shown as your ComfyUI lists them | theirs |
