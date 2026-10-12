@@ -2,6 +2,12 @@
 
 All notable changes to Black Wire Forge are recorded here.
 
+## v1.5.2 — 2026-10-12
+
+### Changed
+
+- The README has a "The guides" section: what each room's guide does, that they are optional and start switched off, and how to point them at a chat model of your own (local ones included). The Licences section is shorter.
+
 ## v1.5.1 — 2026-10-12
 
 ### Changed

@@ -11,11 +11,9 @@ Forked from [2Wild-Image-Video-Gen-Studio](https://github.com/tonyd2wild/2Wild-I
 
 ## What's in it
 
-- **Rooms, each with a guide.** Sound: Music, Cover, Sound FX, Producer. Picture: Picture, Characters (a
-  design sheet from one picture of a character), Pixel Art, Clean-up, Textures (no built-in engine makes
-  textures yet). Motion: Video, Talking Head. Object: 3D. The guide is a chat model you point the app at:
-  tell it what you want and it fills in the room's form; you still press Make. It starts switched off
-  unless the config says otherwise (`helper.guide_default`).
+- **Rooms.** Sound: Music, Cover, Sound FX, Producer. Picture: Picture, Characters (a design sheet
+  from one picture of a character), Pixel Art, Clean-up, Textures (no built-in engine makes textures
+  yet). Motion: Video, Talking Head. Object: 3D. Most rooms come with a guide (below).
 - **A music video in one click** (Forge Master). On a finished song, "Make a music video from this song"
   plans shots of about 4 seconds, makes a picture of the person for each (from a photo of someone who
   agrees to be in it, or someone it makes up), animates each picture to its slice of the song and cuts
@@ -48,6 +46,35 @@ Forked from [2Wild-Image-Video-Gen-Studio](https://github.com/tonyd2wild/2Wild-I
   coding agents (set up, check, submit, poll, download); [`docs/API-EXAMPLES.md`](docs/API-EXAMPLES.md)
   has worked requests. There is no login, so keep the app on `localhost` unless you open it on a network
   you trust (`SECURITY.md`).
+
+## The guides
+
+Each group of rooms has its own guide: a chat persona that knows that room's craft and the engine
+behind it. You tell it the idea in plain words, it asks a question only when the answer would change
+the result, and it fills in the room's real fields. You can read and change everything it wrote
+before you press Make.
+
+- The Sound guide (Music, Cover, Sound FX) turns a topic into what the song engine needs: the style
+  text, lyrics long enough for the length you asked for, or a description of a sound effect.
+- The Picture guide (Picture, Pixel Art, Clean-up) writes the prompt for the right mode. On a
+  finished picture, "Not right? Tell the guide" sends the picture and what's wrong, and it answers
+  with a revised prompt or an edit to try.
+- The Characters guide turns one reference picture and a name into a character sheet prompt that
+  keeps the character the same in every panel.
+- The Motion guide (Video, Talking Head) works one shot at a time: which engine, how to phrase the
+  shot, and for a talking head, a line that fits the clip.
+- The Object guide (3D) helps you pick a source picture that will turn into a good 3D model, and
+  tells you plainly how the result came out.
+- The Film Room guide (Cutting Room) turns an idea or a script into shots that cut together, one
+  next step at a time.
+
+The guides are optional and start switched off. With a guide off, the room works the same way: you
+type into the fields yourself and press Make. Without a chat model connected, the guide panel still
+shows that room's most important tips as plain text. To use the guides, point the app at any
+OpenAI-compatible chat model, such as llama.cpp or Ollama on your own machine, as the `"helper"` in
+`config.json` (see [Advanced configuration](#advanced-configuration)), then switch the guide on in
+its panel. Compact suits small local models; Verbose gives the guide more of the room's knowledge.
+The music video maker uses the same model to write each shot's scene.
 
 ## Who this is for
 
@@ -378,7 +405,7 @@ The generated media in "What it looks like" was made with the models and tools b
 |---|---|---|
 | The song (the song clip; the sound of the music video and Producer clips) | ACE-Step 1.5 (ACE Studio and StepFun) | [MIT](https://github.com/ace-step/ACE-Step-1.5) |
 | Pictures (the picture clip, the Picture screenshots; in the music video clip, the made-up singer and the picture each shot starts from) | Qwen-Image 2.1 (Qwen team, Alibaba) | [Qwen Research License](https://huggingface.co/Qwen/Qwen-Image-2.1/blob/main/LICENSE), research or evaluation use only |
-| Video (the storyboard and music video clips, the Cutting Room and Video screenshots) | LTX-2.5 (Lightricks) | [LTX-2.x Community License](https://github.com/Lightricks/LTX-2/blob/main/LICENSE-2_x): free to use, including commercially, below $10M a year in revenue; above that, a paid licence from Lightricks |
+| Video (the storyboard and music video clips, the Cutting Room and Video screenshots) | LTX-2.5 (Lightricks) | [LTX-2.x Community License](https://github.com/Lightricks/LTX-2/blob/main/LICENSE-2_x) |
 | Beat and bar times (the Producer clip) | beat_this, `final0` checkpoint (CPJKU) | [MIT](https://github.com/CPJKU/beat_this) |
 | Guide replies, and the music video's scene for each shot | the chat model (the helper) the guide was pointed at | its own licence |
 | Template thumbnails in the Workflows clip and screenshot | ComfyUI's own workflow templates, shown as your ComfyUI lists them | theirs |
@@ -394,7 +421,5 @@ relicenses those terms. See **[`docs/MODELS.md`](docs/MODELS.md)** for every bui
 model source, size, and licence (including the non-commercial and territory gates) before
 downloading anything.
 
-Every finished job carries a licence stamp for the engine that made it; the Credits panel in
-the app repeats that same information live from the installed engines. These are informational
-badges, not a legal clearance — review the model licence and the rights in your prompts,
-references, and output before publishing anything made here.
+Every finished job carries a licence stamp for the engine that made it, and the Credits panel
+in the app lists the installed engines' licences.
