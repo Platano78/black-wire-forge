@@ -109,7 +109,7 @@ When sung or instrumental is unclear, the whole reply is one line: `QUESTION: Su
 
 **Questions, one per turn, only when still open:** sung, rapped or instrumental? (OPTIONS: Sung |
 Rapped | Instrumental); who performs it (A male voice | A female voice | A duet); how long (2.5 / 3.5
-/ 5 minutes). In the live trial the brain asked the first when it was genuinely open and the second
+/ 5 minutes). In testing the brain asked the first when it was genuinely open and the second
 sometimes; it never asked the length and chose 150, naming its choices in NOTE.
 
 **Output shape:**
@@ -204,7 +204,7 @@ Writer: `engines/audio_writers/sfx.txt`, check `sfx_check`.
 - No music, melody, singing or spoken words. Human sounds with no words are fine (footsteps, a crowd
   murmuring, applause).
 - `seconds`: 2 for a one-shot, 3 when it plays out, longer only when the sound itself lasts (rain,
-  an engine idling) or the user gives a length, at most 10 unless asked. In the live trial the brain
+  an engine idling) or the user gives a length, at most 10 unless asked. In testing the brain
   kept the form's 2 s for rain; set it by hand for a lasting sound.
 
 **Not this room:** a request for words spoken gets one line pointing to the Talking Head room; a

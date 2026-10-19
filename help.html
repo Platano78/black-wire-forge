@@ -63,9 +63,10 @@
   #roomsLive .room-live{border-top:1px solid var(--hairline); padding:10px 0}
   #roomsLive .room-live:first-child{border-top:none}
   #roomsLive h4{margin:0 0 2px; font-size:14px; font-weight:600}
-  #roomsLive .room-blurb{margin:0 0 8px; font-size:12px; color:var(--text-mid)}
   #roomsLive ul{padding-left:18px; margin:0}
   #roomsLive li{font-size:13px; margin:0 0 6px}
+  #roomsLive li ul{margin:4px 0 0; padding-left:16px}
+  #roomsLive li li{font-size:12px; color:var(--text-mid); margin:0 0 3px}
   #creditsLive li{font-size:13px}
   @media (max-width:480px){
     main{padding:16px 16px 48px}
@@ -85,6 +86,7 @@
     <h2>Contents</h2>
     <ul>
       <li><a href="#the-screen">The screen</a></li>
+      <li><a href="#the-home-screen">The home screen</a></li>
       <li><a href="#machines">Machines</a></li>
       <li><a href="#making-something">Making something</a></li>
       <li><a href="#the-guide">The room's guide</a></li>
@@ -100,21 +102,43 @@
   </nav>
 
   <h1>How Black Wire Forge works</h1>
-  <p>Black Wire Forge makes pictures, video, sound and 3D on your own machines. Pick the job first, the engine
-  second. Everything you make lands in History, and rendering stays on your own configured machines. The one
-  exception: if the optional prompt helper is set up, what you tell the room's guide and "Describe this picture" send your
+  <p>Black Wire Forge makes pictures, video, sound and 3D on your own machines. Say what you want to make first;
+  the engine comes second. Everything you make lands in History, and rendering stays on your own configured machines. The one
+  exception: if the optional prompt helper is set up, what you tell the guide and "Describe this picture" send your
   text (and, for a picture, the image) to that helper's own endpoint — see the FAQ below.</p>
 
   <h2 id="the-screen">The screen</h2>
   <ul>
     <li><strong>Top bar:</strong> one block per machine, showing its state and how busy it is. Click one to make it the
       machine your next job goes to.</li>
-    <li><strong>Rooms</strong> (the row under the top bar): one room per kind of job, grouped by Sound, Picture, Motion and
-      Object. The <strong>Cutting Room</strong> at the right end is where the things you make go together.</li>
-    <li><strong>History</strong> (left): everything made in this room, or everything, with the switch at the top.</li>
-    <li><strong>Monitor</strong> (centre): the thing you picked in History, or the room's guidance when nothing is picked.</li>
-    <li><strong>Inspector</strong> (right): the room's engines, then the recipe, your words or files, quality, and Make.</li>
+    <li><strong>Task bar</strong> (the row under the top bar): <strong>&lsaquo; Everything</strong> goes back to the home
+      screen. Next come the four groups, Sound, Picture, Motion and Object; pick one and the row shows that group's
+      tasks. The <strong>Cutting Room</strong> at the right end is where the things you make go together.</li>
+    <li><strong>History</strong> (left): everything made for this task, or everything, with the switch at the top.</li>
+    <li><strong>Monitor</strong> (centre): the thing you picked in History, or what this task does and what is still
+      to fill in when nothing is picked.</li>
+    <li><strong>Inspector</strong> (right): the task's ways to make it, then the recipe, your words or files, quality,
+      and Make.</li>
     <li><strong>Activity</strong> (bottom): what the app has been doing, line by line.</li>
+  </ul>
+
+  <h2 id="the-home-screen">The home screen</h2>
+  <p>Opening the app with no link in the address puts you on <strong>What do you want to make?</strong>. It lists every
+  task the app knows, in four columns (Sound, Picture, Motion, Object), each with a short line saying what it does.
+  Click one to open it. A task stays in the list, dimmed, when nothing installed can make it (the music video, which is
+  an app feature, never is) or when no machine in config.json is set up for it.</p>
+  <ul>
+    <li><strong>Search.</strong> Type what you want in your own words ("animate my photo", "make it bigger"). The
+      columns turn into one list, best matches first. Enter opens the top one; Escape clears the box. If nothing
+      fits, it says so.</li>
+    <li><strong>Drop a file.</strong> Drop a picture, a clip, a song or a 3D object (a <code>.glb</code> file) on the
+      strip, or on the page, or press <strong>Choose a file</strong>. The tasks that use that kind of file stay lit and
+      come first; the others fold away under "N things don't use a picture". The file shows as a chip you can clear.
+      Open a task and the file is already in its first matching box. If the task has no such box, it says "This one
+      doesn't use your picture." and keeps the file for the next task. A file that is none of the four kinds is
+      refused with a plain line.</li>
+    <li><strong>Try a sample picture</strong> does the same with a small picture the page draws itself, so you can
+      see the flow without a file of your own.</li>
   </ul>
 
   <h2 id="machines">Machines</h2>
@@ -139,8 +163,13 @@
 
   <h2 id="making-something">Making something</h2>
   <ol>
-    <li><strong>Pick a room</strong>, then an engine in the inspector. Each engine says in one line when to pick it, and
-      carries its licence stamp.</li>
+    <li><strong>Pick what you want to make</strong>, on the home screen or from the task bar. If the task can be made
+      more than one way, the ways are listed at the top of the inspector, all visible, one to pick. Each says in one
+      line when to pick it, and carries its licence stamp.</li>
+    <li><strong>Draft or final.</strong> When a way has a keeper version, a <strong>Draft / Final</strong> switch
+      appears under the list. Draft is a quick look (the button reads <strong>Make a draft</strong>); Final is the
+      keeper: more steps, the same inputs. Switching keeps the files you added. Where the final
+      depends on how many pictures you added, the switch picks the one that fits.</li>
     <li><strong>Pick a recipe.</strong> A recipe fills in settings that were measured to work, and its note (in italics)
       says why.</li>
     <li><strong>Write, or add files.</strong> Pictures and sound go to the machine that will use them. A 3D model is a
@@ -154,11 +183,16 @@
       the result when it finishes.</li>
   </ol>
 
-  <h3>What each room can do right now</h3>
+  <p>One muted line above the form, the <strong>trail</strong>, shows where the task stands: the file it wants (a tick once
+  you have added one), the task's name, then Result (or Draft, then Final). It ticks off when a job finishes in this
+  visit. It never stops you from pressing Make.</p>
+
+  <h3>What can be made right now</h3>
   <div id="roomsLive"><p class="muted">Loading&hellip;</p></div>
 
   <h2 id="the-guide">The room's guide</h2>
-  <p>Every room has a guide: a helper that knows that room's engines. It sits in the inspector, near the top
+  <p>Each task belongs to a room (Music, Picture, Video, 3D and so on), and the room has a guide: a helper that
+  knows that room's engines. It follows you from task to task within a room. It sits in the inspector, near the top
   of the form. It is not a separate app: it talks through the optional prompt helper set up in config.json.</p>
   <ul>
     <li><strong>One box:</strong> in a mode the guide can write for (a song, a picture, a video shot...), its box
@@ -197,20 +231,20 @@
   </ul>
 
   <h2 id="first-five-minutes">Your first five minutes</h2>
-  <p>Every room with something it can make has its own <strong>Try this</strong> button: one click fills in a
+  <p>Where a way comes with examples, the inspector has a <strong>Try this</strong> button: one click fills in a
   real recipe and settings for you, so you can see what a finished result looks like before you write a
   word yourself. Nothing is made until you press Make. Three to try first:</p>
   <ol>
-    <li><a href="/#room=picture&amp;try=t2i-try">Make a picture from words</a>, in the Picture room.</li>
-    <li><a href="/#room=music&amp;try=song-try">Make a song</a>, in the Music room.</li>
-    <li><a href="/#room=3d&amp;try=mesh-try">Turn your picture into a 3D model</a>, in the 3D room — turning
+    <li><a href="/#room=picture&amp;try=t2i-try">Make a picture from words</a>.</li>
+    <li><a href="/#room=music&amp;try=song-try">Make a song</a>, under Make a song with words.</li>
+    <li><a href="/#room=3d&amp;try=mesh-try">Turn your picture into a 3D model</a>, under Turn a picture into a 3D object — turning
       that model around afterwards needs a 3D model first, so make one here before you try it.</li>
   </ol>
 
   <h2 id="history">History</h2>
   <ul>
-    <li><strong>This room / Everything</strong> switches between this room's things and everything you have made.
-      Picking something from another room takes you to that room.</li>
+    <li><strong>This task / Everything</strong> switches between what was made for this task and everything you have made.
+      Picking something that belongs to another task takes you to that task.</li>
     <li><strong>Use again</strong> puts that job's settings back in the inspector.</li>
     <li><strong>Stop</strong> ends a job that is still going.</li>
     <li><strong>Remove</strong> (press it twice to confirm) takes the record out of History. The file itself stays
@@ -230,7 +264,7 @@
   </ul>
   <p><strong>Download (recipe removed)</strong> strips the settings and words hidden inside a picture, audio or video
   file before it leaves the app — for the formats it can actually clean right now (JPEG/WebP are re-encoded, not
-  byte-for-byte untouched; not every audio format is supported, e.g. WAV/M4A are not). If a file can't actually be
+  byte-for-byte untouched; not every audio format is supported: M4A is not, WAV is when it parses). If a file can't actually be
   cleaned, the download is refused with a plain sentence rather than quietly handing you the original under that
   label — use "Keep the recipe" if you want the original regardless. 3D model files download exactly as made.
   <strong>Keep the recipe</strong> downloads the file with everything inside it. <strong>Credits</strong> lists every engine and
@@ -272,7 +306,7 @@
       so far. Pick its take and it becomes the music bed under the whole film.</li>
     <li><strong>Already made it?</strong> Any open shot has <strong>Use one I already made</strong>: it lists up to 30
       finished things of that kind from History, newest first, each led by its file name, and makes the one you choose that
-      shot's picked take. A song you made in the Music room can be the film's sound this way.</li>
+      shot's picked take. A song you made can be the film's sound this way.</li>
     <li><strong>Sing along (optional).</strong> Once the film has a picked sound take, a video shot that starts
       from a picture, or continues the shot before it, on an engine that can sing along shows
       <strong>Sing along</strong>.
@@ -303,14 +337,16 @@
   template into ComfyUI's own Workflows panel (it never overwrites one) and gives you a link to that ComfyUI.</p>
 
   <h2 id="links">Links</h2>
-  <p>A room has its own address: add <code>#room=music</code> (or any room's id) to the page address to open it
-  directly, or to share where you were.</p>
+  <p>A task has its own address: add <code>#task=animate</code> (or any task's id) to the page address to open it
+  directly, or to share where you were. Older links such as <code>#room=music</code> still work: they open the first
+  task of that room.</p>
 
   <h2 id="setting-up">Setting up</h2>
   <p>This section is for whoever runs the app, not whoever uses it day to day.</p>
   <ul>
-    <li><strong>config.json</strong> lives next to <code>server.py</code> (or wherever
-      <code>GENCENTER_CONFIG</code> points). It is not in the repo -- start from
+    <li><strong>config.json</strong> lives next to <code>server.py</code> (or wherever the
+      <code>GENCENTER_CONFIG</code> environment variable points; a legacy-compatible name; <code>GENCENTER_DATA</code>,
+      likewise, moves the whole <code>data/</code> folder of jobs, sequences and caches). It is not in the repo -- start from
       <code>config.example.json</code>, or start the app without one: it then opens a Setup page, on this
       computer only, that finds ComfyUI, offers a guide and writes the file. There must be at least one lane; an empty
       <code>"lanes"</code> list is refused at startup, with a message saying so.</li>
@@ -336,8 +372,8 @@
 
   <h2 id="faq">FAQ</h2>
   <dl>
-    <dt>Why is a room dimmed?</dt>
-    <dd>Nothing installed can make that kind of thing yet. It stays in the list so
+    <dt>Why is a task dimmed?</dt>
+    <dd>Nothing installed can make that yet (the music video, an app feature, is never dimmed for this), or no machine in config.json is set up for it. It stays in the list so
     you can see what the tool is for.</dd>
     <dt>Why does an engine say "needs &hellip;"?</dt>
     <dd>The active machine is missing that model or program; the words
@@ -355,7 +391,7 @@
     app's data folder. Download copies a file to you.</dd>
     <dt>I got a style in Browse styles. How do I use it?</dt>
     <dd>Getting it only puts the file on the machine; nothing changes until you pick it. Open the
-    room, choose the engine the style is for, open <b>Everything else</b> and choose it under
+    task, choose the way the style is for, open <b>Everything else</b> and choose it under
     <b>Style</b>. <b>Style strength</b> is how strongly it shapes the result (1.0 is full strength;
     the card in Browse styles may show a recommended value), and <b>Style 2</b> stacks a second
     one. Still name the genre in your prompt, and use any special words the card lists for the pack.</dd>
@@ -367,8 +403,8 @@
     <dt>Which engine is a style for?</dt>
     <dd>Each tab in Browse styles is for one engine, named the way the machine names its model.
     A style only shows under <b>Style</b> for the engine it was made for, so if a style you got never
-    appears there, switch to another engine in the same room and look again. For songs, the
-    &ldquo;built from a symbolic music plan&rdquo; engine also makes the Cover room&rsquo;s covers.</dd>
+    appears there, switch to another way in the same task and look again. For songs, the
+    &ldquo;built from a symbolic music plan&rdquo; way (Melody planned first) belongs to Make a song with words, not to Give a song a new sound; the two only share a model file.</dd>
     <dt>Get it did nothing, or the style is not in the Style list.</dt>
     <dd>Read the line at the top of the Browse styles window; it stays in view as you scroll. It
     shows the progress, &ldquo;ready&rdquo;, or why it stopped. If it says downloads are off, nothing was
@@ -426,9 +462,9 @@ async function renderRoomsLive(){
       perLane[lane.id] = await getJSON('/api/engines?lane=' + encodeURIComponent(lane.id));
     }
     const anyPayload = lanes.length ? perLane[lanes[0].id] : await getJSON('/api/engines');
-    const rooms = (Array.isArray(anyPayload.rooms) ? anyPayload.rooms : [])
+    const tasks = (Array.isArray(anyPayload.tasks) ? anyPayload.tasks : [])
       .slice().sort((a, b) => (a.order == null ? 1000 : a.order) - (b.order == null ? 1000 : b.order));
-    if(!rooms.length) throw new Error('no rooms');
+    if(!tasks.length) throw new Error('no tasks');
 
     function findMode(cap, mode){
       for(const lid of Object.keys(perLane)){
@@ -447,51 +483,68 @@ async function renderRoomsLive(){
       return (err.includes('timeout') || err.includes('timed out')) ? 'cannot tell' : 'asleep';
     }
 
-    const html = rooms.filter(r => r.kind !== 'cutting').map(room => {
-      const items = (room.modes || []).map(x => {
-        const info = findMode(x.cap, x.mode);
-        if(!info) return '';
-        const can = [];
-        let missing = [];
-        lanes.forEach(lane => {
-          const c = perLane[lane.id][x.cap];
-          const m = c && (c.modes || []).find(mm => mm.id === x.mode);
-          // C1: `m.available` alone only says the model files/deps are there --
-          // it says nothing about whether this LANE can actually take the job
-          // right now. Count it only when the lane is reachable, was actually
-          // configured for this capability, and is the kind of lane the mode
-          // needs; otherwise a cached-model, offline, or deliberately-excluded
-          // lane reads as "can make this right now".
-          const eligible = m && lane.up && (lane.declared_caps || []).includes(x.cap)
-            && lane.kind === m.lane_kind && m.available;
-          if(eligible) can.push(lane.name);
-          else if(m && m.missing && m.missing.length && !missing.length) missing = m.missing;
-        });
-        const licenceName = (info.licence && info.licence.name) || 'unknown';
-        let machineText;
-        if(can.length){
-          machineText = esc(can.join(', '));
+    function wayLine(way){
+      const info = findMode(way.cap, way.mode);
+      if(!info) return '';
+      const can = [];
+      let missing = [];
+      lanes.forEach(lane => {
+        const c = perLane[lane.id][way.cap];
+        const m = c && (c.modes || []).find(mm => mm.id === way.mode);
+        // C1: `m.available` alone only says the model files/deps are there --
+        // it says nothing about whether this LANE can actually take the job
+        // right now. Count it only when the lane is reachable, was actually
+        // configured for this capability, and is the kind of lane the mode
+        // needs; otherwise a cached-model, offline, or deliberately-excluded
+        // lane reads as "can make this right now".
+        const eligible = m && lane.up && (lane.declared_caps || []).includes(way.cap)
+          && lane.kind === m.lane_kind && m.available;
+        if(eligible) can.push(lane.name);
+        else if(m && m.missing && m.missing.length && !missing.length) missing = m.missing;
+      });
+      const licenceName = (info.licence && info.licence.name) || 'unknown';
+      let machineText;
+      if(can.length){
+        machineText = esc(can.join(', '));
+      } else {
+        // Every lane that is FOR this cap but not answering right now:
+        // the mode not being available says nothing about whether the
+        // models are installed -- discovery on that lane never ran.
+        const asleepLanes = lanes.filter(l => (l.caps || []).includes(way.cap) && !l.up);
+        if(asleepLanes.length){
+          machineText = 'the machine that makes this is asleep right now: '
+            + esc(asleepLanes.map(l => l.name + ' (' + laneStateWord(l) + ')').join(', '));
         } else {
-          // Every lane that is FOR this cap but not answering right now:
-          // the mode not being available says nothing about whether the
-          // models are installed -- discovery on that lane never ran.
-          const asleepLanes = lanes.filter(l => (l.caps || []).includes(x.cap) && !l.up);
-          if(asleepLanes.length){
-            machineText = 'the machine that makes this is asleep right now: '
-              + esc(asleepLanes.map(l => l.name + ' (' + laneStateWord(l) + ')').join(', '));
-          } else {
-            // a wrong-kind lane's one sentence ("this mode runs on a process lane, ...") reads as is
-            const said = missing.length && /^this mode runs on /.test(missing[0]);
-            machineText = 'nothing set up can make this yet'
-              + (said ? ' (' + esc(missing[0]) + ')' : missing.length ? ' (needs ' + esc(missing.join(', ')) + ')' : '');
-          }
+          // a wrong-kind lane's one sentence ("this mode runs on a process lane, ...") reads as is
+          const said = missing.length && /^this mode runs on /.test(missing[0]);
+          machineText = 'nothing set up can make this yet'
+            + (said ? ' (' + esc(missing[0]) + ')' : missing.length ? ' (needs ' + esc(missing.join(', ')) + ')' : '');
         }
-        return '<li><strong>' + esc(info.label) + '</strong>' + (info.note ? ' — ' + esc(info.note) : '')
-          + ' &middot; ' + esc(licenceName) + ' &middot; ' + machineText + '</li>';
+      }
+      return '<li><strong>' + esc(way.label || info.label) + '</strong>'
+        + (way.blurb ? ' — ' + esc(way.blurb) : '')
+        + ' &middot; ' + esc(licenceName) + ' &middot; ' + machineText + '</li>';
+    }
+
+    // Groups in the order their first task appears (Sound, Picture, Motion, Object, then any a pack adds).
+    const groups = [];
+    tasks.forEach(t => {
+      const g = t.group || 'OTHER';
+      let grp = groups.find(x => x.id === g);
+      if(!grp){ grp = {id: g, tasks: []}; groups.push(grp); }
+      grp.tasks.push(t);
+    });
+    const html = groups.map(grp => {
+      const items = grp.tasks.map(t => {
+        const ways = (t.ways || []).map(wayLine).join('');
+        let inner;
+        if(ways) inner = '<ul>' + ways + '</ul>';
+        else if(t.action) inner = '';
+        else inner = '<ul><li>nothing installed makes this yet</li></ul>';
+        return '<li><strong>' + esc(t.verb) + '</strong>' + (t.line ? ' — ' + esc(t.line) : '') + inner + '</li>';
       }).join('');
-      return '<div class="room-live"><h4>' + esc(room.name) + '</h4>'
-        + (room.blurb ? '<p class="room-blurb">' + esc(room.blurb) + '</p>' : '')
-        + '<ul>' + items + '</ul></div>';
+      const name = String(grp.id).charAt(0).toUpperCase() + String(grp.id).slice(1).toLowerCase();
+      return '<div class="room-live"><h4>' + esc(name) + '</h4><ul>' + items + '</ul></div>';
     }).join('');
     el.innerHTML = html || '<p class="muted">Start the app to see this.</p>';
   } catch(e){

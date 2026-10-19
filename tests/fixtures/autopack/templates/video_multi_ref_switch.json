@@ -1,0 +1,596 @@
+{
+ "id": "00000000-0000-0000-0000-000000000022",
+ "revision": 0,
+ "last_node_id": 99,
+ "last_link_id": 0,
+ "nodes": [
+  {
+   "id": 1,
+   "type": "LoadImage",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    "a.png"
+   ]
+  },
+  {
+   "id": 2,
+   "type": "LoadImage",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    "b.png"
+   ]
+  },
+  {
+   "id": 3,
+   "type": "LoadImage",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    "c.png"
+   ]
+  },
+  {
+   "id": 10,
+   "type": "PrimitiveStringMultiline",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    "Use the face from <Picture 1>, the outfit from image 2 and the setting of Picture 3. A slow dolly shot."
+   ]
+  },
+  {
+   "id": 11,
+   "type": "UNETLoader",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    "multimodel_bf16.safetensors",
+    "default"
+   ]
+  },
+  {
+   "id": 12,
+   "type": "CLIPLoader",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    "multi_text_enc.safetensors",
+    "multi",
+    "default"
+   ]
+  },
+  {
+   "id": 13,
+   "type": "VAELoader",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    "multi_vae.safetensors"
+   ]
+  },
+  {
+   "id": 14,
+   "type": "LoraLoaderModelOnly",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    "multi_light_lora.safetensors",
+    1
+   ]
+  },
+  {
+   "id": 15,
+   "type": "PrimitiveBoolean",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    false
+   ]
+  },
+  {
+   "id": 16,
+   "type": "ComfySwitchNode",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": []
+  },
+  {
+   "id": 17,
+   "type": "PrimitiveInt",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    4
+   ]
+  },
+  {
+   "id": 18,
+   "type": "PrimitiveInt",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    20
+   ]
+  },
+  {
+   "id": 19,
+   "type": "ComfySwitchNode",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": []
+  },
+  {
+   "id": 20,
+   "type": "CLIPTextEncode",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": []
+  },
+  {
+   "id": 21,
+   "type": "CLIPTextEncode",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    ""
+   ]
+  },
+  {
+   "id": 22,
+   "type": "PrimitiveFloat",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    5.0
+   ]
+  },
+  {
+   "id": 23,
+   "type": "ComfyMathExpression",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    "a*24+1"
+   ]
+  },
+  {
+   "id": 24,
+   "type": "EmptyVideoLatent",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    848,
+    480,
+    1
+   ]
+  },
+  {
+   "id": 30,
+   "type": "VAEEncode",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": []
+  },
+  {
+   "id": 31,
+   "type": "VAEEncode",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": []
+  },
+  {
+   "id": 32,
+   "type": "VAEEncode",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": []
+  },
+  {
+   "id": 33,
+   "type": "ReferenceLatent",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": []
+  },
+  {
+   "id": 34,
+   "type": "ReferenceLatent",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": []
+  },
+  {
+   "id": 35,
+   "type": "ReferenceLatent",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": []
+  },
+  {
+   "id": 25,
+   "type": "KSampler",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    42,
+    3.0,
+    "euler",
+    "simple",
+    1
+   ]
+  },
+  {
+   "id": 26,
+   "type": "VAEDecode",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": []
+  },
+  {
+   "id": 27,
+   "type": "CreateVideo",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    24
+   ]
+  },
+  {
+   "id": 28,
+   "type": "SaveVideo",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    "multi",
+    "auto",
+    "auto"
+   ]
+  }
+ ],
+ "links": [],
+ "groups": [],
+ "config": {},
+ "extra": {},
+ "version": 0.4,
+ "definitions": {
+  "subgraphs": []
+ }
+}

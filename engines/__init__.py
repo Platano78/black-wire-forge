@@ -37,6 +37,8 @@ falsy — is ignored. The dict has exactly these keys:
                        carries the answer as a bool under the short id
                        (m.get("cs_attn")), so a lane without the node still
                        gets a graph that validates.
+  needs_nodes  optional dict  ability -> [optional_nodes short id, ...]. The
+                       ability also needs those nodes on the lane (abilities(nodes=)).
   enabled   optional callable() -> bool. Asked once per scan; False leaves
                        the whole pack out, as if its file were absent. For an
                        opt-in pack that only makes sense once the user has set
@@ -75,8 +77,8 @@ falsy — is ignored. The dict has exactly these keys:
                        Contract: a BARE noun, no article or quantifier --
                        it must fit "the ___ models" and similar templates,
                        so "sound" not "some music".
-  cap_order optional int, display order for the cap (e.g. tabs/buttons on
-                       the page) -- lower sorts first. Absent means 100, so
+  cap_order optional int, order of the cap (reported by /api/engines, and
+                       used to rank packs sharing a cap) -- lower sorts first. Absent means 100, so
                        an undeclared cap sorts after every declared one
                        instead of colliding at 0.
   mode_words  optional dict  mode_name -> short human label for that mode,
@@ -96,6 +98,29 @@ falsy — is ignored. The dict has exactly these keys:
                        notes, cited with a `# source:` comment -- never
                        a new claim. No evidence means no entry; the UI then
                        shows nothing rather than an invented reason.
+  mode_task_words optional dict  mode_name -> {"verb", "short", "line", "group"}
+                       (all four non-empty strings; group one of SOUND, PICTURE,
+                       MOTION, OBJECT). Lets a pack bring a task tasks.json does
+                       not list: when its mode_tasks names an unknown task id
+                       and this has words for the mode, the task is created from
+                       them (see tasks()). Without words the mode keeps the
+                       per-mode fallback task.
+  mode_blurbs optional dict  mode_name -> a short one-liner for the front door
+                       ("what this makes"), separate from mode_notes. Absent,
+                       a built-in pack's mode_notes line is used; a data pack
+                       (_userpacks.py) gets no blurb unless its manifest has
+                       one, never its lab note. See mode_blurb().
+  mode_tasks  optional dict  mode_name -> {"task": id, "way": "<short label>",
+                       "tier": "final", "final_of": "<draft mode>",
+                       "pictures": n}. Which task (tasks.json at the repo
+                       root, task words only) the mode belongs to; only "task"
+                       is required. "way" labels it inside the task (absent:
+                       the mode's own label). "tier": "final" with "final_of"
+                       makes it the keeper for that draft mode of the SAME
+                       task; "pictures": n makes it the keeper for exactly n
+                       attached pictures. A mode with no entry, or naming a
+                       task tasks.json lacks, becomes a task of its own, so a
+                       stranger's pack is never hidden. See tasks().
   prompt_guides  optional dict  mode_name -> a short instruction telling the
                        L5 prompt helper how a prompt for THIS mode must be
                        written (e.g. the positive-only rule, a tag style for
@@ -493,8 +518,12 @@ def model_keys():
     return tuple(role_pool())
 
 
-def abilities(models, blocked=()):
+def abilities(models, blocked=(), nodes=None):
     """What a lane can do, from the files it actually has.
+
+    `nodes`: the lane's optional-node flags ({short id: bool}, server.py's
+    nodes_for()). A pack's "needs_nodes" {ability: [short id, ...]} makes an
+    ability true only when its files are there AND every named node is.
 
     `blocked`: roles that must not count as resolved, nor be stood in for by
     another member of an any-of group (a config pin naming a file the lane
@@ -529,7 +558,8 @@ def abilities(models, blocked=()):
     packs = _discover()
     for pack in packs:
         for ability, roles in pack["provides"].items():
-            out[ability] = all(resolved(r) for r in roles)
+            out[ability] = all(resolved(r) for r in roles) and all(
+                (nodes or {}).get(n) for n in (pack.get("needs_nodes") or {}).get(ability, ()))
     cap_true = {}
     for pack in packs:
         counts = pack.get("cap_from") or list(pack["provides"])
@@ -938,6 +968,19 @@ def mode_note(cap, mode):
     return (pack.get("mode_notes") or {}).get(mode) if pack else None
 
 
+def mode_blurb(cap, mode):
+    """The short front-door one-liner for a mode: the owning pack's
+    ``mode_blurbs`` entry, else (built-in packs only) its ``mode_notes`` line,
+    else "". A data pack's own ``note`` is a lab note and is never shown here."""
+    pack = _owner(cap, mode)
+    if not pack:
+        return ""
+    got = (pack.get("mode_blurbs") or {}).get(mode)
+    if not got and not pack.get("user_pack"):
+        got = (pack.get("mode_notes") or {}).get(mode)
+    return got or ""
+
+
 def prompt_guide(cap, mode):
     """The owning pack's per-mode instruction for how a prompt must be
     written for this mode (L5's prompt helper), or None -- same lookup
@@ -1208,6 +1251,165 @@ def rooms(path=None):
             out.append(room)
         room["modes"].append({"cap": cap, "mode": mode})
     out.sort(key=lambda r: r.get("order", 1000))
+    return out
+
+
+TASKS_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tasks.json")
+
+TASK_GROUPS = ("SOUND", "PICTURE", "MOTION", "OBJECT")
+_FILE_KIND = {"image": "picture", "image_list": "picture", "video": "clip", "video_list": "clip",
+              "audio": "song", "model": "model"}
+_KIND_ORDER = ("picture", "clip", "song", "model")
+
+
+def _accepts(cap, mode):
+    """The kinds of file a mode takes: its PRIMARY upload fields' types, mapped
+    to picture / clip / song / model. Derived, never declared."""
+    return {_FILE_KIND[f["type"]] for f in fields(cap, mode)
+            if f.get("tier") == "primary" and f.get("type") in _FILE_KIND}
+
+
+def tasks(path=None):
+    """What a person can make (tasks.json, core config: task words only) merged
+    with the modes the packs declare for each task (``mode_tasks``).
+
+    Each task is ``{id, verb, short, line, group, order, room, accepts, ways}``.
+    ``ways`` are the alternatives inside the task, one per mode that is not
+    someone's final: ``{id, label, cap, mode, blurb, final, finals_by_count}``.
+    ``final`` is ``{cap, mode}`` of the keeper for that draft (or None);
+    ``finals_by_count`` maps "<n>" to the keeper for n attached pictures.
+    ``accepts`` is the union of the task's modes' primary upload kinds, in the
+    order picture, clip, song, model.
+
+    Within a task the order is built-in packs, then data packs, then pack id,
+    then the pack's own ``graphs`` order -- so a task opens on the app's own
+    mode. A mode with no ``mode_tasks`` entry, or naming a task tasks.json
+    lacks, becomes its own task (id ``<cap>-<mode>``, verb the mode's label,
+    group its room's group, else the group of the first rooms.json room that
+    already holds a mode of the same cap, else the cap word; ordered 1000+).
+    A task no mode fills keeps
+    ``ways: []``. A ``final_of`` that does not name a draft in the same task
+    makes the mode a plain way and logs a warning.
+
+    A mode whose ``mode_tasks`` names a task tasks.json lacks, and whose pack
+    gives ``mode_task_words`` for it, creates that task from those words
+    (ordered 900+, after tasks.json's, before the per-mode fallbacks); the
+    room is the pack's own ``mode_rooms`` room when rooms.json lists it, else
+    the first rooms.json room of the task's group. Later packs naming the same
+    id join it; the first declarer's words win. A task entry's other keys
+    (``action``) pass through untouched.
+
+    A missing or broken tasks.json logs a warning and every mode falls back to
+    a task of its own.
+    """
+    log = logging.getLogger(__name__)
+    try:
+        with open(path or TASKS_PATH, encoding="utf-8") as f:
+            base = json.load(f)
+        if not isinstance(base, list) or not all(isinstance(t, dict) and isinstance(t.get("id"), str) and t["id"]
+                                                  for t in base):
+            raise ValueError("expected a list of tasks, each with an id")
+    except (OSError, ValueError) as e:
+        log.warning("tasks.json unusable (%s): %s -- building tasks from the packs alone", path or TASKS_PATH, e)
+        base = []
+    out = [dict(t, accepts=[], ways=[]) for t in base]
+    by_id = {t["id"]: t for t in out}
+
+    entries, seen = [], set()
+    for pack in _discover():
+        for i, mode in enumerate(pack["graphs"]):
+            key = (pack["cap"], mode)
+            if key in seen or _owner(*key) is not pack:
+                continue
+            seen.add(key)
+            entries.append(((bool(pack.get("user_pack")), pack["id"], i), key))
+    entries.sort(key=lambda e: e[0])
+
+    all_rooms = [r for r in rooms() if r.get("kind") != "cutting"]
+    listed = [r for r in all_rooms if r.get("order", 1000) < 1000]       # rooms.json's own
+    room_group = {r["id"]: r.get("group") for r in listed}
+
+    def fallback_group(rid, cap):
+        """A known room's group; else the group of the first rooms.json room that
+        already holds a mode of this cap (so a stranger's video pack joins MOTION,
+        never a second VIDEO group); else the cap word."""
+        if room_group.get(rid):
+            return room_group[rid]
+        for r in listed:
+            if r.get("group") and any(m["cap"] == cap for m in r.get("modes", ())):
+                return r["group"]
+        return cap_word(cap).upper()
+    created = 0
+    rank = {}                               # (cap, mode) -> position in the pack ordering
+    placed, kinds, extra = [], {}, 0       # placed: (task, cap, mode, decl)
+    for _, (cap, mode) in entries:
+        pack = _owner(cap, mode)
+        decl = (pack.get("mode_tasks") or {}).get(mode)
+        decl = decl if isinstance(decl, dict) else {}
+        tid = decl.get("task")
+        task = by_id.get(tid) if isinstance(tid, str) else None
+        words = (pack.get("mode_task_words") or {}).get(mode)
+        if (task is None and isinstance(tid, str) and tid and isinstance(words, dict)
+                and all(isinstance(words.get(k), str) and words[k].strip() for k in ("verb", "short", "line"))
+                and words.get("group") in TASK_GROUPS):
+            created += 1
+            rid = mode_room(cap, mode)
+            if not any(r["id"] == rid for r in listed):
+                rid = next((r["id"] for r in listed if r.get("group") == words["group"]), "%s-%s" % (cap, mode))
+            task = {"id": tid, "verb": words["verb"], "short": words["short"], "line": words["line"],
+                    "group": words["group"], "order": 900 + created, "room": rid, "accepts": [], "ways": []}
+            by_id[tid] = task
+            out.append(task)
+        if task is None:
+            extra += 1
+            rid = mode_room(cap, mode) or "%s-%s" % (cap, mode)
+            label = mode_words(cap).get(mode, mode)
+            task = {"id": "%s-%s" % (cap, mode), "verb": label, "short": label, "line": mode_blurb(cap, mode),
+                    "group": fallback_group(rid, cap), "order": 1000 + extra,
+                    "room": rid, "accepts": [], "ways": []}
+            by_id[task["id"]] = task
+            out.append(task)
+            decl = {}
+        placed.append((task, cap, mode, decl))
+        rank[(cap, mode)] = len(placed)
+        kinds.setdefault(task["id"], set()).update(_accepts(cap, mode))
+
+    ways = {}                               # (task id, cap, mode) -> way
+    finals = []
+    for task, cap, mode, decl in placed:
+        if decl.get("tier") == "final" and isinstance(decl.get("final_of"), str):
+            finals.append((task, cap, mode, decl))
+            continue
+        way = {"id": mode, "label": decl.get("way") if isinstance(decl.get("way"), str) and decl["way"].strip()
+               else mode_words(cap).get(mode, mode), "cap": cap, "mode": mode, "blurb": mode_blurb(cap, mode),
+               "final": None, "finals_by_count": {}}
+        ways[(task["id"], cap, mode)] = way
+        task["ways"].append(way)
+    for task, cap, mode, decl in finals:
+        draft = next((w for (tid, c, m), w in ways.items() if tid == task["id"] and m == decl["final_of"]), None)
+        n = decl.get("pictures")
+        n = n if isinstance(n, int) and not isinstance(n, bool) and 1 <= n <= 9 else None
+        slot = None
+        if draft is not None:
+            if n is not None and str(n) not in draft["finals_by_count"]:
+                slot = ("count", str(n))
+            elif n is None and draft["final"] is None:
+                slot = ("final", None)
+        if slot is None:
+            log.warning("mode %s/%s is a final of %r, which is not a free draft in task %r -- listed as a plain way",
+                        cap, mode, decl["final_of"], task["id"])
+            way = {"id": mode, "label": decl.get("way") if isinstance(decl.get("way"), str) and decl["way"].strip()
+                   else mode_words(cap).get(mode, mode), "cap": cap, "mode": mode, "blurb": mode_blurb(cap, mode),
+                   "final": None, "finals_by_count": {}}
+            task["ways"].append(way)
+        elif slot[0] == "count":
+            draft["finals_by_count"][slot[1]] = {"cap": cap, "mode": mode}
+        else:
+            draft["final"] = {"cap": cap, "mode": mode}
+    for t in out:
+        t["ways"].sort(key=lambda w: rank[(w["cap"], w["mode"])])     # a demoted final keeps its place
+        t["accepts"] = [k for k in _KIND_ORDER if k in kinds.get(t["id"], ())]
+    out.sort(key=lambda t: t.get("order", 1000))
     return out
 
 

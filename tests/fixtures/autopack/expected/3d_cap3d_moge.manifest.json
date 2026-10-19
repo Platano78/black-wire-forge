@@ -1,0 +1,32 @@
+{
+ "schema": 1,
+ "id": "3d-cap3d-moge",
+ "cap": "3d",
+ "mode": "cap3d_moge",
+ "label": "3D: Picture to Mesh",
+ "graph": "graph.api.json",
+ "fields": [
+  {
+   "id": "picture",
+   "label": "Picture",
+   "type": "image",
+   "tier": "primary",
+   "group": "Content",
+   "required": true,
+   "bind": [
+    {
+     "node": "1",
+     "input": "image"
+    }
+   ],
+   "order": 1
+  }
+ ],
+ "requires": [],
+ "licence": {
+  "name": "Unknown (from the ComfyUI template 3d_cap3d_moge)",
+  "shippable": false,
+  "attribution": "Made from the ComfyUI template 3d_cap3d_moge on Test lane; models: not listed"
+ },
+ "note": "Builds a mesh from one picture."
+}

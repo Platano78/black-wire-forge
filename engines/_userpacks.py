@@ -27,6 +27,19 @@ Manifest (schema 1), all keys below, unknown keys are refused:
   label    str, the mode's name on the page
   note     optional str, one line saying when to pick this mode
   room     optional str, a room id from rooms.json
+  blurb    optional str, a short one-liner for the front door ("what this
+           makes"). The page shows this, never ``note`` (a lab note).
+  task     optional str, a task id from tasks.json this mode is a way of. A mode
+           naming none, or one tasks.json lacks, becomes a task of its own.
+  task_words optional {verb, short, line, group}, all four non-empty strings, group
+           one of SOUND/PICTURE/MOTION/OBJECT; needs ``task``. Brings the task
+           when tasks.json does not list it (the first pack to declare it
+           wins; later packs naming the id join it).
+  way      optional str, the mode's short label inside its task
+  tier     optional "final": the mode is the keeper for the draft ``final_of``
+  final_of optional str (required with ``tier``), the draft mode id, same task
+  pictures optional int 1-9 (needs ``tier``): the keeper for exactly that many
+           attached pictures
   graph    str, relative path of the API-format graph inside the folder
   fields   list of field descriptors (the engine contract's own keys) plus
            ``bind``: [{node, input, index?}]. ``index`` picks an item of an
@@ -37,6 +50,10 @@ Manifest (schema 1), all keys below, unknown keys are refused:
            lower-case name fragments, like a built-in pack's role rule); the
            resolved file name is written into graph[node].inputs[input].
            The mode is available only when every role resolves on the lane.
+  frame_grid optional {<this mode's id>: {step, offset, min, max, carried?}}: the frame counts the model
+           can render (``step*n + offset`` frames, ``min``..``max``; ``carried`` frames at the head are
+           context the delivery drops). Whole numbers, ``step`` >= 1, ``min`` <= ``max``. A mode without it
+           cannot be snapped to the beats in the Cutting Room.
   presets  optional list of {id, label, note?, values{field id: value}}: named starting
            values for the mode's recipe row. None declared gives one 'Default' (the page
            only refreshes its recipe line for a non-empty list).
@@ -71,7 +88,9 @@ LIST_TYPES = frozenset(("image_list", "video_list"))
 RESERVED_IDS = frozenset(("lane", "kind", "mode", "quality", "recipe", "sequence_id", "slot_id"))
 
 TOP_KEYS = frozenset(("schema", "id", "cap", "mode", "label", "note", "room", "graph",
-                      "fields", "requires", "licence", "presets", "comment"))
+                      "fields", "requires", "licence", "presets", "comment", "frame_grid",
+                      "blurb", "task", "task_words", "way", "tier", "final_of", "pictures"))
+FRAME_GRID_KEYS = frozenset(("step", "offset", "min", "max", "carried"))
 FIELD_KEYS = frozenset(("id", "label", "type", "default", "hint", "tier", "group", "order",
                         "units", "range", "ui_range", "options", "max", "enabled_when",
                         "disabled_reason", "aspect_warning", "pool", "match", "bind", "required"))
@@ -327,6 +346,25 @@ def _check_enabled_when(f, ids):
                         "(field + equals / not_equals / truthy)" % f["id"])
 
 
+def _whole(v):
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
+def _check_frame_grid(raw, mode):
+    """-> {mode: {step, offset, min, max, carried}} (carried defaults to 0), or raise PackError."""
+    if not isinstance(raw, dict) or set(raw) != {mode}:
+        raise PackError("frame_grid must be an object with one entry, named for the mode (%r)" % mode)
+    g = raw[mode]
+    if not isinstance(g, dict) or not {"step", "offset", "min", "max"} <= set(g) or set(g) - FRAME_GRID_KEYS:
+        raise PackError("frame_grid.%s must have step, offset, min and max (and optionally carried), nothing else" % mode)
+    g = dict(g, carried=g.get("carried", 0))
+    if not all(_whole(g[k]) for k in FRAME_GRID_KEYS):
+        raise PackError("frame_grid.%s values must be whole numbers" % mode)
+    if g["step"] < 1 or g["offset"] < 0 or g["carried"] < 0 or g["min"] < 1 or g["min"] > g["max"]:
+        raise PackError("frame_grid.%s needs step >= 1, offset >= 0, carried >= 0 and 1 <= min <= max" % mode)
+    return {mode: {k: g[k] for k in ("step", "offset", "min", "max", "carried")}}
+
+
 def _check_licence(lic):
     if not isinstance(lic, dict) or set(lic) - LICENCE_KEYS or not _str(lic.get("name")):
         raise PackError("licence must be an object with a name (and only %s)" % "/".join(sorted(LICENCE_KEYS)))
@@ -414,9 +452,27 @@ def _load_one(folder, root, taken):
         raise PackError("mode %r clashes with an existing ability or capability name" % mode)
     if not _str(manifest.get("label")):
         raise PackError("label must be a non-empty string")
-    for k in ("note", "room", "comment"):
+    for k in ("note", "room", "comment", "blurb", "task", "way", "final_of"):
         if k in manifest and not _str(manifest[k]):
             raise PackError("%s must be a non-empty string when present" % k)
+    if "tier" in manifest and manifest["tier"] != "final":
+        raise PackError('tier must be "final" when present')
+    if "tier" in manifest and "final_of" not in manifest:
+        raise PackError("tier needs final_of (the draft mode it is the keeper for)")
+    if "final_of" in manifest and "tier" not in manifest:
+        raise PackError('final_of needs tier "final"')
+    if "pictures" in manifest and "tier" not in manifest:
+        raise PackError('pictures needs tier "final"')
+    if "pictures" in manifest and (not _whole(manifest["pictures"]) or not 1 <= manifest["pictures"] <= 9):
+        raise PackError("pictures must be a whole number from 1 to 9")
+    if "task" not in manifest and ("tier" in manifest or "way" in manifest or "task_words" in manifest):
+        raise PackError("way, tier and task_words need a task")
+    tw = manifest.get("task_words")
+    if "task_words" in manifest and (not isinstance(tw, dict) or set(tw) != {"verb", "short", "line", "group"}
+                                     or not all(_str(v) for v in tw.values())
+                                     or tw["group"] not in ("SOUND", "PICTURE", "MOTION", "OBJECT")):
+        raise PackError("task_words must be {verb, short, line, group}: non-empty strings, "
+                        "group one of SOUND, PICTURE, MOTION, OBJECT")
 
     graph = _read_json(root, manifest.get("graph"), "graph")
     _check_graph(graph)
@@ -501,10 +557,22 @@ def _load_one(folder, root, taken):
         "licence": licence,
         "user_pack": True,
     }
+    if "frame_grid" in manifest:
+        engine["frame_grid"] = _check_frame_grid(manifest["frame_grid"], mode)
     if "note" in manifest:
         engine["mode_notes"] = {mode: manifest["note"]}
     if "room" in manifest:
         engine["mode_rooms"] = {mode: manifest["room"]}
+    if "blurb" in manifest:
+        engine["mode_blurbs"] = {mode: manifest["blurb"]}
+    if "task" in manifest:
+        decl = {"task": manifest["task"]}
+        for k in ("way", "tier", "final_of", "pictures"):
+            if k in manifest:
+                decl[k] = manifest[k]
+        engine["mode_tasks"] = {mode: decl}
+        if "task_words" in manifest:
+            engine["mode_task_words"] = {mode: dict(manifest["task_words"])}
     taken["ids"].add(pid)
     taken["modes"].add((cap, mode))
     taken["abilities"].add(mode)

@@ -1,0 +1,437 @@
+{
+ "id": "00000000-0000-0000-0000-000000000014",
+ "revision": 0,
+ "last_node_id": 99,
+ "last_link_id": 0,
+ "nodes": [
+  {
+   "id": 10,
+   "type": "LoadImage",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    "example.png"
+   ]
+  },
+  {
+   "id": 19,
+   "type": "ResolutionSelector",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    "1:1 (Square)",
+    1,
+    8
+   ]
+  },
+  {
+   "id": 20,
+   "type": "PrimitiveStringMultiline",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    "Make the sky a deep violet and add a crescent moon."
+   ]
+  },
+  {
+   "id": 24,
+   "type": "PreviewAny",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": []
+  },
+  {
+   "id": 40,
+   "type": "SaveImage",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    "edit"
+   ]
+  },
+  {
+   "id": 30,
+   "type": "5f0e8a1c-1111-4000-8000-00000000beef",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {
+    "proxyWidgets": [
+     [
+      "10",
+      "steps"
+     ],
+     [
+      "10",
+      "denoise"
+     ],
+     [
+      "10",
+      "sampler_name"
+     ],
+     [
+      "1",
+      "unet_name"
+     ]
+    ]
+   }
+  }
+ ],
+ "links": [],
+ "groups": [],
+ "config": {},
+ "extra": {},
+ "version": 0.4,
+ "definitions": {
+  "subgraphs": [
+   {
+    "id": "5f0e8a1c-1111-4000-8000-00000000beef",
+    "name": "Edit",
+    "nodes": [
+     {
+      "id": 1,
+      "type": "UNETLoader",
+      "pos": [
+       0,
+       0
+      ],
+      "size": [
+       100,
+       100
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+       "editmodel_fp8.safetensors",
+       "default"
+      ]
+     },
+     {
+      "id": 2,
+      "type": "CLIPLoader",
+      "pos": [
+       0,
+       0
+      ],
+      "size": [
+       100,
+       100
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+       "edit_text_enc_fp8.safetensors",
+       "edit",
+       "default"
+      ]
+     },
+     {
+      "id": 3,
+      "type": "VAELoader",
+      "pos": [
+       0,
+       0
+      ],
+      "size": [
+       100,
+       100
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+       "edit_vae.safetensors"
+      ]
+     },
+     {
+      "id": 9,
+      "type": "PrimitiveStringMultiline",
+      "pos": [
+       0,
+       0
+      ],
+      "size": [
+       100,
+       100
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+       "You are a careful assistant. Rewrite the request as one caption."
+      ]
+     },
+     {
+      "id": 4,
+      "type": "StringConcatenate",
+      "pos": [
+       0,
+       0
+      ],
+      "size": [
+       100,
+       100
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": []
+     },
+     {
+      "id": 5,
+      "type": "TextGenerate",
+      "pos": [
+       0,
+       0
+      ],
+      "size": [
+       100,
+       100
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+       777
+      ]
+     },
+     {
+      "id": 6,
+      "type": "CLIPTextEncode",
+      "pos": [
+       0,
+       0
+      ],
+      "size": [
+       100,
+       100
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": []
+     },
+     {
+      "id": 11,
+      "type": "CLIPTextEncode",
+      "pos": [
+       0,
+       0
+      ],
+      "size": [
+       100,
+       100
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+       ""
+      ]
+     },
+     {
+      "id": 15,
+      "type": "VAEEncode",
+      "pos": [
+       0,
+       0
+      ],
+      "size": [
+       100,
+       100
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": []
+     },
+     {
+      "id": 16,
+      "type": "ReferenceLatent",
+      "pos": [
+       0,
+       0
+      ],
+      "size": [
+       100,
+       100
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": []
+     },
+     {
+      "id": 8,
+      "type": "EmptyLatentImage",
+      "pos": [
+       0,
+       0
+      ],
+      "size": [
+       100,
+       100
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+       1
+      ]
+     },
+     {
+      "id": 10,
+      "type": "KSampler",
+      "pos": [
+       0,
+       0
+      ],
+      "size": [
+       100,
+       100
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+       555,
+       8,
+       1.0,
+       "euler",
+       "simple",
+       1
+      ]
+     },
+     {
+      "id": 12,
+      "type": "VAEDecode",
+      "pos": [
+       0,
+       0
+      ],
+      "size": [
+       100,
+       100
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": []
+     }
+    ],
+    "links": []
+   }
+  ]
+ }
+}

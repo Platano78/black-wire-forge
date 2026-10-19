@@ -197,6 +197,7 @@ Attribution: MiniMax-H3 by MiniMax.
 | `h3_vae_audio` | `Comfy-Org/MiniMax-H3` · `vae/minimax_h3_audio_vae_fp32.safetensors` | 605,254,808 | 605,254,808 | yes | `models/vae` (`VAELoader`) | PASS — contains `minimax_h3`, `audio` |
 | `h3_turbo_lora` (recommended: 4-step) | `Comfy-Org/MiniMax-H3` · `loras/minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors` | 1,956,192,992 | 1,956,192,992 | yes | `models/loras/minimax_h3/` (`LoraLoaderModelOnly`) | PASS — contains `minimax_h3`, `4step`, `comfy`, `fl2v` |
 | `h3_turbo_lora` (alternative: 8-step, unlicensed) | `TenStrip/MinimaxH3-Turbo_Shenanigans` · `lightx2v_hybrid-4to8step-Turbo_r48.safetensors` | 943,947,204 | 943,947,204 | yes | `models/loras/minimax_h3/` (`LoraLoaderModelOnly`) | **FAIL bare → PASS in `minimax_h3/`** |
+| `h3_taomate_lora` (fast draft, fl2va only, unlicensed: no licence stated on its card) | `Kijai/MiniMax-H3-experimental` · `loras/minimax_h3_taomate_fl2va_3step_avg_rank_19_bf16.safetensors` | 176,723,664 | 176,723,664 | yes | `models/loras/minimax_h3/` (`LoraLoaderModelOnly`) | PASS — contains `minimax_h3`, `taomate` |
 
 **`h3_turbo_lora`: the speed pack is optional.** Neither `fl2va` nor `ref2v` needs it to run —
 it only feeds the pack's fast-quality tiers (`turbo` ability, `engines/minimax_h3.py`'s
@@ -463,6 +464,10 @@ ComfyUI-LTXVideo-only: `LTXVContextWindows`, `LTXVLoopingSampler`, `LTXVLatentUp
 - **No stated licence — ask first**: the 8-step MiniMax-H3 speed-pack alternative
   (`TenStrip/MinimaxH3-Turbo_Shenanigans`) — its author states no licence for the LoRA file
   itself; the recommended default is the 4-step LoRA above instead.
+- **No stated licence, made from MiniMax-H3**: the TaoMate 4-step fast-draft LoRA
+  (`Kijai/MiniMax-H3-experimental`) — its card carries no licence tag and no licence section.
+  It is derived from MiniMax-H3, so treat MiniMax-H3's licence terms (including its territory
+  clause above) as applying, and ask the author if you need more than that.
 - **MIT tools, no gate**: beat_this (code and weights) and Demucs, both run as local programs on this
   machine; see their section above for the training-data note.
 - **Program vs. output**: Blender is GPL-2.0-or-later, covering the program only — not what you

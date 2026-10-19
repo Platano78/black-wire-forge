@@ -70,6 +70,10 @@ hardware:
                                        writes it (409 if it exists), logged with its length
     and DIR/nodes.json ({class: {field: dropdown}}) is merged into /object_info.
   --comfy-version V        /system_stats' comfyui_version (default "fake")
+  --object-info-file FILE  serve this ONE file as the whole /object_info (a real, full-shape answer, V3
+                           dropdowns included) and /object_info/<Node> from it, instead of the pools
+                           above: the pack builder's lane (tests/test_autopack_*.py)
+  /system_stats also lists comfy_package_versions (frontend 9.9.9, templates 8.8.8, as ComfyUI does)
   anything else            404
 
 Every request is appended as one JSON line to DIR/requests.log (method,
@@ -162,7 +166,9 @@ def _object_info(paths=(RIG_POOLS, EXTRA_POOLS)):
 NODES = _object_info()
 
 SYSTEM_STATS = {
-    "system": {"comfyui_version": "fake", "ram_free": 1},
+    "system": {"comfyui_version": "fake", "ram_free": 1,
+               "comfy_package_versions": [{"name": "comfyui-frontend-package", "installed": "9.9.9", "required": "9.9.9"},
+                                          {"name": "comfyui-workflow-templates", "installed": "8.8.8", "required": "8.8.8"}]},
     "devices": [{"name": "fake gpu", "vram_total": 17179869184,
                  "vram_free": 17179869184, "torch_vram_total": 0}],
 }
@@ -175,6 +181,7 @@ HISTORY = {}             # prompt_id -> the /history/<id> entry once accepted
 
 VIEW_GATE = None          # --view-gate FILE: /view of a slow_* file answers only once FILE exists
 OBJECT_INFO_GATE = None   # --object-info-gate FILE: /object_info* answers only once FILE exists
+OBJECT_INFO_DOC = None    # --object-info-file FILE: the whole /object_info, parsed (None = the pools above)
 WORKFLOWS_DIR = None      # --workflows DIR: serve the Workflows tab's slice (see the docstring)
 TINY_WEBP = b"RIFF\x1a\x00\x00\x00WEBPVP8L\x0d\x00\x00\x00\x2f\x00\x00\x00\x10\x07\x10\x11\x11\x88\x88\xfe\x07\x00"
 
@@ -234,6 +241,14 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, SYSTEM_STATS)
         elif path == "/queue":
             self._send(200, QUEUE)
+        elif path == "/object_info" and OBJECT_INFO_DOC is not None:
+            self._send(200, OBJECT_INFO_DOC)
+        elif path.startswith("/object_info/") and OBJECT_INFO_DOC is not None:
+            node = path[len("/object_info/"):].strip("/")
+            if node in OBJECT_INFO_DOC:
+                self._send(200, {node: OBJECT_INFO_DOC[node]})
+            else:
+                self._send(404, {"error": "no such node"})
         elif path == "/object_info":
             self._send(200, {node: {"input": {"required": fields}} for node, fields in NODES.items()})
         elif path.startswith("/object_info/"):
@@ -448,8 +463,12 @@ def main():
     ap.add_argument("--view-gate", default=None,
                     help="hold every /view of a file named slow_* until this file exists (a slow song copy)")
     ap.add_argument("--comfy-version", default=None, help="/system_stats' comfyui_version")
+    ap.add_argument("--object-info-file", default=None, help="serve this file as the whole /object_info")
     args = ap.parse_args()
-    global OBJECT_INFO_GATE, WORKFLOWS_DIR, VIEW_GATE
+    global OBJECT_INFO_GATE, WORKFLOWS_DIR, VIEW_GATE, OBJECT_INFO_DOC
+    if args.object_info_file:
+        with open(args.object_info_file) as f:
+            OBJECT_INFO_DOC = json.load(f)
     VIEW_GATE = args.view_gate
     OBJECT_INFO_GATE = args.object_info_gate
     if args.comfy_version:

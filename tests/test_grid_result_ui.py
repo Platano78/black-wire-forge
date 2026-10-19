@@ -63,12 +63,10 @@ try:
         errors = []
         page.on("pageerror", lambda e: errors.append(str(e)))
         page.goto(url + "?t=%f" % time.time())
-        page.wait_for_selector('#roomStrip [data-room-id="producer"]', timeout=15000)
-        page.click('#roomStrip [data-room-id="producer"]')
-        chip = page.locator("#engineChipBtn")
-        if chip.is_enabled():   # a single-mode room keeps its chip closed, grid already selected
-            chip.click()
-            page.locator("#enginePicker").get_by_text("Grid check", exact=False).first.click()
+        page.wait_for_selector('#roomStrip [data-group="SOUND"]', timeout=15000)
+        page.click('#roomStrip [data-group="SOUND"]')
+        page.click('#roomStrip [data-task-id="beats"]')   # Grid check is the beats task's one way
+        page.wait_for_selector("#roomForm input[type=file]", state="attached", timeout=15000)
         page.locator("#roomForm input[type=file]").first.set_input_files(song)
         # A known meter: Beats per bar's options are "auto" then numbers, and a number must go through.
         page.select_option("#f_beats_per_bar", "4")

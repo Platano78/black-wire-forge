@@ -7,6 +7,9 @@ Pure Python, stdlib only. No network. No hardware-specific names.
 import json
 import math
 import re
+import statistics
+
+import beatsnap
 
 # --- Constants ---
 
@@ -69,6 +72,41 @@ def plan_windows(song_seconds, shot_thirds=SHOT_THIRDS):
             )
 
     return windows
+
+
+# --- beat_windows ---
+
+BEAT_TARGET_SECONDS = 4.0     # the same 4 s a shot aims for on the even planner
+
+
+def beat_windows(song_map, seconds):
+    """Shot windows on the song's bars: the very ones the server derives once those shots are beat-snapped.
+
+    ``song_map`` is a stored song map (``downbeats`` in seconds); its ``source.seconds`` is the song's length
+    (``seconds`` is used when the map has none). Every shot
+    but the last takes ``k`` whole bars (about 4 s, as many as one LTX render can hold); the last runs to the
+    end of the song. Same keys as plan_windows, plus ``f0``/``f1`` (cut frames), ``bars`` and ``to_end`` (``thirds`` is None: not thirds).
+    Raises ValueError with a plain sentence when the map has no bars to plan on.
+    """
+    from engines import ltx          # the render grid lives with the engine, here and in the server
+
+    song_map = song_map or {}
+    downbeats = [float(d) for d in song_map.get("downbeats") or []]
+    seconds = float((song_map.get("source") or {}).get("seconds") or seconds)   # the end the server derives against
+    if len(downbeats) < 2:
+        raise ValueError("The song's beats have fewer than two bars, so shots cannot be placed on them.")
+    grid = ltx.ENGINE["frame_grid"]["ltx"]
+    bar_s = statistics.median([b - a for a, b in zip(downbeats, downbeats[1:])])
+    fit_max = max(1, beatsnap.fit_max_bars(downbeats, 0, 0, grid))
+    k = min(max(round(BEAT_TARGET_SECONDS / bar_s), 1), fit_max)
+    bars_in_song = len(downbeats) - 1
+    n = max(1, round(bars_in_song / k))
+    shots = [{"id": "shot %d" % (i + 1), "grid": "ltx", "bars": k} for i in range(n - 1)]
+    shots.append({"id": "shot %d" % n, "grid": "ltx", "to_end": True})
+    wins = beatsnap.windows(downbeats, seconds, shots, {"ltx": grid}, master_start=0.0)
+    return [{"index": i, "thirds": None, "frames": w["render_frames"], "start": w["start"], "len": w["len"],
+             "f0": w["f0"], "f1": w["f1"], "bars": w["bars"], "to_end": shots[i].get("to_end", False)}
+            for i, w in enumerate(wins)]
 
 
 # --- parse_lyrics ---
@@ -143,15 +181,7 @@ def assign_lyrics(windows, parsed):
             section = flat[lo][0]
         else:
             section = ""
-        new_windows.append({
-            "index": windows[i]["index"],
-            "thirds": windows[i]["thirds"],
-            "frames": windows[i]["frames"],
-            "start": windows[i]["start"],
-            "len": windows[i]["len"],
-            "lines": window_lines,
-            "section": section,
-        })
+        new_windows.append(dict(windows[i], lines=window_lines, section=section))
     return new_windows
 
 
@@ -298,6 +328,15 @@ def plan_line(windows, seconds_per_shot=65):
 
     each = "" if n == 1 else " each"
     in_all = "" if n == 1 else " in all"
+    if "to_end" in windows[0]:        # beat_windows: whole bars on the song's beats
+        bars = windows[0].get("bars")
+        size = "" if not bars else " of %d bar%s (about %d %s)" % (bars, "" if bars == 1 else "s", mean_shot_seconds, second_word)
+        return (
+            f"{n} {shot_word}{size} on the song's beats, "
+            f"roughly {minutes} {minute_word}{in_all} "
+            f"(about {seconds_per_shot} seconds a shot on a 16 GB card, measured once); "
+            f"say stop to change it."
+        )
     return (
         f"{n} {shot_word} of about {mean_shot_seconds} {second_word}{each}, "
         f"roughly {minutes} {minute_word}{in_all} "

@@ -1,4 +1,4 @@
-"""Browser gate for UX-2 items 1 (engine chip), 2 (Lyrics under Style), 4
+"""Browser gate for UX-2 items 1 (the ways list, once an engine chip), 2 (Lyrics under Style), 4
 (explain the boxes), 6 (double-Make guard) and 9 (progress percentage) --
 against the real page, the real Music/Video rooms and the real /api/engines
 data (the fake lane's golden pools include the real audio role filenames, so
@@ -68,52 +68,42 @@ try:
         page.on("pageerror", lambda e: errors.append("PAGEERROR: %s" % e))
         guard(page)
 
-        print("Music room: empty state, item 1 chip, item 2 field order, item 4 explanation")
-        page.goto(URL + "#room=music", wait_until="networkidle", timeout=30000)
-        page.wait_for_selector("#engineChipBtn", state="visible", timeout=10000)
+        print("Song task: empty state, item 1 ways, item 2 field order, item 4 explanation")
+        page.goto(URL + "#task=song", wait_until="networkidle", timeout=30000)
+        page.wait_for_selector("#ways", state="visible", timeout=10000)
         # Discovery against the fake lane is async; the fixture's golden
         # pools DO satisfy song/music/yue2/cover, so wait for at least one
-        # to actually report available rather than assume it's instant --
-        # the picker legitimately auto-opens (by design) while the picked
-        # engine still reads as unavailable, same as before this slice.
+        # to actually report available rather than assume it's instant.
         page.wait_for_function(
-            "() => { const r = document.querySelector('#enginePicker input[data-mode=\"song\"]'); "
+            "() => { const r = document.querySelector('#ways input[data-mode=\"song\"]'); "
             "return r && !r.disabled; }", timeout=15000)
         page.wait_for_function("() => typeof laneUp === 'function' && laneUp('t') === true", timeout=15000)
-        page.evaluate("() => { if(typeof setEngineChipOpen === 'function') setEngineChipOpen(false); }")
         ui.shot(page, "ux2-01-music-empty")
 
-        chip_text = page.inner_text("#enginePickerCurrent")
-        check("item 1: the chip names the room ('Music') beside the engine label",
-              chip_text.startswith("Music"), chip_text)
-        caret_hidden = page.eval_on_selector("#engineChipCaret", "e => e.hidden")
-        n_engines = len(page.query_selector_all("#enginePicker input[type=radio]"))
+        heading = page.inner_text("#roomHeading")
+        picked = page.eval_on_selector("#ways input:checked", "e => e.closest('label').querySelector('.erow-label').textContent")
+        check("item 1: the heading names what is made, and the picked way is marked beside it",
+              heading.startswith("Make a song") and bool(picked), (heading, picked))
+        n_engines = len(page.query_selector_all("#ways input[type=radio]"))
         if n_engines >= 2:
-            check("item 1: 2+ engines -> the caret shows", caret_hidden is False)
-            expanded_before = page.get_attribute("#engineChipBtn", "aria-expanded")
-            check("item 1: popover starts closed (forced above, now the picked engine is available)",
-                  expanded_before == "false", expanded_before)
-            page.click("#engineChipBtn")
-            check("item 1: clicking the chip opens the popover (aria-expanded)",
-                  page.get_attribute("#engineChipBtn", "aria-expanded") == "true")
-            check("item 1: the radio list is now visible", page.is_visible("#enginePicker"))
+            check("item 1: 2+ ways -> the list is visible with no click, no popover", page.is_visible("#ways"))
             # "song" is already the picked mode (checked above); pick a
             # DIFFERENT one so the radio's change event actually fires.
-            other_radio = page.query_selector('#enginePicker input[data-mode="music"]') \
-                or page.query_selector('#enginePicker input:not(:checked)')
+            other_radio = page.query_selector('#ways input:not(:checked)')
             if other_radio and not other_radio.is_disabled():
+                other_mode = other_radio.get_attribute("data-mode")
                 other_radio.check()
                 page.wait_for_timeout(400)
-                check("item 1: picking an engine closes the popover again",
-                      page.get_attribute("#engineChipBtn", "aria-expanded") == "false")
+                check("item 1: picking a way switches the mode and the list stays on screen",
+                      page.evaluate("STATE.mode") == other_mode and page.is_visible("#ways"),
+                      page.evaluate("STATE.mode"))
                 # Back to song: items 2/4/6/9 below assume song's fields.
-                song_radio = page.query_selector('#enginePicker input[data-mode="song"]')
+                song_radio = page.query_selector('#ways input[data-mode="song"]')
                 if song_radio and not song_radio.is_disabled():
-                    page.click("#engineChipBtn")
                     song_radio.check()
                     page.wait_for_timeout(300)
         else:
-            check("item 1: a single-engine room's chip has no caret", caret_hidden is True)
+            check("item 1: a single-way task shows no list", not page.is_visible("#ways"))
 
         # FB-2: with a helper, song is a writer mode -- Style and Lyrics sit under
         # "What the guide filled in", closed while empty; open it to reach them by hand.
@@ -180,11 +170,12 @@ try:
             check("song mode's prompt box is available on the fake lane (needed for items 6/9)", False)
 
         print()
-        print("item 1: the Video room's chip (single- or multi-engine, whichever this room declares)")
-        page.goto(URL + "#room=video", wait_until="networkidle", timeout=30000)
-        page.wait_for_selector("#engineChipBtn", state="visible", timeout=10000)
-        video_chip = page.inner_text("#enginePickerCurrent")
-        check("item 1: the Video room's chip also names the room", video_chip.startswith("Video"), video_chip)
+        print("item 1: the video task names itself and lists its ways")
+        page.goto(URL + "#task=video", wait_until="networkidle", timeout=30000)
+        page.wait_for_selector("#ways", state="visible", timeout=10000)
+        video_head = page.inner_text("#roomHeading")
+        check("item 1: the video task's heading names it, its ways listed under it",
+              video_head.startswith("Make a video") and len(page.query_selector_all("#ways input[type=radio]")) >= 2, video_head)
         ui.shot(page, "ux2-03-video-chip")
 
         check("no console/page errors across the whole run", errors == [], errors)

@@ -1,0 +1,23 @@
+[
+  {"id": "song", "verb": "Make a song with words", "short": "Song", "line": "Lyrics and a style in, a finished song out.", "group": "SOUND", "order": 1, "room": "music"},
+  {"id": "music", "verb": "Make background music", "short": "Background music", "line": "A bed for a video, with or without singing.", "group": "SOUND", "order": 2, "room": "music"},
+  {"id": "cover", "verb": "Give a song a new sound", "short": "Cover", "line": "Keep the tune, change the arrangement.", "group": "SOUND", "order": 3, "room": "cover"},
+  {"id": "sfx", "verb": "Make a sound effect", "short": "Sound effect", "line": "Doors, footsteps, hits and hums.", "group": "SOUND", "order": 4, "room": "sfx"},
+  {"id": "beats", "verb": "Find a song's beats and bars", "short": "Beats", "line": "A click track and a bar map of a song you have.", "group": "SOUND", "order": 5, "room": "producer"},
+  {"id": "rework", "verb": "Rework a song by its bars", "short": "Rework a song", "line": "Re-arrange it, move a part onto another beat, or mix tracks.", "group": "SOUND", "order": 6, "room": "producer"},
+  {"id": "t2i", "verb": "Make a picture from words", "short": "From words", "line": "Describe it and get a picture.", "group": "PICTURE", "order": 7, "room": "picture"},
+  {"id": "edit", "verb": "Change a picture you have", "short": "Change one", "line": "Recolour it, swap one thing, or edit it with words.", "group": "PICTURE", "order": 8, "room": "picture"},
+  {"id": "charsheet", "verb": "Draw a character sheet", "short": "Character sheet", "line": "One picture of a character in, a design sheet out.", "group": "PICTURE", "order": 9, "room": "characters"},
+  {"id": "pixelart", "verb": "Make pixel art", "short": "Pixel art", "line": "Small sprites with a locked palette.", "group": "PICTURE", "order": 10, "room": "pixelart"},
+  {"id": "cutout", "verb": "Cut out the background", "short": "Cut out", "line": "A clean cut-out with a see-through background.", "group": "PICTURE", "order": 11, "room": "cleanup"},
+  {"id": "upscale", "verb": "Make a picture bigger", "short": "Bigger", "line": "Four times the size.", "group": "PICTURE", "order": 12, "room": "cleanup"},
+  {"id": "textures", "verb": "Make seamless textures", "short": "Textures", "line": "Tiles and surfaces for games.", "group": "PICTURE", "order": 13, "room": "textures"},
+  {"id": "video", "verb": "Make a video from words", "short": "From words", "line": "Describe a shot, optionally from a starting picture.", "group": "MOTION", "order": 14, "room": "video"},
+  {"id": "animate", "verb": "Animate a picture", "short": "Animate", "line": "Your picture moves, with sound.", "group": "MOTION", "order": 15, "room": "video"},
+  {"id": "people", "verb": "Put people into a new scene", "short": "People in a scene", "line": "Upload people or clips; describe where they are now.", "group": "MOTION", "order": 16, "room": "video"},
+  {"id": "continue", "verb": "Continue a shot", "short": "Continue", "line": "Carry a clip on, motion and sound included.", "group": "MOTION", "order": 17, "room": "video"},
+  {"id": "talking", "verb": "Make a face say a line", "short": "Talking face", "line": "A face and a line of speech in, a talking clip out.", "group": "MOTION", "order": 18, "room": "talking"},
+  {"id": "musicvideo", "verb": "Make a music video from a song", "short": "Music video", "line": "One song in; shots cut on the beat.", "group": "MOTION", "order": 19, "room": "cutting", "action": "music-video"},
+  {"id": "mesh", "verb": "Turn a picture into a 3D object", "short": "3D object", "line": "Gives a .glb file you can walk around.", "group": "OBJECT", "order": 20, "room": "3d"},
+  {"id": "turntable", "verb": "Spin a 3D object into a video", "short": "Turntable", "line": "An orbiting video of a 3D object you have.", "group": "OBJECT", "order": 21, "room": "3d"}
+]

@@ -107,11 +107,11 @@ PLACED_JS = """() => {
 }"""
 
 
-def open_room(page, room, mode=None):
+def open_room(page, task, mode=None):
     if mode:
-        page.add_init_script("localStorage.setItem('bwf.room.engine.%s', JSON.stringify(%s))"
-                             % (room, json.dumps(mode)))
-    page.goto(URL + "#room=" + room, wait_until="networkidle", timeout=30000)
+        page.add_init_script("localStorage.setItem('bwf.task.way.%s', JSON.stringify(%s))"
+                             % (task, json.dumps(dict(mode, stage="draft"))))
+    page.goto(URL + "#task=" + task, wait_until="networkidle", timeout=30000)
     page.wait_for_selector("#whatWillRun:not([hidden]) .wwr-part", timeout=15000)
 
 
@@ -124,7 +124,7 @@ try:
         browser = pw.chromium.launch()
         for width in (1440, 390):
             page = browser.new_page(viewport={"width": width, "height": 1000})
-            open_room(page, "picture")
+            open_room(page, "t2i")
             print("Picture at %d px" % width)
             rows = page.locator("#whatWillRun .wwr-part")
             check("%d: one row per part by default (%d)" % (width, len(t2i["parts"])),
@@ -158,7 +158,7 @@ try:
             page.close()
 
             page = browser.new_page(viewport={"width": width, "height": 1000})
-            open_room(page, "video", {"cap": "video", "mode": "fl2va"})
+            open_room(page, "animate", {"cap": "video", "mode": "fl2va"})
             print("Video (fl2va) at %d px" % width)
             placed = page.evaluate(PLACED_JS)
             check("%d: video: the panel comes after the prompt and the starting-picture input, directly before Recipe"
@@ -177,9 +177,7 @@ try:
 
         # The 3D room's process mode, picked explicitly; its programs are the stubs above.
         page = browser.new_page(viewport={"width": 1440, "height": 1000})
-        page.add_init_script("localStorage.setItem('bwf.room.engine.3d', JSON.stringify(%s))"
-                             % json.dumps({"cap": "3d", "mode": "turntable"}))
-        page.goto(URL + "#room=3d", wait_until="networkidle", timeout=30000)
+        page.goto(URL + "#task=turntable", wait_until="networkidle", timeout=30000)
         page.wait_for_timeout(1500)
         info = page.evaluate("() => [STATE.cap, STATE.mode, (currentMode() || {}).lane_kind]")
         check("a process-lane mode shows no panel",

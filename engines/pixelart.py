@@ -53,6 +53,8 @@ from .qwen_image import STYLE_FIELDS, qwen_edit_graph, qwen_t2i_graph
 _HEX_RE = re.compile(r"^#?([0-9a-fA-F]{6})$")
 GRID_NEAREST = "Sharp (nearest)"
 GRID_MODAL = "Cleanest (most common colour)"
+# "Keep edges crisp": an edge-strength cut-off for the dither (0-1); dots stay off pixels above it.
+DITHER_EDGE_GATE = 0.1
 
 
 def parse_palette(text):
@@ -141,13 +143,17 @@ def _post_quantise(input_bytes, filename, args):
     render to a temp file, read the sprite back, clean up either way. The
     same background-removed render supplies both the palette's subject
     pixels (its RGB) and the sprite's transparency (its own alpha channel,
-    `alpha_path=src`).
+    `alpha_path=src`). The five opt-in converter boxes (`pixel_detail`,
+    `pixel_accents`, `pixel_specks`, `pixel_hard_edges`, `pixel_dither_edges`)
+    add a keyword only when ticked, so with all off the call is unchanged.
     """
     size = int(args.get("pixel_size", 64))
     height = int(args.get("pixel_height", 0) or 0) or size
     colors = int(args.get("pixel_colors", 8))
     dither = float(args.get("pixel_dither", 0.0))
     grid = "modal" if args.get("pixel_grid") == GRID_MODAL else "nearest"
+    if bool(args.get("pixel_detail")):
+        grid = "detail"
     palette = parse_palette(args.get("pixel_palette"))
     with tempfile.TemporaryDirectory() as td:
         src = os.path.join(td, _source_name(filename))
@@ -155,6 +161,14 @@ def _post_quantise(input_bytes, filename, args):
             f.write(input_bytes)
         out = os.path.join(td, "sprite.png")
         kw = {}
+        if bool(args.get("pixel_accents")):
+            kw["palette_mode"] = "balanced"
+        if bool(args.get("pixel_specks")):
+            kw["clean_specks"] = True
+        if bool(args.get("pixel_hard_edges")):
+            kw["alpha_mode"] = "hard"
+        if bool(args.get("pixel_dither_edges")):
+            kw["dither_gate"] = DITHER_EDGE_GATE
         if palette:
             # the chosen colours ARE the locked palette: hand them to the vendored
             # loader as a palette file, one #rrggbb per line
@@ -339,6 +353,10 @@ ENGINE = {
         "pixelart": "A pixel art sprite",
     },
     "mode_rooms": {"pixelart": "pixelart"},
+    # Front door: which task (tasks.json) each mode is a way of (engines/__init__.py "mode_tasks").
+    "mode_tasks": {
+        "pixelart": {"task": "pixelart", "way": "Pixel art"},
+    },
     "mode_notes": {
         "pixelart": "the palette is locked by a fixed step after the picture, so it never drifts",  # source: engines/pixelart.py:9 (module docstring)
     },
@@ -418,6 +436,25 @@ ENGINE = {
              "units": "strength", "range": [0, 1], "ui_range": [0, 0.3],
              "hint": "0 keeps flat, crisp colour edges. Raising it adds a fine dotted "
                      "texture; a hard metal surface usually looks better with it off."},
+            {"id": "pixel_detail", "label": "Keep small details", "type": "checkbox", "default": False,
+             "tier": "advanced", "group": "Sprite", "order": 7,
+             "hint": "Keeps small features such as eyes or a thin mouth line that would vanish when "
+                     "the picture shrinks. Takes over from Pixel grid when on."},
+            {"id": "pixel_accents", "label": "Keep accent colours", "type": "checkbox", "default": False,
+             "tier": "advanced", "group": "Sprite", "order": 8,
+             "hint": "Lets small bright areas, such as a neon sign, compete for colours instead of "
+                     "every colour going to the big areas. Not used when a palette is filled in."},
+            {"id": "pixel_specks", "label": "Clean specks", "type": "checkbox", "default": False,
+             "tier": "advanced", "group": "Sprite", "order": 9,
+             "hint": "Replaces lone stray pixels with the colour around them. Small bright highlights stay."},
+            {"id": "pixel_hard_edges", "label": "Hard edges", "type": "checkbox", "default": False,
+             "tier": "advanced", "group": "Sprite", "order": 10,
+             "hint": "Every pixel is either fully solid or fully clear: no half see-through edge "
+                     "around the sprite."},
+            {"id": "pixel_dither_edges", "label": "Keep edges crisp", "type": "checkbox", "default": False,
+             "tier": "advanced", "group": "Sprite", "order": 11,
+             "hint": "Only matters when Dither is above 0: the dots go on smooth shading, never on "
+                     "hard outlines."},
         ] + STYLE_FIELDS,
     },
     "presets": {

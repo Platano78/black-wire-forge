@@ -93,6 +93,11 @@ ENGINE = {
         "film9700": "R9700 video with scene audio",
     },
     "mode_rooms": {"film5080": "video", "film9700": "video"},
+    # Front door: which task (tasks.json) each mode is a way of (engines/__init__.py "mode_tasks").
+    "mode_tasks": {
+        "film5080": {"task": "video"},
+        "film9700": {"task": "video"},
+    },
     "mode_notes": {
         "film5080": "Creates a video from words or a starting picture, with native speech and audio.",  # source: verified private RTX 5080 backend contract
         "film9700": "Creates a fast video with validated scene audio.",  # source: verified private R9700 backend contract

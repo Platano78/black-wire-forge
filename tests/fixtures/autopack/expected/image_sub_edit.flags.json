@@ -1,0 +1,19 @@
+[
+ {
+  "id": "promoted_unreviewed",
+  "kind": "ack",
+  "text": "The template's author put these settings on its face: denoise, sampler_name. Their ranges come from the node, not from a person; check them.",
+  "data": {
+   "fields": [
+    "denoise",
+    "sampler_name"
+   ]
+  }
+ },
+ {
+  "id": "licence",
+  "kind": "answer",
+  "text": "The template does not say what licence its models have. Check the licences of the models listed in the attribution, then confirm.",
+  "data": {}
+ }
+]

@@ -1,0 +1,98 @@
+{
+ "id": "00000000-0000-0000-0000-000000000021",
+ "revision": 0,
+ "last_node_id": 99,
+ "last_link_id": 0,
+ "nodes": [
+  {
+   "id": 1,
+   "type": "LoadImage",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    "example.png"
+   ]
+  },
+  {
+   "id": 2,
+   "type": "LoadDA3Model",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    "depth_anything_3_large.safetensors"
+   ]
+  },
+  {
+   "id": 3,
+   "type": "RunDA3",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": []
+  },
+  {
+   "id": 4,
+   "type": "SaveImage",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    "depth"
+   ]
+  }
+ ],
+ "links": [],
+ "groups": [],
+ "config": {},
+ "extra": {},
+ "version": 0.4,
+ "definitions": {
+  "subgraphs": []
+ }
+}

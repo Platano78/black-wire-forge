@@ -1,0 +1,39 @@
+{
+ "schema": 1,
+ "id": "tp-plain",
+ "cap": "video",
+ "graph": "graph.api.json",
+ "fields": [
+  {
+   "id": "prompt",
+   "label": "Prompt",
+   "type": "textarea",
+   "tier": "primary",
+   "group": "Content",
+   "order": 1,
+   "bind": [
+    {
+     "node": "1",
+     "input": "text"
+    }
+   ]
+  },
+  {
+   "id": "pic",
+   "label": "Picture",
+   "type": "image",
+   "tier": "primary",
+   "group": "Content",
+   "order": 2,
+   "bind": [
+    {
+     "node": "2",
+     "input": "image"
+    }
+   ]
+  }
+ ],
+ "mode": "plainmode",
+ "label": "Plain mode",
+ "note": "a lab note"
+}

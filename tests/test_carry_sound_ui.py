@@ -113,22 +113,21 @@ def start_server(name, jobs):
 
 def open_producer(page, url):
     page.goto("about:blank")
-    page.goto(url + "#room=producer", wait_until="networkidle", timeout=30000)
+    page.goto(url + "#task=rework", wait_until="networkidle", timeout=30000)
     page.wait_for_function("() => typeof STATE !== 'undefined' && !!STATE.activeLane", timeout=15000)
     page.wait_for_timeout(1500)
     if page.query_selector("#upload_track_1") is None:
-        page.locator("#engineChipBtn").click()
         page.wait_for_timeout(1000)
-        row = page.locator("#enginePicker label.engine-row", has_text="Mix tracks").first
+        row = page.locator("#ways label.engine-row", has_text="Mix tracks").first
         row.wait_for(state="visible", timeout=15000)
         try:
             page.wait_for_function(
-                "() => { const r = [...document.querySelectorAll('#enginePicker label.engine-row')]"
+                "() => { const r = [...document.querySelectorAll('#ways label.engine-row')]"
                 " .find(x => x.textContent.includes('Mix tracks'));"
                 " return !!r && !r.querySelector('input').disabled; }", timeout=15000)
         except Exception:
             check("the Mix row becomes pickable", False, page.eval_on_selector_all(
-                "#enginePicker label.engine-row", "els => els.map(e => e.textContent)"))
+                "#ways label.engine-row", "els => els.map(e => e.textContent)"))
             raise
         row.click()
     page.wait_for_selector("#upload_track_1", timeout=15000)

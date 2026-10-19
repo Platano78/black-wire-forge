@@ -1,0 +1,14 @@
+{
+ "1": {
+  "class_type": "TextBox",
+  "inputs": {
+   "text": "hello"
+  }
+ },
+ "2": {
+  "class_type": "PictureIn",
+  "inputs": {
+   "image": "x.png"
+  }
+ }
+}

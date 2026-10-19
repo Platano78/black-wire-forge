@@ -74,6 +74,11 @@ ENGINE = {
         "qwen.texture-r9700": "Seamless Texture · R9700",
     },
     "mode_rooms": {"qwen.image21-r9700": "picture", "qwen.texture-r9700": "textures"},
+    # Front door: which task (tasks.json) each mode is a way of (engines/__init__.py "mode_tasks").
+    "mode_tasks": {
+        "qwen.image21-r9700": {"task": "t2i"},
+        "qwen.texture-r9700": {"task": "textures"},
+    },
     "mode_notes": {
         "qwen.image21-r9700": "Creates a new picture on the AMD Radeon AI PRO R9700.",  # source: authenticated PlexAI image service
         "qwen.texture-r9700": "Creates a seamless tileable material texture on the AMD Radeon AI PRO R9700.",  # source: authenticated PlexAI image service

@@ -7,7 +7,7 @@ install the services or download model weights.
 
 ## Turning them on
 
-On a stock install these packs do not exist: no modes, no rooms, nothing in Setup.
+On a stock install these packs are not loaded (their source files are in `engines/`), so no modes, no rooms, nothing in Setup.
 A pack appears only when one of its base address variables is set in the
 environment of the process that starts Forge. Then create a process lane in Setup for
 the matching capability (video, audio or image).
@@ -49,7 +49,7 @@ The token is never sent to the browser or stored with a job.
 - A JSON reply over 8 MiB, a downloaded video or song over 4 GiB, or a picture over
   512 MiB is refused.
 - A job is waited on until a little before its step timeout (Film 6 h, YuE2 2 h, Qwen
-  1 h); six failed polls in a row also end it.
+  1 h); seven failed polls in a row also end it.
 - A failed job shows the service's own `error` text, cut to 300 characters.
 
 ## Service contracts

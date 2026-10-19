@@ -1,0 +1,46 @@
+{
+ "schema": 1,
+ "id": "tw-a",
+ "cap": "video",
+ "graph": "graph.api.json",
+ "fields": [
+  {
+   "id": "prompt",
+   "label": "Prompt",
+   "type": "textarea",
+   "tier": "primary",
+   "group": "Content",
+   "order": 1,
+   "bind": [
+    {
+     "node": "1",
+     "input": "text"
+    }
+   ]
+  },
+  {
+   "id": "pic",
+   "label": "Picture",
+   "type": "image",
+   "tier": "primary",
+   "group": "Content",
+   "order": 2,
+   "bind": [
+    {
+     "node": "2",
+     "input": "image"
+    }
+   ]
+  }
+ ],
+ "mode": "twone",
+ "label": "Twone",
+ "task": "tw-shared",
+ "task_words": {
+  "verb": "Shared first",
+  "short": "Shared first",
+  "line": "Shared first line.",
+  "group": "MOTION"
+ },
+ "blurb": "One."
+}

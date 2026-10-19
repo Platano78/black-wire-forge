@@ -35,7 +35,9 @@ Black Wire Forge is a **web front end** for one or more ComfyUI instances. It:
 ## Decide the path with the user first
 
 Ask, in this order, and stop at the first one that applies. Whatever the path, `config.json` is
-read once at start: restart the server after editing it.
+read once at start: restart the server after editing it. Lane ids must be unique: before adding a
+lane, pick an id not already in `config.json` (`local`/`cpu` below are examples) and use it in every
+later `lane` value and `?lane=`.
 
 1. **They already run ComfyUI somewhere** (this machine or another on their network) → do
    "Install + start" with this lane. No `config.json` yet: this is the whole file; one exists: add
@@ -46,18 +48,17 @@ read once at start: restart the server after editing it.
     "lanes": [{"id": "local", "name": "My ComfyUI", "host": "<host>", "port": <port>}]}
    ```
 
-   `caps` is optional here (discovery decides from the files found). The lane `id` is the `"lane"`
-   value in every call that takes one. Check `/api/lanes` → that lane `"up": true`, then
+   `caps` is optional here (discovery decides from the files found). Check `/api/lanes` → that lane `"up": true`, then
    `/api/engines?lane=<id>` → a mode with `"available": true` before generating; each mode's
-   `"fields"` lists its fields, each with its `"id"` (t2i's too), so there is no need to read
-   engine code.
+   `"fields"` lists its fields and their `"id"`s, so there is no need to read engine code.
 2. **They have no GPU at all** → two things work, on a CPU-only **process lane**: an orbiting
    turntable video of an existing `.glb` (Blender + `ffmpeg`, `engines/turntable.py`, below) and
    Producer's Grid check (a song's beats; "Getting the models"). Everything else needs a GPU-backed
-   ComfyUI lane; don't attempt it without one. Check each binary on its own:
+   ComfyUI lane. Check each binary on its own:
    `command -v blender; command -v ffmpeg` (each prints a path, or nothing), and
    install what is missing (https://www.blender.org/download/, https://ffmpeg.org/download.html);
-   the lane is down only if no mode can run, with a plain "needs ..." sentence. The lane is a **process** lane:
+   the lane is down only if no mode can run, with a plain "needs ..." sentence. The lane is a **process** lane
+   (this config is turntable-only; for Grid check add the `producer` cap, see "Getting the models"):
    if `config.json` does not exist yet, this is the whole file (adjust `"port"`/`"bind"` if you
    changed them); if it exists, do not replace it — add just the lane object to its `"lanes"`:
 
@@ -78,8 +79,8 @@ read once at start: restart the server after editing it.
    curl -s -X POST http://127.0.0.1:3998/api/generate -H 'Content-Type: application/json' \
      -d '{"lane": "cpu", "kind": "3d", "mode": "turntable", "prompt": "", "model": "<the name from step 1>"}'
    #    -> {"ok": true, "job": {"id": "<job-id>", "status": "queued", ...}, ...}
-   # 3. poll until "status" is "done" (a CPU render: minutes); "outputs": turntable.mp4 and
-   #    poster.png, both {"subfolder": "<job-id>", "type": "local"}
+   # 3. poll until "status" is "done" (minutes); "outputs": turntable.mp4 and poster.png,
+   #    both {"subfolder": "<job-id>", "type": "local"}
    curl -s "http://127.0.0.1:3998/api/jobs?limit=5"
    # 4. the video is type=local: give the user this link; -o only into a place they named
    curl -s -o <their path>/turntable.mp4 \
@@ -87,15 +88,17 @@ read once at start: restart the server after editing it.
    ```
 
    Optional fields (`/api/engines?lane=cpu`): `frames`, `fps`, `size`, `samples`, `background`,
-   `elevation`. The video lasts `frames` ÷ `fps` seconds (72 ÷ 24 = 3 s by default).
+   `elevation`; the video lasts `frames` ÷ `fps` seconds (default 72 ÷ 24 = 3 s).
 3. **No ComfyUI yet, but a GPU** → ComfyUI must be installed first. Don't invent its install
-   steps: point the user at https://github.com/comfyanonymous/ComfyUI and come back once
-   `python main.py` (or their own start command) answers on some `host:port`.
+   steps: point the user at https://github.com/comfyanonymous/ComfyUI and come back once it
+   answers on some `host:port`.
 
 ## Install + start
 
-For a user, do all of this by default (all the app itself needs; renders also need a lane
-with the models):
+Commands here are POSIX (Git Bash on Windows). In PowerShell: `py -m venv .venv`,
+`.venv\Scripts\python`, `where.exe` for `command -v`.
+
+For a user, do all of this by default (all the app needs; renders also need a lane with models):
 
 ```
 test -e config.json || cp config.example.json config.json   # never overwrite a real config
@@ -104,21 +107,18 @@ python3 -m venv .venv
 .venv/bin/python server.py
 ```
 
-- Use the venv, never a global `pip install`: modern distro Python refuses a bare one (PEP 668
-  "externally managed environment").
-  **Once `.venv/` exists, use `.venv/bin/python` for everything** — including any one-off
-  script YOU write to check or poll something: system `python3` does not see
-  `requirements.txt`'s packages and hits `ModuleNotFoundError: PIL` (or numpy).
+- Use the venv, never a global `pip install` (PEP 668 "externally managed environment").
+  **Once `.venv/` exists, use `.venv/bin/python` for everything**, including your own one-off
+  scripts: system `python3` lacks `requirements.txt`'s packages (`ModuleNotFoundError: PIL`).
 - `requirements.txt` (numpy, Pillow) is small; always install it. Without it the server still
-  answers every request, but the recipe-removed **picture** download is refused (422) and Pixel
-  Art's colour-lock/dither and the picture→video image-fit step are unavailable, each saying
-  what to install. `ffmpeg` on `PATH` is likewise optional: without it the Cutting Room opens
-  but cannot build a cut yet.
+  answers, but the recipe-removed **picture** download is refused (422) and Pixel Art's
+  colour-lock/dither and the picture→video image-fit step are unavailable, each saying what to
+  install. `ffmpeg` on `PATH` is optional: without it the Cutting Room cannot build a cut yet.
 - `config.json` is **required**, `"lanes"` non-empty. Missing, the app opens only a local
   Setup page that writes it (you may write it yourself instead); broken, the app exits (see
   "Troubleshooting").
-- `server.py` runs in the **foreground**: leave it running in one terminal (or background it: `... server.py &`) and
-  run every "Verify" command from another. Success on stdout (`server.py`'s `main()`):
+- `server.py` runs in the **foreground**: leave it running (or background it: `... server.py &`)
+  and run every "Verify" command from another terminal. Success on stdout (`server.py`'s `main()`):
 
   ```
   [ok] Black Wire Forge is up on http://127.0.0.1:3998
@@ -143,13 +143,12 @@ Against the running server (port 3998 by default; use the `"port"` in `config.js
   — plain sentences (the pack's `words`) naming the model files still needed (a `"process"`
   lane: the programs, e.g. Blender), set when the lane declares the cap but `able` says no,
   recomputed every call (`lanes_payload()`). `"discovered"` — whether discovery has run once;
-  only `"caps"` waits on it (mirroring `declared_caps`); `missing_*` already lists the full
-  requirement before it.
+  only `"caps"` waits on it; `missing_*` already lists the full requirement.
 - `curl -s "http://127.0.0.1:3998/api/engines?lane=<lane-id>"` (always pass a real lane id:
   without `?lane=` every mode reports `"available": false`) → one key per capability
-  (`{"modes": [...], "cap_word": ..., "cap_order": ...}`) plus two keys that are NOT
-  capabilities (skip them when iterating): `"rooms"` (task-room groupings) and `"helper"`
-  (bool, a prompt helper is configured). Per mode: `"available"` (bool) and `"missing"`
+  (`{"modes": [...], "cap_word": ..., "cap_order": ...}`) plus keys that are NOT
+  capabilities (skip them when iterating): `"rooms"` (guide groupings), `"tasks"` (what a person can
+  make; each task's `ways` name a cap and mode), `"helper"` (bool, a prompt helper is configured) and `"helper_guide_on"`. Per mode: `"available"` (bool) and `"missing"`
   (list) — whether the lane's discovered model files (and
   any pack-level local-package dependency) satisfy it. That alone does **not** mean it can run:
   also check `/api/lanes`' `"up"`, that its `"caps"` include this mode's capability, and that
@@ -160,8 +159,9 @@ Against the running server (port 3998 by default; use the `"port"` in `config.js
 
 ## Make something and get the file
 
-**1. Submit** — `POST /api/generate`, JSON, at minimum `lane`, `kind`, `mode`, `prompt`
-(everything else has a default):
+**1. Submit** — `POST /api/generate`, JSON, at minimum `lane`, `kind`, `mode`, plus the mode's required
+fields from `/api/engines?lane=<id>` (`prompt` only if the mode declares it; for an upload field,
+`POST /api/upload` first and pass the returned name); the rest default:
 
 ```
 curl -s -X POST http://127.0.0.1:3998/api/generate -H 'Content-Type: application/json' \
@@ -193,27 +193,25 @@ curl -s -o <their path>/lighthouse.png \
   "http://127.0.0.1:3998/api/view?lane=local&filename=<filename>&subfolder=<subfolder>&type=output&dl=1"
 ```
 
-- `dl=1` — the recipe-removed copy (`strip_metadata()` drops the embedded workflow: model
-  filenames, the full prompt); give this one to a user who might share it.
+- `dl=1` — the recipe-removed copy (`strip_metadata()` drops the embedded workflow, model
+  filenames and full prompt); give this one to a user who might share it.
 - `keep_recipe=1` instead of `dl=1` — the original, metadata and all.
-- If cleaning fails (unsupported sub-format, missing dependency, parse failure), `dl=1` is
+- If cleaning fails (unsupported format, missing dependency, parse failure), `dl=1` is
   REFUSED, never silently the original: HTTP 422, `{"error": "Could not remove the recipe from
   this file, so it was not downloaded. Use the plain download if you want the original."}`.
   Retry with `keep_recipe=1` if the user accepts the original.
-- `type=local` (a `post`-step or process-lane entry) is served from the app's own disk, never
-  proxied to a lane; the same `lane`/`dl`/`keep_recipe` query applies.
+- `type=local` (a `post`-step or process-lane entry) is served from the app's own disk, not
+  proxied; the same `lane`/`dl`/`keep_recipe` query applies.
 
 **Where the file actually lives — tell the user, and answer with BOTH:**
 
 1. **On the lane's own ComfyUI machine**, in its output folder — the render itself, for every
-   `"type": "output"` entry on every job. The app never moves it; `/api/view` only proxies a
-   copy on request.
-2. **A local copy under `data/outputs/<job id>/` on the machine running this app — only when
-   one exists**, in exactly two cases (`run_process_job()`, `run_post_step()`): (a) a
-   **process**-lane job (e.g. turntable), rendered locally, so this IS its only copy; (b) a mode
-   with a `post` step (e.g. Pixel Art's quantise): its transformed file lands here as an
-   ADDITIONAL `"type": "local"` output beside the lane's render, never replacing it. A plain
-   ComfyUI picture (`t2i`, no `post` step) has NO local copy — check `job["outputs"]` for a
+   `"type": "output"` entry. The app never moves it; `/api/view` only proxies a copy.
+2. **A local copy under `data/outputs/<job id>/` on this app's machine — only when one
+   exists**, in two cases (`run_process_job()`, `run_post_step()`): (a) a **process**-lane job
+   (e.g. turntable), whose only copy this is; (b) a mode with a `post` step (e.g. Pixel Art's
+   quantise): its file is an ADDITIONAL `"type": "local"` output beside the lane's render. A
+   plain ComfyUI picture (`t2i`) has NO local copy — check `job["outputs"]` for a
    `"type": "local"` entry before claiming one.
 
 ## Fixing what's missing
@@ -355,7 +353,10 @@ it answers with, then generate `{"lane": "cpu", "kind": "producer", "mode": "gri
 
 - `README.md` — full install/config reference
 - `docs/MODELS.md` — where to get every built-in model, its licence, and its discovery-match check
-- `docs/ARCHITECTURE.md` — lanes, discovery, packs, rooms, jobs, sequences, the cut
+- `docs/ARCHITECTURE.md` — lanes, discovery, packs, rooms, tasks, jobs, sequences, the cut; beat-snapped cuts (`POST /api/sequence/analyze`, then ops `set_song_map`, `set_bar_snap`, `set_shot_bars` via `/api/sequence/op`)
+  - Sequences API for a beat-snapped cut: `GET /api/sequence?id=` shows `song_map`, `song_map_stale`, `song_map_job` (`status` running / error + `error` sentence; a run a BWF restart killed reads as error), `snap_report.warnings`, `snap_error`, and per shot `window` + `follows_song`. `set_shot_bars` and `set_bar_snap` answer with `reflow_stale_count` (made shots the move turned stale).
+  - The Cutting Room page shows the same: Find the beats / Snap to beats in the cut bar, Bars / Ends at song end / Follows the song in the shot inspector, with every number and sentence taken from that GET (`tests/test_bar_snap_ui.py`).
+  - Forge Master (`POST /api/forge/music-video`): `on_beats` (bool, default true) finds the song's beats, snaps the shots to whole bars and records `planner` (`beats` / `even`) and `planner_note` (a sentence when it fell back to even spacing) on `GET /api/forge/run`; `on_beats: false` plans evenly as before.
 - `docs/API-EXAMPLES.md` — a worked song request (submit, poll, download) run on a real lane, and each Music room mode's fields
 - `docs/WRITING-A-PACK.md` — the engine-pack contract, for adding a new model family
 - `SECURITY.md` — exactly what the request guard does and does not protect against

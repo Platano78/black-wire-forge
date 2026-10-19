@@ -73,7 +73,7 @@ def apply_sing_along(g, p):
 STYLE_FIELDS = [
     {"id": "style_1", "label": "Style", "type": "pool_select", "pool": "lora",
      "match": {"any": ["minimax_h3", "minimax-h3"],
-               "none": ["turbo", "lightning", "acc", "distill", "upscal", "msr", "reference", "ic-lora", "ic_lora", "control", "ingredients"]}, "default": "",
+               "none": ["turbo", "taomate", "lightning", "acc", "distill", "upscal", "msr", "reference", "ic-lora", "ic_lora", "control", "ingredients"]}, "default": "",
      "tier": "advanced", "group": "Style", "order": 20,
      "hint": "A style pack installed on this lane, if any. \"None\" changes nothing."},
     {"id": "style_1_strength", "label": "Style strength", "type": "number", "default": 1.0,
@@ -83,7 +83,7 @@ STYLE_FIELDS = [
      "disabled_reason": "Only used when a Style pack is chosen."},
     {"id": "style_2", "label": "Style 2", "type": "pool_select", "pool": "lora",
      "match": {"any": ["minimax_h3", "minimax-h3"],
-               "none": ["turbo", "lightning", "acc", "distill", "upscal", "msr", "reference", "ic-lora", "ic_lora", "control", "ingredients"]}, "default": "",
+               "none": ["turbo", "taomate", "lightning", "acc", "distill", "upscal", "msr", "reference", "ic-lora", "ic_lora", "control", "ingredients"]}, "default": "",
      "tier": "advanced", "group": "Style", "order": 22,
      "hint": "A second style pack, stacked on top of the first."},
     {"id": "style_2_strength", "label": "Style 2 strength", "type": "number", "default": 1.0,
@@ -121,7 +121,19 @@ def h3_fl2va_graph(p, m):
         "92": {"class_type": "SaveVideo", "inputs": {
             "video": ["91", 0], "filename_prefix": "blackwire/VID", "format": "auto", "codec": "auto"}},
     }
-    if p.get("turbo_lora"):
+    if p.get("turbo_lora") and p.get("fast_kind") == "taomate":
+        # The measured fast draft (2026-10-17 bench):
+        # the FL2VA 3-step LoRA, run at 4 steps through the sigma shift, beta + er_sde.
+        # fl2va only; the sigma shift (node 8) sits between the LoRA and the model readers.
+        g["7"] = {"class_type": "LoraLoaderModelOnly", "inputs": {
+            "model": ["6", 0], "lora_name": m["h3_taomate_lora"], "strength_model": 1.0}}
+        g["8"] = {"class_type": "MiniMaxH3SigmaShift", "inputs": {
+            "model": ["7", 0], "shift_video": 12.0, "shift_audio": 3.0}}
+        g["16"]["inputs"]["model"] = ["8", 0]
+        g["9"]["inputs"]["model"] = ["8", 0]
+        g["9"]["inputs"]["scheduler"] = "beta"
+        g["17"]["inputs"]["sampler_name"] = "er_sde"
+    elif p.get("turbo_lora"):
         # Model-only LoRA: the H3 CLIP is separate, so only the UNET gets patched.
         g["7"] = {"class_type": "LoraLoaderModelOnly", "inputs": {
             "model": ["6", 0], "lora_name": m["h3_turbo_lora"], "strength_model": 1.0}}
@@ -591,6 +603,7 @@ ENGINE = {
         "h3_vae_audio": ("vae", {"all": ["minimax_h3", "audio"]}),
         "h3_turbo_lora": ("lora", {"all": ["minimax_h3"], "any": ["turbo", "4step", "lightx2v"],
                                    "prefer": ["comfy", "fl2v"]}),
+        "h3_taomate_lora": ("lora", {"all": ["minimax_h3"], "any": ["taomate"]}),
     },
     # W2: where each role's file comes from -- copied from docs/MODELS.md's table, which
     # tests/test_model_sources.py keeps in step with this both ways. Setup shows these;
@@ -618,6 +631,11 @@ ENGINE = {
             {"repo": "Comfy-Org/MiniMax-H3", "file": "loras/minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors", "size": 1_956_192_992, "folder": "loras", "subdir": "minimax_h3", "run_by_us": True, "licence": "MiniMax-H3 Model License"},
             {"repo": "TenStrip/MinimaxH3-Turbo_Shenanigans", "file": "lightx2v_hybrid-4to8step-Turbo_r48.safetensors", "size": 943_947_204, "folder": "loras", "subdir": "minimax_h3", "run_by_us": True, "licence": None},
         ],
+        # The repo's card states no licence; the LoRA is made from MiniMax-H3, so that licence's
+        # terms (territory clause included) are treated as applying.
+        "h3_taomate_lora": [
+            {"repo": "Kijai/MiniMax-H3-experimental", "file": "loras/minimax_h3_taomate_fl2va_3step_avg_rank_19_bf16.safetensors", "size": 176_723_664, "folder": "loras", "subdir": "minimax_h3", "run_by_us": True, "licence": None},
+        ],
     },
     "nodes": [
         {"name": "ComfyUI-GGUF", "url": "https://github.com/city96/ComfyUI-GGUF"},
@@ -629,6 +647,9 @@ ENGINE = {
         "fl2va": ["h3_unet_fl2va", "h3_vae_video", "h3_vae_audio", ["h3_clip_int8", "h3_clip_nvfp4"]],
         "ref2v": ["h3_unet_ref2va", "h3_vae_video", "h3_vae_audio", ["h3_clip_int8", "h3_clip_nvfp4"]],
         "turbo": ["h3_turbo_lora"],
+        # The fast-draft LoRA (fast_kind "taomate", fl2va only); also needs the
+        # sigma-shift node (needs_nodes below).
+        "taomate": ["h3_taomate_lora"],
         # C3.4b: the continue graph is the fl2va unet + MotionContext nodes
         # from the installed NikoDemon80/ComfyUI-H3-Motion-Context pack (no
         # extra model file of its own) -- same models fl2va needs, no more.
@@ -642,7 +663,10 @@ ENGINE = {
         "h3_vae_video": "the H3 video decoder",
         "h3_vae_audio": "the H3 audio decoder",
         "h3_turbo_lora": "the speed pack",
+        "h3_taomate_lora": "the fast-draft pack",
     },
+    "optional_nodes": {"h3_sigma_shift": "MiniMaxH3SigmaShift"},
+    "needs_nodes": {"taomate": ["h3_sigma_shift"]},
     "graphs": {
         "fl2va": h3_fl2va_graph,
         "ref2v": h3_ref2va_graph,
@@ -651,6 +675,12 @@ ENGINE = {
     "describe": _describe,
     "mode_words": ENGINE_MODE_WORDS,
     "mode_rooms": {"fl2va": "video", "ref2v": "video", "continue": "video"},
+    # Front door: which task (tasks.json) each mode is a way of (engines/__init__.py "mode_tasks").
+    "mode_tasks": {
+        "fl2va": {"task": "animate", "way": "Animate"},
+        "ref2v": {"task": "people", "way": "People in a scene"},
+        "continue": {"task": "continue", "way": "Continue"},
+    },
     # E1: the modes whose graphs take `sing_audio`/`sing_start` (apply_sing_along),
     # and what the Cutting Room needs to place a shot on the song: frames per
     # second, the length field, and how many frames a CABLED shot re-renders
@@ -658,6 +688,14 @@ ENGINE = {
     "sing_along": {
         "fl2va": {"fps": 24, "length_field": "length", "carried_frames": 0},
         "continue": {"fps": 24, "length_field": "length", "carried_frames": 22},
+    },
+    # Beat-snap (bwf-beat-snap_spec): the frame counts a mode can render, so the Cutting Room can size a
+    # shot to its bar window. A render is `step*n + offset` frames, `min`..`max`; `carried` frames at the
+    # head are re-rendered context that the take's delivery drops (continue: 22).
+    "frame_grid": {
+        "fl2va": {"step": 17, "offset": 5, "min": 124, "max": 362, "carried": 0},
+        "continue": {"step": 17, "offset": 5, "min": 124, "max": 362, "carried": 22},
+        "ref2v": {"step": 17, "offset": 5, "min": 124, "max": 362, "carried": 0},
     },
     # E2: a continue take made with `field` on and a cabled previous shot keeps
     # its first `overlap_frames` (the shot before's last frames, re-rendered),
@@ -754,6 +792,13 @@ ENGINE = {
              "tier": "advanced", "group": "Quality", "order": 2,
              "hint": "A faster mode that only works at low detail settings. "
                      "Turns itself off above 8 steps."},
+            # Which speed LoRA the fast mode uses. "taomate" is the measured fast draft
+            # (fl2va only, 4 steps); the presets and the "Fast draft" tier set it.
+            {"id": "fast_kind", "label": "Fast mode kind", "type": "select",
+             "options": ["turbo", "taomate"],   # no default: a default would land in every saved shot
+             "tier": "advanced", "group": "Quality", "order": 2,
+             "hint": "Turbo is the standard speed pack; taomate is the 4-step fast draft. "
+                     "Only used with Fast mode."},
             # Blank uses the int8 encoder when the lane has one, else the nvfp4 one
             # (h3_fl2va_graph's `clip` line); ref2v below reads them in the same order.
             {"id": "encoder", "label": "Text encoder override", "type": "text",
@@ -854,6 +899,14 @@ ENGINE = {
             {"id": "default-length", "label": "Standard length (default)", "note":
              "362 frames (about 15.1s) is the trained max and this field's own default.",
              "values": {"length": 362}},
+            # Measured 2026-10-17:
+            # 41.7 s vs 76.7 s for the 8-step turbo draft, same look over 3 seeds,
+            # owner-approved by ear. fl2va only; needs the LoRA and the sigma-shift node.
+            {"id": "taomate-4step", "label": "Fast draft (4-step, measured)", "note":
+             "TaoMate 4-step speed pack: about 1.8x faster than the 8-step fast mode with "
+             "the same look (3 seeds, owner-approved 2026-10-17). Drafts only.",
+             "values": {"steps": 4, "turbo_lora": True, "fast_kind": "taomate"},
+             "requires": "taomate"},
             # Full citation: 8 steps with the speed pack measured +2.30 dB over the
             # 4-step version (5/5 seeds, paired t=12.08) and removed a 1.04-1.10x
             # push-in drift entirely (1.000x at 8 steps). Deployed end-to-end:
@@ -862,7 +915,7 @@ ENGINE = {
             {"id": "turbo-8step", "label": "Fast (8-step, measured)", "note":
              "8 steps with the speed pack measured a clear quality gain over the "
              "4-step version and removed a small drift entirely. Measured 2026-09-21.",
-             "values": {"steps": 8, "turbo_lora": True}},
+             "values": {"steps": 8, "turbo_lora": True, "fast_kind": "turbo"}},
         ],
         "ref2v": [
             {"id": "default-length", "label": "Standard length (node default)", "note":
@@ -913,15 +966,15 @@ ENGINE = {
             {"id": "fast", "label": "Fast", "requires": "turbo",
              "unavailable_reason": "the quick ones need a speed pack, which this machine does not have",
              "why": "speed pack on, quickest, good for trying an idea",
-             "values": {"steps": 4, "turbo_lora": True}},
+             "values": {"steps": 4, "turbo_lora": True, "fast_kind": "turbo"}},
             {"id": "fast-plus", "label": "Fast+", "requires": "turbo",
              "unavailable_reason": "the quick ones need a speed pack, which this machine does not have",
              "why": "speed pack on, a little more detail",
-             "values": {"steps": 6, "turbo_lora": True}},
+             "values": {"steps": 6, "turbo_lora": True, "fast_kind": "turbo"}},
             {"id": "fast-best", "label": "Fast best", "requires": "turbo",
              "unavailable_reason": "the quick ones need a speed pack, which this machine does not have",
              "why": "speed pack on, best of the quick ones",
-             "values": {"steps": 8, "turbo_lora": True}},
+             "values": {"steps": 8, "turbo_lora": True, "fast_kind": "turbo"}},
             {"id": "middle", "label": "Middle",
              "why": "runs clean, in between, can look soft",
              "values": {"steps": 12, "turbo_lora": False}},
@@ -1014,7 +1067,7 @@ ENGINE = {
         {"id": "minimax_h3", "label": "MiniMax-H3", "cap": "video",
          "modes": ["fl2va", "ref2v", "continue"], "role": "h3_unet_fl2va",
          "match": {"any": ["minimax_h3", "minimax-h3"],
-                   "none": ["turbo", "lightning", "acc", "distill", "upscal", "msr", "reference", "ic-lora", "ic_lora", "control", "ingredients"]},
+                   "none": ["turbo", "taomate", "lightning", "acc", "distill", "upscal", "msr", "reference", "ic-lora", "ic_lora", "control", "ingredients"]},
          "hf_base": "MiniMaxAI/MiniMax-H3", "folder": "minimax_h3"},
     ],
 }

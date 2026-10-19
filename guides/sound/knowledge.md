@@ -188,8 +188,8 @@ Per-engine text shape, in the moment order a user actually fills them:
 - **Which engine, when unstated:** default to `song` (ACE-Step) — fastest of the three, and the
   only one measured to end cleanly at any length. Only pick `music` (MiniMax-Music3) for something
   it's actually for (a five-minute full song, a structured-caption request) or `yue2` for a
-  planned-melody request — never switch engines on a guess. — **inferred**, a rule added after this
-  guide's own live trial surfaced a silent wrong-engine pick.
+  planned-melody request — never switch engines on a guess. — **inferred**, a rule added after a
+  silent wrong-engine pick was observed.
 - **Cover `mode`:** "melody" (the app's own field default AND its recommended choice) keeps the
   source's tune while the arrangement changes; "full" also imposes the source's original harmony.
   Ask rather than silently picking either one just because the request didn't say — it's a real
@@ -284,8 +284,7 @@ non-commercial/licence rules elsewhere in this repo).
   **Borrow:** "generate one sound per request, not a sequence" is already this app's own `sfx`
   design (one prompt, one short clip) — confirms rather than changes anything. The temporal-shape
   and acoustic-space vocabulary ("starts quietly and builds to...", "in a large cathedral") is a
-  useful addition to how the Sound FX skill should coach a user past a bare one-line request; not
-  yet folded into `skills.md`'s worked example, worth adding next pass. **Don't copy:** the
+  useful addition to how the Sound FX skill should coach a user past a bare one-line request. **Don't copy:** the
   "prompt influence" slider — Stable Audio Open's ComfyUI graph in this app has no such control
   exposed, and inventing one would violate the "never suggest a control that doesn't exist" rule.
 

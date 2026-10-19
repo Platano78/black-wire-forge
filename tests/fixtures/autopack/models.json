@@ -1,0 +1,22 @@
+{
+ "diffusion_models": [
+  "flatmodel_bf16.safetensors",
+  "flatmodel_distilled_bf16.safetensors",
+  "editmodel_fp8.safetensors",
+  "multimodel_bf16.safetensors",
+  "zq_dit_int8_convrot.safetensors"
+ ],
+ "vae": [
+  "flat_vae.safetensors",
+  "edit_vae.safetensors",
+  "multi_vae.safetensors",
+  "zq_vae.safetensors",
+  "pixel_space"
+ ],
+ "text_encoders": [
+  "flat_text_enc.safetensors",
+  "edit_text_enc_fp8.safetensors",
+  "multi_text_enc.safetensors",
+  "zq_clip.safetensors"
+ ]
+}

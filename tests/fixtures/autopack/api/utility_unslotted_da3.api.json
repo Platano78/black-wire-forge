@@ -1,0 +1,49 @@
+{
+ "1": {
+  "inputs": {
+   "image": "example.png"
+  },
+  "class_type": "LoadImage",
+  "_meta": {
+   "title": "Load Image"
+  }
+ },
+ "2": {
+  "inputs": {
+   "model_name": "depth_anything_3_large.safetensors"
+  },
+  "class_type": "LoadDA3Model",
+  "_meta": {
+   "title": "Load DA3 Model"
+  }
+ },
+ "3": {
+  "inputs": {
+   "da3": [
+    "2",
+    0
+   ],
+   "image": [
+    "1",
+    0
+   ]
+  },
+  "class_type": "RunDA3",
+  "_meta": {
+   "title": "Run DA3"
+  }
+ },
+ "4": {
+  "inputs": {
+   "images": [
+    "3",
+    0
+   ],
+   "filename_prefix": "depth"
+  },
+  "class_type": "SaveImage",
+  "_meta": {
+   "title": "Save Image"
+  }
+ }
+}

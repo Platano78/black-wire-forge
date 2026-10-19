@@ -141,7 +141,7 @@ with sync_playwright() as pw:
     browser = pw.chromium.launch()
 
     # ------------------------------------------------------------------ RS1
-    print("RS1: discovery still running -> menu closed, 'checking...', no 'needs'")
+    print("RS1: discovery still running -> the ways read 'checking...', no 'needs'")
     gate = os.path.join(SCRATCH, "rs1.gate")
     lp = free_port()
     url1, _ = start_server("rs1", [{"id": "t", "name": "Fake lane", "host": "127.0.0.1", "port": lp,
@@ -151,38 +151,30 @@ with sync_playwright() as pw:
           wait(lambda: (lambda d: d["lanes"][0]["up"] and not d["lanes"][0]["discovered"])(http(url1 + "api/lanes")[1]), 20))
     page = browser.new_page(viewport={"width": 1440, "height": 900})
     page.on("pageerror", lambda e: errors.append(str(e)))
-    page.goto(url1 + "#room=video", wait_until="networkidle", timeout=30000)
+    page.goto(url1 + "#task=video", wait_until="networkidle", timeout=30000)
     page.wait_for_timeout(1500)
     check("(setup) discovery is still running while the page is looked at",
           not http(url1 + "api/lanes")[1]["lanes"][0]["discovered"])
-    check("the engine menu is closed on load", not page.is_visible("#enginePicker"))
-    chip = page.text_content("#enginePickerWrap") or ""
-    check("the chip reads 'checking…'", "checking…" in chip, chip)
+    rows = page.eval_on_selector_all("#ways .engine-row", "els => els.map(e => e.innerText)")
+    check("the ways list reads 'checking…' on every row, still no 'needs'",
+          len(rows) >= 2 and all("checking…" in r and "needs" not in r.lower() for r in rows), rows)
     body = page.inner_text("body")
     check("no 'needs' text anywhere on the page", "needs" not in body.lower(), [l for l in body.splitlines() if "needs" in l.lower()][:3])
-    page.click("#engineChipBtn")
-    page.wait_for_timeout(300)
-    rows = page.eval_on_selector_all("#enginePicker .engine-row", "els => els.map(e => e.innerText)")
-    check("opening it by click shows 'checking…' on the engines, still no 'needs'",
-          bool(rows) and all("checking…" in r and "needs" not in r.lower() for r in rows), rows)
-    page.click("#engineChipBtn")   # close it again
     open(gate, "w").close()        # discovery may now answer
     check("(setup) discovery answered", wait(lambda: http(url1 + "api/lanes")[1]["lanes"][0]["discovered"], 30))
-    page.wait_for_function("() => !document.querySelector('#enginePickerWrap').innerText.includes('checking')", timeout=15000)
-    check("after it answered the menu is still closed (it opens only on a click)", not page.is_visible("#enginePicker"))
+    page.wait_for_function("() => !document.querySelector('#ways').innerText.includes('checking')", timeout=15000)
+    check("after it answered no row says 'checking…' any more",
+          "checking" not in page.inner_text("#ways"), page.inner_text("#ways"))
     eng = http(url1 + "api/engines?lane=t")[1]
-    lacking = next((r["id"] for r in eng["rooms"] if len(r["modes"]) >= 2 and any(
-        not next(m for m in eng[x["cap"]]["modes"] if m["id"] == x["mode"])["available"] for x in r["modes"])), None)
-    check("(setup) some room has an engine whose model this lane lacks", lacking is not None)
-    page.goto(url1 + "#room=" + lacking, wait_until="networkidle", timeout=30000)
+    lacking = next((t["id"] for t in eng["tasks"] if len(t["ways"]) >= 2 and any(
+        not next(m for m in eng[w["cap"]]["modes"] if m["id"] == w["mode"])["available"] for w in t["ways"])), None)
+    check("(setup) some task has a way whose model this lane lacks", lacking is not None)
+    page.goto(url1 + "#task=" + lacking, wait_until="networkidle", timeout=30000)
     page.reload(wait_until="networkidle")
     page.wait_for_timeout(800)
-    check("(after discovery) a fresh load still leaves the menu closed", not page.is_visible("#enginePicker"))
-    page.click("#engineChipBtn")
-    page.wait_for_timeout(300)
-    rows = page.eval_on_selector_all("#enginePicker .engine-row", "els => els.map(e => e.innerText)")
-    check("opened by the user, a missing model reads 'needs …'", any("needs " in r for r in rows), rows)
-    check("...and no row says 'checking…' any more", not any("checking" in r for r in rows), rows)
+    rows = page.eval_on_selector_all("#ways .engine-row", "els => els.map(e => e.innerText)")
+    check("(after discovery) a missing model reads 'needs …'", any("needs " in r for r in rows), rows)
+    check("...and no row says 'checking…'", not any("checking" in r for r in rows), rows)
     page.close()
 
     # ------------------------------------------------------------- RS2 / RS3 / RS4
@@ -348,7 +340,7 @@ with sync_playwright() as pw:
     print("RS4: a failed process job shows what its program printed")
     page = browser.new_page(viewport={"width": 1440, "height": 900})
     page.on("pageerror", lambda e: errors.append(str(e)))
-    page.goto(url + "#room=3d", wait_until="networkidle", timeout=30000)
+    page.goto(url + "#task=turntable", wait_until="networkidle", timeout=30000)
     page.wait_for_selector('#binBody tr[data-job="rs4job00001"]', timeout=15000)
     page.click('#binBody tr[data-job="rs4job00001"]')
     page.wait_for_timeout(1500)

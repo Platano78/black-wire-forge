@@ -1,0 +1,46 @@
+{
+ "schema": 1,
+ "id": "tw-e",
+ "cap": "video",
+ "graph": "graph.api.json",
+ "fields": [
+  {
+   "id": "prompt",
+   "label": "Prompt",
+   "type": "textarea",
+   "tier": "primary",
+   "group": "Content",
+   "order": 1,
+   "bind": [
+    {
+     "node": "1",
+     "input": "text"
+    }
+   ]
+  },
+  {
+   "id": "pic",
+   "label": "Picture",
+   "type": "image",
+   "tier": "primary",
+   "group": "Content",
+   "order": 2,
+   "bind": [
+    {
+     "node": "2",
+     "input": "image"
+    }
+   ]
+  }
+ ],
+ "mode": "twnowhere",
+ "label": "Twnowhere",
+ "task": "tw-nowhere",
+ "task_words": {
+  "verb": "A lost thing",
+  "short": "A lost thing",
+  "line": "A lost thing line.",
+  "group": "SOUND"
+ },
+ "room": "nowhere"
+}

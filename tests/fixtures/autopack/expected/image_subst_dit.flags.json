@@ -1,0 +1,18 @@
+[
+ {
+  "id": "model_substitution:unet",
+  "kind": "ack",
+  "text": "The template names zq_dit_fp16.safetensors, but zq_dit_int8_convrot.safetensors will be used instead (Test lane).",
+  "data": {
+   "role": "unet",
+   "template_file": "zq_dit_fp16.safetensors",
+   "file": "zq_dit_int8_convrot.safetensors"
+  }
+ },
+ {
+  "id": "licence",
+  "kind": "answer",
+  "text": "The template does not say what licence its models have. Check the licences of the models listed in the attribution, then confirm.",
+  "data": {}
+ }
+]

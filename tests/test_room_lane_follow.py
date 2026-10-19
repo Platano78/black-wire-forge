@@ -137,8 +137,15 @@ if not wait_true("server is up and lists its 3 lanes", server_answers, 30):
     sys.exit(1)
 
 
+TASK_OF = {"picture": ("t2i", "PICTURE"), "video": ("video", "MOTION"), "3d": ("mesh", "OBJECT")}
+
+
 def tab(page, rid):
-    return '#roomStrip [data-room-id="%s"]' % rid
+    """The bar's tab for the task that stands for the room (its group button is pressed first)."""
+    task, group = TASK_OF[rid]
+    page.click('#roomStrip [data-group="%s"]' % group)
+    page.wait_for_selector('#roomStrip [data-task-id="%s"]' % task)
+    return '#roomStrip [data-task-id="%s"]' % task
 
 
 try:

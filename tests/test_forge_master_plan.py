@@ -365,6 +365,69 @@ def _test_plan_line():
 
 
 # ---------------------------------------------------------------------------
+# beat_windows
+# ---------------------------------------------------------------------------
+
+def _song_map(bpm, seconds, first=0.5, beats_per_bar=4):
+    bar = 60.0 / bpm * beats_per_bar
+    downbeats, t = [], first
+    while t < seconds - 0.01:
+        downbeats.append(round(t, 4))
+        t += bar
+    return {"downbeats": downbeats, "source": {"seconds": seconds}}, bar
+
+
+def _test_beat_windows():
+    sm, bar = _song_map(96, 60.0)
+    check("beat_windows: the 96 BPM map has 2.5 s bars", abs(bar - 2.5) < 1e-9, bar)
+    ws = forge_master.beat_windows(sm, 60.0)
+    check("beat_windows: shots of 2 bars (k = round(4 / 2.5) = 2)", len(ws) > 1 and all(w["bars"] == 2 for w in ws[:-1]),
+          [w["bars"] for w in ws])
+    check("beat_windows: the last shot runs to the end, the others do not",
+          ws[-1]["to_end"] is True and not any(w["to_end"] for w in ws[:-1]))
+    check("beat_windows: the windows tile 0..end with no gap",
+          ws[0]["f0"] == 0 and all(a["f1"] == b["f0"] for a, b in zip(ws, ws[1:])) and ws[-1]["f1"] == round(60.0 * 24),
+          [(w["f0"], w["f1"]) for w in ws][:3])
+    check("beat_windows: start and len are the frames over 24",
+          all(abs(w["start"] - w["f0"] / 24) < 1e-9 and abs(w["len"] - (w["f1"] - w["f0"]) / 24) < 1e-9 for w in ws))
+    check("beat_windows: every frames is 8n+1 and covers the window plus one spare frame",
+          all(w["frames"] % 8 == 1 and w["frames"] >= (w["f1"] - w["f0"]) + 1 for w in ws),
+          [(w["frames"], w["f1"] - w["f0"]) for w in ws if not (w["frames"] % 8 == 1 and w["frames"] >= w["f1"] - w["f0"] + 1)])
+    check("beat_windows: indexes run 0..n-1 and the keys the run reads are there",
+          [w["index"] for w in ws] == list(range(len(ws))) and all({"index", "frames", "start", "len", "bars", "to_end"} <= set(w) for w in ws))
+    check("beat_windows: deterministic", forge_master.beat_windows(sm, 60.0) == ws)
+    check("beat_windows: seconds is the map's own length when it has one",
+          forge_master.beat_windows(sm, 61.5) == ws)
+    lyr = forge_master.assign_lyrics(ws, forge_master.parse_lyrics("[Verse]\na\nb\nc"))
+    check("beat_windows: assign_lyrics keeps bars, to_end and the frame numbers",
+          all(l["bars"] == w["bars"] and l["to_end"] == w["to_end"] and l["f0"] == w["f0"] and l["frames"] == w["frames"]
+              for l, w in zip(lyr, ws)) and sum(len(l["lines"]) for l in lyr) == 3)
+    sys_, user = forge_master.build_scene_request(lyr, "")
+    check("beat_windows: a scene request can be written for them", "EXACTLY %d entries" % len(ws) in sys_)
+    line = forge_master.plan_line(ws)
+    check("beat_windows: plan_line says the bars and the beats",
+          "shots of 2 bars" in line and "on the song's beats" in line and "say stop to change it." in line, line)
+    check("beat_windows: plan_line of one shot reads singular",
+          forge_master.plan_line(forge_master.beat_windows(_song_map(96, 6.0)[0], 6.0)[:1]).startswith("1 shot "))
+
+    sm180, bar180 = _song_map(180, 60.0)
+    ws180 = forge_master.beat_windows(sm180, 60.0)
+    check("beat_windows: 180 BPM (1.33 s bars) gives k = 3", abs(bar180 - 4 / 3) < 1e-9 and ws180[0]["bars"] == 3, ws180[0]["bars"])
+    check("beat_windows: a very slow song is still at least one bar",
+          forge_master.beat_windows(_song_map(30, 60.0)[0], 60.0)[0]["bars"] == 1)
+    for bad in ({"downbeats": []}, {"downbeats": [1.0]}, {}, None):
+        try:
+            forge_master.beat_windows(bad, 30.0)
+            raised = None
+        except ValueError as e:
+            raised = str(e)
+        check("beat_windows: fewer than two downbeats raises a sentence (%r)" % (bad,),
+              raised and raised.endswith(".") and "bars" in raised, raised)
+    one = forge_master.beat_windows({"downbeats": [0.5, 3.0], "source": {"seconds": 4.0}}, 4.0)
+    check("beat_windows: a song of one bar is one shot to the end", len(one) == 1 and one[0]["to_end"] and one[0]["f0"] == 0)
+
+
+# ---------------------------------------------------------------------------
 # Run all
 # ---------------------------------------------------------------------------
 
@@ -377,6 +440,7 @@ if __name__ == "__main__":
     _test_parse_scene_reply()
     _test_write_scenes()
     _test_plan_line()
+    _test_beat_windows()
 
     print()
     if FAILED:

@@ -1,0 +1,32 @@
+{
+ "schema": 1,
+ "id": "utility-unslotted-da3",
+ "cap": "image",
+ "mode": "unslotted_da3",
+ "label": "Utility: Depth From a Picture",
+ "graph": "graph.api.json",
+ "fields": [
+  {
+   "id": "picture",
+   "label": "Picture",
+   "type": "image",
+   "tier": "primary",
+   "group": "Content",
+   "required": true,
+   "bind": [
+    {
+     "node": "1",
+     "input": "image"
+    }
+   ],
+   "order": 1
+  }
+ ],
+ "requires": [],
+ "licence": {
+  "name": "Unknown (from the ComfyUI template utility_unslotted_da3)",
+  "shippable": false,
+  "attribution": "Made from the ComfyUI template utility_unslotted_da3 on Test lane; models: not listed"
+ },
+ "note": "Estimates depth for one picture."
+}

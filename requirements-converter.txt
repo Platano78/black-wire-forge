@@ -1,0 +1,6 @@
+# Optional. Lets scripts/autopack.py (and the Workflows tab's "Add as a mode") convert a ComfyUI
+# template with your own ComfyUI's page, in a headless browser. Not needed to run Black Wire Forge.
+# After installing, download the browser once:
+#   .venv/bin/python -m playwright install chromium
+# Without this, use Workflow > Export (API) in ComfyUI and `scripts/autopack.py convert --api-json FILE`.
+playwright

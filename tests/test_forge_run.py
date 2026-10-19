@@ -12,7 +12,8 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
 
 import forge_master  # noqa: E402
-from forge_run import MusicVideoRun, RunError, RunStopped  # noqa: E402
+from forge_run import BeatsUnavailable, MusicVideoRun, RunError, RunStopped  # noqa: E402
+import forge_run  # noqa: E402
 
 FAILED = []
 
@@ -561,6 +562,118 @@ def _test_no_photo_makes_the_person():
           "suits the song" in [c for c in fb3.calls if c[0] == "make_portrait"][0][1][0])
 
 
+class BeatsBackend(FakeBackend):
+    """A FakeBackend that can plan on the song's beats."""
+
+    def __init__(self, song_map=None, unavailable=None, **kw):
+        super().__init__(**kw)
+        self.song_map, self.unavailable = song_map, unavailable
+        self.planner = None
+
+    def find_beats(self, sid):
+        self._record("find_beats", sid)
+        if self.unavailable:
+            raise BeatsUnavailable(self.unavailable)
+        return self.song_map
+
+    def snap_shots(self, sid, slot_ids, windows):
+        self._record("snap_shots", sid, list(slot_ids), windows)
+
+    def set_planner(self, planner, note):
+        self._record("set_planner", planner, note)
+
+
+def _beat_map(seconds=12.0, bar=2.5, first=0.5):
+    d, t = [], first
+    while t < seconds - 0.01:
+        d.append(round(t, 4))
+        t += bar
+    return {"downbeats": d, "source": {"seconds": seconds}}
+
+
+def _test_on_beats():
+    sm = _beat_map()
+    fb = BeatsBackend(song_map=sm)
+    out = MusicVideoRun(fb).run("a", "me.png", "neon", "[Verse]\nla la\nla", 576, 768, on_beats=True)
+    want = forge_master.beat_windows(sm, 12.0)
+    names = [c[0] for c in fb.calls]
+    snap = [c for c in fb.calls if c[0] == "snap_shots"]
+    check("on_beats: find_beats is asked once, after the master is imported",
+          names.count("find_beats") == 1 and names.index("import_master") < names.index("find_beats"))
+    check("on_beats: the planner is recorded as beats with no note",
+          ("set_planner", ("beats", ""), {}) in fb.calls, [c for c in fb.calls if c[0] == "set_planner"])
+    shots = [c[1][1] for c in fb.calls if c[0] == "add_shot"]
+    check("on_beats: the shots are the windows beat_windows plans (their frames)",
+          [w["frames"] for w in shots] == [w["frames"] for w in want] and out["shots"] == len(want), (len(shots), len(want)))
+    check("on_beats: snap_shots gets the slot ids and the planned windows, once, after audio-led is on",
+          len(snap) == 1 and len(snap[0][1][1]) == len(want)
+          and [(w["f0"], w["f1"], w["frames"], w["bars"], w["to_end"]) for w in snap[0][1][2]]
+          == [(w["f0"], w["f1"], w["frames"], w["bars"], w["to_end"]) for w in want]
+          and names.index("set_audio_led") < names.index("snap_shots") < names.index("generate_shot"), names[:40])
+    check("on_beats: the run completes with a cut", out["file"] == "video.mp4" and "cut" in names)
+
+    note = forge_run.NO_BEATS_LANE
+    check("the no-lane sentence is exact", note == "No lane could find the song's beats, so the shots are spaced evenly instead.")
+    fb2 = BeatsBackend(unavailable=note)
+    out2 = MusicVideoRun(fb2).run("a", "me.png", "neon", "", 576, 768, on_beats=True)
+    even = forge_master.plan_windows(12.0)
+    check("fallback: even windows, equal to plan_windows",
+          [c[1][1]["frames"] for c in fb2.calls if c[0] == "add_shot"] == [w["frames"] for w in even] and out2["shots"] == len(even))
+    check("fallback: planner even with the exact sentence, and snap_shots is never called",
+          ("set_planner", ("even", note), {}) in fb2.calls and "snap_shots" not in [c[0] for c in fb2.calls],
+          [c for c in fb2.calls if c[0] == "set_planner"])
+
+    fb3 = BeatsBackend(unavailable=forge_run.beats_failed("beat_this is not installed."))
+    MusicVideoRun(fb3).run("a", "me.png", "", "", 576, 768, on_beats=True)
+    check("a failed run's sentence is the generic one with the reason, one final period",
+          ("set_planner", ("even", "Finding the song's beats failed (beat_this is not installed), so the shots are spaced evenly instead."), {})
+          in fb3.calls, [c for c in fb3.calls if c[0] == "set_planner"])
+
+    fb4 = BeatsBackend(song_map={"downbeats": [1.0], "source": {"seconds": 12.0}})
+    MusicVideoRun(fb4).run("a", "me.png", "", "", 576, 768, on_beats=True)
+    note4 = [c for c in fb4.calls if c[0] == "set_planner"][0][1]
+    check("a map with too few bars falls back to even spacing with a sentence",
+          note4[0] == "even" and note4[1].startswith("Finding the song's beats failed (") and "snap_shots" not in [c[0] for c in fb4.calls], note4)
+
+    fb5 = BeatsBackend(song_map=sm)
+    MusicVideoRun(fb5).run("a", "me.png", "neon", "[Verse]\nla la\nla", 576, 768)
+    fb6 = FakeBackend()
+    MusicVideoRun(fb6).run("a", "me.png", "neon", "[Verse]\nla la\nla", 576, 768)
+    strip = lambda calls: [c for c in calls if c[0] != "set_planner"]
+    check("on_beats off (the default): find_beats and snap_shots are never called",
+          not {"find_beats", "snap_shots"} & {c[0] for c in fb5.calls})
+    check("on_beats off: the calls are byte-identical to the old path (a backend with no beats at all)",
+          strip(fb5.calls) == strip(fb6.calls))
+    check("on_beats off: the planner is recorded as even", ("set_planner", ("even", ""), {}) in fb5.calls)
+
+    fb7 = BeatsBackend(song_map=sm)
+    def stop_in_find(sid):
+        fb7._record("find_beats", sid)
+        fb7.set_stop()
+        raise RunStopped()
+    fb7.find_beats = stop_in_find
+    try:
+        MusicVideoRun(fb7).run("a", "me.png", "", "", 576, 768, on_beats=True)
+        check("a stop pressed during find_beats raises RunStopped", False, "no exception")
+    except RunStopped:
+        names7 = [c[0] for c in fb7.calls]
+        check("a stop pressed during find_beats raises RunStopped, before any shot is made",
+              "add_shot" not in names7 and "make_still" not in names7, names7)
+
+    fb8 = BeatsBackend(song_map=sm)
+    fb8.snap_shots = lambda sid, slot_ids, windows: (_ for _ in ()).throw(RunError("The beat plan and the Cutting Room disagree on shot 2."))
+    try:
+        MusicVideoRun(fb8).run("a", "me.png", "", "", 576, 768, on_beats=True)
+        check("a snap that disagrees with the plan ends the run with its sentence", False, "no exception")
+    except RunError as e:
+        check("a snap that disagrees with the plan ends the run with its sentence, before any shot is generated",
+              "disagree on shot 2" in str(e) and "generate_shot" not in [c[0] for c in fb8.calls], str(e))
+    rid = forge_run.new_run()
+    rec = forge_run.get_run(rid)
+    check("a new record starts with planner None and an empty note", rec["planner"] is None and rec["planner_note"] == "", rec)
+    forge_run.update_run(rid, status="done")
+
+
 # ---------------------------------------------------------------------------
 # Run all
 # ---------------------------------------------------------------------------
@@ -576,6 +689,7 @@ if __name__ == "__main__":
     _test_wait_job_timeout()
     _test_still_retry_and_orientation()
     _test_no_photo_makes_the_person()
+    _test_on_beats()
 
     print()
     if FAILED:

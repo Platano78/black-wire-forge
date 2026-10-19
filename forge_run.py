@@ -33,6 +33,16 @@ anything the person should read; ``RunStopped`` is raised by
     say(stage, message, done, total)
         (progress sink)
 
+Only when the run is asked to plan on the song's beats (``on_beats=True``)::
+
+    find_beats(sid) -> song map dict
+        (finds the master's bars; raises BeatsUnavailable(sentence) when it cannot)
+    snap_shots(sid, slot_ids, windows)
+        (turns Snap to beats on, gives each shot its bars, and raises RunError
+         unless the sequence derives exactly these windows)
+
+Optional: ``plan(plan_line, n_shots)`` and ``set_planner(planner, note)``.
+
 """
 
 import json
@@ -56,6 +66,19 @@ class RunError(Exception):
 
 class RunStopped(Exception):
     """Raised by backend.check_stop() when the person pressed stop."""
+
+
+class BeatsUnavailable(Exception):
+    """Raised by backend.find_beats(): the song's beats could not be found. The message is the sentence the
+    person reads when the run falls back to evenly spaced shots."""
+
+
+NO_BEATS_LANE = "No lane could find the song's beats, so the shots are spaced evenly instead."
+
+
+def beats_failed(reason):
+    """The fallback sentence for a beat-finding run that errored or took too long."""
+    return "Finding the song's beats failed (%s), so the shots are spaced evenly instead." % str(reason).strip().rstrip(".")
 
 
 # ---------------------------------------------------------------------------
@@ -119,7 +142,7 @@ def new_run():
             return None
         rid = os.urandom(6).hex()
         FORGE_RUNS[rid] = {"id": rid, "kind": "music-video", "status": "running", "stage": "planning", "message": "",
-                           "done": 0, "total": 0, "plan_line": "", "sequence": None, "cut_id": None, "file": None,
+                           "done": 0, "total": 0, "plan_line": "", "planner": None, "planner_note": "", "sequence": None, "cut_id": None, "file": None,
                            "error": None, "created": time.time()}
         _save_locked()
         return rid
@@ -201,7 +224,7 @@ class MusicVideoRun:
 
     # -- pipeline ---------------------------------------------------------
 
-    def run(self, song_job_id, photo_name, style_note, lyrics, w, h, person=None):
+    def run(self, song_job_id, photo_name, style_note, lyrics, w, h, person=None, on_beats=False):
         """Execute the full music-video pipeline.
 
         Parameters
@@ -214,6 +237,9 @@ class MusicVideoRun:
             ``person`` (a short description, may be empty), and uses that.
         person : str or None
             Who is in the video when no photo was given.
+        on_beats : bool
+            Plan the shots on the song's bars (find the beats, snap the shots to them). When the beats cannot
+            be found the run plans evenly spaced shots instead and says so.
         style_note : str
             One-line style hint (may be empty).
         lyrics : str or None
@@ -245,7 +271,20 @@ class MusicVideoRun:
             self._check_stop()
 
             # plan windows
-            windows = forge_master.plan_windows(seconds)
+            planner, planner_note = "even", ""
+            if on_beats:
+                try:
+                    windows = forge_master.beat_windows(self.backend.find_beats(sid), seconds)
+                    planner = "beats"
+                except BeatsUnavailable as e:
+                    planner_note = str(e)
+                except ValueError as e:      # a map with too few bars, or shots the model cannot render
+                    planner_note = beats_failed(e)
+                self._check_stop()
+            if planner == "even":
+                windows = forge_master.plan_windows(seconds)
+            if hasattr(self.backend, "set_planner"):
+                self.backend.set_planner(planner, planner_note)
             self._check_stop()
 
             # plan_line (for the progress report)
@@ -338,6 +377,9 @@ class MusicVideoRun:
             # audio-led on
             self.backend.set_audio_led(sid)
             self._check_stop()
+            if planner == "beats":
+                self.backend.snap_shots(sid, slot_ids, windows)
+                self._check_stop()
 
             # generate shots (up to 2 attempts per shot)
             for i, slot_id in enumerate(slot_ids):

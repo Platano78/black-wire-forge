@@ -1,0 +1,237 @@
+{
+ "id": "00000000-0000-0000-0000-000000000014",
+ "revision": 0,
+ "last_node_id": 99,
+ "last_link_id": 0,
+ "nodes": [
+  {
+   "id": 1,
+   "type": "UNETLoader",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {
+    "models": [
+     {
+      "name": "flatmodel_bf16.safetensors",
+      "url": "https://example.invalid/m/flatmodel_bf16.safetensors",
+      "directory": "diffusion_models"
+     }
+    ]
+   },
+   "widgets_values": [
+    "flatmodel_bf16.safetensors",
+    "default"
+   ]
+  },
+  {
+   "id": 2,
+   "type": "CLIPLoader",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {
+    "models": [
+     {
+      "name": "flat_text_enc.safetensors",
+      "url": "https://example.invalid/m/flat_text_enc.safetensors",
+      "directory": "text_encoders"
+     }
+    ]
+   },
+   "widgets_values": [
+    "flat_text_enc.safetensors",
+    "flat",
+    "default"
+   ]
+  },
+  {
+   "id": 3,
+   "type": "VAELoader",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {
+    "models": [
+     {
+      "name": "flat_vae.safetensors",
+      "url": "https://example.invalid/m/flat_vae.safetensors",
+      "directory": "vae"
+     }
+    ]
+   },
+   "widgets_values": [
+    "flat_vae.safetensors"
+   ]
+  },
+  {
+   "id": 4,
+   "type": "CLIPTextEncode",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    "A red lighthouse on a cliff at dusk, waves below."
+   ]
+  },
+  {
+   "id": 5,
+   "type": "CLIPTextEncode",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    ""
+   ]
+  },
+  {
+   "id": 6,
+   "type": "EmptyLatentImage",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    1024,
+    768,
+    1
+   ]
+  },
+  {
+   "id": 7,
+   "type": "KSampler",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    123456789012,
+    20,
+    4.5,
+    "euler",
+    "simple",
+    1
+   ]
+  },
+  {
+   "id": 8,
+   "type": "VAEDecode",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": []
+  },
+  {
+   "id": 9,
+   "type": "SaveImage",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    "flat"
+   ]
+  }
+ ],
+ "links": [],
+ "groups": [],
+ "config": {},
+ "extra": {},
+ "version": 0.4,
+ "definitions": {
+  "subgraphs": []
+ }
+}

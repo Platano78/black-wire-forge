@@ -151,9 +151,7 @@ try:
         page.on("pageerror", lambda e: errors.append(str(e)))
 
         def pick_mode(label):
-            chip = page.locator("#engineChipBtn")
-            chip.click()
-            page.locator("#enginePicker").get_by_text(label, exact=False).first.click()
+            page.locator("#ways").get_by_text(label, exact=False).first.click()
 
         def wait_summary(text, timeout_ms=45000):
             summary = page.locator("#jobSummary")
@@ -165,8 +163,9 @@ try:
             return summary
 
         page.goto(url + "?t=%f" % time.time())
-        page.wait_for_selector('#roomStrip [data-room-id="producer"]', timeout=15000)
-        page.click('#roomStrip [data-room-id="producer"]')
+        page.wait_for_selector('#roomStrip [data-group="SOUND"]', timeout=15000)
+        page.click('#roomStrip [data-group="SOUND"]')
+        page.click('#roomStrip [data-task-id="rework"]')   # Fit / Re-arrange / Mix are its ways
 
         # ---- Flow 1: Fit a part onto another beat
         pick_mode("Fit a part onto another beat")

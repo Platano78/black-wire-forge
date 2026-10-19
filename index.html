@@ -113,8 +113,17 @@
   #roomStrip{
     display:flex; align-items:center; gap:0; min-height:44px; padding:0 8px;
     background:var(--surface3); border-bottom:1px solid var(--divider);
-    overflow-x:auto; -webkit-overflow-scrolling:touch; flex-wrap:nowrap; position:relative;
+    flex-wrap:wrap; position:relative;
   }
+  .group-tabs, .task-tabs{display:flex; align-items:center; flex-wrap:wrap; gap:0; min-width:0}
+  .group-tab{
+    background:transparent; border:none; border-bottom:2px solid transparent; color:var(--text-mid);
+    font-family:var(--mono); font-size:11px; letter-spacing:.03em; text-transform:uppercase;
+    min-height:40px; padding:0 8px; white-space:nowrap;
+  }
+  .group-tab:hover{color:var(--text-hi)}
+  .group-tab[aria-pressed="true"]{color:var(--text-hi); border-bottom-color:var(--accent)}
+  .task-tab-dim, .task-tab-dim:hover{color:var(--text-disabled)}
   .room-group{display:flex; align-items:center; gap:6px; padding:0 10px; height:44px; flex:none}
   .room-group-label{
     font-family:var(--mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase;
@@ -125,6 +134,7 @@
     color:var(--text-mid); font-size:14px; min-height:40px; padding:0 8px;
     display:inline-flex; align-items:center; gap:6px; white-space:nowrap;
   }
+  .task-tab{padding:0 5px}
   .room-tab:hover{color:var(--text-hi)}
   .room-tab[aria-pressed="true"]{color:var(--text-hi); border-bottom-color:var(--accent)}
   .room-tab-dim{color:var(--text-disabled)}
@@ -133,9 +143,9 @@
   .room-spacer{flex:1}
   .room-cutting, .room-workflows{
     border:1px solid var(--divider); background:var(--surface3); margin:6px 8px 6px 0;
-    padding:0 12px; min-height:32px; color:var(--text-hi); font-size:13px;
-    letter-spacing:.04em; text-transform:uppercase;
-    position:sticky; right:0; z-index:2;
+    padding:0 10px; min-height:32px; color:var(--text-hi); font-size:13px;
+    letter-spacing:.02em; text-transform:uppercase;
+    z-index:2;
   }
   .room-cutting[aria-pressed="true"], .room-workflows[aria-pressed="true"]{border-color:var(--accent); color:var(--accent)}
 
@@ -237,7 +247,7 @@
   .licence-stamp{
     border:1px dashed var(--divider); color:var(--text-mid); font-family:var(--mono); font-size:11px;
     letter-spacing:.05em; text-transform:uppercase; padding:4px 10px; display:inline-block;
-    transform:rotate(-1.5deg); white-space:nowrap;
+    transform:rotate(-1.5deg); white-space:normal; overflow-wrap:anywhere; max-width:100%; box-sizing:border-box;
   }
   .licence-stamp.shippable{border-color:var(--ready); color:var(--ready)}
   .licence-stamp.noncommercial{border-color:var(--error); color:var(--error)}
@@ -310,21 +320,29 @@
   #roomHeadingRow{position:relative; display:flex; align-items:center; flex-wrap:wrap; gap:8px 10px}
   #roomHeading{font-size:18px; margin:0}
   #roomBlurb{font-size:12px; color:var(--text-mid); margin:2px 0 0; max-width:72ch; flex-basis:100%}
+  #cuttingOnlyNote{font-size:13px; color:var(--text-mid); max-width:72ch}
+  #cuttingOnlyNote p{margin:0 0 8px}
   #roomPlainNote{font-size:13px; color:var(--text-mid); margin:0; max-width:72ch}
-  /* UX-2 #1: the current engine as an always-visible chip beside the room
-     heading, not a low-weight <details> summary. A 2+-engine room's chip
-     is a button that opens the (unchanged) radio list as a popover right
-     under it; a single-engine room's chip has no caret and no popover
-     (see renderEnginePickerSummary). */
-  #engineChipBtn{cursor:pointer; font-size:13px; color:var(--text-hi); background:var(--surface3);
-    border:1px solid var(--divider); border-radius:999px; padding:4px 10px; display:inline-flex;
-    align-items:center; gap:5px; user-select:none}
-  #engineChipBtn[disabled]{cursor:default}
-  #engineChipCaret{color:var(--accent); font-size:10px}
-  #enginePickerWrap{position:relative}
-  #enginePicker.engine-picker{position:absolute; top:100%; left:0; z-index:5; margin-top:4px;
-    background:var(--surface2); border:1px solid var(--divider); border-radius:8px; padding:8px;
-    min-width:260px; box-shadow:0 4px 16px rgba(0,0,0,.3)}
+  /* The task's ways: a radio list, always visible (2+ ways), and the
+     Draft/Final switch under it. */
+  #waysWrap{display:flex; flex-direction:column; gap:8px; margin:0 0 8px}
+  #ways{border:1px solid var(--divider)}
+  #ways .engine-row{padding:6px 10px; min-height:0}
+  #ways .erow-meta{margin-top:0; gap:0 10px}
+  #ways .erow-top{display:flex; align-items:center; justify-content:space-between; gap:2px 10px; flex-wrap:wrap}
+  #stageSwitch{display:grid; grid-template-columns:1fr 1fr; border:1px solid var(--divider)}
+  #stageSwitch button{
+    background:none; border:0; min-height:40px; padding:0 10px; cursor:pointer; color:var(--text-mid);
+    font-family:var(--mono); font-size:12px; letter-spacing:.1em; text-transform:uppercase;
+  }
+  #stageSwitch button + button{border-left:1px solid var(--divider)}
+  #stageSwitch button[aria-pressed="true"]{background:var(--surface2); color:var(--text-hi);
+    box-shadow:inset 0 -2px 0 var(--accent)}
+  #stageHint{font-size:12px; color:var(--text-mid); margin:4px 0 0}
+  #taskTrail{font-family:var(--mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase;
+    color:var(--text-mid); margin:0 0 8px; display:flex; flex-wrap:wrap; gap:2px 8px}
+  #taskTrail .tr-ok{color:var(--ready)}
+  #taskTrail .tr-now{color:var(--text-hi)}
   #promptHint{font-size:11px; color:var(--text-mid); margin:4px 0 0; max-width:72ch}
   #promptHint:empty,#primaryFields:empty{display:none}
   #helperWriteCaption{font-size:11px; color:var(--text-mid); margin:4px 0 0; max-width:72ch}
@@ -907,10 +925,53 @@
     padding:1px 6px; margin-left:6px; text-transform:uppercase}
 
   /* ---- WB: the Workflows tab (built by renderWorkflows(); lane text only ever via textContent) ---- */
-  .room-end{position:sticky; right:0; z-index:2; display:flex; flex:none; background:var(--surface3)}
+  .room-end{position:sticky; right:0; z-index:2; display:flex; flex:none; background:var(--surface3); margin-left:auto}
   .room-end > .room-cutting, .room-end > .room-workflows{position:static}
   @media (max-width:600px){ .room-end{position:static; order:99} }
   body.wf-open #layout, body.wf-open #timelinePanel{display:none !important}
+  /* ---- the home view: what do you want to make? (same full-width pattern as Workflows) ---- */
+  body.home-open #layout, body.home-open #timelinePanel, body.home-open #workflowsView{display:none !important}
+  #home{flex:1; width:100%; max-width:1320px; margin:0 auto; padding:32px 16px 24px; min-width:0}
+  #home h1{font-size:clamp(26px,5vw,40px); margin:0 0 18px; text-align:center; letter-spacing:-.01em}
+  .home-search{display:flex; align-items:center; gap:12px; max-width:820px; margin:0 auto 12px;
+    border:1px solid var(--divider); background:var(--panel); padding:0 14px}
+  .home-search:focus-within{border-color:var(--accent)}
+  .home-search .gt{color:var(--accent); font-family:var(--mono)}
+  .home-search input{flex:1; min-width:0; background:none; border:0; height:48px; font-size:16px; outline:none}
+  .home-search input::placeholder{color:var(--text-disabled)}
+  #homeDrop{display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:10px 16px; max-width:820px;
+    margin:0 auto 20px; border:1px dashed var(--divider); padding:12px 16px; color:var(--text-mid); text-align:center}
+  #homeDrop.over, #home.over #homeDrop{border-color:var(--accent); color:var(--text-hi)}
+  #homeChipBar{display:flex; flex-direction:column; align-items:center; gap:6px; margin:0 0 16px}
+  #homeChipBar:empty{display:none}
+  .home-chip{display:inline-flex; align-items:center; gap:10px; border:1px solid var(--accent); padding:4px 4px 4px 10px;
+    font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; max-width:100%}
+  .home-chip span{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .home-chip button{background:none; border:0; min-width:32px; min-height:32px; font-size:16px; line-height:1}
+  #homeReject{color:var(--text-mid); font-size:13px; margin:0}
+  .home-cols{display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px; align-items:start}
+  .home-col{border:1px solid var(--divider); background:var(--panel); min-width:0}
+  .home-col > h2{margin:0; padding:12px 14px; border-bottom:1px solid var(--divider); font-family:var(--mono);
+    font-size:11px; letter-spacing:.1em; text-transform:uppercase}
+  .home-col .home-empty{padding:14px; color:var(--text-disabled); margin:0}
+  .task-card{display:block; width:100%; text-align:left; border:0; border-bottom:1px solid var(--hairline); background:none;
+    padding:12px 14px; min-height:44px; overflow-wrap:anywhere}
+  .task-card:last-child{border-bottom:0}
+  .task-card:hover{background:var(--surface2)}
+  .task-card b{display:block; font-weight:600}
+  .task-card span{display:block; color:var(--text-mid); font-size:14px}
+  .task-card em{display:block; font-style:normal; font-family:var(--mono); font-size:11px; color:var(--stale);
+    margin-top:4px; text-transform:uppercase; letter-spacing:.06em}
+  .task-card-dim b, .task-card-dim span{opacity:.45}
+  .home-results > h2{color:var(--text-mid)}
+  .home-rgrid{display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
+  .home-rgrid .task-card{border-right:1px solid var(--hairline)}
+  .home-zero{text-align:center; color:var(--text-mid); padding:32px 0; margin:0}
+  #homeFold{margin:20px 0 10px; color:var(--text-mid); background:none; border:0; font-family:var(--mono); font-size:12px;
+    padding:6px 0; min-height:36px}
+  #homeFold:hover{color:var(--text-hi)}
+  #carryNote{font-size:12px; color:var(--text-mid); margin:0 0 8px}
+  @media (max-width:900px){ .home-cols{grid-template-columns:minmax(0,1fr)} .home-search input{font-size:15px} }
   #workflowsView{flex:1; padding:12px 16px 24px; min-width:0; overflow-wrap:anywhere}
   #workflowsView h2{font-size:13px; letter-spacing:.1em; text-transform:uppercase; margin-bottom:4px}
   #workflowsView .wf-intro{margin:0 0 10px; font-size:13px}
@@ -977,16 +1038,16 @@
 <div id="forgeVideoNotice" role="status" hidden><span>A music video is being made...</span>
   <button type="button" class="btn" id="forgeVideoNoticeShow">Show</button></div>
 
-<!-- Rooms by task: built from /api/engines "rooms" (rooms.json + what each
+<!-- The task bar: built from /api/engines "tasks" (tasks.json + what each
      pack declares), never a fixed list in this markup. -->
-<nav id="roomStrip" aria-label="Rooms"></nav>
+<nav id="roomStrip" aria-label="What to make"></nav>
 
 <main id="layout">
   <section id="bin" aria-label="History">
     <div id="binHeader">
       <h2>History</h2>
       <div id="historyToggle" class="history-toggle" role="group" aria-label="Which history to show">
-        <button type="button" data-hist-scope="room" aria-pressed="true">This room (0)</button>
+        <button type="button" data-hist-scope="room" aria-pressed="true">This task (0)</button>
         <button type="button" data-hist-scope="all" aria-pressed="false">Everything (0)</button>
       </div>
     </div>
@@ -1002,25 +1063,29 @@
   <section id="inspector" aria-label="Recipe inspector">
     <div id="roomHeadingRow">
       <h2 id="roomHeading"></h2>
-      <!-- UX-2 #1: the current engine as a small always-visible chip beside
-           the room heading ("Music - Background music v"), not a low-weight
-           <details> summary sandwiched between TRY THIS and the prompt box
-           (audit B1). A room with only one engine shows the chip with no
-           caret/popover (item 1's "single-engine rooms: the chip shows the
-           engine, no v"); the radio list itself (#enginePicker) is
-           unchanged, just re-homed as this chip's popover. -->
-      <div id="enginePickerWrap" hidden>
-        <button type="button" id="engineChipBtn" aria-haspopup="true" aria-expanded="false" aria-controls="enginePicker">
-          <span id="enginePickerCurrent"></span><span id="engineChipCaret" aria-hidden="true">&#9662;</span>
-        </button>
-        <div class="engine-picker" id="enginePicker" role="radiogroup" aria-label="Engine" hidden></div>
-      </div>
       <p id="roomBlurb"></p>
       <!-- LORA-1 Build B: only shown when the current mode has a "pool_select"
            style field (renderModeFields toggles this). -->
       <button class="btn" id="browseStylesBtn" type="button" hidden>Browse styles</button>
     </div>
+    <p id="carryNote" role="status" hidden></p>
+    <!-- The task's ways (alternatives, always visible) and the Draft/Final
+         switch, built from /api/engines "tasks" by renderWays(). -->
+    <div id="waysWrap" hidden>
+      <div id="ways" role="radiogroup" aria-label="Way to make it" hidden></div>
+      <div id="stageBlock" hidden>
+        <div id="stageSwitch" role="group" aria-label="Draft or final">
+          <button type="button" data-stage="draft" aria-pressed="true">Draft</button>
+          <button type="button" data-stage="final" aria-pressed="false">Final</button>
+        </div>
+        <p id="stageHint"></p>
+      </div>
+    </div>
     <p id="roomPlainNote" hidden></p>
+    <div id="cuttingOnlyNote" role="status" hidden>
+      <p>This one runs in the Cutting Room: open a sequence, pick the shot to carry on, and make the next shot from it.</p>
+      <button type="button" class="btn" id="openCuttingBtn">Open the Cutting Room</button>
+    </div>
     <!-- Sequence picker (C3.3, §7): the Cutting Room's own entry point --
          list + "New sequence", always visible in that room regardless of
          whether a slot is selected below it. -->
@@ -1038,6 +1103,7 @@
       <div id="cutBar"></div>
     </div>
     <div id="roomForm">
+    <p id="taskTrail" aria-label="Progress" hidden></p>
     <div id="slotWarnings" hidden></div>
     <div id="slotTools" hidden><button type="button" class="btn" id="slotDeleteBtn">Delete this shot</button></div>
     <!-- RS2: "Kind of shot" -- built by renderSlotKind(); sends update_slot {mode}. -->
@@ -1048,6 +1114,8 @@
     <!-- Audio-led: "Follows the song" -- built by renderSlotLipsync(); sends
          set_lipsync, and only for an audio-led LTX video shot. -->
     <div id="slotLipsync" hidden></div>
+    <!-- Beat-snapped sequence: bars, the window read-out and "Follows the song" -- built by renderSlotBars(). -->
+    <div id="slotSnap" hidden></div>
     <!-- F5: "Use one I already made" -- built by renderSlotAdopt(); sends adopt_take. -->
     <div id="slotAdopt" hidden></div>
     <div id="laneNote" role="status"></div>
@@ -1276,6 +1344,25 @@
   <button type="button" class="btn" id="wfMore" hidden>Show more</button>
 </section>
 
+<!-- The home view: every task on one page, a search, and a place to drop a file.
+     Built by renderHome() with createElement/textContent only. -->
+<section id="home" aria-labelledby="homeHeading" hidden>
+  <h1 id="homeHeading">What do you want to make?</h1>
+  <div class="home-search">
+    <span class="gt" aria-hidden="true">&gt;</span>
+    <input type="search" id="homeSearch" placeholder="Say it, e.g. animate my photo"
+           aria-label="Search" autocomplete="off">
+  </div>
+  <div id="homeDrop" role="group" aria-label="Drop a file">
+    <span>Or drop a picture, clip, song or 3D object here</span>
+    <button type="button" class="btn" id="homePick">Choose a file</button>
+    <button type="button" class="btn" id="homeSample">Try a sample picture</button>
+    <input type="file" id="homeFile" hidden>
+  </div>
+  <div id="homeChipBar"></div>
+  <div id="homeCards"></div>
+</section>
+
 <!-- Cutting Room shell (SEQUENCE). Built live by renderTimeline()/renderRefRoom()
      once a sequence is open (C3.3); the tracks below are empty containers
      until then. -->
@@ -1500,7 +1587,10 @@ const STATE = {
                                        // implements these; M4A is not), so "audio" alone
                                        // is not enough to promise a clean download.
   activeLane: null,   // lane id the inspector generates against
-  room: null,         // the task room on screen (#room=<id>)
+  room: null,         // the task room on screen: the internal home of the guide, History scope and the Cutting Room
+  task: null,         // the task on screen (#task=<id>): what the page shows and routes by
+  tasks: [],          // /api/engines "tasks": what can be made, each with its ways
+  barGroup: null,     // the group whose task tabs the bar shows
   cap: null,           // the room's selected engine: cap + mode
   mode: null,
   histScope: 'room',   // History toggle: 'room' | 'all'
@@ -1696,13 +1786,13 @@ function binMediaOf(job){
 }
 function renderHistoryToggle(){
   // Two states, replacing the old per-media chips (which clipped at 300 px).
-  // A job's room is derived on read from (kind, mode) -- nothing is stored.
+  // A job's task is derived on read from (kind, mode) -- nothing is stored.
   const cutting = isCutting(currentRoom());
   $('#historyToggle').hidden = cutting;
-  const inRoom = STATE.jobs.filter(j => jobRoom(j) === STATE.room).length;
+  const inRoom = STATE.jobs.filter(j => (jobTask(j) || {}).id === STATE.task).length;
   $$('#historyToggle button').forEach(b => {
     const all = b.dataset.histScope === 'all';
-    b.textContent = all ? 'Everything (' + STATE.jobs.length + ')' : 'This room (' + inRoom + ')';
+    b.textContent = all ? 'Everything (' + STATE.jobs.length + ')' : 'This task (' + inRoom + ')';
     b.setAttribute('aria-pressed', String(b.dataset.histScope === STATE.histScope));
   });
 }
@@ -1716,12 +1806,12 @@ function renderBin(){
     return;
   }
   const rows = STATE.jobs
-    .filter(j => STATE.histScope === 'all' || jobRoom(j) === STATE.room)
+    .filter(j => STATE.histScope === 'all' || (jobTask(j) || {}).id === STATE.task)
     .slice()
     .sort((a, b) => (b.created || 0) - (a.created || 0));
   $('#binEmpty').textContent = STATE.histScope === 'all'
     ? 'Nothing made yet. Pictures, clips, sounds and anything else you make will show up here.'
-    : 'Nothing made in this room yet. What you make here will show up in this list.';
+    : 'Nothing made in this task yet. What you make here will show up in this list.';
   $('#binEmpty').hidden = rows.length > 0;
   const html = rows.map(j => {
     const running = j.status === 'queued' || j.status === 'running';
@@ -1774,10 +1864,10 @@ function renderBin(){
     $$('#binBody tr').forEach(tr => tr.onclick = () => {
       STATE.selectedJobId = tr.dataset.job;
       const job = STATE.jobs.find(j => j.id === tr.dataset.job);
-      const rid = job && jobRoom(job);
-      // Picked from Everything but made in another room: the inspector jumps
-      // to that room, so what's on the monitor and the form agree.
-      if(rid && rid !== STATE.room){ selectRoom(rid, {keepJob: true}); return; }
+      const jt = job && jobTask(job);
+      // Picked from Everything but made in another task: the inspector jumps
+      // to that task, so what's on the monitor and the form agree.
+      if(jt && jt.id !== STATE.task){ selectTask(jt, {keepJob: true, mode: {cap: job.kind, mode: job.mode}}); return; }
       renderBin();
       renderMonitor();
       renderHelperBar();   // a picture picked from History may enable Describe this picture
@@ -1855,8 +1945,8 @@ function licenceStampHTML(licence){
   return '<span class="licence-stamp">' + esc(licence.name) + ', conditions apply' + where + '. ' + readText + '</span>';
 }
 function monitorEmptyHTML(room){
-  // Guidance comes only from rooms.json (`empty`) and the packs (label +
-  // note) -- a room with several engines gets a short "Which one?".
+  // Guidance comes only from tasks.json (`line`) and the packs (blurb) -- what
+  // the task is, then one sentence naming what is still to fill in.
   if(!room) return '<div class="monitor-empty"><p>Nothing to show yet.</p></div>';
   if(isCutting(room)){
     // A sequence can be open with nothing selected below it yet -- that is
@@ -1865,14 +1955,17 @@ function monitorEmptyHTML(room){
     const text = STATE.seq ? 'Pick a slot in the timeline below.' : (room.empty || '');
     return '<div class="monitor-banner">' + esc(text) + '</div>';
   }
-  const ms = roomModes(room);
-  let html = '<div class="monitor-empty"><p>' + esc(room.empty || 'Set it up on the right and press Make.') + '</p>';
+  const task = currentTask();
+  if(!task) return '<div class="monitor-empty"><p>' + esc(room.empty || 'Set it up on the right and press Make.') + '</p></div>';
+  const ms = taskModes(task);
+  let html = '<div class="monitor-empty"><p>' + esc(task.line || '') + '</p>';
+  if(ms.length) html += '<p id="taskReady">' + esc(readySentence()) + '</p>';
+  else if(!task.action) html += '<p>Nothing installed makes this yet.</p>';
   // A song made somewhere else can become a music video too (a History song has its own button).
-  // The Video room offers the same road in; it just has no song of its own to name a file after.
-  if(room.group === 'SOUND' || room.id === 'video')
+  // The music-video task carries the button; a Sound task keeps its song-file way in.
+  if(task.action === 'music-video' || task.group === 'SOUND')
     html += '<p><button type="button" class="btn" id="forgeVideoFromFileBtn">'
-      + (room.id === 'video' ? 'Make a music video' : 'Make a music video from a song file')
-      + '</button></p>';
+      + (task.action === 'music-video' ? 'Make a music video' : 'Make a music video from a song file') + '</button></p>';
   // UX-2 #4: only for the picked mode, and only when it actually has both
   // boxes (audit B5 -- the YuE2 job that ran with no words because nothing
   // said Style and Lyrics were two different fields).
@@ -1880,14 +1973,8 @@ function monitorEmptyHTML(room){
   if(curMode && hasStyleAndLyricsBoxes(curMode.info)){
     html += '<p>Style is the sound; Lyrics are the words sung — leave Lyrics empty for an instrumental.</p>';
   }
-  if(ms.length >= 2){
-    html += '<p class="guide-title">Which one?</p><ul class="guide-list">'
-      + ms.map(x => '<li><b>' + esc(x.info.label) + '</b>'
-        + (x.info.note ? ' — ' + esc(x.info.note) : '') + '</li>').join('')
-      + '</ul>';
-    if(ms.some(x => (x.info.examples || []).length)){
-      html += '<p class="guide-title">Not sure? Press Try this.</p>';
-    }
+  if(ms.some(x => (x.info.examples || []).length)){
+    html += '<p class="guide-title">Not sure? Press Try this.</p>';
   }
   return html + '</div>';
 }
@@ -2173,9 +2260,9 @@ async function forgetJob(job){
   }
 }
 
-// F1: "audio" alone does not mean cleanable -- sanitize.py only implements
-// FLAC/MP3/Opus-in-Ogg, so WAV/M4A outputs must fall through to the plain
-// (uncleaned) share path even though their kind is "audio".
+// F1: "audio" alone does not mean cleanable -- the server's clean_audio_exts
+// list (/api/credits) decides; a format it lacks (e.g. M4A) falls through to
+// the plain (uncleaned) share path even though its kind is "audio".
 function cleanableFor(o){
   if(!STATE.cleanDownload.includes(o.media)) return false;
   if(o.media === 'audio') return STATE.cleanAudioExts.includes(fileExt(o.filename).toLowerCase());
@@ -2248,11 +2335,14 @@ async function openShare(job, o){
 }
 
 function useAgain(job){
-  selectRoom(jobRoom(job) || STATE.room, {keepJob: true}).then(() => {
+  const jt = jobTask(job);
+  (jt ? selectTask(jt, {keepJob: true, mode: {cap: job.kind, mode: job.mode}})
+      : selectRoom(jobRoom(job) || STATE.room, {keepJob: true})).then(() => {
     if(modeInfo(job.kind, job.mode)){
       STATE.cap = job.kind;
       STATE.mode = job.mode;
-      renderEnginePicker(true);
+      renderWays(true);
+      rememberCurrentWay();
     }
     renderModeFields().then(() => {
       const args = job.args || job;
@@ -2306,7 +2396,7 @@ function laneServesCaps(lane, caps){
 // Returns true iff it switched STATE.activeLane.
 function ensureLaneForRoom(room){
   if(isCutting(room)) return false;   // the Cutting Room isn't cap-scoped
-  const caps = roomCaps(room);
+  const caps = scopeCaps(room);
   if(!caps.length) return false;      // no modes at all -- "nothing installed" already covers it
   const cur = STATE.lanes.find(l => l.id === STATE.activeLane);
   if(laneServesCaps(cur, caps)) return false;   // already the right kind of machine
@@ -2325,7 +2415,7 @@ function ensureLaneForRoom(room){
 // no candidate at all). Never names a lane of a DIFFERENT cap.
 function roomCapNoteText(room){
   if(isCutting(room)) return '';
-  const caps = roomCaps(room);
+  const caps = scopeCaps(room);
   if(!caps.length) return '';
   const cur = STATE.lanes.find(l => l.id === STATE.activeLane);
   if(laneServesCaps(cur, caps)) return '';
@@ -2340,7 +2430,8 @@ function roomCapNoteText(room){
 // the room changes OR a lane's state does (pollLanes), so it never outlives what it says.
 function renderRoomPlainNote(room){
   const cutting = isCutting(room);
-  const nothing = !cutting && roomModes(room).length === 0;
+  const task = currentTask();
+  const nothing = !cutting && (task ? !taskModes(task).length && !task.action : roomModes(room).length === 0);
   const capNote = !cutting && !nothing ? roomCapNoteText(room) : '';
   $('#roomPlainNote').hidden = !(!cutting && (nothing || capNote));
   $('#roomPlainNote').textContent = nothing ? 'Nothing installed makes this yet.' : capNote;
@@ -2353,6 +2444,10 @@ function currentMode(){ return modeInfo(STATE.cap, STATE.mode); }
 function activeLaneName(){
   return (STATE.lanes.find(l => l.id === STATE.activeLane) || {}).name || 'this machine';
 }
+function taskFromHash(){
+  const m = /(?:^#|&)task=([^&]+)/.exec(location.hash || '');
+  return m ? decodeURIComponent(m[1]) : null;
+}
 function roomFromHash(){
   const m = /(?:^#|&)room=([^&]+)/.exec(location.hash || '');
   return m ? decodeURIComponent(m[1]) : null;
@@ -2362,24 +2457,48 @@ function tryIdFromHash(){
   return m ? decodeURIComponent(m[1]) : null;
 }
 
+const TASK_GROUP_ORDER = ['SOUND', 'PICTURE', 'MOTION', 'OBJECT'];
+function groupWord(g){ return g ? g.charAt(0) + g.slice(1).toLowerCase() : ''; }
+function barGroups(){
+  const names = TASK_GROUP_ORDER.slice();
+  STATE.tasks.forEach(t => { if(t.group && !names.includes(t.group)) names.push(t.group); });
+  return names;
+}
+function groupStoreKey(g){ return 'bwf.group.task.' + g; }
+function rememberGroupTask(task){
+  try{ localStorage.setItem(groupStoreKey(task.group), task.id); } catch(e){ /* storage off */ }
+}
+function groupOpensOn(g){
+  const mine = STATE.tasks.filter(t => t.group === g);
+  let last = null;
+  try{ last = localStorage.getItem(groupStoreKey(g)); } catch(e){ /* storage off */ }
+  return mine.find(t => t.id === last) || mine[0] || null;
+}
+// The bar shows no task tabs when no task is on screen: the home, Workflows
+// and the Cutting Room are destinations, not part of any group.
+function barBare(){ return HOME.open || WF.open || !currentTask(); }
 function renderRoomStrip(){
-  // Groups in the order their first room appears; the Cutting Room is set
-  // apart at the right end -- it is the destination, not a peer.
-  const groups = [], byGroup = {};
-  STATE.rooms.filter(r => !isCutting(r)).forEach(r => {
-    const g = r.group || '';
-    if(!byGroup[g]){ byGroup[g] = {name: g, rooms: []}; groups.push(byGroup[g]); }
-    byGroup[g].rooms.push(r);
-  });
+  // The group buttons, then the current group's task tabs; the Cutting Room is
+  // set apart at the right end -- it is the destination, not a peer.
+  const cur = currentTask();
+  const groups = barGroups();
+  if(cur) STATE.barGroup = cur.group;
+  if(!STATE.barGroup || !groups.includes(STATE.barGroup)) STATE.barGroup = (STATE.tasks[0] || {}).group || groups[0];
+  const strip = $('#roomStrip');
+  strip.dataset.barGroup = STATE.barGroup;
+  strip.dataset.homeOpen = String(barBare());
   const cutting = STATE.rooms.find(isCutting);
-  $('#roomStrip').innerHTML = groups.map((g, i) =>
-      (i ? '<div class="room-divider" aria-hidden="true"></div>' : '')
-      + '<div class="room-group" role="group" aria-label="' + esc(g.name || 'Rooms') + '">'
-      + (g.name ? '<span class="room-group-label" aria-hidden="true">' + esc(g.name) + '</span>' : '')
-      + g.rooms.map(r => '<button type="button" class="room-tab" data-room-id="' + esc(r.id) + '" aria-pressed="false">'
-        + '<span class="dot" hidden></span>' + esc(r.name) + '<span class="sr-only room-state"></span></button>').join('')
-      + '</div>').join('')
-    + '<div class="room-spacer"></div>'
+  strip.innerHTML = '<button type="button" class="room-tab" id="homeBtn" aria-pressed="false">‹ Everything</button>'
+    + '<div class="group-tabs" role="group" aria-label="What kind of thing">'
+      + groups.map(g => '<button type="button" class="group-tab" data-group="' + esc(g) + '" aria-pressed="false">'
+        + esc(groupWord(g)) + '</button>').join('')
+    + '</div>' + (barBare() ? '' : '<div class="room-divider" aria-hidden="true"></div>')
+    + '<div class="task-tabs" role="group" aria-label="' + esc(groupWord(STATE.barGroup)) + '">'
+      + (barBare() ? [] : STATE.tasks.filter(t => t.group === STATE.barGroup)).map(t =>
+        '<button type="button" class="room-tab task-tab" data-task-id="' + esc(t.id) + '" title="' + esc(t.verb)
+        + '" aria-pressed="false"><span class="dot" hidden></span>' + esc(t.short)
+        + '<span class="sr-only room-state"></span></button>').join('')
+    + '</div>'
     + '<div class="room-end">'
     + (cutting ? '<button type="button" class="room-tab room-cutting" data-room-id="' + esc(cutting.id)
       + '" aria-pressed="false">[ ] ' + esc(cutting.name) + '</button>' : '')
@@ -2387,10 +2506,10 @@ function renderRoomStrip(){
     + '</div>';
   refreshRoomStrip();
 }
-// Same availability rule the engine picker uses: a mode that belongs on
+// Same availability rule the ways list uses: a mode that belongs on
 // another KIND of lane is not "not for this" -- it runs on that lane
 // (picking it moves the active lane there). Only a kind with no machine at
-// all counts as off. `ms` is roomModes(room); true iff EVERY mode in it is off.
+// all counts as off. `ms` is a list of modes; true iff EVERY mode in it is off.
 function roomModesAllOff(ms){
   const curLane = STATE.lanes.find(l => l.id === STATE.activeLane);
   return ms.every(x => {
@@ -2400,31 +2519,42 @@ function roomModesAllOff(ms){
   });
 }
 function refreshRoomStrip(){
-  // In place (never a re-render) so a focused tab keeps focus across polls.
+  // In place (never a re-render) so a focused tab keeps focus across polls --
+  // except when the task on screen is in another group: then the tabs change.
+  const cur = currentTask();
+  if($('#roomStrip').dataset.homeOpen !== String(barBare()) || (cur && $('#roomStrip').dataset.barGroup !== cur.group)){ renderRoomStrip(); return; }
   const busy = new Set(STATE.jobs
-    .filter(j => j.status === 'queued' || j.status === 'running').map(jobRoom).filter(Boolean));
+    .filter(j => j.status === 'queued' || j.status === 'running').map(j => (jobTask(j) || {}).id).filter(Boolean));
   const lane = activeLaneName();
   const wfb = $('#workflowsBtn');
   if(wfb) wfb.setAttribute('aria-pressed', String(WF.open));
-  $$('#roomStrip [data-room-id]').forEach(b => {
-    const room = roomById(b.dataset.roomId);
-    if(!room) return;
-    b.setAttribute('aria-pressed', String(room.id === STATE.room && !WF.open));
-    if(isCutting(room)) return;
-    const ms = roomModes(room);
-    const nothing = ms.length === 0;
-    const allOff = !nothing && roomModesAllOff(ms);
-    let cls = '', state = '', title = '';
-    if(busy.has(room.id)){ cls = 'dot-working'; state = 'working'; title = 'Something is being made here'; }
+  const hb = $('#homeBtn');
+  if(hb) hb.setAttribute('aria-pressed', String(HOME.open));
+  $$('#roomStrip .group-tab').forEach(b => {
+    b.setAttribute('aria-pressed', String(!!cur && cur.group === b.dataset.group && !WF.open && !HOME.open));
+  });
+  $$('#roomStrip .room-cutting').forEach(b => {
+    b.setAttribute('aria-pressed', String(b.dataset.roomId === STATE.room && !WF.open && !HOME.open));
+  });
+  $$('#roomStrip [data-task-id]').forEach(b => {
+    const task = taskById(b.dataset.taskId);
+    if(!task) return;
+    b.setAttribute('aria-pressed', String(task.id === STATE.task && !WF.open && !HOME.open));
+    const ms = taskModes(task);
+    const nothing = ms.length === 0 && !task.action;
+    const allOff = ms.length > 0 && roomModesAllOff(ms);
+    let cls = '', state = '', title = task.verb;
+    if(busy.has(task.id)){ cls = 'dot-working'; state = 'working'; title = 'Something is being made here'; }
     else if(allOff){ cls = 'dot-not-for-this'; state = 'not available here'; }
     if(nothing) title = 'Nothing installed makes this yet';
-    else if(allOff && !title) title = lane + " can't make this yet";
+    else if(allOff && cls !== 'dot-working') title = lane + " can't make this yet";
     const dot = b.querySelector('.dot');
     dot.className = 'dot' + (cls ? ' ' + cls : '');
     dot.hidden = !cls;
     b.querySelector('.room-state').textContent = state ? ', ' + state : (nothing ? ', nothing installed' : '');
+    b.classList.toggle('task-tab-dim', nothing || allOff);
     b.classList.toggle('room-tab-dim', nothing || allOff);
-    if(title) b.title = title; else b.removeAttribute('title');
+    b.title = title;
   });
 }
 
@@ -2458,7 +2588,6 @@ function defaultEstimate(mode){
   const text = q ? estimateRangeText(q.estimate_range) : null;
   return text || '--';
 }
-let PICKER_KEY = '';
 // RS1: a lane that is (or may be) reachable but whose model list has not been
 // read yet. "needs ..." is a verdict, so the page may only say it once
 // discovery has answered; until then engines read "checking...". A lane that
@@ -2469,49 +2598,11 @@ function laneChecking(lane){
 function activeLaneChecking(){
   return laneChecking(STATE.lanes.find(l => l.id === STATE.activeLane));
 }
-function pickerKey(ms){
-  return JSON.stringify([STATE.room, STATE.cap, STATE.mode, activeLaneName(), activeLaneChecking(),
-    ms.map(x => [x.info.available, x.info.missing, x.info.note, defaultEstimate(x.info), x.info.licence, x.info.model, x.info.model_file])]);
-}
-// UX-2 #1: the chip's own open/closed state, kept outside renderEnginePicker
-// so a poll's rebuild (guarded by PICKER_KEY below) doesn't silently close a
-// popover the user has open.
-let ENGINE_CHIP_OPEN = false;
-function setEngineChipOpen(open){
-  ENGINE_CHIP_OPEN = open && $('#engineChipBtn').getAttribute('aria-haspopup') === 'true';
-  $('#enginePicker').hidden = !ENGINE_CHIP_OPEN;
-  $('#engineChipBtn').setAttribute('aria-expanded', String(ENGINE_CHIP_OPEN));
-}
-// The chip's one line: "<room> - <picked engine>", no caret/popover for a
-// single-engine room (audit B1 -- was one small muted <details> summary
-// sandwiched between TRY THIS and the prompt box).
-// FB-1: the model line for a mode -- the pack's own name for it, plus the file
-// the lane resolved (basename). '' when the pack names nothing.
 function modelLine(m){
+  // FB-1: the model line for a mode -- the pack's own name for it, plus the file
+  // the lane resolved (basename). '' when the pack names nothing.
   if(!m || !m.model) return '';
   return m.model + (m.model_file ? ' \u00b7 ' + m.model_file : '');
-}
-function renderEnginePickerSummary(ms, room){
-  const cur = ms.find(x => x.cap === STATE.cap && x.mode === STATE.mode);
-  const label = (room && room.name ? room.name + ' · ' : '') + (cur ? cur.info.label : '');
-  $('#enginePickerCurrent').textContent = label
-    + (cur && cur.info.available === false && activeLaneChecking() ? ' · checking…' : '');
-  const multi = ms.length >= 2;
-  $('#engineChipCaret').hidden = !multi;
-  const btn = $('#engineChipBtn');
-  const ml = cur ? modelLine(cur.info) : '';
-  if(ml) btn.setAttribute('title', ml); else btn.removeAttribute('title');
-  if(multi){
-    btn.removeAttribute('disabled');
-    btn.setAttribute('aria-haspopup', 'true');
-  } else {
-    btn.setAttribute('disabled', '');
-    btn.setAttribute('aria-haspopup', 'false');
-    setEngineChipOpen(false);
-  }
-  // RS1: the popover opens ONLY on the user's click (setEngineChipOpen via
-  // #engineChipBtn) -- never by itself, least of all while discovery is still
-  // running. A picked engine this machine cannot run says so in the lane note.
 }
 /* What will run (after the prompt, guide and file inputs, directly before Recipe): the mode's parts on the active machine, from /api/engines
    "parts" (server.py mode_parts) -- the exact file each part's loader will
@@ -2625,166 +2716,506 @@ function renderWhatWillRun(){
     renderWhatWillRun();
   });
 }
-function renderEnginePicker(force){
+/* ---------------------------------------------------------------------
+   Ways, Draft/Final and the trail (one task's alternatives on screen)
+--------------------------------------------------------------------- */
+let WAYS_KEY = '';
+let WAYS_BUSY = false;          // a mode switch is restoring uploads: no re-resolving of the final
+const SESSION_JOBS = new Set(); // jobs submitted from this page: the trail's ticks only count these
+const FILE_KIND = {image: 'picture', image_list: 'picture', video_list: 'clip', audio: 'song', model: 'model'};
+const KIND_LABEL = {picture: 'Picture', clip: 'Clip', song: 'Song', model: '3D object'};
+
+function wayRefs(way){
+  const out = [{cap: way.cap, mode: way.mode}];
+  if(way.final) out.push(way.final);
+  Object.keys(way.finals_by_count || {}).sort((a, b) => a - b).forEach(k => out.push(way.finals_by_count[k]));
+  return out;
+}
+function taskRefs(task){ return (task.ways || []).reduce((acc, w) => acc.concat(wayRefs(w)), []); }
+function taskModes(task){
+  return taskRefs(task).map(x => ({cap: x.cap, mode: x.mode, info: modeInfo(x.cap, x.mode)})).filter(x => x.info);
+}
+function taskCaps(task){ return Array.from(new Set(taskRefs(task).map(x => x.cap))); }
+function taskById(id){ return STATE.tasks.find(t => t.id === id) || null; }
+function currentTask(){ return taskById(STATE.task); }
+function wayOwning(task, cap, mode){
+  return (task.ways || []).find(w => wayRefs(w).some(x => x.cap === cap && x.mode === mode)) || null;
+}
+function taskOfMode(cap, mode){ return STATE.tasks.find(t => wayOwning(t, cap, mode)) || null; }
+function jobTask(job){ return taskOfMode(job.kind, job.mode); }
+function currentWay(){ const t = currentTask(); return t ? wayOwning(t, STATE.cap, STATE.mode) : null; }
+function currentStage(){
+  const w = currentWay();
+  return w && !(STATE.cap === w.cap && STATE.mode === w.mode) ? 'final' : 'draft';
+}
+// What the page offers while the task is on screen: its modes, else the room's.
+function scopeModes(room){
+  const t = currentTask();
+  return t && !isCutting(room) ? taskModes(t) : roomModes(room);
+}
+function scopeCaps(room){
+  const t = currentTask();
+  return t && !isCutting(room) ? taskCaps(t) : roomCaps(room);
+}
+// The room a task opens in. Its own room, except that the Cutting Room is a
+// timeline, not a form: a task that points there (the music video) opens in the
+// first room of its group.
+function taskRoom(task){
+  const r = roomById(task.room);
+  if(r && !isCutting(r)) return r;
+  return STATE.rooms.find(x => !isCutting(x) && x.group === task.group) || STATE.rooms.find(x => !isCutting(x)) || r || null;
+}
+// The first task (by order) whose room is `rid`; with a try id, the task whose
+// way owns that example.
+function taskOwningExample(tryId, rid){
+  const own = STATE.tasks.filter(t => t.room === rid);
+  return own.concat(STATE.tasks).find(t => taskModes(t).some(x => (x.info.examples || []).some(e => e.id === tryId))) || null;
+}
+function taskForRoom(rid, tryId){
+  const own = STATE.tasks.filter(t => t.room === rid);
+  const room = roomById(rid);
+  const held = STATE.tasks.filter(t => !own.includes(t) && room && (room.modes || []).some(m => wayOwning(t, m.cap, m.mode)));
+  return (tryId && taskOwningExample(tryId, rid)) || own.concat(held)[0] || null;
+}
+// FINAL for a draft: its one keeper, or the keeper for n attached pictures
+// (nearest declared count at or below n, else the lowest).
+function pictureCount(){
+  const f = fieldsFor(currentMode()).filter(x => x.type === 'image_list' && tierOf(x) === 'primary')
+    .sort((a, b) => (a.order || 0) - (b.order || 0))[0];
+  return f ? (STATE.uploads[f.id] || []).length : 0;
+}
+function finalFor(way, n){
+  const counts = Object.keys(way.finals_by_count || {}).map(Number).sort((a, b) => a - b);
+  if(counts.length){
+    if(n == null) n = pictureCount();
+    let pick = counts[0];
+    counts.forEach(c => { if(c <= n) pick = c; });
+    return way.finals_by_count[String(pick)];
+  }
+  return way.final || null;
+}
+function wayStoreKey(taskId){ return 'bwf.task.way.' + taskId; }
+// Remember what is on screen (way and stage as they are now), when it belongs to the task.
+function rememberCurrentWay(){
+  const task = currentTask(), way = currentWay();
+  if(task && way && !isCutting(currentRoom())) saveTaskWay(task, way, currentStage());
+}
+function saveTaskWay(task, way, stage){
+  const prev = loadTaskWay(task.id);
+  const v = {cap: way.cap, mode: way.mode, stage: stage};
+  if(prev && prev.quality && prev.mode === way.mode) v.quality = prev.quality;   // the Draft tier picked here stays
+  try{ localStorage.setItem(wayStoreKey(task.id), JSON.stringify(v)); }
+  catch(e){ /* storage off: nothing remembered, the pick itself still works */ }
+}
+function loadTaskWay(taskId){
+  try{
+    const v = JSON.parse(localStorage.getItem(wayStoreKey(taskId)) || 'null');
+    return v && v.cap && v.mode ? v : null;
+  } catch(e){ return null; }
+}
+// A Draft is the quick look: it opens on the first available quality tier, not the
+// mode's own default -- unless the person picked a tier in this task.
+let DRAFT_TIER_KEY = '';
+function draftTierPick(mode){
+  const task = currentTask(), way = currentWay();
+  const ladder = (mode && mode.quality) || [];
+  if(!task || !way || !ladder.length || currentStage() !== 'draft' || !finalFor(way)){ DRAFT_TIER_KEY = ''; return null; }
+  const key = task.id + '|' + STATE.cap + '|' + STATE.mode;
+  if(key === DRAFT_TIER_KEY) return null;   // already applied for this mode: later renders keep the person's pick
+  DRAFT_TIER_KEY = key;
+  const saved = loadTaskWay(task.id);
+  if(saved && saved.mode === way.mode && saved.quality && ladder.some(q => q.id === saved.quality && q.available !== false))
+    return saved.quality;
+  const first = ladder.find(q => q.available !== false);
+  return first ? first.id : null;
+}
+function rememberDraftTier(id){
+  const task = currentTask(), way = currentWay();
+  if(!task || !way || currentStage() !== 'draft' || !finalFor(way)) return;
+  const prev = loadTaskWay(task.id);
+  const v = prev && prev.mode === way.mode ? prev : {cap: way.cap, mode: way.mode};
+  v.stage = 'draft';
+  v.quality = id;
+  try{ localStorage.setItem(wayStoreKey(task.id), JSON.stringify(v)); } catch(e){ /* storage off */ }
+}
+// The mode a task opens on: the way last picked here if it is still present and
+// available, else the first available way (its draft side), else the first way.
+function pickForTask(task){
+  const avail = w => { const i = modeInfo(w.cap, w.mode); return !!(i && i.available); };
+  const saved = loadTaskWay(task.id);
+  let way = saved && (task.ways || []).find(w => w.cap === saved.cap && w.mode === saved.mode && avail(w));
+  if(!way) way = (task.ways || []).find(avail) || (task.ways || [])[0] || null;
+  if(!way) return null;
+  if(saved && saved.stage === 'final' && saved.cap === way.cap && saved.mode === way.mode){
+    const f = finalFor(way, 0);
+    const fi = f && modeInfo(f.cap, f.mode);
+    if(fi && fi.available) return {cap: f.cap, mode: f.mode};
+  }
+  return {cap: way.cap, mode: way.mode};
+}
+
+// One mode switch for the ways list and the stage switch: carry what was
+// edited, move to the mode's own kind of machine if it needs one, redraw the form.
+async function switchMode(cap, mode, opts){
+  opts = opts || {};
+  const laneBefore = STATE.activeLane;
+  const kept = opts.keepUploads
+    ? fieldsFor(currentMode()).filter(f => UPLOAD_TYPES.includes(f.type))
+        .map(f => ({f: f, files: STATE.uploads[f.id] || []})).filter(x => x.files.length)
+    : [];
+  // A5: carry the OLD mode's values for whatever the user actually edited,
+  // read while the old form is still on screen, so a shared field id
+  // (e.g. "lyrics" across song/music/yue2) keeps a hand-typed value
+  // instead of resetting to the new mode's default. Fields never edited
+  // still take the new mode's own default, exactly as before.
+  SWITCH_CARRY = {values: currentValues(), fields: new Set(STATE.editedFields)};
+  STATE.editedFields = new Set();
+  STATE.cap = cap;
+  STATE.mode = mode;
+  syncWaysChecked();
+  renderStageSwitch();
+  renderTrail();
+  renderWhatWillRun();
+  const mk = (modeInfo(cap, mode) || {}).lane_kind || 'comfy';
+  const home = laneForKind(mk);
+  const cur = STATE.lanes.find(l => l.id === STATE.activeLane);
+  // The right machine for the job: a cross-kind pick moves the active
+  // lane to the mode's home lane. Only cross-kind picks switch, so this
+  // can never loop.
+  if(home && home.id !== STATE.activeLane && laneKindOf(cur) !== mk){
+    STATE.activeLane = home.id;
+    renderMachineModules();
+    WAYS_KEY = '';   // the manifest is about to change lanes
+    try{
+      const changed = await loadEnginesFor();
+      if(changed) renderRoomStrip(); else refreshRoomStrip();
+    }catch(e){ /* stale manifest stays; the next poll retries */ }
+    refreshMachineModules();   // the new lane's available/missing are in STATE.engines now
+    renderWays(true);
+    renderMonitor();
+    if(!$('#roomForm').hidden) await renderModeFields();
+    rememberCurrentWay();
+    return;
+  }
+  refreshMachineModules();   // the mode on screen changed; a process tile reads it
+  WAYS_BUSY = true;
+  try{
+    await renderModeFields();
+    if(kept.length && STATE.activeLane === laneBefore) restoreUploads(kept);
+  } finally { WAYS_BUSY = false; }
+  renderStageSwitch();
+  renderTrail();
+  rememberCurrentWay();   // the way and stage as they now are, for the next entry
+}
+// The files a Draft/Final switch keeps: same field id, else the next field of the same kind.
+function restoreUploads(kept){
+  const targets = fieldsFor(currentMode()).filter(f => UPLOAD_TYPES.includes(f.type));
+  const used = new Set();
+  kept.forEach(k => {
+    let t = targets.find(g => !used.has(g.id) && g.id === k.f.id);
+    if(!t) t = targets.find(g => !used.has(g.id) && FILE_KIND[g.type] === FILE_KIND[k.f.type]);
+    if(!t) return;
+    used.add(t.id);
+    setUploads(t.id, t.type === 'image_list' || t.type === 'video_list' ? k.files : k.files.slice(0, 1));
+  });
+}
+// More pictures than the keeper in hand was made for: move to the one that fits.
+function refinalForPictures(){
+  if(WAYS_BUSY) return;
+  const way = currentWay();
+  if(!way || currentStage() !== 'final' || !Object.keys(way.finals_by_count || {}).length) return;
+  const f = finalFor(way);
+  if(f && (f.cap !== STATE.cap || f.mode !== STATE.mode)) switchMode(f.cap, f.mode, {keepUploads: true});
+}
+// STATE.mode may have been set from outside the task (a guide fix, "Edit this
+// result"): the task on screen is then the one that owns that mode.
+function syncTaskToMode(){
+  const t = currentTask();
+  if(!t || !STATE.mode || wayOwning(t, STATE.cap, STATE.mode)) return;
+  const other = taskOfMode(STATE.cap, STATE.mode);
+  if(!other) return;
+  STATE.task = other.id;
+  showTaskHeading();
+  if(!/^#workflows\b/.test(location.hash)) setTaskHash();
+  refreshRoomStrip();
+}
+function setTaskHash(){
+  const t = currentTask();
+  try{ history.replaceState(null, '', t ? '#task=' + encodeURIComponent(t.id) : '#room=' + encodeURIComponent(STATE.room || '')); }
+  catch(e){ /* sandboxed */ }
+}
+function showTaskHeading(){
+  const t = currentTask(), room = currentRoom();
+  $('#roomHeading').textContent = t ? t.verb : (room && room.name) || '';
+  const blurb = t ? '' : (room && room.blurb) || '';
+  $('#roomBlurb').textContent = blurb;
+  $('#roomBlurb').hidden = !blurb;
+}
+
+function waysKey(task){
+  return JSON.stringify([task.id, activeLaneName(), activeLaneChecking(),
+    (task.ways || []).map(w => { const i = modeInfo(w.cap, w.mode) || {};
+      return [w.id, w.label, w.blurb, i.available, i.missing, defaultEstimate(i), i.licence, i.model, i.model_file]; })]);
+}
+function renderWays(force){
   renderWhatWillRun();
   const room = currentRoom();
-  const ms = roomModes(room);
-  const wrap = $('#enginePickerWrap');
-  if(isCutting(room) || !ms.length){
+  if(!isCutting(room)) syncTaskToMode();
+  const task = currentTask();
+  const wrap = $('#waysWrap');
+  if(!task || isCutting(room) || !taskModes(task).length){
     wrap.hidden = true;
-    $('#enginePicker').innerHTML = '';
-    PICKER_KEY = '';
+    $('#ways').hidden = true;
+    $('#ways').innerHTML = '';
+    $('#stageBlock').hidden = true;
+    WAYS_KEY = '';
+    renderMakeLabel();
+    renderTrail();
     return;
   }
   wrap.hidden = false;
-  renderEnginePickerSummary(ms, room);
-  if(ms.length < 2){ $('#enginePicker').innerHTML = ''; PICKER_KEY = ''; return; }
-  const key = pickerKey(ms);
-  if(!force && key === PICKER_KEY) return;  // polls must not steal a focused radio
-  PICKER_KEY = key;
-  const curLane = STATE.lanes.find(l => l.id === STATE.activeLane);
-  $('#enginePicker').innerHTML = ms.map((x, i) => {
-    const m = x.info, id = 'engine_' + i;
-    const mk = m.lane_kind || 'comfy';
-    const home = laneForKind(mk);
-    const foreign = laneKindOf(curLane) !== mk;
-    // A mode that belongs on another KIND of machine is not "unavailable":
-    // picking it moves the active lane there. Only a kind with no machine
-    // at all is a dead end -- and the row says so in plain words.
-    const off = foreign ? !home : m.available === false;
-    const checking = !foreign && activeLaneChecking();
-    const missing = foreign
-      ? (home ? 'runs on ' + home.name : 'needs a ' + mk + ' machine; none is set up')
-      : checking ? 'checking…'
-      : ((m.missing && m.missing.length) ? 'needs ' + m.missing.join(', ')
-         : 'not available on ' + activeLaneName());
-    // "runs on <machine>" and "checking..." are information, not errors: the muted tier.
-    const missingCls = ((foreign && home) || checking) ? 'erow-runs' : 'erow-missing';
-    return '<label class="engine-row" for="' + id + '" data-disabled="' + off + '">'
-      + '<input type="radio" name="engine" id="' + id + '" data-cap="' + esc(x.cap) + '" data-mode="' + esc(x.mode) + '"'
-      + (x.cap === STATE.cap && x.mode === STATE.mode ? ' checked' : '') + (off ? ' disabled' : '') + '>'
-      + '<div class="erow-body"><div class="erow-label">' + esc(m.label) + '</div>'
-      + (m.model ? '<div class="erow-model">' + esc(modelLine(m)) + '</div>' : '')
-      + (m.note ? '<div class="erow-reason">' + esc(m.note) + '</div>' : '')
-      + ((off || foreign) ? '<div class="' + missingCls + '">' + esc(missing) + '</div>' : '')
-      + '<div class="erow-meta"><span class="erow-estimate">' + esc(defaultEstimate(m)) + '</span>'
-      + miniLicenceStampHTML(m.licence) + '</div>'
-      + '</div></label>';
-  }).join('');
-  $$('#enginePicker input[type=radio]').forEach(r => r.onchange = async () => {
-    // The native radio already shows the pick -- no rebuild, so arrow-key
-    // navigation through the group keeps its focus.
-    // A5: carry the OLD mode's values for whatever the user actually edited,
-    // read while the old form is still on screen, so a shared field id
-    // (e.g. "lyrics" across song/music/yue2) keeps a hand-typed value
-    // instead of resetting to the new mode's default. Fields never edited
-    // still take the new mode's own default, exactly as before.
-    SWITCH_CARRY = {values: currentValues(), fields: new Set(STATE.editedFields)};
-    STATE.editedFields = new Set();
-    STATE.cap = r.dataset.cap;
-    STATE.mode = r.dataset.mode;
-    saveRoomEngine(STATE.room, STATE.cap, STATE.mode);   // B2: remembered on the next room entry
-    setEngineChipOpen(false);   // the pick is made; close the popover
-    renderEnginePickerSummary(roomModes(currentRoom()), currentRoom());
-    renderWhatWillRun();
-    const mk = (modeInfo(r.dataset.cap, r.dataset.mode) || {}).lane_kind || 'comfy';
-    const home = laneForKind(mk);
-    const cur = STATE.lanes.find(l => l.id === STATE.activeLane);
-    // The right machine for the job: a cross-kind pick moves the active
-    // lane to the mode's home lane. Only cross-kind picks switch, so this
-    // can never loop.
-    if(home && home.id !== STATE.activeLane && laneKindOf(cur) !== mk){
-      STATE.activeLane = home.id;
-      renderMachineModules();
-      PICKER_KEY = '';   // the manifest is about to change lanes
-      try{
-        const changed = await loadEnginesFor();
-        if(changed) renderRoomStrip(); else refreshRoomStrip();
-      }catch(e){ /* stale manifest stays; the next poll retries */ }
-      refreshMachineModules();   // the new lane's available/missing are in STATE.engines now
-      renderEnginePicker(true);
-      renderMonitor();
-      if(!$('#roomForm').hidden) renderModeFields();
-      return;
+  const ways = task.ways.filter(w => modeInfo(w.cap, w.mode));
+  const box = $('#ways');
+  if(ways.length < 2){
+    box.hidden = true; box.innerHTML = ''; WAYS_KEY = '';
+  } else {
+    box.hidden = false;
+    const key = waysKey(task);
+    if(force || key !== WAYS_KEY){   // polls must not steal a focused radio
+      WAYS_KEY = key;
+      const curLane = STATE.lanes.find(l => l.id === STATE.activeLane);
+      box.innerHTML = ways.map((w, i) => {
+        const m = modeInfo(w.cap, w.mode), id = 'way_' + i;
+        const mk = m.lane_kind || 'comfy';
+        const home = laneForKind(mk);
+        const foreign = laneKindOf(curLane) !== mk;
+        // A mode that belongs on another KIND of machine is not "unavailable":
+        // picking it moves the active lane there. Only a kind with no machine
+        // at all is a dead end -- and the row says so in plain words.
+        const off = foreign ? !home : m.available === false;
+        const checking = !foreign && activeLaneChecking();
+        const missing = foreign
+          ? (home ? 'runs on ' + home.name : 'needs a ' + mk + ' machine; none is set up')
+          : checking ? 'checking…'
+          : ((m.missing && m.missing.length) ? 'needs ' + m.missing.join(', ')
+             : 'not available on ' + activeLaneName());
+        // "runs on <machine>" and "checking..." are information, not errors: the muted tier.
+        const missingCls = ((foreign && home) || checking) ? 'erow-runs' : 'erow-missing';
+        return '<label class="engine-row" for="' + id + '" data-disabled="' + off + '">'
+          + '<input type="radio" name="way" id="' + id + '" data-way="' + esc(w.id) + '" data-cap="' + esc(w.cap)
+          + '" data-mode="' + esc(w.mode) + '"' + (off ? ' disabled' : '') + '>'
+          + '<div class="erow-body"><div class="erow-top"><span class="erow-label">' + esc(w.label) + '</span>'
+          + miniLicenceStampHTML(m.licence) + '</div>'
+          + (w.blurb ? '<div class="erow-reason">' + esc(w.blurb) + '</div>' : '')
+          + ((off || foreign) ? '<div class="' + missingCls + '">' + esc(missing) + '</div>' : '')
+          + '<div class="erow-meta">' + (m.model && m.model.length <= 40 ? '<span class="erow-model">' + esc(modelLine(m)) + '</span>' : '')
+          + '<span class="erow-estimate">' + esc(defaultEstimate(m)) + '</span></div>'
+          + '</div></label>';
+      }).join('');
+      $$('#ways input[type=radio]').forEach(r => r.onchange = () => {
+        // The native radio already shows the pick -- no rebuild, so arrow-key
+        // navigation through the group keeps its focus.
+        const way = task.ways.find(w => w.id === r.dataset.way);
+        if(!way) return;
+        const keepFinal = currentStage() === 'final' ? finalFor(way) : null;
+        const target = keepFinal || {cap: way.cap, mode: way.mode};
+        switchMode(target.cap, target.mode);
+      });
     }
-    refreshMachineModules();   // the mode on screen changed; a process tile reads it
-    PICKER_KEY = pickerKey(ms);
-    renderModeFields();
+    syncWaysChecked();
+  }
+  renderStageSwitch();
+  renderTrail();
+}
+function syncWaysChecked(){
+  const w = currentWay();
+  $$('#ways input[type=radio]').forEach(r => { r.checked = !!w && r.dataset.way === w.id; });
+}
+function renderStageSwitch(){
+  const way = currentWay();
+  const fin = way ? finalFor(way) : null;
+  const room = currentRoom();
+  $('#stageBlock').hidden = !fin || !currentTask() || isCutting(room);
+  const stage = currentStage();
+  $$('#stageSwitch button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.stage === stage)));
+  $('#stageHint').textContent = stage === 'final' ? 'The keeper: more steps, same inputs.' : 'A quick look first.';
+  renderMakeLabel();
+}
+function renderMakeLabel(){
+  const way = currentWay();
+  const draftOfPair = !!(way && finalFor(way) && currentStage() === 'draft' && currentTask() && !isCutting(currentRoom()));
+  $('#makeBtn').textContent = draftOfPair ? 'Make a draft' : 'Make';
+  renderCuttingOnly();
+  refreshReady();
+}
+function bindStageSwitch(){
+  $('#stageSwitch').addEventListener('click', e => {
+    const b = e.target.closest('button[data-stage]');
+    const task = currentTask(), way = currentWay();
+    if(!b || !task || !way) return;
+    const stage = b.dataset.stage;
+    if(stage === currentStage()) return;
+    const target = stage === 'final' ? finalFor(way) : {cap: way.cap, mode: way.mode};
+    if(!target) return;
+    switchMode(target.cap, target.mode, {keepUploads: true});
   });
 }
 
-// B2: the last engine picked in a room, per room id -- storage may be
-// blocked (private window, quota), so every read/write is its own try/catch
-// and a failure just means "nothing remembered", never a thrown error.
-function roomEngineKey(roomId){ return 'bwf.room.engine.' + roomId; }
-function saveRoomEngine(roomId, cap, mode){
-  if(!roomId || !cap || !mode) return;
-  try{ localStorage.setItem(roomEngineKey(roomId), JSON.stringify({cap: cap, mode: mode})); }
-  catch(e){ /* storage off: nothing remembered, current pick still works */ }
+// "Fill in Prompt, then press Make a draft." -- only the primary fields still
+// empty and without a default; "Ready. Press Make." once none is left.
+// A mode whose required main input is a "video" cable (Continue a shot) can only
+// be made from a sequence's timeline: outside the Cutting Room it cannot run.
+function cuttingOnlyMode(){
+  const room = currentRoom(), mode = currentMode();
+  if(!room || isCutting(room) || !mode) return false;
+  return fieldsFor(mode).some(f => f.type === 'video' && tierOf(f) === 'primary'
+    && !f.optional && !/^optional/i.test(f.hint || ''));
 }
-function loadRoomEngine(roomId){
-  try{
-    const raw = localStorage.getItem(roomEngineKey(roomId));
-    if(!raw) return null;
-    const v = JSON.parse(raw);
-    return (v && v.cap && v.mode) ? v : null;
-  } catch(e){ return null; }
+function renderCuttingOnly(){
+  const on = cuttingOnlyMode(), mk = $('#makeBtn');
+  $('#cuttingOnlyNote').hidden = !on;
+  // Only touch the button when this rule applies or applied: a make in flight owns it otherwise.
+  if(on){ mk.disabled = true; mk.title = 'This one runs in the Cutting Room.'; mk.dataset.cuttingOnly = '1'; }
+  else if(mk.dataset.cuttingOnly){ mk.disabled = false; mk.removeAttribute('title'); delete mk.dataset.cuttingOnly; }
+}
+function readySentence(){
+  const mode = currentMode();
+  const btn = $('#makeBtn').textContent;
+  if(!mode) return 'Nothing installed makes this yet.';
+  if(cuttingOnlyMode()) return 'This one runs in the Cutting Room.';
+  const vals = currentValues();
+  const miss = fieldsFor(mode).filter(f => tierOf(f) === 'primary' && !f.optional && !/^optional/i.test(f.hint || ''))
+    .sort((a, b) => (a.order || 0) - (b.order || 0))
+    .filter(f => UPLOAD_TYPES.includes(f.type) ? !(STATE.uploads[f.id] || []).length
+      : (f.type === 'text' || f.type === 'textarea') ? !String(vals[f.id] == null ? '' : vals[f.id]).trim() : false)
+    .map(f => f.label || f.id);
+  if(!miss.length) return 'Ready. Press ' + btn + '.';
+  const list = miss.length < 2 ? miss[0] : miss.slice(0, -1).join(', ') + ' and ' + miss[miss.length - 1];
+  return 'Fill in ' + list + ', then press ' + btn + '.';
+}
+function refreshReady(){
+  const el = $('#taskReady');
+  if(el) el.textContent = readySentence();
+}
+
+// The trail: where this task stands, one muted line, never a gate.
+function sessionDone(refs){
+  return STATE.jobs.some(j => SESSION_JOBS.has(j.id) && j.status === 'done'
+    && refs.some(x => x.cap === j.kind && x.mode === j.mode));
+}
+function renderTrail(){
+  const el = $('#taskTrail');
+  const task = currentTask(), mode = currentMode(), way = currentWay();
+  if(!el) return;
+  if(!task || !mode || !way || isCutting(currentRoom())){ el.hidden = true; el.innerHTML = ''; return; }
+  const segs = [];
+  const ups = fieldsFor(mode).filter(f => tierOf(f) === 'primary' && FILE_KIND[f.type]
+    && (task.accepts || []).includes(FILE_KIND[f.type]));
+  if(ups.length){
+    const kinds = Array.from(new Set(ups.map(f => KIND_LABEL[FILE_KIND[f.type]])));
+    segs.push({t: kinds.join(' or '), ok: ups.some(f => (STATE.uploads[f.id] || []).length), seg: 'input'});
+  }
+  segs.push({t: task.short, seg: 'task'});
+  const stage = currentStage();
+  if(finalFor(way) || stage === 'final'){
+    const draftOk = sessionDone([{cap: way.cap, mode: way.mode}]);
+    const finals = wayRefs(way).slice(1);
+    const finalOk = sessionDone(finals);
+    segs.push({t: 'Draft', ok: draftOk, now: stage === 'draft' && !draftOk, seg: 'draft'});
+    segs.push({t: 'Final', ok: finalOk, now: stage === 'final' && !finalOk, seg: 'final'});
+  } else {
+    segs.push({t: 'Result', ok: sessionDone(wayRefs(way)), seg: 'result'});
+  }
+  el.hidden = false;
+  el.innerHTML = segs.map((s, i) => (i ? '<span class="tr-sep" aria-hidden="true">→</span>' : '')
+    + '<span class="tr-seg' + (s.ok ? ' tr-ok' : '') + (s.now ? ' tr-now' : '') + '" data-seg="' + s.seg + '">'
+    + esc(s.t) + (s.ok ? ' ✓' : '') + '</span>').join('');
+}
+
+// Open a task: its room is the internal home (guide, Cutting Room link), the
+// task decides which modes the page offers and which one it opens on.
+async function selectTask(idOrTask, opts){
+  opts = opts || {};
+  const task = typeof idOrTask === 'string' ? taskById(idOrTask) : idOrTask;
+  if(!task) return;
+  const room = taskRoom(task);
+  if(!room) return;
+  rememberGroupTask(task);
+  const same = STATE.task === task.id && STATE.room === room.id;
+  let mode = opts.mode || null;
+  if(!mode && (!same || opts.force)) mode = pickForTask(task);
+  await selectRoom(room.id, Object.assign({}, opts, {task: task, mode: mode, force: opts.force || !same}));
+  await applyCarry();
 }
 
 async function selectRoom(id, opts){
   opts = opts || {};
-  const room = roomById(id) || STATE.rooms[0] || null;   // default: first in order
+  let room = roomById(id) || STATE.rooms[0] || null;   // default: first in order
   if(!room) return;
-  const changed = STATE.room !== room.id;
   const cuttingRoom = isCutting(room);
+  closeHome();
+  // The task on screen: the one asked for; else (an old #room= link, a guide
+  // jump) the one already open when it lives here, else the room's first.
+  let task = null;
+  if(!cuttingRoom){
+    task = opts.task || (opts.tryId ? taskOwningExample(opts.tryId, room.id) : null);
+    if(!task){
+      const open = currentTask();
+      task = open && !opts.force && taskRoom(open) && taskRoom(open).id === room.id ? open : taskForRoom(room.id, opts.tryId);
+    }
+  }
+  // The room follows the task (a try link can name a task of another room).
+  if(task){ const tr = taskRoom(task); if(tr) room = tr; }
+  const changed = STATE.room !== room.id;
   if(changed && isCutting(currentRoom())) await dropFreshSlot();
+  const taskChanged = (task ? task.id : null) !== STATE.task;
   STATE.room = room.id;
+  STATE.task = task ? task.id : null;
   if(cuttingRoom){
     setSeqHash(opts.seqId !== undefined ? opts.seqId : seqIdFromHash());
   } else {
-    try{ history.replaceState(null, '', '#room=' + encodeURIComponent(room.id)); } catch(e){ /* sandboxed */ }
+    setTaskHash();
   }
-  // P2/D2 fix: the active lane must follow the room, BEFORE roomModes(room)
-  // is read below -- STATE.engines (and so every mode's available/missing)
-  // is scoped to STATE.activeLane, so picking the room's own engine off a
-  // lane left over from a DIFFERENT room's cap is exactly D2's bug.
+  // P2/D2 fix: the active lane must follow the task, BEFORE its modes are read
+  // below -- STATE.engines (and so every mode's available/missing) is scoped to
+  // STATE.activeLane, so picking the task's own engine off a lane left over
+  // from a DIFFERENT cap is exactly D2's bug.
   if(ensureLaneForRoom(room)){
     renderMachineModules();
     try{ await loadEnginesFor(); } catch(e){ /* stale manifest stays; the next poll retries */ }
   }
-  // H2: #room=<id>&try=<example id> -- find which mode owns that example
+  // H2: #task=<id>&try=<example id> -- find which mode owns that example
   // (unknown ids are ignored silently) and pick it, so the example's own
-  // mode opens rather than whatever this room would default to.
+  // mode opens rather than whatever this task would default to.
   let tryMatch = null;
   if(opts.tryId){
-    for(const x of roomModes(room)){
+    for(const x of scopeModes(room)){
       const ex = ((x.info && x.info.examples) || []).find(e => e.id === opts.tryId);
       if(ex){ tryMatch = {cap: x.cap, mode: x.mode, example: ex}; break; }
     }
   }
-  if(changed || opts.force || tryMatch){
-    // Default engine: the example's own mode if a try id matched; else the
-    // last engine picked in THIS room (B2), when it still exists here and
-    // the lane can still offer it; else the first AVAILABLE mode, else the
-    // first. A try= example always wins over the remembered pick.
-    const ms = roomModes(room);
-    const last = tryMatch ? null : loadRoomEngine(room.id);
-    const lastMatch = last && ms.find(x => x.cap === last.cap && x.mode === last.mode && x.info.available);
+  if(changed || taskChanged || opts.force || tryMatch || opts.mode){
+    // Default engine: the example's own mode if a try id matched; else the one
+    // asked for (selectTask: the way last picked in this task, else the first
+    // AVAILABLE way); else the first available mode, else the first. A try=
+    // example always wins.
+    const ms = scopeModes(room);
+    const has = x => x && ms.some(m => m.cap === x.cap && m.mode === x.mode);
     const pick = tryMatch ? {cap: tryMatch.cap, mode: tryMatch.mode}
-      : lastMatch || (ms.find(x => x.info.available) || ms[0] || null);
+      : has(opts.mode) ? opts.mode
+      : (task ? pickForTask(task) : (ms.find(x => x.info.available) || ms[0] || null));
     STATE.cap = pick ? pick.cap : null;
     STATE.mode = pick ? pick.mode : null;
     const sel = STATE.jobs.find(j => j.id === STATE.selectedJobId);
-    if(!opts.keepJob && !(sel && jobRoom(sel) === room.id)) STATE.selectedJobId = null;
+    const selHere = sel && (task ? (jobTask(sel) || {}).id === task.id : jobRoom(sel) === room.id);
+    if(!opts.keepJob && !selHere) STATE.selectedJobId = null;
   }
   refreshRoomStrip();
   refreshMachineModules();   // a process tile reads the mode now on screen
   const cutting = cuttingRoom;
-  const nothing = !cutting && roomModes(room).length === 0;
-  $('#roomHeading').textContent = room.name || '';
-  $('#roomBlurb').textContent = room.blurb || '';
-  $('#roomBlurb').hidden = !room.blurb;
-  if(changed || opts.force) STATE.seqSlotId = null;
+  const nothing = !cutting && (task ? !taskModes(task).length : roomModes(room).length === 0);
+  showTaskHeading();
+  if(changed || taskChanged || opts.force) STATE.seqSlotId = null;
   $('#roomForm').hidden = cutting ? !STATE.seqSlotId : nothing;
   // P2/D2 fix: "nothing installed" (no engine pack at all) and "no reachable
   // machine for this room" are different refusals -- the second only
@@ -2792,7 +3223,7 @@ async function selectRoom(id, opts){
   renderRoomPlainNote(room);
   $('#seqPicker').hidden = !cutting;
   $('#timelinePanel').hidden = !cutting;
-  renderEnginePicker(true);
+  renderWays(true);
   renderHistoryToggle();
   renderBin();
   if(cutting){
@@ -2840,7 +3271,7 @@ function currentValues(){
   return out;
 }
 
-// A5: set once by an engine switch (see renderEnginePicker's radio onchange),
+// A5: set once by an engine switch (see switchMode),
 // consumed once at the top of the next renderModeFields() call.
 let SWITCH_CARRY = null;
 function fieldControlHTML(f, carry){
@@ -3085,7 +3516,7 @@ function renderQualityLadder(mode){
       + ' aria-pressed="' + (q.id === SELECTED_QUALITY ? 'true' : 'false') + '"'
       + (off ? ' disabled' : '') + '>' + esc(q.label) + '</button>';
   }).join('');
-  $$('#qualityLadder button').forEach(b => b.onclick = () => selectQualityTier(b.dataset.quality));
+  $$('#qualityLadder button').forEach(b => b.onclick = () => { selectQualityTier(b.dataset.quality); rememberDraftTier(b.dataset.quality); });
   const sel = quality.find(q => q.id === SELECTED_QUALITY);
   if(sel){
     // UX-2 #3: a range from the recent jobs, not a single point estimate.
@@ -3160,9 +3591,12 @@ function renderTryThis(){
   }
   wrap.hidden = false;
   const supplied = tryThisModeSupplied(mode);
+  const cableOnly = cuttingOnlyMode();
   $('#tryThisRow').innerHTML = examples.map(ex => {
     let needsHTML = '';
-    if(ex.needs && !supplied){
+    if(ex.needs && !supplied && cableOnly){
+      needsHTML = '<p class="hint" data-try-needs>Needs a ' + esc(ex.needs) + ' first: make it in the Cutting Room.</p>';
+    } else if(ex.needs && !supplied){
       const target = roomAndExampleForCapWord(ex.needs);
       needsHTML = '<p class="hint" data-try-needs>Needs a ' + esc(ex.needs) + ' first. Add your own below'
         + (target ? ', or <a href="#room=' + esc(target.room.id) + '&try=' + esc(target.example.id) + '">make one in '
@@ -3206,8 +3640,7 @@ async function renderModeFields(){
   const mode = currentMode();
   const fields = fieldsFor(mode);
   const values = currentValues();
-  // A5: consumed once, set only by an actual engine switch (renderEnginePicker's
-  // radio onchange) -- every other caller of renderModeFields() (Try this, a
+  // A5: consumed once, set only by an actual engine switch (switchMode) -- every other caller of renderModeFields() (Try this, a
   // carried-over result, a poll) leaves this null, so it changes nothing there.
   const carry = SWITCH_CARRY;
   SWITCH_CARRY = null;
@@ -3348,19 +3781,8 @@ async function renderModeFields(){
     const input = $('#upload_' + f.id);
     if(!input) return;
     input.onchange = async () => {
-      const lane = STATE.activeLane;
-      if(!lane){ msgInspector('Pick a machine first.', 'err'); input.value = ''; return; }
-      try{
-        const fd = new FormData();
-        fd.append('lane', lane);
-        Array.from(input.files).forEach(file => fd.append('file', file, file.name));
-        const r = await fetch('/api/upload', {method:'POST', body: fd});
-        const j = await r.json();
-        if(!j.ok) throw new Error(j.error || 'upload failed');
-        uploadAccepted(f, j.files);
-      } catch(e){
-        msgInspector(String(e.message || e), 'err');
-      }
+      if(!STATE.activeLane) input.value = '';
+      await uploadFiles(f, Array.from(input.files));
     };
     const reuse = $('#reuse_' + f.id);
     if(reuse) wireSoundReuse(reuse, f);
@@ -3386,6 +3808,8 @@ async function renderModeFields(){
     };
   });
 
+  const draftTier = draftTierPick(mode);
+  if(draftTier) SELECTED_QUALITY = draftTier;
   renderQualityLadder(mode);
   renderTryThis();
 
@@ -3423,6 +3847,8 @@ async function renderModeFields(){
   renderCompareAxis();
   const cb = $('#compareBox');
   if(cb) cb.hidden = !isCompareVisible();
+  refreshReady();
+  renderTrail();
 }
 
 // A chosen recording sets the clip's Length to match it: the smallest 8n+1 frame count that holds it, capped
@@ -3439,6 +3865,25 @@ function applyRecordingLength(seconds){
   lenEl.dispatchEvent(new Event('change', {bubbles: true}));
   msgInspector('Length set to ' + frames + ' frames (' + (frames / fps).toFixed(1) + ' s) to match the recording.'
     + (want > 993 ? ' The recording is longer than one clip holds, so the rest is left out.' : ''), '');
+}
+// Send files to the active lane for one upload field (its own picker, or a file
+// dropped on the home view). Failures land in the inspector message.
+async function uploadFiles(f, files){
+  const lane = STATE.activeLane;
+  if(!lane){ msgInspector('Pick a machine first.', 'err'); return false; }
+  try{
+    const fd = new FormData();
+    fd.append('lane', lane);
+    files.forEach(file => fd.append('file', file, file.name));
+    const r = await fetch('/api/upload', {method:'POST', body: fd});
+    const j = await r.json();
+    if(!j.ok) throw new Error(j.error || 'upload failed');
+    uploadAccepted(f, j.files);
+    return true;
+  } catch(e){
+    msgInspector(String(e.message || e), 'err');
+    return false;
+  }
 }
 // A file that landed on the lane for this field, however it got there: picked
 // on disk, or just spoken by the server. One place, so both ways show the same.
@@ -3464,6 +3909,9 @@ function setUploads(fid, files){
   if(tag) tag.textContent = files.length + ' loaded';
   renderTryThis();   // a "Needs a … first" note clears once the file is here
   renderHelperBar();   // "Describe this picture" appears once a file is here
+  refreshReady();
+  renderTrail();
+  refinalForPictures();   // a keeper made for n pictures follows the count
 }
 // A file already on the lane (an upload or a carried picture): its name may
 // carry a subfolder ("sub/name.png"), as the lane's upload returned it.
@@ -3490,8 +3938,8 @@ function canEditResult(job){
 // carry the picture onto the machine that mode runs on, as its first picture.
 async function editResult(job){
   const target = modeInfo(job.kind, job.mode).edit_in;
-  const room = STATE.rooms.find(r => (r.modes || []).some(m => m.cap === job.kind && m.mode === target));
-  if(room && room.id !== STATE.room) await selectRoom(room.id, {keepJob: true});
+  const tt = taskOfMode(job.kind, target);
+  if(tt && tt.id !== STATE.task) await selectTask(tt, {keepJob: true, mode: {cap: job.kind, mode: target}});
   if(!(await reviseSwitchMode(job.kind, target))) return false;
   return carryIntoPictureField(job, resultPictureIndex(job));
 }
@@ -3686,7 +4134,7 @@ function renderHelperBar(){
   // the room's own "nothing installed" / "no machine reachable" note
   // (#roomPlainNote, set by selectRoom before this runs) already covers
   // that case, so the offer just steps aside rather than duplicating it.
-  const roomModesHere = room ? roomModes(room) : [];
+  const roomModesHere = room ? scopeModes(room) : [];
   const roomReady = cutting || (roomModesHere.length > 0 && !roomModesAllOff(roomModesHere));
   const show = !!(g && GUIDE.helper && mode && roomReady && !$('#promptWrap').hidden && (!cutting || slotWriteBeat()));
   $('#helperBar').hidden = !show;
@@ -3736,21 +4184,6 @@ $('#helperPictureFile').onchange = async () => {
   }
 };
 $('#helperCancelBtn').onclick = () => { if(GUIDE_ABORT) GUIDE_ABORT.abort(); };
-// UX-2 #1: the chip toggles its popover; a click outside it, or Escape,
-// closes it -- the same "click elsewhere closes it" a native <details>
-// gave for free, kept here since the popover is no longer a <details>.
-$('#engineChipBtn').onclick = () => setEngineChipOpen(!ENGINE_CHIP_OPEN);
-// Clicking a row closes the popover even when it is the engine already picked
-// (no change event fires then, and an open popover sits over the Make button).
-$('#enginePicker').addEventListener('click', (e) => {
-  if(e.target.closest('label') && ENGINE_CHIP_OPEN) setEngineChipOpen(false);
-});
-document.addEventListener('click', (e) => {
-  if(ENGINE_CHIP_OPEN && !$('#enginePickerWrap').contains(e.target)) setEngineChipOpen(false);
-});
-document.addEventListener('keydown', (e) => {
-  if(e.key === 'Escape' && ENGINE_CHIP_OPEN) setEngineChipOpen(false);
-});
 
 /* ---------------------------------------------------------------------
    Room guide (guides/<id>/): GET /api/guide + POST /api/guide/chat. The
@@ -4954,8 +5387,8 @@ function canRevise(job){
   return !!(info && info.reviser && job.status === 'done' && reviseOutputIndex(job) >= 0);
 }
 async function openRevise(job){
-  const rid = jobRoom(job);
-  if(rid && rid !== STATE.room) await selectRoom(rid, {keepJob: true});
+  const jt = jobTask(job);
+  if(jt && jt.id !== STATE.task) await selectTask(jt, {keepJob: true, mode: {cap: job.kind, mode: job.mode}});
   await renderGuidePanel();
   if($('#guidePanel').hidden) return;
   GUIDE_REVISE = {room: GUIDE_ROOM, job_id: job.id, output: reviseOutputIndex(job), complaint: ''};
@@ -5075,7 +5508,8 @@ async function reviseSwitchMode(cap, mode){
   if(!modeInfo(cap, mode)) return false;
   STATE.cap = cap;
   STATE.mode = mode;
-  renderEnginePicker(true);
+  renderWays(true);
+  rememberCurrentWay();
   await renderModeFields();
   return true;
 }
@@ -5148,14 +5582,14 @@ function refreshEnabled(fields){
     if(!row) return;
     const container = row.closest('.field-row') || row.closest('.ledger-slot');
     if(!container) return;
-    const enabled = evalEnabled(f, values);
+    const enabled = evalEnabled(f, values) && row.dataset.snapLocked !== '1';   // the beat grid sets a snapped shot's length
     container.dataset.disabled = String(!enabled);
     if(row.disabled !== undefined) row.disabled = !enabled;
   });
 }
 
 function focusFirstInput(){
-  if($('#roomForm').hidden) return;
+  if($('#roomForm').hidden || HOME.open) return;
   // FB-2: a writer mode's one box is the guide's.
   if(guideLayout(currentRoom()) === 'writer'){ $('#guideInput').focus({preventScroll: true}); return; }
   // Prompt-first: focus the box everyone understands. A mode with no prompt
@@ -5519,6 +5953,7 @@ async function handleMake(confirm){
     msgInspector('On its way.', 'ok');
     if(r.job){
       LAST_MAKE_SIG = dupeSig; LAST_MAKE_JOB_ID = r.job.id;   // UX-2 #6
+      SESSION_JOBS.add(r.job.id);   // the trail ticks what THIS page made
       STATE.jobs = [r.job, ...STATE.jobs.filter(j => j.id !== r.job.id)];
       STATE.selectedJobId = r.job.id;
       STATE.pendingJobId = r.job.id;
@@ -6812,12 +7247,14 @@ function renderSlotSing(slot){
   const span = slot && slot.sing_span;
   if(!slot || !(slot.sing_offer || span)){ setHTML(el, ''); el.hidden = true; return; }
   const on = !!(slot.sing && slot.sing.on);
-  let html = '<div class="field-row"><label class="field-label"><input type="checkbox" id="singToggle" data-sing-slot="'
+  const snapped = slotSnapped(slot);   // the beat grid decides when it sings: "Follows the song" (slotBars) is its switch
+  let html = snapped ? '' : '<div class="field-row"><label class="field-label"><input type="checkbox" id="singToggle" data-sing-slot="'
     + esc(slot.id) + '"' + (on ? ' checked' : '') + (slot.sing_offer ? '' : ' disabled') + '> Sing along</label></div>';
   if(span && span.head)
     html += '<div class="field-row"><label class="field-label" for="singStart">Starts at (seconds)</label>'
-      + '<input type="number" id="singStart" min="0" step="0.1" value="' + esc(String(span.start)) + '"></div>';
-  if(span){
+      + '<input type="number" id="singStart" min="0" step="0.1" value="' + esc(String(span.start)) + '"' + (snapped ? ' disabled' : '') + '></div>'
+      + (snapped ? '<p class="hint" id="singStartHint">set by the beat grid</p>' : '');
+  if(span && !snapped){
     // RS3: the server knows the song's length once it has probed it; a shot
     // that sings past the end says so here, next to the numbers.
     const songLen = STATE.seq && STATE.seq.song_seconds;
@@ -6828,10 +7265,11 @@ function renderSlotSing(slot){
       html += '<p class="hint" id="singLine">Sings ' + singTime(span.heard_start) + ' – ' + singTime(span.end)
         + ' of ' + esc(songTitle(STATE.seq)) + '</p>';
   }
+  if(!html){ setHTML(el, ''); el.hidden = true; return; }
   el.hidden = false;
   if(!setHTML(el, html)) return;
-  const toggle = $('#singToggle'), start = $('#singStart'), slotId = toggle.dataset.singSlot;
-  toggle.onchange = async () => {
+  const toggle = $('#singToggle'), start = $('#singStart'), slotId = slot.id;
+  if(toggle) toggle.onchange = async () => {
     const r = await seqOp('set_sing', {slot_id: slotId, on: toggle.checked});
     if(r) renderTimeline(); else toggle.checked = !toggle.checked;
   };
@@ -6846,8 +7284,8 @@ function renderSlotSing(slot){
 function renderSlotLipsync(slot){
   const el = $('#slotLipsync');
   if(!el) return;
-  if(!(STATE.seq && STATE.seq.audio_led && slot && slot.lane === 'video' && slot.mode === 'ltx')){
-    setHTML(el, ''); el.hidden = true; return;
+  if(!(STATE.seq && STATE.seq.audio_led && slot && slot.lane === 'video' && slot.mode === 'ltx') || slotSnapped(slot)){
+    setHTML(el, ''); el.hidden = true; return;   // snapped: the same switch is "Follows the song" in slotBars
   }
   const on = slot.lipsync !== false;
   const html = '<div class="field-row"><label class="field-label"><input type="checkbox" id="lipsyncToggle"'
@@ -6859,6 +7297,68 @@ function renderSlotLipsync(slot){
   toggle.onchange = async () => {
     const r = await seqOp('set_lipsync', {slot_id: slot.id, on: toggle.checked});
     if(r) renderTimeline(); else toggle.checked = !toggle.checked;
+  };
+}
+
+// A beat-snapped sequence (audio-led + bar_snap): is this a video shot the beat grid sizes?
+function slotSnapped(slot){
+  const seq = STATE.seq;
+  return !!(seq && seq.audio_led && seq.bar_snap && slot && slot.lane === 'video');
+}
+// "N made shot(s) now need making again": the count is the server's (reflow_stale_count of the op that moved a window).
+function sayReflow(r){
+  const n = r && r.reflow_stale_count;
+  if(n > 0) msgSeq(n + ' made shot' + (n > 1 ? 's' : '') + (n > 1 ? ' now need' : ' now needs') + ' making again.', '');
+}
+// Beat-snapped shot: Bars [-] n [+], "Ends at song end" on the last shot, the window read-out the server derived,
+// and the one "Follows the song" switch (a lipsync shot's lipsync, a sing-along shot's sing.on). Every number here is the server's.
+function renderSlotBars(slot){
+  const el = $('#slotSnap');
+  if(!el) return;
+  const lenEl = $('#inspector [data-field-id="length"]');
+  const unlock = () => { if(lenEl && lenEl.dataset.snapLocked){ delete lenEl.dataset.snapLocked; lenEl.disabled = false; refreshEnabled(fieldsFor(currentMode())); } };
+  if(!slotSnapped(slot)){ setHTML(el, ''); el.hidden = true; unlock(); return; }
+  const w = slot.window || {};
+  const n = w.bars != null ? w.bars : (slot.bars != null ? slot.bars : null);
+  const videos = (STATE.seq.slots || []).filter(s => s.lane === 'video');
+  const last = videos.length && videos[videos.length - 1].id === slot.id;
+  const toEnd = !!(slot.to_end || w.edge === 'to_end');
+  const hasFrames = w.render_frames != null;
+  let html = '<div id="slotBars"><div class="field-row"><span class="field-label">Bars</span>'
+    + '<button type="button" class="btn" id="barsMinus" aria-label="One bar less"' + (n == null || n <= 1 ? ' disabled' : '') + '>−</button> '
+    + '<span id="barsValue">' + (n == null ? '–' : esc(String(n))) + '</span> '
+    + '<button type="button" class="btn" id="barsPlus" aria-label="One bar more"' + (toEnd ? ' disabled' : '') + '>+</button></div>';
+  if(slot.end_at != null)
+    html += '<p class="hint" id="endAtNote">Ends at ' + singTime(slot.end_at) + ' (set by hand)</p>';
+  if(last)
+    html += '<div class="field-row"><label class="field-label"><input type="checkbox" id="toEndBox"'
+      + (toEnd ? ' checked' : '') + '> Ends at song end</label></div>';
+  if(hasFrames)
+    html += '<p class="hint" id="barsReadout">' + singTime(w.start) + '–' + singTime(w.f1 / 24)
+      + ' · renders ' + w.render_frames + ' frames · keeps the ' + (w.keep === 'tail' ? 'end' : 'start') + '</p>'
+      + '<p class="hint" id="lengthHint">set by the beat grid: ' + w.render_frames + ' frames</p>';
+  const ltx = slot.mode === 'ltx';
+  if(ltx || slot.sing_offer)
+    html += '<div class="field-row"><label class="field-label"><input type="checkbox" id="followsToggle"'
+      + (slot.follows_song ? ' checked' : '') + '> Follows the song' + (ltx ? ' (lip-sync)' : '') + '</label></div>'
+      + (ltx ? '<p class="hint">Untick for a shot with no singing face: it is made without the song driving it.</p>' : '');
+  html += '</div>';
+  el.hidden = false;
+  if(lenEl && hasFrames){ lenEl.dataset.snapLocked = '1'; lenEl.disabled = true; } else unlock();
+  if(!setHTML(el, html)) return;
+  const bars = async (extra, undo) => {
+    const r = await seqOp('set_shot_bars', Object.assign({slot_id: slot.id}, extra));
+    if(r){ renderTimeline(); sayReflow(r); }
+    else if(undo) undo();
+  };
+  $('#barsMinus').onclick = () => bars({bars: n - 1});
+  $('#barsPlus').onclick = () => bars({bars: n == null ? 1 : n + 1});
+  const endBox = $('#toEndBox');
+  if(endBox) endBox.onchange = () => bars(endBox.checked ? {to_end: true} : {bars: n != null ? n : 1}, () => { endBox.checked = !endBox.checked; });
+  const follows = $('#followsToggle');
+  if(follows) follows.onchange = async () => {
+    const r = await seqOp(ltx ? 'set_lipsync' : 'set_sing', {slot_id: slot.id, on: follows.checked});
+    if(r) renderTimeline(); else follows.checked = !follows.checked;
   };
 }
 
@@ -6899,6 +7399,7 @@ function renderSlotMeta(slot){
   renderSlotKind(slot);
   renderSlotSing(slot);
   renderSlotLipsync(slot);
+  renderSlotBars(slot);
   renderSlotAdopt(slot);
   if(!slot) return;
   const delBtn = $('#slotDeleteBtn');
@@ -7007,14 +7508,14 @@ async function selectSlot(slotId){
       && laneKindOf(STATE.lanes.find(l => l.id === STATE.activeLane)) !== shotKind){
     STATE.activeLane = shotHome.id;
     renderMachineModules();
-    PICKER_KEY = '';
+    WAYS_KEY = '';
     try{
       const changed = await loadEnginesFor();
       if(changed) renderRoomStrip(); else refreshRoomStrip();
     }catch(e){ /* stale manifest stays; the next poll retries */ }
   }
   $('#roomForm').hidden = false;
-  renderEnginePicker(true);   // Cutting Room has no room modes, so this stays hidden
+  renderWays(true);   // Cutting Room has no room modes, so this stays hidden
   await renderModeFields();
   applySlotValues(slot);
   renderSlotMeta(slot);
@@ -7142,6 +7643,7 @@ function renderTimeline(){
   renderSlotAdopt(currentSlot());   // F5: what is already a take stops being offered
   renderSlotSing(currentSlot());   // E1: a reorder/cable/length change moves where a shot sings
   renderSlotLipsync(currentSlot());
+  renderSlotBars(currentSlot());
 }
 
 /* ---------------------------------------------------------------------
@@ -7251,7 +7753,38 @@ function masterControlsHTML(seq){
   }
   h += '<label class="btn" id="cutVocalsAddLabel">' + (vf ? 'Replace vocals' : 'Add vocals only')
     + '<input type="file" id="cutVocalsFile" accept="audio/*,.m4a,.mp3,.wav,.aac,.flac,.ogg,.opus" hidden></label></span>';
-  return h;
+  return h + beatsControlsHTML(seq);
+}
+/* Audio-led only: "Find the beats" (POST /api/sequence/analyze), the line it leaves, and "Snap to beats". Every state
+comes from the stored sequence (song_map, song_map_stale, song_map_job); the page derives none of it. */
+function beatsControlsHTML(seq){
+  const job = seq.song_map_job && typeof seq.song_map_job === 'object' ? seq.song_map_job : null;
+  const sm = seq.song_map && typeof seq.song_map === 'object' ? seq.song_map : null;
+  const running = !!(job && job.status === 'running');
+  const failed = !!(job && job.status === 'error');
+  const fresh = !!(sm && !seq.song_map_stale);
+  let line = '', warn = false;
+  if(running) line = '';
+  else if(failed){ line = String(job.error || 'Finding the beats did not finish.'); warn = true; }
+  else if(sm && seq.song_map_stale) line = 'stale: find again';
+  else if(sm){
+    const bpm = typeof sm.bpm_median === 'number' ? sm.bpm_median.toFixed(1) + ' BPM, ' : '';
+    line = bpm + Math.max(0, (sm.downbeats || []).length - 1) + ' bars, '
+      + (sm.beats_per_bar ? sm.beats_per_bar + '/4' : 'meter unknown');
+  }
+  return '<span id="cutBeatsRow">'
+    + '<button type="button" class="btn" id="findBeatsBtn"' + (running ? ' disabled' : '') + '>'
+    + (running ? 'Finding the beats…' : (sm && !failed ? 'Find again' : 'Find the beats')) + '</button>'
+    + (line ? '<span id="beatsLine" class="muted"' + (warn ? ' style="color:var(--error)"' : '') + '>' + esc(line) + '</span>' : '')
+    + '<label class="muted" id="snapLabel" title="Whole bars between the detected downbeats; needs the beats found for this sound.">'
+    + '<input type="checkbox" id="snapBox"' + (seq.bar_snap ? ' checked' : '') + (fresh ? '' : ' disabled') + '> Snap to beats</label></span>';
+}
+// The snapped plan's own sentences (snap_report.warnings, snap_error), word for word.
+function snapNotesHTML(seq){
+  if(!(seq.audio_led && seq.bar_snap)) return '';
+  const ws = (seq.snap_report && seq.snap_report.warnings) || [];
+  return (ws.length ? '<span id="snapWarnings">' + ws.map(w => '<span class="hint warn">' + esc(w) + '</span>').join(' ') + '</span>' : '')
+    + (seq.snap_error ? '<span id="snapError" class="hint warn">' + esc(seq.snap_error) + '</span>' : '');
 }
 function wireMasterControls(){
   const addEl = $('#cutMasterFile');
@@ -7288,6 +7821,29 @@ function wireMasterControls(){
   };
   const clrVocals = $('#cutVocalsClear');
   if(clrVocals) clrVocals.onclick = async () => { await seqOp('clear_master_vocals', {}); renderTimeline(); };
+  const findBtn = $('#findBeatsBtn');
+  if(findBtn) findBtn.onclick = async () => {
+    if(!STATE.seq) return;
+    findBtn.disabled = true;
+    let r;
+    try{ r = await postJSON('/api/sequence/analyze', {id: STATE.seq.id}); }
+    catch(e){ r = {error: String(e.message || e)}; }
+    if(!r || !r.ok) msgSeq((r && r.error) || 'Could not start finding the beats.', 'err');
+    try{    // the stored song_map_job now says "running"; the poll keeps it fresh from here
+      const d = await getJSON('/api/sequence?id=' + encodeURIComponent(STATE.seq.id));
+      if(d && d.id && STATE.seq && d.id === STATE.seq.id && d.rev >= STATE.seq.rev) STATE.seq = d;   // never step back
+    }catch(e){ /* the next poll tick picks it up */ }
+    const j = STATE.seq && STATE.seq.song_map_job;
+    findBtn.disabled = !!(j && j.status === 'running');   // setHTML leaves an unchanged bar alone, so put the DOM state back by hand
+    renderCutBar();
+  };
+  const snapBox = $('#snapBox');
+  if(snapBox) snapBox.onchange = async () => {
+    const on = snapBox.checked;
+    const r = await seqOp('set_bar_snap', {on});
+    if(r){ renderTimeline(); sayReflow(r); }
+    else snapBox.checked = !on;
+  };
   const st = $('#cutMasterStart');
   if(st) st.onchange = async () => {
     const r = await seqOp('set_master_start', {start: Number(st.value)});
@@ -7320,7 +7876,7 @@ function renderCutBar(){
     + '<label id="cutAudioLedLabel" class="muted" title="Off (the default) keeps the cut as it is. On: the first picked sound shot plays '
     + 'under the whole cut at full level, the video shots keep no sound of their own, and each LTX shot is made to fit its slice of it.">'
     + '<input type="checkbox" id="audioLedBox"' + (seq.audio_led ? ' checked' : '') + '> Audio-led</label>'
-    + (seq.audio_led ? masterControlsHTML(seq) : '')
+    + (seq.audio_led ? masterControlsHTML(seq) + snapNotesHTML(seq) : '')
     + '</div>';
   if(setHTML(wrap, html)){
     const btn = $('#cutBtn');
@@ -8254,6 +8810,7 @@ async function loadWorkflows(){
 }
 
 function openWorkflows(){
+  closeHome();
   WF.open = true;
   document.body.classList.add('wf-open');
   $('#workflowsView').hidden = false;
@@ -8371,6 +8928,265 @@ function bindWorkflowsUI(){
 }
 
 /* ---------------------------------------------------------------------
+   Home: every task on one page, a search, and a place to drop a file
+--------------------------------------------------------------------- */
+const HOME = {open: false, q: '', unfold: false, rejected: ''};
+const HOME_KIND = {
+  picture: {art: 'a picture'}, clip: {art: 'a clip'}, song: {art: 'a song'}, model: {art: 'a 3D object'},
+};
+// Which field types take a dropped file of each kind (carry + the drop's own labels).
+const CARRY_TYPES = {picture: ['image', 'image_list'], clip: ['video_list', 'video'], song: ['audio'], model: ['model']};
+const HOME_STOP = new Set(['the', 'and', 'for', 'with', 'make', 'from', 'into', 'you', 'want', 'can', 'that', 'this', 'my', 'me', 'it', 'one', 'new']);
+const HOME_SYN = [
+  [/bring(ing)? (it |them )?to life/g, ' animate '],
+  [/\b(photos?|images?|pics?|pictures?)\b/g, ' picture '],
+  [/\b(move|moving)\b/g, ' animate '],
+  [/\b(sharper|sharpen|4k|1080p?)\b/g, ' sharper upscale '],
+  [/\b(talk|talks|talking|speak|speaks)\b/g, ' talking face say '],
+  [/\b3d\b/g, ' 3d mesh '],
+];
+
+// MIME first, then the extension (a browser often leaves the type empty).
+function classifyFile(file){
+  const t = file.type || '', n = (file.name || '').toLowerCase();
+  if(t.startsWith('image/')) return 'picture';
+  if(t.startsWith('video/')) return 'clip';
+  if(t.startsWith('audio/')) return 'song';
+  if(/\.(png|jpe?g|webp|gif|bmp)$/.test(n)) return 'picture';
+  if(/\.(mp4|webm|mov|m4v|mkv)$/.test(n)) return 'clip';
+  if(/\.(wav|mp3|flac|ogg|m4a|aac|opus)$/.test(n)) return 'song';
+  if(/\.(glb|gltf)$/.test(n)) return 'model';
+  return null;
+}
+function homeTokens(){
+  let q = ' ' + HOME.q.toLowerCase() + ' ';
+  const extra = [];
+  for(const [re, add] of HOME_SYN) q = q.replace(re, () => { extra.push(...add.trim().split(' ')); return ' '; });
+  const toks = q.split(/[^a-z0-9]+/).filter(t => t.length >= 3 && !HOME_STOP.has(t));
+  return Array.from(new Set(toks.concat(extra)));
+}
+// Weighted: verb 3, line 2, way labels 1, mode labels and ids 0.5. A token
+// matches a word that STARTS with it ("face" never hits "surfaces").
+function homeScore(task, toks){
+  if(!toks.length) return -1;
+  const parts = [
+    [3, (task.verb || '').toLowerCase()], [2, (task.line || '').toLowerCase()],
+    [1, (task.ways || []).map(w => w.label || '').join(' ').toLowerCase()],
+    [0.5, taskModes(task).map(x => (x.info.label || '') + ' ' + x.mode).join(' ').toLowerCase()],
+  ];
+  // Each token counts once, at the best field it hits.
+  let score = 0;
+  for(const t of toks){
+    const re = new RegExp('(^|[^a-z0-9])' + t);
+    let best = 0;
+    for(const [w, txt] of parts) if(w > best && re.test(txt)) best = w;
+    score += best;
+  }
+  return score;
+}
+// Dim only what no installed mode or declared lane could ever make. A machine that
+// is merely asleep or unreachable never dims a card (the rig is often off).
+function homeOffReason(task){
+  const ms = taskModes(task);
+  if(!ms.length && !task.action) return 'Nothing installed makes this yet.';
+  const caps = taskCaps(task);
+  if(caps.length && STATE.lanes.length && !STATE.lanes.some(l => caps.some(c => (l.declared_caps || []).includes(c))))
+    return 'No machine in config.json can make this.';
+  return '';
+}
+// The music-video task starts from a song, though its own ways list is empty.
+function homeAccepts(task, kind){
+  return (task.accepts || []).includes(kind) || (kind === 'song' && task.action === 'music-video');
+}
+function homeCard(task){
+  const off = homeOffReason(task);
+  const b = hEl('button', {type: 'button', class: 'task-card' + (off ? ' task-card-dim' : ''), 'data-task-id': task.id,
+    'data-off': off ? '1' : null}, [hEl('b', {text: task.verb}), hEl('span', {text: task.line || ''})]);
+  if(off) b.append(hEl('em', {text: off}));
+  return b;
+}
+function hEl(tag, attrs, kids){
+  const e = document.createElement(tag);
+  Object.keys(attrs || {}).forEach(k => {
+    const v = attrs[k];
+    if(v == null || v === false) return;
+    if(k === 'text') e.textContent = v; else e.setAttribute(k, v);
+  });
+  (kids || []).forEach(k => { if(k) e.append(k); });
+  return e;
+}
+function homeColumns(list){
+  const wrap = hEl('div', {class: 'home-cols'});
+  barGroups().forEach(g => {
+    const mine = list.filter(t => t.group === g);
+    if(!mine.length && !STATE.tasks.some(t => t.group === g)) return;
+    const col = hEl('section', {class: 'home-col', 'data-group': g}, [hEl('h2', {text: groupWord(g)})]);
+    if(mine.length) mine.forEach(t => col.append(homeCard(t)));
+    else col.append(hEl('p', {class: 'home-empty', text: 'Nothing here.'}));
+    wrap.append(col);
+  });
+  return wrap;
+}
+function homeRanked(list){
+  const col = hEl('section', {class: 'home-col home-results'}, [hEl('h2', {text: 'Best matches first'})]);
+  const grid = hEl('div', {class: 'home-rgrid'});
+  list.forEach(t => grid.append(homeCard(t)));
+  col.append(grid);
+  return col;
+}
+function renderHomeCards(){
+  const chipBar = $('#homeChipBar'), box = $('#homeCards');
+  if(!chipBar || !box) return;
+  chipBar.replaceChildren();
+  if(HOME.rejected) chipBar.append(hEl('p', {id: 'homeReject', role: 'status', text: HOME.rejected}));
+  const c = STATE.carry;
+  if(c){
+    const x = hEl('button', {type: 'button', id: 'homeChipClear', 'aria-label': 'Clear the file', text: '×'});
+    chipBar.append(hEl('span', {class: 'home-chip', id: 'homeChip'}, [
+      hEl('span', {text: c.file.name + ' · ' + c.kind.replace('model', '3D object')}), x]));
+    x.onclick = () => { STATE.carry = null; HOME.unfold = false; renderHomeCards(); };
+  }
+  const toks = homeTokens();
+  const searching = toks.length > 0;
+  let list = STATE.tasks.map(t => ({t: t, score: homeScore(t, toks)}));
+  if(searching) list = list.filter(x => x.score > 0).sort((a, b) => b.score - a.score);
+  const tasks = list.map(x => x.t);
+  const show = l => searching ? homeRanked(l) : homeColumns(l);
+  box.replaceChildren();
+  if(!tasks.length){ box.append(hEl('p', {class: 'home-zero', id: 'homeZero', text: 'Nothing here does that yet.'})); return; }
+  if(c){
+    const yes = tasks.filter(t => homeAccepts(t, c.kind));
+    const no = tasks.filter(t => !homeAccepts(t, c.kind));
+    box.append(yes.length ? show(yes) : hEl('p', {class: 'home-zero', text: 'Nothing here uses ' + HOME_KIND[c.kind].art + '.'}));
+    if(no.length){
+      const fold = hEl('button', {type: 'button', id: 'homeFold', 'aria-expanded': String(HOME.unfold),
+        text: no.length + " things don't use " + HOME_KIND[c.kind].art + (HOME.unfold ? ' ▾' : ' ▸')});
+      fold.onclick = () => { HOME.unfold = !HOME.unfold; renderHomeCards(); };
+      box.append(fold);
+      if(HOME.unfold) box.append(hEl('div', {id: 'homeFolded'}, [show(no)]));
+    }
+  } else box.append(show(tasks));
+}
+function renderHome(){
+  HOME_SIG = homeSig();
+  renderHomeCards();
+}
+// What the cards show of the machines (dimmed or not): when a poll changes it, redraw in place.
+let HOME_SIG = '';
+function homeSig(){ return JSON.stringify(STATE.tasks.map(t => [t.id, homeOffReason(t)])); }
+function refreshHome(){
+  if(!HOME.open) return;
+  const sig = homeSig();
+  if(sig === HOME_SIG) return;
+  HOME_SIG = sig;
+  renderHomeCards();
+}
+function homeAccept(file){
+  const kind = file && classifyFile(file);
+  if(!kind){
+    HOME.rejected = "That file isn't a picture, clip, song or 3D object.";
+  } else {
+    HOME.rejected = '';
+    STATE.carry = {file: file, kind: kind};
+    HOME.unfold = false;
+  }
+  renderHomeCards();
+}
+// A small generated picture, never fetched: a gradient and a sun on a canvas.
+function homeSampleFile(){
+  return new Promise(resolve => {
+    const c = document.createElement('canvas');
+    c.width = 320; c.height = 180;
+    const g = c.getContext('2d');
+    const grad = g.createLinearGradient(0, 0, 320, 180);
+    grad.addColorStop(0, '#ff5c00'); grad.addColorStop(0.55, '#6d3b8f'); grad.addColorStop(1, '#121417');
+    g.fillStyle = grad; g.fillRect(0, 0, 320, 180);
+    g.fillStyle = 'rgba(241,245,249,.85)'; g.beginPath(); g.arc(240, 50, 26, 0, Math.PI * 2); g.fill();
+    g.fillStyle = 'rgba(18,20,23,.7)'; g.beginPath();
+    g.moveTo(0, 180); g.lineTo(0, 130); g.lineTo(60, 90); g.lineTo(130, 138); g.lineTo(190, 102); g.lineTo(320, 162);
+    g.lineTo(320, 180); g.closePath(); g.fill();
+    c.toBlob(b => resolve(new File([b], 'sample-picture.png', {type: 'image/png'})), 'image/png');
+  });
+}
+function openHome(){
+  if(WF.open) closeWorkflows();
+  HOME.open = true;
+  document.body.classList.add('home-open');
+  $('#home').hidden = false;
+  try{ history.replaceState(null, '', location.pathname + location.search); } catch(e){ /* sandboxed */ }
+  renderHome();
+  refreshRoomStrip();
+}
+function closeHome(){
+  if(!HOME.open) return;
+  HOME.open = false;
+  document.body.classList.remove('home-open');
+  $('#home').hidden = true;
+  refreshRoomStrip();
+}
+function bindHomeUI(){
+  const input = $('#homeSearch'), file = $('#homeFile'), drop = $('#homeDrop'), home = $('#home');
+  input.addEventListener('input', () => { HOME.q = input.value; renderHomeCards(); });
+  input.addEventListener('keydown', e => {
+    if(e.key === 'Escape'){ input.value = ''; HOME.q = ''; renderHomeCards(); return; }
+    if(e.key === 'Enter'){
+      if(!homeTokens().length) return;
+      const top = $('#homeCards .task-card');
+      if(top) selectTask(top.dataset.taskId);
+    }
+  });
+  $('#homeCards').addEventListener('click', e => {
+    const b = e.target.closest('.task-card');
+    if(b) selectTask(b.dataset.taskId);
+  });
+  $('#homePick').onclick = () => file.click();
+  drop.addEventListener('click', e => { if(!e.target.closest('button')) file.click(); });
+  file.addEventListener('change', () => { if(file.files[0]) homeAccept(file.files[0]); file.value = ''; });
+  $('#homeSample').onclick = async () => homeAccept(await homeSampleFile());
+  // A drop anywhere on the home view counts; the page itself must never open the file.
+  home.addEventListener('dragover', e => { e.preventDefault(); home.classList.add('over'); });
+  home.addEventListener('dragleave', e => { if(e.target === home) home.classList.remove('over'); });
+  home.addEventListener('drop', e => {
+    e.preventDefault(); home.classList.remove('over');
+    const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if(f) homeAccept(f);
+  });
+  $('#roomStrip').addEventListener('click', e => { if(e.target.closest('#homeBtn')) openHome(); });
+}
+// A dropped file goes into the open task's first primary field of its kind, by the
+// same upload path the field's own picker uses. No such field: one muted line and
+// the file is kept for the next task.
+async function applyCarry(){
+  const note = $('#carryNote');
+  if(note){ note.hidden = true; note.textContent = ''; }
+  const c = STATE.carry;
+  if(!c) return;
+  const task = currentTask();
+  if(task && task.action === 'music-video' && c.kind === 'song'){
+    // Hand the song to the existing music-video dialog's own file input.
+    STATE.carry = null;
+    openForgeVideo(null);
+    const input = $('#forgeVideoSong');
+    if(input){
+      const dt = new DataTransfer();
+      dt.items.add(c.file);
+      input.files = dt.files;
+      input.dispatchEvent(new Event('change', {bubbles: true}));
+    }
+    return;
+  }
+  const mode = currentMode();
+  const f = fieldsFor(mode).filter(x => tierOf(x) === 'primary' && CARRY_TYPES[c.kind].includes(x.type))
+    .sort((a, b) => (a.order || 0) - (b.order || 0))[0];
+  if(!f){
+    if(note){ note.textContent = "This one doesn't use your " + c.kind.replace('model', '3D object') + '.'; note.hidden = false; }
+    return;
+  }
+  STATE.carry = null;
+  await uploadFiles(f, [c.file]);
+}
+
+/* ---------------------------------------------------------------------
    Polling
 --------------------------------------------------------------------- */
 // What the page's messages depend on in /api/lanes: which lanes answer, have been read, offer what.
@@ -8388,6 +9204,7 @@ async function pollLanes(){
     }
     renderMachineModules();
     wfLanesPolled();
+    refreshHome();
     // RS1: discovery just answered for the active lane -- fetch the verdict now
     // rather than up to 8 s later, so "checking..." never lingers or goes stale.
     const laneChanged = sigBefore !== null && sigBefore !== laneStateSig();   // checking -> up, down -> up, ...
@@ -8396,7 +9213,8 @@ async function pollLanes(){
       // A lane that just came up may be the one this room needs: follow it, as opening the room does.
       if(room && ensureLaneForRoom(room)) renderMachineModules();
       await loadEnginesFor();
-      renderEnginePicker(false);
+      refreshHome();
+      renderWays(false);
       if(room) renderLaneNote(currentMode());
       if(STATE.room) renderRoomPlainNote(currentRoom());
     }
@@ -8420,6 +9238,7 @@ async function pollJobs(){
     refreshRoomStrip();
     renderHistoryToggle();
     renderBin();
+    renderTrail();
     renderActivity();
     // The open sequence's derived state (rendering/cannot-tell/stale, ...)
     // depends on the same jobs+lane-up data just refreshed above, so it is
@@ -8445,7 +9264,7 @@ let ROOMS_KEY = '';
 async function loadEnginesFor(){
   // One call covers every cap. The payload is a dict of caps PLUS a
   // top-level "rooms" key -- split it off so nothing iterates it as a cap.
-  // Returns whether the room list itself changed (the strip is rebuilt then).
+  // Returns whether the room or task list itself changed (the bar is rebuilt then).
   const d = await getJSON('/api/engines' + (STATE.activeLane ? ('?lane=' + encodeURIComponent(STATE.activeLane)) : ''));
   const rooms = Array.isArray(d.rooms) ? d.rooms : [];
   delete d.rooms;
@@ -8454,9 +9273,12 @@ async function loadEnginesFor(){
   STATE.helperOn = STATE.helperServer && !guideIsOff();   // a writer for another mode shows its topic box only with a brain
   delete d.helper;   // not a capability; the guide (GET /api/guide) says whether a helper is set up
   delete d.helper_guide_on;   // same: the switch's server default lives in STATE.helperGuideOn
+  const tasks = Array.isArray(d.tasks) ? d.tasks : [];
+  delete d.tasks;   // not a capability either: kept apart as STATE.tasks
   STATE.engines = d;
+  STATE.tasks = tasks.slice().sort((a, b) => (a.order == null ? 1000 : a.order) - (b.order == null ? 1000 : b.order));
   STATE.rooms = rooms.slice().sort((a, b) => (a.order == null ? 1000 : a.order) - (b.order == null ? 1000 : b.order));
-  const key = JSON.stringify(STATE.rooms);
+  const key = JSON.stringify([STATE.rooms, STATE.tasks]);
   const changed = key !== ROOMS_KEY;
   ROOMS_KEY = key;
   return changed;
@@ -8489,12 +9311,24 @@ function bindStaticUI(){
     renderHistoryToggle();
     renderBin();
   });
-  // Delegated: the strip is rebuilt whenever the room list changes.
+  // Delegated: the bar is rebuilt whenever the task list changes.
   $('#roomStrip').addEventListener('click', e => {
     if(e.target.closest('#workflowsBtn')){ openWorkflows(); return; }
+    const g = e.target.closest('[data-group]');
+    if(g){
+      const t = groupOpensOn(g.dataset.group);
+      if(t){ closeWorkflows(); selectTask(t); }
+      return;
+    }
+    const tb = e.target.closest('[data-task-id]');
+    if(tb){ closeWorkflows(); selectTask(tb.dataset.taskId); return; }
     const b = e.target.closest('[data-room-id]');
     if(b){ closeWorkflows(); selectRoom(b.dataset.roomId); }
   });
+  bindStageSwitch();
+  $('#openCuttingBtn').onclick = () => { const c = STATE.rooms.find(isCutting); if(c){ closeWorkflows(); selectRoom(c.id); } };
+  // The one-line "what is still to fill in" and the trail follow every edit.
+  ['input', 'change'].forEach(ev => $('#inspector').addEventListener(ev, () => { refreshReady(); renderTrail(); }));
   // Delegated: chip buttons survive polls (see renderMachineModules), so a
   // per-button closure would be re-attached on a rebuild that never happens.
   $('#machineModules').addEventListener('click', e => {
@@ -8506,18 +9340,24 @@ function bindStaticUI(){
     // per-lane, so switching the active machine re-fetches the manifest.
     loadEnginesFor().then(changed => {
       if(changed) renderRoomStrip(); else refreshRoomStrip();
-      renderEnginePicker(true);
+      renderWays(true);
       renderMonitor();
       if(!$('#roomForm').hidden) renderModeFields();
     });
   });
   window.addEventListener('hashchange', () => {
+    if(!location.hash || location.hash === '#'){ openHome(); return; }
+    const tid = taskFromHash();
     const id = roomFromHash();
     const tryId = tryIdFromHash();
     // A try id must still apply even when the hash's room half is unchanged
     // (a "Make one in <room>" link back to the room already on screen).
     if(/^#workflows\b/.test(location.hash)){ openWorkflows(); return; }
-    if(id && roomById(id) && (id !== STATE.room || tryId)){ closeWorkflows(); selectRoom(id, {tryId}); }
+    if(tid && taskById(tid)){
+      if(tid !== STATE.task || tryId || HOME.open){ closeWorkflows(); selectTask(tid, {tryId}); }
+      return;
+    }
+    if(id && roomById(id) && (id !== STATE.room || tryId || HOME.open)){ closeWorkflows(); selectRoom(id, {tryId}); }
   });
   $('#creditsBtn').onclick = openCredits;
   $('#browseStylesBtn').onclick = openLoraDrawer;
@@ -8579,15 +9419,24 @@ async function init(){
   const wantWorkflows = /^#workflows\b/.test(location.hash);
   bindStaticUI();
   bindWorkflowsUI();
+  bindHomeUI();
   await pollLanes();
   await loadEnginesFor();
   // Read once, before the first form is drawn: a sound field offers Speak it
   // only when the server can answer.
   await loadSpeechStatus();
   renderRoomStrip();
-  // #room=<id> survives a reload; #room=<id>&try=<example id> also survives one.
-  await selectRoom(roomFromHash(), {force: true, tryId: tryIdFromHash()});
+  // #task=<id> survives a reload, and so does #task=<id>&try=<example id>; an old
+  // #room=<id> link opens that room's first task. No hash: the first task.
+  const hashTask = taskById(taskFromHash());
+  const hashRoom = roomById(roomFromHash());
+  const wantHome = !location.hash || location.hash === '#';   // any other link keeps opening what it opened before
+  if(hashTask) await selectTask(hashTask, {force: true, tryId: tryIdFromHash()});
+  else if(hashRoom) await selectRoom(hashRoom.id, {force: true, tryId: tryIdFromHash()});
+  else if(STATE.tasks.length) await selectTask(STATE.tasks[0], {force: true});
+  else await selectRoom(null, {force: true});
   if(wantWorkflows) openWorkflows();
+  else if(wantHome) openHome();   // the front door: no link, no task yet (the first one is loaded behind it)
   // Prompt-first: the box everyone understands gets focus on first load
   // (UX review #1/#4) -- but only if it's actually the mode's first field;
   // renderModeFields() already redirects focus to an upload picker instead
@@ -8599,7 +9448,8 @@ async function init(){
   setInterval(async () => {
     const changed = await loadEnginesFor();
     if(changed) renderRoomStrip(); else refreshRoomStrip();
-    renderEnginePicker(false);
+    refreshHome();
+    renderWays(false);
   }, 8000);
   setInterval(pollJobs, 2000);
   pollDownloads();

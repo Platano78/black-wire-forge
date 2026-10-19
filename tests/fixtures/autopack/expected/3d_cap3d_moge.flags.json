@@ -1,0 +1,25 @@
+[
+ {
+  "id": "unslotted_loader:2.model_name",
+  "kind": "block",
+  "text": "BWF cannot check whether this machine has moge_vitl.safetensors (loaded by LoadMoGeModel), so this template can't be added yet.",
+  "data": {
+   "node": "2",
+   "input": "model_name",
+   "file": "moge_vitl.safetensors",
+   "loader": "LoadMoGeModel"
+  }
+ },
+ {
+  "id": "no_prompt",
+  "kind": "ack",
+  "text": "No prompt was found. That is right for a template that works on a picture without words (an upscaler, a depth map); check that this is one.",
+  "data": {}
+ },
+ {
+  "id": "licence",
+  "kind": "answer",
+  "text": "The template does not say what licence its models have. Check the licences of the models listed in the attribution, then confirm.",
+  "data": {}
+ }
+]

@@ -329,12 +329,17 @@ def music_graph(p, m):
             },
             "class_type": "KSampler",
         },
+        # Tiled, as in Comfy-Org's own Music3 template (tile 1536, overlap 64). Measured
+        # 2026-09-27 on the 5080: a 120 s song decoded in 45-67 s untiled (VRAM-bound,
+        # ~15.9 GB peak) vs 4.6 s tiled, output identical to 70.5 dB SNR.
         "8": {
             "inputs": {
                 "samples": ["7", 0],
                 "vae": ["3", 0],
+                "tile_size": 1536,
+                "overlap": 64,
             },
-            "class_type": "VAEDecodeAudio",
+            "class_type": "VAEDecodeAudioTiled",
         },
         "9": {
             "inputs": audio_save_inputs("blackwire/MUSIC", ["8", 0],
@@ -1584,6 +1589,14 @@ ENGINE = {
     "mode_rooms": {
         "song": "music", "music": "music", "yue2": "music",
         "cover": "cover", "sfx": "sfx",
+    },
+    # Front door: which task (tasks.json) each mode is a way of (engines/__init__.py "mode_tasks").
+    "mode_tasks": {
+        "song": {"task": "song", "way": "Quick, clean ending"},
+        "yue2": {"task": "song", "way": "Melody planned first"},
+        "music": {"task": "music", "way": "Background music"},
+        "cover": {"task": "cover", "way": "Cover"},
+        "sfx": {"task": "sfx", "way": "Sound effect"},
     },
     "mode_notes": {
         "song": "renders quickly, with a clean ending every time",  # source: engines/audio.py:971 (song preset note)

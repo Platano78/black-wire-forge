@@ -7,10 +7,9 @@ invisible to all of them -- the API path never touches the DOM. This test
 drives the real page in a real browser and checks what actually renders,
 against the PUBLIC CONTRACT: GET /api/engines (its caps AND its "rooms").
 
-Rooms slice (the internal rooms-by-task design doc): the page is driven through its
-room strip and engine picker. Per room, per engine, the primary/advanced
-exactness checks still hold; plus Picture opens on text-to-picture, #room=
-survives a reload, the Cutting Room shows its shell, a room's WORKING dot and
+Task slice: the page is driven through its task bar and ways list. Per task, per
+way, the primary/advanced exactness checks still hold; plus Picture opens on
+text-to-picture, #task= survives a reload, the Cutting Room shows its shell, a room's WORKING dot and
 the Everything -> other room jump, a cutout Make carries NO prompt key, and
 Music's duration field shows (and Make sends) the number that really renders.
 
@@ -176,7 +175,7 @@ server = subprocess.Popen(
 
 def lane_has_a_mode():
     d = http_json(URL + "/api/engines?lane=" + LANE_ID)
-    return any(m.get("available") for cap in d if cap not in ("rooms", "helper", "helper_guide_on")
+    return any(m.get("available") for cap in d if cap not in ("rooms", "helper", "helper_guide_on", "tasks")
                for m in d[cap].get("modes", []))
 
 if not wait_true("server is up and the fake lane offers at least one mode",
@@ -202,26 +201,34 @@ def guard(page):
                                                        body='{"ok": false, "error": "intercepted"}'))
     page.route("**/api/view*", lambda r, q: r.fulfill(status=404, body=""))
 
-def tab(page, rid):
-    return '#roomStrip [data-room-id="%s"]' % rid
+TASKS = []   # GET /api/engines "tasks", filled once the page is up
 
-# The engine picker is a one-line summary until opened (P2c); open it before
-# touching its radios.
-# UX-2 #1: the picker is a chip + popover now, not a <details> -- opened via
-# the page's own setEngineChipOpen(), the same call the chip's click uses.
-OPEN_PICKER = "() => { if(typeof setEngineChipOpen === 'function') setEngineChipOpen(true); }"
+def tab(page, rid):
+    """The bar's tab for a task id (its group button is pressed first when the
+    task's tabs are not on screen), or for the Cutting Room ("cutting")."""
+    if rid == "cutting":
+        return '#roomStrip [data-room-id="cutting"]'
+    sel = '#roomStrip [data-task-id="%s"]' % rid
+    if page.query_selector(sel) is None:
+        t = next((t for t in TASKS if t["id"] == rid), None)
+        if t is not None:
+            page.click('#roomStrip [data-group="%s"]' % t["group"])
+            page.wait_for_timeout(250)
+    return sel
 
 # FB-2: with a helper, a writer mode's prompt box and its content fields sit
 # under "What the guide filled in", closed while empty; open it to type by hand.
 OPEN_FILLED = "() => { const d = document.querySelector('#guideFilled'); if(d && !d.hidden) d.open = true; }"
 
 def pick_mode(page, mode):
-    """Check the room's engine radio for `mode`; False when the lane cannot
+    """Check the task's way radio for `mode`; False when the lane cannot
     offer it (radio disabled) -- the calling block then FAILS, because on
-    this test's fake lane every mode is supposed to be offerable."""
-    page.evaluate(OPEN_PICKER)
-    r = page.query_selector('#enginePicker input[data-mode="%s"]' % mode)
-    if not r or r.is_disabled():
+    this test's fake lane every mode is supposed to be offerable. A task with
+    one way has no radios: its mode is the one on screen."""
+    r = page.query_selector('#ways input[data-mode="%s"]' % mode)
+    if r is None:
+        return page.evaluate("STATE.mode") == mode
+    if r.is_disabled():
         return False
     r.check()
     page.wait_for_timeout(150)
@@ -242,7 +249,15 @@ try:
         lane = page.evaluate("STATE.activeLane")
         engines_resp = page.evaluate("l => fetch('/api/engines' + (l ? '?lane=' + l : '')).then(r => r.json())", lane)
         rooms = engines_resp.get("rooms") or []
-        caps = [k for k in engines_resp if k not in ("rooms", "helper", "helper_guide_on")]   # sit beside the caps, not one
+        TASKS[:] = engines_resp.get("tasks") or []
+        # The bar is built from tasks: each is walked like a room used to be
+        # (tab, heading, its modes), the Cutting Room last.
+        server_rooms = rooms
+        rooms = [{"id": t["id"], "name": t["verb"], "action": t.get("action"),
+                  "modes": [{"cap": w["cap"], "mode": w["mode"]} for w in t["ways"]]} for t in TASKS] \
+            + [r for r in rooms if r.get("kind") == "cutting"]
+        check("server declares tasks", bool(TASKS), str(list(engines_resp)))
+        caps = [k for k in engines_resp if k not in ("rooms", "helper", "helper_guide_on", "tasks")]   # sit beside the caps, not one
         check("server declares at least one cap", bool(caps), str(list(engines_resp)))
         check("server declares rooms", bool(rooms), str(list(engines_resp)))
         mode_of = {(c, m["id"]): m for c in caps for m in engines_resp[c]["modes"]}
@@ -251,13 +266,17 @@ try:
         # checks below branch on it instead of assuming Blender is missing.
         proc_engines = page.evaluate("fetch('/api/engines?lane=here').then(r => r.json())")
         proc_on_box = {(c, m["id"]): m.get("available") is not False
-                       for c in proc_engines if c not in ("rooms", "helper", "helper_guide_on")
+                       for c in proc_engines if c not in ("rooms", "helper", "helper_guide_on", "tasks")
                        for m in proc_engines[c].get("modes", [])}
         proc_missing = {(c, m["id"]): m.get("missing") or []
-                        for c in proc_engines if c not in ("rooms", "helper", "helper_guide_on")
+                        for c in proc_engines if c not in ("rooms", "helper", "helper_guide_on", "tasks")
                         for m in proc_engines[c].get("modes", [])}
-        check("default room is the first in order", page.evaluate("location.hash") == "#room=" + rooms[0]["id"],
+        check("no link opens the home view, not a task", page.is_visible("#home") and page.evaluate("location.hash") == "",
               page.evaluate("location.hash"))
+        page.click("#homeCards .task-card")
+        page.wait_for_timeout(600)
+        check("the first card (the first task in order) opens that task",
+              page.evaluate("location.hash") == "#task=" + rooms[0]["id"], page.evaluate("location.hash"))
 
         for room in rooms:
             rid = room["id"]
@@ -267,23 +286,28 @@ try:
                 continue
             btn.click()
             page.wait_for_timeout(200)
-            check("room %r: tab latched" % rid, btn.get_attribute("aria-pressed") == "true")
-            check("room %r: heading names it" % rid, page.inner_text("#roomHeading").strip() == room["name"],
+            # the bar is redrawn when the group tabs give way to the Cutting Room: ask the page again
+            check("room %r: tab latched" % rid, page.get_attribute(tab(page, rid), "aria-pressed") == "true")
+            check("room %r: heading names it" % rid, page.inner_text("#roomHeading").strip() == (room["name"]),
                   page.inner_text("#roomHeading"))
             if room.get("kind") == "cutting":
                 continue  # its own block below
             modes = room.get("modes") or []
+            if not modes and room.get("action") == "music-video":
+                check("task %r (an action, no ways): its button is on the monitor, no form, no Make" % rid,
+                      page.is_visible("#forgeVideoFromFileBtn") and not page.is_visible("#makeBtn")
+                      and "task-tab-dim" not in (btn.get_attribute("class") or ""))
+                continue
             if not modes:
                 check("room %r (no modes): tab dimmed with the plain tooltip" % rid,
-                      "room-tab-dim" in (btn.get_attribute("class") or "")
+                      "task-tab-dim" in (btn.get_attribute("class") or "")
                       and btn.get_attribute("title") == "Nothing installed makes this yet", btn.get_attribute("title"))
                 check("room %r (no modes): inspector says so plainly" % rid,
                       "Nothing installed makes this yet" in page.inner_text("#inspector"))
                 check("room %r (no modes): no form, no Make" % rid, not page.is_visible("#makeBtn"))
                 continue
-            page.evaluate(OPEN_PICKER)
-            check("room %r: engine picker present iff 2+ modes" % rid,
-                  page.is_visible("#enginePicker") == (len(modes) >= 2))
+            check("room %r: ways list present iff 2+ ways" % rid,
+                  page.is_visible("#ways") == (len(modes) >= 2))
             for mm in modes:
                 m = mode_of.get((mm["cap"], mm["mode"]))
                 if m is None:
@@ -291,12 +315,7 @@ try:
                     continue
                 mk = m.get("lane_kind") or "comfy"
                 if len(modes) >= 2:
-                    # UX-2 #1: re-open per mode -- a previous mode's Try
-                    # this click (below) closes the popover so it doesn't
-                    # overlay the panel, and it no longer stays open on its
-                    # own the way the old <details> summary did.
-                    page.evaluate(OPEN_PICKER)
-                    radio = page.query_selector('#enginePicker input[data-cap="%s"][data-mode="%s"]' % (mm["cap"], mm["mode"]))
+                    radio = page.query_selector('#ways input[data-cap="%s"][data-mode="%s"]' % (mm["cap"], mm["mode"]))
                     if not radio:
                         check("room %r: engine row for %s/%s" % (rid, mm["cap"], mm["mode"]), False)
                         continue
@@ -314,7 +333,7 @@ try:
                         # 'needs …' line); its form is not rendered, so there
                         # is nothing to count for it.
                         row_text = page.eval_on_selector(
-                            '#enginePicker input[data-cap="%s"][data-mode="%s"]' % (mm["cap"], mm["mode"]),
+                            '#ways input[data-cap="%s"][data-mode="%s"]' % (mm["cap"], mm["mode"]),
                             "el => el.closest('label').innerText")
                         check("%s/%s unavailable on this lane: its row names what is missing" % (mm["cap"], mm["mode"]),
                               "needs" in (row_text or ""), repr(row_text))
@@ -326,7 +345,7 @@ try:
                         # mode runs. Assert that state; the lane-follow is
                         # exercised by the room's other (unpicked) rows.
                         default_row = page.eval_on_selector(
-                            '#enginePicker input[data-cap="%s"][data-mode="%s"]'
+                            '#ways input[data-cap="%s"][data-mode="%s"]'
                             % (mm["cap"], mm["mode"]),
                             "el => el.closest('label').innerText")
                         check("default process mode %s/%s: its row says where it runs"
@@ -352,12 +371,17 @@ try:
                         # With the box ACTIVE, a comfy room is not "not for
                         # this" -- its modes run on the comfy lane -- and a
                         # READY process lane can never be "asleep".
-                        if page.query_selector(tab(page, "music")) is None:
-                            check("Music room tab exists (its dot is checked)", False)
+                        # The bar shows one group's tabs: the Song tab's own dot when it is on
+                        # screen (clicking its group would leave the task under test), else the
+                        # rule that paints that dot, asked of the page.
+                        song_dot = '#roomStrip [data-task-id="song"] .dot'
+                        if page.query_selector(song_dot) is not None:
+                            not_for_this = page.eval_on_selector(
+                                song_dot, "el => !el.hidden && el.classList.contains('dot-not-for-this')")
                         else:
-                            check("This box active: Music tab carries no not-for-this square",
-                                  page.eval_on_selector(tab(page, "music") + " .dot",
-                                                        "el => el.hidden || !el.classList.contains('dot-not-for-this')"))
+                            not_for_this = page.evaluate(
+                                "() => roomModesAllOff(taskModes(taskById('song')))")
+                        check("This box active: Song task carries no not-for-this square", not not_for_this)
                         check("This box active and up: inspector says nothing is asleep",
                               "asleep right now" not in page.inner_text("#inspector"))
                         box_mod = page.evaluate("() => { const e = Array.prototype.find.call(" +
@@ -383,7 +407,7 @@ try:
                                   bool(box_mod) and want_label.upper() in (box_mod.get("text") or "").upper(),
                                   repr(box_mod))
                         row_text = page.eval_on_selector(
-                            '#enginePicker input[data-cap="%s"][data-mode="%s"]' % (mm["cap"], mm["mode"]),
+                            '#ways input[data-cap="%s"][data-mode="%s"]' % (mm["cap"], mm["mode"]),
                             "el => el.closest('label').innerText")
                         if proc_on_box.get((mm["cap"], mm["mode"])):
                             # The box has every program the mode needs: the
@@ -460,10 +484,8 @@ try:
                                   page.evaluate("STATE.activeLane") == LANE_ID,
                                   page.evaluate("STATE.activeLane"))
                         else:
-                            # RS1: the menu no longer opens by itself, so open it as a user would.
-                            page.evaluate(OPEN_PICKER)
                             page.query_selector(
-                                '#enginePicker input[data-cap="%s"][data-mode="%s"]'
+                                '#ways input[data-cap="%s"][data-mode="%s"]'
                                 % (back["cap"], back["mode"])).check()
                             page.wait_for_timeout(400)
                             check("back to comfy %s: the active lane is the fake lane again" % back["mode"],
@@ -499,13 +521,6 @@ try:
                     check("room=%r %s/%s: Try this button for its first example exists"
                           % (rid, mm["cap"], mm["mode"]), btn is not None)
                     if btn:
-                        # UX-2 #1: the engine popover (opened above by
-                        # OPEN_PICKER, or still open because THIS mode was
-                        # already the picked one so radio.check() fired no
-                        # change event) now overlays the panel instead of
-                        # pushing it down like the old <details> did --
-                        # close it before clicking anything below it.
-                        page.evaluate("() => { if(typeof setEngineChipOpen === 'function') setEngineChipOpen(false); }")
                         before = len(GENERATED)
                         btn.click()
                         page.wait_for_timeout(200)
@@ -538,15 +553,15 @@ try:
                                   % (mm["cap"], mm["mode"], ex["needs"]),
                                   ("Needs a %s first" % ex["needs"]) in row_text, repr(row_text))
 
-        # B2: the loop above just picked every mode in every room in turn
-        # (that's the point of it) -- each pick is now remembered per room
+        # B2: the loop above just picked every mode in every task in turn
+        # (that's the point of it) -- each pick is now remembered per task
         # (item 6), which would otherwise make every "the default engine is
         # X" check below depend on iteration order instead of testing the
         # real default. Clear it here, once, so the rest of this file sees
         # the same clean slate it always did; B2's OWN test further down
         # re-populates and checks it deliberately.
         page.evaluate("""() => {
-          try { Object.keys(localStorage).filter(k => k.startsWith('bwf.room.engine.'))
+          try { Object.keys(localStorage).filter(k => k.startsWith('bwf.task.way.'))
             .forEach(k => localStorage.removeItem(k)); } catch(e) {}
         }""")
 
@@ -575,7 +590,7 @@ try:
             before = len(GENERATED)
             page.goto(URL + "#room=music&try=" + ex["id"], wait_until="networkidle", timeout=30000)
             page.wait_for_timeout(1500)
-            checked = page.eval_on_selector('#enginePicker input:checked', "el => el && el.dataset.mode")
+            checked = page.eval_on_selector('#ways input:checked', "el => el && el.dataset.mode")
             check("URL try=: selects the example's own mode (song)", checked == "song", repr(checked))
             if ex.get("recipe"):
                 got = page.input_value("#recipeSelect")
@@ -587,10 +602,10 @@ try:
 
         print()
         print("Picture opens on text-to-picture, not on a tool")
-        page.click(tab(page, "picture"))
+        page.evaluate("() => { Object.keys(localStorage).filter(k => k.startsWith('bwf.group.task.')).forEach(k => localStorage.removeItem(k)); }")
+        page.click('#roomStrip [data-group="PICTURE"]')
         page.wait_for_timeout(200)
-        checked = page.eval_on_selector('#enginePicker input:checked', "el => el && el.dataset.mode")
-        check("Picture's selected engine is t2i", checked == "t2i", repr(checked))
+        check("Picture's selected engine is t2i", page.evaluate("STATE.mode") == "t2i", page.evaluate("STATE.mode"))
 
         print()
         print("the Cutting Room shows its shell -- a sequence picker, and an empty live timeline")
@@ -605,25 +620,26 @@ try:
               "Open a sequence, or start a new one" in page.inner_text("#monitor"), page.inner_text("#monitor"))
         check("sequence picker visible", page.is_visible("#seqPicker"))
         check("no Make in the Cutting Room with no slot selected", not page.is_visible("#makeBtn"))
-        page.click(tab(page, "music"))
+        page.click(tab(page, "song"))
         page.wait_for_timeout(200)
         check("leaving it hides the timeline", not page.is_visible("#timelinePanel"))
 
         print()
-        print("#room= survives a reload")
+        print("#task= survives a reload")
         page.click(tab(page, "video"))
         page.wait_for_timeout(200)
-        check("URL carries #room=video", page.evaluate("location.hash") == "#room=video", page.evaluate("location.hash"))
+        check("URL carries #task=video", page.evaluate("location.hash") == "#task=video", page.evaluate("location.hash"))
         page.reload(wait_until="networkidle")
         page.wait_for_timeout(1500)
-        check("reload reopens Video", page.get_attribute(tab(page, "video"), "aria-pressed") == "true"
-              and page.inner_text("#roomHeading").strip() == "Video", page.inner_text("#roomHeading"))
+        video_verb = next(t["verb"] for t in TASKS if t["id"] == "video")
+        check("reload reopens the video task", page.get_attribute(tab(page, "video"), "aria-pressed") == "true"
+              and page.inner_text("#roomHeading").strip() == video_verb, page.inner_text("#roomHeading"))
 
         print()
         print("Music: the recipe's number reaches its field, and the Make body carries what the page shows")
         page.click(tab(page, "cutting"))   # leave and re-enter, so this is a fresh entry
         page.wait_for_timeout(150)
-        page.click(tab(page, "music"))
+        page.click(tab(page, "song"))
         page.wait_for_timeout(300)
         song = mode_of.get(("audio", "song")) or {}
         label = page.inner_text("#recipeSummaryLabel").strip()
@@ -678,11 +694,11 @@ try:
         page.evaluate(OPEN_FILLED)
         page.fill('#inspector [data-field-id="lyrics"]', "[Verse]\nhand-typed lyrics for A5")
         page.wait_for_timeout(100)
-        if not pick_mode(page, "music"):
-            check("music unavailable on this lane: no A5 carry-over to test", False)
+        if not pick_mode(page, "yue2"):
+            check("yue2 unavailable on this lane: no A5 carry-over to test", False)
         else:
             got = page.input_value('#inspector [data-field-id="lyrics"]')
-            check("A5: lyrics (hand-typed on song, id shared with music) survives the switch",
+            check("A5: lyrics (hand-typed on song, id shared with yue2) survives the switch",
                   got == "[Verse]\nhand-typed lyrics for A5", repr(got))
             pick_mode(page, "song")
             page.wait_for_timeout(200)
@@ -691,37 +707,37 @@ try:
                   reset == "", repr(reset))
 
         print()
-        print("B2: the last engine picked in a room is remembered on the next room entry")
+        print("B2: the last way picked in a task is remembered on the next entry")
         if not pick_mode(page, "yue2"):
             check("yue2 unavailable on this lane: no B2 remembered-engine flow to test", False)
         else:
             page.click(tab(page, "cutting"))
             page.wait_for_timeout(150)
-            page.click(tab(page, "music"))
+            page.click(tab(page, "song"))
             page.wait_for_timeout(300)
-            checked = page.eval_on_selector('#enginePicker input:checked', "el => el && el.dataset.mode")
-            check("B2: room re-entry restores the last picked engine (yue2), not the first available",
+            checked = page.eval_on_selector('#ways input:checked', "el => el && el.dataset.mode")
+            check("B2: task re-entry restores the last picked way (yue2), not the first available",
                   checked == "yue2", repr(checked))
             page.reload(wait_until="networkidle")
             page.wait_for_timeout(1500)
             hash_after = page.evaluate("location.hash")
-            check("B2: reload lands back on Music (URL carried #room=music)",
-                  hash_after == "#room=music", hash_after)
-            checked2 = page.eval_on_selector('#enginePicker input:checked', "el => el && el.dataset.mode")
-            check("B2: a reload also restores the remembered engine, not just an in-page room hop",
+            check("B2: reload lands back on the Song task (URL carried #task=song)",
+                  hash_after == "#task=song", hash_after)
+            checked2 = page.eval_on_selector('#ways input:checked', "el => el && el.dataset.mode")
+            check("B2: a reload also restores the remembered way, not just an in-page task hop",
                   checked2 == "yue2", repr(checked2))
             pick_mode(page, "song")   # leave Music on its usual default for the rest of this file
 
         print()
         print("a cutout Make carries no prompt key (the stale-promptBox bug)")
-        page.click(tab(page, "picture"))
+        page.click(tab(page, "t2i"))
         page.wait_for_timeout(200)
         if not pick_mode(page, "t2i"):
             check("t2i unavailable on this lane: no prompt to go stale", False)
         else:
             page.evaluate(OPEN_FILLED)
             page.fill("#promptBox", "a red kite over the sea")
-            page.click(tab(page, "cleanup"))
+            page.click(tab(page, "cutout"))
             page.wait_for_timeout(200)
             if not pick_mode(page, "cutout"):
                 check("cutout unavailable on this lane: no cutout Make to test", False)
@@ -734,6 +750,8 @@ try:
                 check("cutout body is kind=image mode=cutout", bool(body) and body.get("mode") == "cutout"
                       and body.get("kind") == "image", repr(body))
                 check("cutout body has NO prompt key", bool(body) and "prompt" not in body, repr(body))
+            page.click(tab(page, "upscale"))
+            page.wait_for_timeout(200)
             if pick_mode(page, "upscale"):
                 check("upscale renders exactly its one primary field",
                       page.eval_on_selector_all('#inspector [data-field-tier="primary"]', "els => els.length") == 1)
@@ -742,7 +760,7 @@ try:
 
         print()
         print("E2: yue2/cover's own 'mode' field must not collide with the request's dispatch mode")
-        page.click(tab(page, "music"))
+        page.click(tab(page, "song"))
         page.wait_for_timeout(200)
         if not pick_mode(page, "yue2"):
             check("yue2 unavailable on this lane: no mode-field collision to test", False)
@@ -759,10 +777,10 @@ try:
                   bool(body) and (body.get("values") or {}).get("mode") == "melody", repr(body))
         page.click(tab(page, "cover"))
         page.wait_for_timeout(200)
-        # The Cover room declares exactly one mode (itself), so the engine
-        # picker -- which only renders for a room with 2+ modes -- stays
-        # hidden and the room tab alone selects cap=audio/mode=cover;
-        # pick_mode's radio would never exist here.
+        # The Cover task declares exactly one way (itself), so the ways list --
+        # which only renders for a task with 2+ ways -- stays hidden and the
+        # task tab alone selects cap=audio/mode=cover; pick_mode's radio would
+        # never exist here.
         if not page.query_selector('#inspector [data-field-id="mode"]'):
             check("cover unavailable on this lane: no mode-field collision to test", False)
         else:
@@ -778,7 +796,7 @@ try:
                   bool(body) and (body.get("values") or {}).get("mode") == "full", repr(body))
 
         print()
-        print("history by room: WORKING dot, This room / Everything, and the jump to another room")
+        print("history by task: WORKING dot, This task / Everything, and the jump to another task")
         now = time.time()
         fixture = {"jobs": [
             {"id": "fx-song", "lane": lane, "lane_name": "Fixture", "kind": "audio", "mode": "song",
@@ -789,9 +807,9 @@ try:
         page.route("**/api/jobs*", lambda r, q: r.fulfill(status=200, content_type="application/json",
                                                          body=json.dumps(fixture)))
         page.wait_for_timeout(2600)  # one poll
-        page.click(tab(page, "music"))
+        page.click(tab(page, "song"))
         page.wait_for_timeout(200)
-        check("Music shows the WORKING dot", page.eval_on_selector(tab(page, "music") + " .dot",
+        check("Music shows the WORKING dot", page.eval_on_selector(tab(page, "song") + " .dot",
               "el => !el.hidden && el.classList.contains('dot-working')"))
         # No WORKING dot on a room with no live job. (The dimmed "not for this
         # lane" square may sit there when the lane lacks the mode -- that is an
@@ -799,17 +817,17 @@ try:
         check("Sound FX shows no working dot", page.eval_on_selector(tab(page, "sfx") + " .dot",
               "el => el.hidden || !el.classList.contains('dot-working')"))
         toggle = page.inner_text("#historyToggle")
-        check("toggle counts: This room (1) / Everything (2)",
-              "THIS ROOM (1)" in toggle.upper() and "EVERYTHING (2)" in toggle.upper(), repr(toggle))
-        check("This room lists only the song", page.eval_on_selector_all("#binBody tr", "e => e.map(r => r.dataset.job)")
+        check("toggle counts: This task (1) / Everything (2)",
+              "THIS TASK (1)" in toggle.upper() and "EVERYTHING (2)" in toggle.upper(), repr(toggle))
+        check("This task lists only the song", page.eval_on_selector_all("#binBody tr", "e => e.map(r => r.dataset.job)")
               == ["fx-song"])
         page.click('#historyToggle [data-hist-scope="all"]')
         page.wait_for_timeout(150)
         check("Everything lists both", len(page.query_selector_all("#binBody tr")) == 2)
         page.click('#binBody tr[data-job="fx-cut"]')
         page.wait_for_timeout(300)
-        check("picking the cutout job jumps to Clean-up", page.evaluate("location.hash") == "#room=cleanup"
-              and page.get_attribute(tab(page, "cleanup"), "aria-pressed") == "true", page.evaluate("location.hash"))
+        check("picking the cutout job jumps to the cutout task", page.evaluate("location.hash") == "#task=cutout"
+              and page.get_attribute(tab(page, "cutout"), "aria-pressed") == "true", page.evaluate("location.hash"))
         page.unroute("**/api/jobs*")
 
         print()
@@ -827,7 +845,7 @@ try:
         page.route("**/api/jobs*", lambda r, q: r.fulfill(status=200, content_type="application/json",
                                                           body=json.dumps(fixture3)))
         page.wait_for_timeout(2600)
-        page.click(tab(page, "music"))
+        page.click(tab(page, "song"))
         page.wait_for_timeout(200)
         page.click('#binBody tr[data-job="fx-song"]')
         page.wait_for_timeout(200)
@@ -891,7 +909,7 @@ try:
         page.route("**/api/jobs*", lambda r, q: r.fulfill(status=200, content_type="application/json",
                                                            body=json.dumps(fixture4)))
         page.wait_for_timeout(2600)
-        page.click(tab(page, "music"))
+        page.click(tab(page, "song"))
         page.wait_for_timeout(200)
 
         row_title_attr = page.eval_on_selector('#binBody tr[data-job="fx-remove-me"] .bin-title',
@@ -946,7 +964,7 @@ try:
         help_page.goto(URL + "help", wait_until="networkidle", timeout=30000)
         help_page.wait_for_timeout(1500)
         live_text = help_page.inner_text("#roomsLive")
-        room_names = [rm["name"] for rm in rooms]
+        room_names = [rm["name"] for rm in server_rooms]
         check("live rooms section lists at least one real room name",
               any(n in live_text for n in room_names), repr(live_text[:300]))
         check("live rooms section does not say 'Start the app'",
@@ -999,7 +1017,7 @@ try:
         guard(helper_page)
         helper_page.goto(URL, wait_until="networkidle", timeout=30000)
         helper_page.wait_for_timeout(1500)
-        helper_page.click(tab(helper_page, "picture"))
+        helper_page.click(tab(helper_page, "t2i"))
         helper_page.wait_for_timeout(200)
         check("L5: with a helper configured, the guide's box asks for the picture (Send is the write)",
               helper_page.is_visible("#guideInput") and not helper_page.is_visible("#helperWriteBtn")
@@ -1046,7 +1064,7 @@ try:
                 guard(nohelper_page)
                 nohelper_page.goto(url2, wait_until="networkidle", timeout=30000)
                 nohelper_page.wait_for_timeout(1500)
-                nohelper_page.click(tab(nohelper_page, "picture"))
+                nohelper_page.click(tab(nohelper_page, "t2i"))
                 nohelper_page.wait_for_timeout(200)
                 check("L5: no helper configured -> Help me write this is not shown",
                       not nohelper_page.is_visible("#helperWriteBtn"))
@@ -1104,8 +1122,8 @@ try:
                       str(scrolled_box))
                 strip = vp_page.eval_on_selector(
                     "#roomStrip", "el => ({scrollWidth: el.scrollWidth, clientWidth: el.clientWidth})")
-                check("A7 %dx%d: every tab is reachable (the strip scrolls at least as far as its content)"
-                      % (w, h), strip["scrollWidth"] >= strip["clientWidth"], repr(strip))
+                check("A7 %dx%d: every tab is reachable (the bar wraps; nothing is pushed past its edge)"
+                      % (w, h), strip["scrollWidth"] <= strip["clientWidth"], repr(strip))
             vp_page.close()
 
         print()

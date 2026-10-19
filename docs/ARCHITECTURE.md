@@ -54,6 +54,48 @@ whatever modes the installed packs actually declare, so a pack with no room entr
 gets a room built from its own label — the page always has somewhere to show a working
 engine, and a room with nothing installed for it still shows up, dimmed.
 
+The page no longer shows rooms as a row of tabs (see Tasks). A room is what is left behind
+the scenes: the home of a guide, the scope of the guide's conversation and the Cutting Room.
+Each task names the room whose guide it uses.
+
+## Tasks
+
+What the page lists is **tasks**: what a person wants to make ("Animate a picture", "Make a
+picture bigger"), not modes.
+
+- **`tasks.json`** (repo root, core config, task words only): `id`, `verb`, `short`, `line`,
+  `group` (`SOUND`, `PICTURE`, `MOTION` or `OBJECT`), `order`, `room`, and for a task that is
+  an app feature rather than a mode, `action` (the music video). It never names a pack's mode
+  or a model, so adding a pack stays a file drop.
+- **`mode_tasks`** in a pack (a manifest `task`, `way`, `tier`, `final_of`, `pictures` for a data
+  pack) says which task each mode belongs to and its short label there. Each mode of a task is
+  a **way**. `engines.tasks()` merges the two and `/api/engines` carries the result as the
+  top-level `"tasks"` key, beside `"rooms"`; each task has `ways` and a derived `accepts`.
+- **Draft and final.** A mode with `tier: "final"` and `final_of: <draft mode>` becomes the
+  keeper of that draft's way, not a way of its own. `pictures: n` makes it the keeper for n
+  attached pictures; the page picks the one that fits the number of pictures added (the
+  nearest lower count, else the lowest). A `final_of` naming a mode outside the task makes
+  the mode a plain way and logs a warning. The page draws one Draft / Final switch for the
+  way.
+- **`accepts`** is never declared. It is the kinds of file (picture, clip, song, model) of the
+  primary upload fields of the task's modes. The home screen's drop-a-file uses it.
+- **Order** inside a task: built-in packs, then data packs, then pack id, then the pack's
+  `graphs` order, so a task opens on the app's own mode.
+- **Nothing is hidden.** A mode with no `mode_tasks` entry, or naming a task `tasks.json`
+  lacks, becomes a task of its own unless its pack brings that task's words (`mode_task_words`, manifest `task_words`): then the task is created and other modes can join it. A task of its own is `<cap>-<mode>`, ordered after the listed ones; its group is
+  its room's group, else the group of the first listed room that holds a mode of the same
+  capability, else the capability's word. A pack may bring a task `tasks.json` lacks with
+  `mode_task_words`. A task no installed mode fills is listed with `ways: []`. A missing or
+  broken `tasks.json` logs a warning and every mode becomes its own task.
+- **The page** shows each way's `blurb`, a one-line version of the mode's note, never a data
+  pack's own `note`. The home screen, the task bar, the ways list and the Draft / Final switch
+  all read this one payload. The home dims a task only when nothing installed fills it or no
+  machine in `config.json` declares a capability it needs; a machine that is asleep never
+  dims it. The page remembers the way and stage last used per task in the browser. `#task=<id>`
+  opens a task; the older `#room=<id>` still works and opens that room's first task.
+
+Writing packs for all of this: `docs/WRITING-A-PACK.md`.
+
 ## Guides
 
 A room in `rooms.json` may name a **guide** (`"guide": "film"`): the persona the optional
@@ -174,6 +216,42 @@ sound shot has a pick. Instead of a picked sound shot, the master can be **your 
 `master {file, name, seconds, start}`; an imported file wins over a picked sound shot, `set_master_start {start}` begins the cut that many seconds
 into it (shots slice from the same offset), and `clear_master` removes it. It only matters to an audio-led sequence; with the flag off a classic
 cut ignores it. The switch is the **Audio-led** checkbox in the Cutting Room's cut bar. Tests: `tests/test_audio_led.py`, `tests/test_audio_led_ui.py`.
+
+### Beat-snapped cuts (opt-in, audio-led only)
+
+An audio-led sequence can carry a stored **song map** and `"bar_snap": true`. Then every video shot's window is a whole number of
+bars between detected downbeats, its edges are rounded to 24 fps frames **cumulatively** (Python `round()`, half to even; each shot's
+`f0` is the one before's `f1`, so shots tile with no gap), and the shot is **made** on its model's frame grid at the smallest length
+that covers the window and **cut** back to it. (In this app "beats" are script beats; the music's are `song_map`, `downbeats`, `bars`
+and `bar_snap`.) A sequence that never sets it has none of these keys and behaves byte for byte as before. The arithmetic is
+`beatsnap.py` (pure, stdlib); the rules (whole bars, edges on detected downbeats, cumulative frame rounding) are in its docstring.
+
+- **Frame grid is pack data.** A pack declares `frame_grid: {mode: {step, offset, min, max, carried}}` (H3 `fl2va`/`continue`/`ref2v`:
+  17n+5, 124..362, `continue` carries 22; LTX: 8n+1, 9..993). A data pack may declare it too (schema 1, `engines/_userpacks.py`).
+  A video mode without one cannot be snapped, and the op names the shot.
+- **Song map**: `seq.song_map = {v, source{kind, ref, sha256, seconds}, from, beats, downbeats, beats_per_bar, bpm_median, lines?}`,
+  times on the master FILE's clock. Ops: `set_song_map {song_map}` (a north-star `song_map/v1`; its `source.sha256` must equal the
+  master's, else "This song map is for a different song"), `{grid_job}` (this sequence's own finished analyze) and `{lines_text}`
+  (`[m:ss.x] words` lines). `POST /api/sequence/analyze {id, lane?, beats_per_bar?, first_downbeat?}` runs the Producer's grid
+  mode on the master on a process lane (CPU), snapshots the master's sha256 first, and attaches the result only if the master still
+  has those bytes (`seq.song_map_job = {job_id, source, status, error?}` while it runs; a newer analyze replaces it). GET adds
+  `song_map_stale` when the master changed.
+- **Switch and bars**: `set_bar_snap {on}` (needs audio-led and a fresh map; on fills the auto shots, all but the last, with explicit
+  `bars`), `set_shot_bars {slot_id, bars | end_at | to_end | auto}`. Both answer `reflow_stale` / `reflow_stale_count`: the made shots
+  the new windows just turned stale. GET derives `slot.window {start, len, f0, f1, render_frames, keep, slice_start, trim_in, bars, edge}`,
+  `slot.follows_song`, and `seq.snap_report`; if the windows cannot be derived it says why in `seq.snap_error`.
+- **Generate** sends `render_frames` as the length (the slot's own length is ignored), sets a continue shot's join off (a hard cut at a
+  bar line), and records `inputs.window {f0, f1, render_frames, keep, slice_start}`. A shot **follows the song** when it is LTX with
+  lip-sync on, or a sing-along mode (H3) with `sing.on`: its sound is the master slice of its window (the vocals stem when one was
+  added), `render_frames/24 + 1/24` s starting at `master_start + slice_start`; a start before the file gets leading silence. E1's
+  song slot and typed `sing.start` play no part while snap is on (`sing.start` is kept, and is used again when snap is turned off), so
+  an imported master can be sung to only through this switch. A shot that feeds a `continue` keeps its LAST frames.
+- **Cut**: every shot must be picked and made for the window it has now ("Shot v4 was made for 0:12.4-0:17.4; the beat grid now puts it
+  at ..."); a take with no recorded window is refused unless it was adopted (`adopt_take`), is long enough and does not follow the song.
+  Takes must be a steady 24 fps (r_frame_rate = avg_frame_rate = 24, frame count = duration x 24 +-1). Clips are trimmed by frame index
+  and the cut checks its own frame count equals the sum of the windows. `set_trim` on a snapped shot may only slip the in-point.
+- Tests: `tests/test_bar_snap.py` (the Return's 34 segments end to end, with the north-star scorer when it is on the machine),
+  `tests/test_beatsnap.py` (the arithmetic).
 
 ### Speech source (opt-in)
 

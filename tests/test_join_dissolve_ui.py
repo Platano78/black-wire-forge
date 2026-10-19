@@ -176,7 +176,10 @@ with sync_playwright() as pw:
     vr.on("pageerror", lambda e: errors.append(str(e)))
     vr.goto(URL + "#room=video", wait_until="networkidle", timeout=30000)
     vr.wait_for_timeout(800)
-    vr.evaluate("m => { const r = document.querySelector('input[name=engine][data-mode=\"' + m + '\"]'); "
+    # The join mode is a task's way: open its task (the bar's own tab), then its way when the task lists several.
+    vr.evaluate("m => selectTask(STATE.tasks.find(t => t.ways.some(w => w.mode === m)))", MODE)
+    vr.wait_for_timeout(500)
+    vr.evaluate("m => { const r = document.querySelector('#ways input[data-mode=\"' + m + '\"]'); "
                 "if (r) { r.checked = true; r.dispatchEvent(new Event('change', {bubbles: true})); r.click(); } }", MODE)
     check("the Video room's %s form shows the checkbox, unticked" % MODE,
           wait(lambda: vr.is_visible(SEL), 8) and not vr.is_checked(SEL))

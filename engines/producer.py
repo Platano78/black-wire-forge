@@ -290,6 +290,13 @@ ENGINE = {
         "mix": "Mix tracks",
     },
     "mode_rooms": {"grid": "producer", "fit": "producer", "arrange": "producer", "mix": "producer"},
+    # Front door: which task (tasks.json) each mode is a way of (engines/__init__.py "mode_tasks").
+    "mode_tasks": {
+        "grid": {"task": "beats", "way": "Grid check"},
+        "arrange": {"task": "rework", "way": "Re-arrange by bars"},
+        "fit": {"task": "rework", "way": "Fit a part onto another beat"},
+        "mix": {"task": "rework", "way": "Mix tracks"},
+    },
     "mode_notes": {
         "grid": "finds every beat and bar start in a song and gives you a click track to check them by ear; runs on the processor",  # source: engines/producer_tools/grid_check.py (module docstring: steps 3 and 5)
         "fit": "moves a part (for example a vocal) from the song it was made in onto another song's beats, stretching it beat by beat; runs on the processor",  # source: engines/producer_tools/fit.py (module docstring)

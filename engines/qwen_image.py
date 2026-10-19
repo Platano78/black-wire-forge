@@ -860,6 +860,12 @@ ENGINE = {
         "charsheet": "A character design sheet from one picture",
     },
     "mode_rooms": {"t2i": "picture", "edit": "picture", "charsheet": "characters"},
+    # Front door: which task (tasks.json) each mode is a way of (engines/__init__.py "mode_tasks").
+    "mode_tasks": {
+        "t2i": {"task": "t2i", "way": "Best quality"},
+        "edit": {"task": "edit", "way": "Edit with words"},
+        "charsheet": {"task": "charsheet", "way": "Character sheet"},
+    },
     "mode_notes": {
         "t2i": "from words alone; has recipes for seamless tiles, set plates and characters",  # source: engines/qwen_image.py:200, :211, :218 (preset labels)
         "edit": "changes a picture you have; can also cut out a background with a clean edge, slower",  # source: engines/qwen_image.py:234 (remove-background preset note)

@@ -1,0 +1,57 @@
+{
+ "schema": 1,
+ "id": "ws-animate-final",
+ "cap": "video",
+ "graph": "graph.api.json",
+ "fields": [
+  {
+   "id": "prompt",
+   "label": "Prompt",
+   "type": "textarea",
+   "tier": "primary",
+   "group": "Content",
+   "order": 1,
+   "bind": [
+    {
+     "node": "1",
+     "input": "text"
+    }
+   ]
+  },
+  {
+   "id": "first_frame",
+   "label": "Picture",
+   "type": "image",
+   "tier": "primary",
+   "group": "Content",
+   "order": 2,
+   "bind": [
+    {
+     "node": "2",
+     "input": "image"
+    }
+   ]
+  },
+  {
+   "id": "keep_note",
+   "label": "Keeper note",
+   "type": "text",
+   "tier": "primary",
+   "group": "Content",
+   "order": 3,
+   "default": "",
+   "bind": [
+    {
+     "node": "1",
+     "input": "note"
+    }
+   ]
+  }
+ ],
+ "mode": "wsanimkeep",
+ "label": "Animate, keeper",
+ "task": "animate",
+ "tier": "final",
+ "final_of": "fl2va",
+ "blurb": "The keeper for an animated picture."
+}

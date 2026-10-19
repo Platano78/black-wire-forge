@@ -1,7 +1,8 @@
 # Writing an engine pack
 
-An engine pack teaches the app a model family. The core (`server.py`) never names a model
-or an engine — everything model-specific lives in one file under `engines/`. This is the
+An engine pack teaches the app a model family. Model roles, fields and graph building live in
+one file under `engines/`; `server.py` stays model-agnostic apart from a few explicit special
+cases (for example an LTX lip-sync branch and the legacy image-mode dispatch). This is the
 pack contract, read straight from the loader (`engines/__init__.py`, which every claim
 below cites by function).
 
@@ -115,12 +116,32 @@ at all.
 - **`cap_word`** — a bare noun for the cap in a sentence ("sound" for `"audio"`, "picture"
   for `"image"`), no article — callers plug it into "the ___ models". Falls back to the
   cap name.
-- **`cap_order`** — display order for a cap's tab/button; lower sorts first. Undeclared
-  caps sort after every declared one (`engines.cap_order()`).
+- **`cap_order`** — a number per cap, reported as `cap_order` by `/api/engines`; lower sorts first, and it
+  ranks the packs that share a cap. Undeclared caps sort after every declared one
+  (`engines.cap_order()`). The current page orders by task groups and does not use it.
 - **`mode_words`** — mode -> a short human label shown instead of the bare mode name.
 - **`mode_rooms`** — mode -> a room id from `rooms.json`. A mode naming no room, or one
   `rooms.json` doesn't list, still shows up: `engines.rooms()` builds a room for it from
   the mode's own label.
+- **`mode_tasks`** — mode -> `{"task": id, "way": label, "tier": "final", "final_of": draft_mode,
+  "pictures": n}`. `task` is an id from `tasks.json` (what a person wants to make; task words
+  only, it names no pack or mode) and is the only required key. `way` is the mode's short label
+  inside the task. A mode with `tier: "final"` and `final_of` becomes the keeper for that draft
+  mode of the same task; `pictures: n` (1-9) makes it the keeper for exactly n attached pictures.
+  A `final_of` that names no draft in the same task makes the mode a plain way and logs a
+  warning. A mode with no entry, or naming a task `tasks.json` doesn't list, still shows up as a
+  task of its own (`engines.tasks()`). Inside a task, built-in packs sort before data packs, then
+  by pack id, then by the pack's `graphs` order. What a task accepts (picture, clip, song, model)
+  is worked out from its modes' primary upload fields; you never declare it.
+- **`mode_task_words`** — mode -> `{"verb", "short", "line", "group"}` (non-empty strings; `group`
+  one of `SOUND`, `PICTURE`, `MOTION`, `OBJECT`). Lets a pack bring a task `tasks.json` doesn't
+  list: when the mode's `mode_tasks` names an unknown task id and words are given, that task is
+  created from them, after `tasks.json`'s tasks and before the one-per-mode fallbacks. Its room
+  is the mode's `mode_rooms` room if `rooms.json` lists it, else the first room of the group.
+  Later packs naming the same id join the task; the first declarer's words win. Without words
+  the mode keeps its own fallback task.
+- **`mode_blurbs`** — mode -> a short one-liner for the front door. Absent, a built-in pack's
+  `mode_notes` line is used; a data pack gets none unless it declares one (`engines.mode_blurb()`).
 - **`mode_notes`** — mode -> one plain sentence saying *when* to pick this mode over its
   room-mates. Must be drawn from evidence already in the pack (a preset's own note, a
   `quality` tier's `why`) — never an invented claim.
@@ -266,15 +287,18 @@ guide — read it alongside this doc. `engines/ltx.py` is a good second read for
 
 ## What the loader exposes to the core
 
-`packs()`, `role_pool()`, `role_rules()`, `model_keys()`, `abilities()`, `missing_words()`,
-`mode_ability()`, `describe()`, `graph_for()`, `modes_for()`, `licences()`, `licence_for()`,
-`caps()`, `cap_word()`, `cap_order()`, `mode_words()`, `mode_room()`, `mode_note()`,
-`prompt_guide()`, `rooms()`, `fields()`, `presets()`, `quality()`, `examples()`,
-`mode_deps_reason()`, `post_for()`, `lane_kind()`, `bins()`, `pack_dir()`, `primary_role()`,
-`legacy_dispatch()`, `has_legacy()` — this is the whole surface `server.py` calls through
-`engines.*` to stay model-agnostic (`unet_loader()`/`quant_words()` are helpers a *pack*
-imports and calls directly, e.g. `engines/qwen_image.py`'s
-`from . import unet_loader, quant_words` — `server.py` never calls either).
+`abilities()`, `ability_roles()`, `bins()`, `cap_order()`, `cap_word()`, `caps()`, `describe()`,
+`describe_mode()`, `edit_in()`, `examples()`, `fields()`, `file_licence()`,
+`foreign_prefix_stripped()`, `graph_for()`, `has_legacy()`, `lane_kind()`, `legacy_dispatch()`,
+`licence_for()`, `licences()`, `lora_converter()`, `missing_words()`, `mode_ability()`,
+`mode_blurb()`, `mode_deps_reason()`, `mode_model_words()`, `mode_note()`, `mode_parts()`,
+`mode_words()`, `model_keys()`, `modes_for()`, `needs()`, `optional_nodes()`, `pack_dir()`,
+`packs()`, `parse_reviser_reply()`, `parse_writer_reply()`, `post_for()`, `post_words()`,
+`presets()`, `primary_role()`, `prompt_guide()`, `quality()`, `quant_words()`, `reviser()`,
+`role_pool()`, `role_rules()`, `rooms()`, `stage_class_types()`, `style_catalogs()`, `tasks()`,
+`writer()` — the `engines.*` calls `server.py` makes (from `grep -o "engines\.[a-z_]*(" server.py`).
+`unet_loader()` is a helper a *pack* imports and calls directly, e.g. `engines/qwen_image.py`'s
+`from . import unet_loader, quant_words`; `server.py` calls `quant_words()` too, never `unet_loader()`.
 
 **Precedence is NOT one rule ("first pack wins") across every lookup — it differs per
 function, and reading the wrong one wrong is a real bug source:**
@@ -301,7 +325,7 @@ and one ComfyUI API-format graph. `engines/_userpacks.py` reads every such folde
 startup** (nothing uploads or reloads them while the app runs), validates it, and turns each
 valid one into an ordinary `ENGINE` dict. The mode then gets the same field-driven page, the
 generic dispatch path, the ability and "X is missing" sentences and the licence stamp as a pack
-written in Python. The data dir is `GENCENTER_DATA`, else `data/` next to `server.py`
+written in Python. The data dir is the `GENCENTER_DATA` environment variable (a legacy-compatible name; it moves the whole data tree), else `data/` next to `server.py`
 (gitignored, so recipes stay private and survive an update).
 
 ```jsonc
@@ -338,7 +362,12 @@ written in Python. The data dir is `GENCENTER_DATA`, else `data/` next to `serve
   mode's recipe row, each `values` key a field id and each value a fit for that field (never an
   upload). Leave it out and the mode gets one empty `Default` recipe. `room` (optional) names an
   existing room from `rooms.json` to join; without it the mode gets a room of its own named after
-  its label.
+  its label. The task keys are all optional: `blurb` (a short one-liner; the page shows it instead
+  of `note`), `task` (a `tasks.json` id this mode is a way of), `way` (its short label inside the
+  task), `task_words` (`{verb, short, line, group}`, all required, `group` one of
+  `SOUND`/`PICTURE`/`MOTION`/`OBJECT`: brings the task when `tasks.json` lacks it), and `tier: "final"` with `final_of` (the draft mode it is the keeper for; `tier` needs
+  `final_of`) and `pictures` (1-9, the keeper for that many attached pictures). `way`, `tier` and
+  `task_words` need `task`.
 - **`requires`** lists the model files the mode loads. Each becomes a role (namespaced to the pack)
   with the given `pool` (one of the loader pools the core scans: `unet clip vae lora checkpoint
   audio_encoder bg_removal upscale_model clip_vision latent_upscaler`) and `match` rule
@@ -357,5 +386,5 @@ written in Python. The data dir is `GENCENTER_DATA`, else `data/` next to `serve
   above, bind each field to the node input it should set, list the model files under `requires`, then
   restart. Anything the manifest cannot express (an extra node that is only sometimes wired in)
   needs a Python pack.
-- **Tests** run with `GENCENTER_DATA` pointed at an empty scratch folder (`scripts/run-tests.sh`
+- **Tests** run with `GENCENTER_DATA` (the legacy-compatible data-dir variable; `GENCENTER_CONFIG` likewise moves `config.json`) pointed at an empty scratch folder (`scripts/run-tests.sh`
   does this), so a real data pack never changes what the suites see.

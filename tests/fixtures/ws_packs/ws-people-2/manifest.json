@@ -1,0 +1,58 @@
+{
+ "schema": 1,
+ "id": "ws-people-2",
+ "cap": "video",
+ "graph": "graph.api.json",
+ "fields": [
+  {
+   "id": "prompt",
+   "label": "Prompt",
+   "type": "textarea",
+   "tier": "primary",
+   "group": "Content",
+   "order": 1,
+   "bind": [
+    {
+     "node": "1",
+     "input": "text"
+    }
+   ]
+  },
+  {
+   "id": "ref_images",
+   "label": "Pictures",
+   "type": "image_list",
+   "tier": "primary",
+   "group": "Content",
+   "order": 2,
+   "bind": [
+    {
+     "node": "2",
+     "input": "image"
+    }
+   ]
+  },
+  {
+   "id": "keep_note_2",
+   "label": "Keeper note",
+   "type": "text",
+   "tier": "primary",
+   "group": "Content",
+   "order": 3,
+   "default": "",
+   "bind": [
+    {
+     "node": "1",
+     "input": "note"
+    }
+   ]
+  }
+ ],
+ "mode": "wspeople2",
+ "label": "People keeper, 2 pictures",
+ "task": "people",
+ "tier": "final",
+ "final_of": "ref2v",
+ "blurb": "The keeper for 2 pictures.",
+ "pictures": 2
+}

@@ -11,13 +11,12 @@ writing anything else, and only when the answer changes the prompt materially �
 question delivers nothing else that turn. Once a complete prompt/instruction has been delivered
 (this turn or already, nothing left materially ambiguous), never trail it with a question; offer at
 most one optional tweak, phrased as a plain statement ("I could also try..."), never as a question
-("would you like...?"). This replaces an earlier draft where the skill sometimes delivered a full
-prompt and then still asked a question in the same reply — a real behaviour observed in this
-guide's own live trial and corrected on review.
+("would you like...?"). A reply that delivers a full
+prompt and then still asks a question is the failure to avoid.
 
 ## Skill 1: Picture prompt writer
 
-Covers both of research-note B2's request shapes: (a) a description → one precise prompt (t2i), and
+Covers both request shapes: (a) a description → one precise prompt (t2i), and
 (b) a multi-image edit naming pictures by number → the edit engine's own reference form (edit).
 
 ### Shape A — t2i: subjects + style + setting + action → one prompt
@@ -180,7 +179,7 @@ the problem instead of guessing.
 4. Never claim to have watched the render as video, or seen a defect that isn't in front of it this
    turn.
 
-**Live case to build in and re-run at every live-trial pass** (observed, image inspected directly at
+**Worked failure case** (observed, image inspected directly at
 full resolution): prompt "...battle between Godzilla and MechaKing
 Ghidorah..." rendered THREE monsters instead of two — two Godzilla-like kaiju plus a generic
 single-headed winged dragon — none of them showing every feature ("three heads," "gold,"

@@ -33,6 +33,7 @@ Every host, port, model filename and the listen port come from config.json.
 
 import base64
 import copy
+import hashlib
 import ipaddress
 import json
 import math
@@ -83,8 +84,10 @@ for _stream in (sys.stdout, sys.stderr):
 # ---------------------------------------------------------------------------
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
+import beatsnap            # beat-snapped shot windows (pure arithmetic)
 import forge_run
 import engines               # engine packs: every model name lives in one
+from engines import _comfy   # pool / ranking / output helpers shared with the pack builder
 import fsutil                # replace/delete that retries a moment of Windows refusal
 import runner                # process lanes: fills the plan's placeholders and runs it
 import guides                # room guides: the persona a room's helper conversation speaks as
@@ -1400,18 +1403,7 @@ def _run_lora_download(lane, url, dest, max_bytes, repo, filename, convert_name=
 # role -> which loader's dropdown to search
 ROLE_POOL = engines.role_pool()     # role -> which loader pool, declared by packs
 
-POOL_NODES = {
-    "unet": [("UNETLoader", "unet_name"), ("UnetLoaderGGUF", "unet_name")],
-    "clip": [("CLIPLoader", "clip_name"), ("DualCLIPLoader", "clip_name1")],
-    "vae": [("VAELoader", "vae_name")],
-    "lora": [("LoraLoaderModelOnly", "lora_name")],
-    "checkpoint": [("CheckpointLoaderSimple", "ckpt_name")],
-    "audio_encoder": [("AudioEncoderLoader", "audio_encoder_name")],
-    "bg_removal": [("LoadBackgroundRemovalModel", "bg_removal_name")],
-    "upscale_model": [("UpscaleModelLoader", "model_name")],
-    "clip_vision": [("CLIPVisionLoader", "clip_name")],
-    "latent_upscaler": [("LatentUpscaleModelLoader", "model_name")],
-}
+POOL_NODES = _comfy.POOL_NODES     # engines/_comfy.py holds it: the pack builder reads the same table
 
 # all:  every substring must be present
 # none: no substring may be present
@@ -1421,55 +1413,17 @@ ROLE_RULES = engines.role_rules()   # role -> match rule, declared by packs
 OPTIONAL_NODES = engines.optional_nodes()   # CHARS-1: short id -> node class name, declared by packs
 
 # Quantisation markers, for choosing a build the card can actually hold.
-SMALL_QUANTS = ("nvfp4", "int8", "fp8", "w4a8", "int4", "gguf", "q8", "q6", "q5", "q4", "awq")
-BIG_QUANTS = ("bf16", "fp16", "fp32", "float16")
+SMALL_QUANTS = _comfy.SMALL_QUANTS
+BIG_QUANTS = _comfy.BIG_QUANTS
 
 DISCOVERY_LOCK = threading.Lock()
 DISCOVERY = {}   # lane_id -> {"models": {...}, "pools": {...}, "checked": ts, "err": str}
 
 
-def _rank(name, rule, small_card):
-    """Higher is better. Ties break towards the shorter (plainer) filename."""
-    n = name.lower()
-    score = 0.0
-    prefer = rule.get("prefer") or []
-    for i, term in enumerate(prefer):
-        if term in n:
-            score += (len(prefer) - i) * 10.0
-    if small_card:
-        if any(q in n for q in SMALL_QUANTS):
-            score += 5.0
-        elif any(q in n for q in BIG_QUANTS):
-            score -= 5.0
-    return score - len(name) * 0.01
-
-
-def _rule_matches(pool, rule):
-    """Every name in `pool` that satisfies `rule` (all/none/any substrings,
-    case-insensitive). Shared by pick_model (picks the single best match)
-    and a "pool_select" field's options (LORA-1: every match is offered,
-    not just the best)."""
-    must_all = rule.get("all") or []
-    must_none = rule.get("none") or []
-    must_any = rule.get("any") or []
-    hits = []
-    for name in pool:
-        n = name.lower()
-        if not all(t in n for t in must_all):
-            continue
-        if any(t in n for t in must_none):
-            continue
-        if must_any and not any(t in n for t in must_any):
-            continue
-        hits.append(name)
-    return hits
-
-
-def small_card_for(vram):
-    """Discovery's card test, shared with Setup: under ~25GB, prefer a quantised
-    build over bf16/fp16. Unknown counts as small: erring towards the lighter
-    file is the safer mistake."""
-    return (vram or 0) < 25e9
+# Moved, unchanged, to engines/_comfy.py; the old names stay (tests and callers use them).
+_rank = _comfy.rank
+_rule_matches = _comfy.rule_matches
+small_card_for = _comfy.small_card_for
 
 
 _ORDINALS = ("first", "2nd", "3rd")
@@ -1861,7 +1815,7 @@ def abilities(lane):
     The UI offers the intersection. WHICH files make which ability true is
     declared by the engine packs, not known here.
     """
-    return engines.abilities(models_for(lane), blocked=pin_absent(lane))
+    return engines.abilities(models_for(lane), blocked=pin_absent(lane), nodes=nodes_for(lane))
 
 
 def describe_video(lane):
@@ -2791,6 +2745,8 @@ def seq_sing_plan(seq):
     into its slice a shot's first DELIVERED frame is (a cabled shot's carried
     frames are trimmed off its delivery); `heard_start` = start + lead_in is
     where its audible span begins (what the page prints)."""
+    if seq.get("audio_led") and seq.get("bar_snap"):
+        return {}      # beat-snapped: every following shot's sound is its window of the master, not E1's typed start
     if seq_song_slot(seq) is None:
         return {}
     plan = {}
@@ -2866,7 +2822,7 @@ def _join_kept(cap, mode, values):
     return int(spec["overlap_frames"])
 
 
-def slot_stale_inputs(seq, slot, take):
+def slot_stale_inputs(seq, slot, take, windows=None):
     """The inputs half of STALE: "room plate changed" arrives with refs
     (C3.2b); "<jack label, lower-cased> changed" arrives with cables (C3.4);
     E1's song/offset changes arrive with sing.
@@ -2898,6 +2854,14 @@ def slot_stale_inputs(seq, slot, take):
                 reasons.append("song timing changed")
             else:
                 reasons.append("sing along changed")
+    cur = (windows or {}).get(slot.get("id"))
+    if cur is not None and isinstance(take.get("inputs"), dict):
+        made = take["inputs"].get("window")
+        if isinstance(made, dict):
+            if not _window_same(made, cur):
+                reasons.append("the beat grid moved this shot")
+        elif take["inputs"].get("adopted") is not True:
+            reasons.append("made before Snap to beats")
     return reasons
 
 
@@ -2971,7 +2935,7 @@ def _sing_upstream(seq, slot):
     return next((s for s in seq.get("slots") or [] if s.get("id") == cable.get("from")), None)
 
 
-def slot_stale(seq, slot, beats, _seen=None):
+def slot_stale(seq, slot, beats, _seen=None, windows=None):
     take = next((t for t in slot.get("takes") or [] if t.get("job_id") == slot.get("pick")), None)
     if not take:
         return []
@@ -2979,13 +2943,13 @@ def slot_stale(seq, slot, beats, _seen=None):
     beat = beats.get(slot.get("beat_id"))
     if beat and take.get("beat_rev") is not None and take["beat_rev"] != beat.get("rev"):
         reasons.append("script changed")
-    reasons += slot_stale_inputs(seq, slot, take)
+    reasons += slot_stale_inputs(seq, slot, take, windows)
     # E1: along a SINGING chain staleness is transitive (a chain is re-rolled
     # in order). Only for a shot that sings; everything else keeps the one hop.
     if slot.get("id") in seq_sing_plan(seq):
         seen = (_seen or set()) | {slot.get("id")}
         up = _sing_upstream(seq, slot)
-        if up is not None and up.get("id") not in seen and slot_stale(seq, up, beats, seen):
+        if up is not None and up.get("id") not in seen and slot_stale(seq, up, beats, seen, windows):
             reasons.append("an earlier shot changed")
     return reasons
 
@@ -3029,6 +2993,9 @@ def seq_derive(seq):
     with STATE_LOCK:
         lane_up = {lid: bool(st.get("up")) for lid, st in LANE_STATE.items()}
     beats = {b.get("id"): b for b in out.get("beats") or []}
+    snap_on = bool(out.get("audio_led") and out.get("bar_snap"))
+    snap_wins = _snap_try(out) if snap_on else None
+    snap_file = bool(snap_on and isinstance(out.get("master"), dict) and out["master"].get("file"))
     song = seq_song_slot(out)
     sing_plan = seq_sing_plan(out)
     out["song"] = {"slot_id": song["id"], "job_id": song["pick"]} if song else None
@@ -3039,11 +3006,13 @@ def seq_derive(seq):
     for slot in out.get("slots") or []:
         # E1: "Sing along" is offered on a video shot whose mode can take the
         # song, only while the sequence has one; sing_span is where it sings.
-        slot["sing_offer"] = bool(song and slot.get("lane") == "video"
+        slot["sing_offer"] = bool((song or snap_file) and slot.get("lane") == "video"
                                   and _sing_spec(slot.get("cap"), slot.get("mode")))
         slot["sing_span"] = sing_plan.get(slot["id"])
         slot["state"], slot["progress"] = slot_state(slot, jobs, lane_up)
-        slot["stale"] = slot_stale(out, slot, beats)
+        slot["stale"] = slot_stale(out, slot, beats, windows=snap_wins)
+        if snap_on and slot.get("lane") == "video":
+            slot["follows_song"] = _slot_follows_song(slot)
         slot["sees_refs"] = slot_sees_refs(slot)
         slot["warnings"] = slot_warnings(out, slot)
         slot["jacks"] = slot_jacks(slot)
@@ -3057,7 +3026,15 @@ def seq_derive(seq):
     out["can_title"] = CAN_TITLE
     out["title_reason"] = TITLE_REASON
     if out.get("audio_led"):
-        _audio_led_derive(out)
+        _audio_led_derive(out, snap_wins)
+    if out.get("song_map") is not None:
+        out["song_map_stale"] = _song_map_stale(out)
+    job = out.get("song_map_job")
+    if isinstance(job, dict) and job.get("status") == "running":
+        with ANALYZE_LIVE_LOCK:
+            ours = job.get("job_id") in ANALYZE_STARTED
+        if not ours:        # stored as running, but started by an earlier process, whose attach thread is gone: shown, never stored
+            job["status"], job["error"] = "error", ANALYZE_RESTARTED
     return out
 
 
@@ -3065,6 +3042,15 @@ AUDIO_LED_FPS = 24
 
 
 def _slot_planned_len(slot):
+    """Seconds a video shot is planned to run in an audio-led sequence. A beat-snapped shot (its derived window
+    carries frame numbers) runs its window; otherwise _slot_planned_len_raw."""
+    win = slot.get("window")
+    if isinstance(win, dict) and win.get("f0") is not None:
+        return float(win["len"])
+    return _slot_planned_len_raw(slot)
+
+
+def _slot_planned_len_raw(slot):
     """Seconds a video shot is planned to run in an audio-led sequence: its
     trim length when it has one, else the frames it will be made with (an
     8n+1 LTX shot keeps 8n, so 97 frames plan 4.0 s)."""
@@ -3124,9 +3110,10 @@ def _audio_led_vocals_source(seq):
     return path
 
 
-def _audio_led_derive(out):
+def _audio_led_derive(out, snap_wins=None):
     """Audio-led only: master_slot_id (and master_file when a sound file was imported), and each video
-    shot's window on the master (planned lengths laid end to end, no gaps)."""
+    shot's window on the master (planned lengths laid end to end, no gaps; whole bars between downbeats
+    when the sequence is beat-snapped and its windows were derived)."""
     mf = out.get("master")
     has_file = isinstance(mf, dict) and bool(mf.get("file"))
     master = None if has_file else _audio_led_master_slot(out)
@@ -3137,9 +3124,640 @@ def _audio_led_derive(out):
     for slot in out.get("slots") or []:
         if slot.get("lane") != "video":
             continue
-        ln = _slot_planned_len(slot)
+        if snap_wins is not None and slot.get("id") in snap_wins:
+            slot["window"] = _window_view(snap_wins[slot["id"]])
+            continue
+        ln = _slot_planned_len_raw(slot)
         slot["window"] = {"start": round(start, 6), "len": round(ln, 6)}
         start += ln
+
+
+# -- Beat snap ----------------------------------------------------------------------------------------------------
+# "beats" in this app are SCRIPT beats; the music's are `song_map`, `downbeats`, `bars` and `bar_snap`. A sequence that
+# never sets `bar_snap` has none of these keys and behaves exactly as before. The arithmetic lives in beatsnap.py.
+
+SONG_MAP_CHANGED = "the song changed while the beats were being found"
+SONG_MAP_STALE = "The master sound changed since its beats were found. Find the beats again."
+SNAP_KEYS = ("bars", "end_at", "to_end")
+_FILE_SHA = {}
+
+
+def _frame_grid(cap, mode):
+    """The owning pack's `frame_grid` entry for this mode (step, offset, min, max, carried), or None."""
+    for pack in engines.packs():
+        if pack["cap"] == cap and mode in pack["graphs"]:
+            g = (pack.get("frame_grid") or {}).get(mode)
+            return dict(g) if g else None
+    return None
+
+
+def _file_sha256(path):
+    """sha256 of a file's bytes, remembered by (path, size, mtime) so a GET never re-reads a 200 MB master."""
+    with open(path, "rb") as f:
+        st = os.fstat(f.fileno())
+        key = (path, st.st_size, st.st_mtime_ns)
+        hit = _FILE_SHA.get(key)
+        if hit is None:
+            h = hashlib.sha256()
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+            hit = h.hexdigest()
+            if len(_FILE_SHA) > 16:
+                _FILE_SHA.clear()
+            _FILE_SHA[key] = hit
+    return hit
+
+
+def _master_path_quiet(seq):
+    """The master sound's local file, or None. Never fetches, never raises."""
+    sid = seq["id"]
+    mf = seq.get("master")
+    if isinstance(mf, dict) and mf.get("file"):
+        base = os.path.realpath(os.path.join(SEQ_MEDIA_DIR, sid))
+        path = os.path.realpath(os.path.join(base, mf["file"]))
+        return path if path.startswith(base + os.sep) and os.path.isfile(path) else None
+    master = _audio_led_master_slot(seq)
+    if master is None:
+        return None
+    take = next((t for t in master.get("takes") or [] if t.get("job_id") == master["pick"]), None)
+    path = _seq_take_cache_path(sid, take.get("file")) if take and take.get("file") else None
+    return path if path and os.path.isfile(path) else None
+
+
+def _master_identity(seq):
+    """{kind, ref, sha256} of the sequence's master sound ("file": an imported sound; "slot": a picked sound
+    take), sha256 None while a slot's take is not copied here yet. None when there is no master."""
+    mf = seq.get("master")
+    if isinstance(mf, dict) and mf.get("file"):
+        kind, ref = "file", mf.get("name") or mf["file"]
+    else:
+        master = _audio_led_master_slot(seq)
+        if master is None:
+            return None
+        kind, ref = "slot", master["pick"]
+    path = _master_path_quiet(seq)
+    return {"kind": kind, "ref": ref, "sha256": _file_sha256(path) if path else None}
+
+
+def _song_map_stale(seq):
+    """True when the stored song map is not for the master sound the sequence has now."""
+    sm = seq.get("song_map")
+    if not isinstance(sm, dict):
+        return False
+    src = sm.get("source") or {}
+    ident = _master_identity(seq)
+    if ident is None:
+        return True
+    if ident["sha256"] and src.get("sha256"):
+        return ident["sha256"] != src["sha256"]
+    return (ident["kind"], ident["ref"]) != (src.get("kind"), src.get("ref"))
+
+
+def _map_times(raw, what, minimum):
+    if not isinstance(raw, list) or len(raw) < minimum or len(raw) > 50000:
+        raise ValueError("The song map's %s must be a list of at least %d times." % (what, minimum))
+    out = []
+    for x in raw:
+        if isinstance(x, bool) or not isinstance(x, (int, float)) or not math.isfinite(x) or x < 0:
+            raise ValueError("The song map's %s hold a time that is not a finite number of seconds." % what)
+        if out and x <= out[-1]:
+            raise ValueError("The song map's %s are not in increasing order." % what)
+        out.append(float(x))
+    return out
+
+
+def _map_lines(raw):
+    if not isinstance(raw, list):
+        raise ValueError("The song map's lines must be a list of {start, text}.")
+    if len(raw) > beatsnap.MAX_LINES:
+        raise ValueError("More than %d timed lines." % beatsnap.MAX_LINES)
+    out = []
+    for ln in raw:
+        start = ln.get("start") if isinstance(ln, dict) else None
+        text = ln.get("text") if isinstance(ln, dict) else None
+        if (isinstance(start, bool) or not isinstance(start, (int, float)) or not math.isfinite(start) or start < 0
+                or not isinstance(text, str)):
+            raise ValueError("Each timed line needs a start in seconds and some text.")
+        if len(text.strip()) > beatsnap.MAX_LINE_CHARS:
+            raise ValueError("A timed line is longer than %d characters." % beatsnap.MAX_LINE_CHARS)
+        out.append({"start": float(start), "text": text.strip()})
+    return out
+
+
+def _build_song_map(beats, downbeats, source, origin, per_bar, bpm, lines):
+    beats = _map_times(beats, "beats", 8)
+    downbeats = _map_times(downbeats, "bar starts", 2)
+    if downbeats[-1] > source["seconds"] + 1e-6:
+        raise ValueError("The song map has a bar start after the end of the song (%.2f s)." % source["seconds"])
+    if per_bar is not None and (isinstance(per_bar, bool) or not isinstance(per_bar, int) or not 1 <= per_bar <= 16):
+        per_bar = None
+    if isinstance(bpm, bool) or not isinstance(bpm, (int, float)) or not math.isfinite(bpm):
+        bpm = None
+    sm = {"v": 1, "source": source, "from": origin, "beats": beats, "downbeats": downbeats,
+          "beats_per_bar": per_bar, "bpm_median": bpm, "made": time.time()}
+    if lines:
+        sm["lines"] = lines
+    return sm
+
+
+def _read_grid_job(jid):
+    if not isinstance(jid, str) or not re.match(r"^[A-Za-z0-9_-]{1,40}$", jid):
+        raise ValueError("That is not a beat-finding job id.")
+    path = os.path.join(LOCAL_OUTPUTS_DIR, jid, "grid.json")
+    try:
+        if os.path.getsize(path) > 20 * 1024 * 1024:
+            raise ValueError("The beat-finding result is too large to read.")
+        with open(path, encoding="utf-8") as f:
+            grid = json.load(f)
+    except (OSError, ValueError):
+        raise ValueError("The beat-finding job has no result to read yet.")
+    if not isinstance(grid, dict):
+        raise ValueError("The beat-finding result is not readable.")
+    return grid
+
+
+def _op_set_song_map(seq, p):
+    """{song_map} (a north-star song_map/v1) | {grid_job} (this sequence's finished analyze) | {lines_text}.
+    The map is on the master FILE's clock and must belong to the master the sequence has now."""
+    given = [k for k in ("song_map", "grid_job") if k in p]
+    if len(given) > 1:
+        raise ValueError("Send a song_map or a grid_job, not both.")
+    lines = None
+    if "lines_text" in p:
+        if not isinstance(p["lines_text"], str):
+            raise ValueError("lines_text must be text, one [m:ss.x] words line per lyric line.")
+        lines = beatsnap.parse_timed_lines(p["lines_text"])
+    if not given:
+        old = seq.get("song_map")
+        if lines is None:
+            raise ValueError("Send a song_map, a grid_job or lines_text.")
+        if not isinstance(old, dict):
+            raise ValueError("Find the beats first, then add the lyric lines.")
+        seq["song_map"] = dict(old, lines=lines)
+        return
+    before = _window_stale_ids(seq) if seq.get("bar_snap") else set()
+    ident = _master_identity(seq)
+    if ident is None:
+        raise ValueError("Add the master sound first: pick a take on a sound shot, or add a sound file.")
+    if given[0] == "song_map":
+        raw = p["song_map"]
+        if not isinstance(raw, dict) or raw.get("schema") != "north-star/song_map/v1":
+            raise ValueError("That is not a north-star song map (schema north-star/song_map/v1).")
+        src = raw.get("source") if isinstance(raw.get("source"), dict) else {}
+        if not ident["sha256"]:
+            raise ValueError("The master sound is not copied here yet, so the song map cannot be matched to it.")
+        if src.get("sha256") != ident["sha256"]:
+            raise ValueError("This song map is for a different song.")
+        secs = src.get("duration_s")
+        if isinstance(secs, bool) or not isinstance(secs, (int, float)) or not math.isfinite(secs) or secs <= 0:
+            raise ValueError("The song map does not say how long the song is (source.duration_s).")
+        source = {"kind": ident["kind"], "ref": ident["ref"], "sha256": ident["sha256"], "seconds": float(secs)}
+        if isinstance(src.get("path"), str):
+            source["import_path"] = src["path"][:300]
+        tempo = raw.get("tempo") if isinstance(raw.get("tempo"), dict) else {}
+        if lines is None and isinstance(raw.get("lyrics"), dict) and raw["lyrics"].get("lines"):
+            lines = _map_lines([{"start": x.get("start"), "text": x.get("text")} for x in raw["lyrics"]["lines"]
+                                if isinstance(x, dict)])
+        sm = _build_song_map(raw.get("beats"), raw.get("downbeats"), source, "import", raw.get("meter"),
+                             tempo.get("median_bpm"), lines)
+    else:
+        job = seq.get("song_map_job")
+        if not isinstance(job, dict) or job.get("job_id") != p["grid_job"]:
+            raise ValueError("That beat-finding run is not the one this sequence is waiting for "
+                             "(a newer one may have replaced it).")
+        snap = job.get("source") if isinstance(job.get("source"), dict) else {}
+        if not ident["sha256"] or ident["sha256"] != snap.get("sha256"):
+            raise ValueError(SONG_MAP_CHANGED)
+        grid = _read_grid_job(p["grid_job"])
+        meter = grid.get("meter") if isinstance(grid.get("meter"), dict) else {}
+        source = {"kind": snap.get("kind"), "ref": snap.get("ref"), "sha256": snap["sha256"],
+                  "seconds": float(snap.get("seconds") or 0.0)}
+        sm = _build_song_map(grid.get("beats"), grid.get("downbeats"), source, "grid:%s" % p["grid_job"],
+                             meter.get("beats_per_bar"), grid.get("bpm_median"), lines)
+    old = seq.get("song_map")
+    if "lines" not in sm and isinstance(old, dict) and old.get("lines") \
+            and (old.get("source") or {}).get("sha256") == sm["source"]["sha256"]:
+        sm["lines"] = old["lines"]       # the same song: its lyric times still hold
+    seq["song_map"] = sm
+    seq.pop("song_map_job", None)
+    if seq.get("bar_snap"):
+        _snap_plan(seq)                  # a map the shots no longer fit is refused, not left half applied
+    return _reflow_report(seq, before)
+
+
+def _slot_follows_song(slot):
+    """Beat-snapped: does this shot take its sound from the master? LTX: the existing lip-sync switch (on unless
+    unticked). A shot whose pack can sing along (H3 fl2va / continue): only when its own sing.on is true."""
+    if slot.get("lane") != "video":
+        return False
+    if slot.get("cap") == "video" and slot.get("mode") == "ltx":
+        return slot.get("lipsync") is not False
+    if _sing_spec(slot.get("cap"), slot.get("mode")):
+        return bool((slot.get("sing") or {}).get("on"))
+    return False
+
+
+def _tail_feeders(seq):
+    """Ids of the shots a frame-carrying shot (H3 continue) is cabled from: they keep their LAST frames."""
+    slots = {s.get("id"): s for s in seq.get("slots") or []}
+    out = set()
+    for c in seq.get("cables") or []:
+        tgt, src = slots.get(c.get("to")), slots.get(c.get("from"))
+        if not tgt or not src or src.get("lane") != "video":
+            continue
+        grid = _frame_grid(tgt.get("cap"), tgt.get("mode"))
+        if not grid or not grid.get("carried"):
+            continue
+        if c.get("field") in {j["field"] for j in slot_jacks(tgt) if j.get("type") == "video"}:
+            out.add(src["id"])
+    return out
+
+
+def _snap_plan(seq):
+    """{"windows": {slot id: beatsnap window}, "report": {...}} for a beat-snapped sequence; raises ValueError(sentence)."""
+    sm = seq.get("song_map")
+    if not isinstance(sm, dict):
+        raise ValueError("Find the beats of the master sound first.")
+    if _song_map_stale(seq):
+        raise ValueError(SONG_MAP_STALE)
+    mf = seq.get("master")
+    mstart = float(mf.get("start") or 0.0) if isinstance(mf, dict) and mf.get("file") else 0.0
+    tails = _tail_feeders(seq)
+    cabled = {c.get("to") for c in seq.get("cables") or []}
+    grids, shots, vids = {}, [], []
+    for slot in seq.get("slots") or []:
+        if slot.get("lane") != "video":
+            continue
+        grid = _frame_grid(slot.get("cap"), slot.get("mode"))
+        if grid is None:
+            raise ValueError("Shot %s (%s) cannot be snapped to the beats: its recipe has no frame grid."
+                             % (slot["id"], engines.mode_words(slot.get("cap")).get(slot.get("mode"), slot.get("mode"))))
+        if slot["id"] not in cabled:
+            grid["carried"] = 0      # nothing is fed in, so nothing is re-rendered and dropped (a continue chain head)
+        key = "%s/%s/%d" % (slot["cap"], slot["mode"], grid["carried"])
+        grids[key] = grid
+        shot = {"id": slot["id"], "grid": key, "planned_len": _slot_planned_len(slot), "tail": slot["id"] in tails}
+        for m in SNAP_KEYS:
+            if slot.get(m) is not None:
+                shot[m] = slot[m]
+        shots.append(shot)
+        vids.append(slot)
+    wins = beatsnap.windows(sm["downbeats"], sm["source"]["seconds"], shots, grids, master_start=mstart)
+    D = [d - mstart for d in sm["downbeats"] if d - mstart >= 0]
+    last_end = wins[-1]["f1"] / AUDIO_LED_FPS if wins else 0.0
+    unplaced = sum(1 for d in D[:-1] if d >= last_end - 1e-6) if wins else max(0, len(D) - 1)
+    warnings = []
+    if wins and unplaced:
+        if wins[-1].get("clamped"):
+            warnings.append("The song has %d bar%s after shot %s; add shots to cover them, or the cut ends at %s."
+                            % (unplaced, "" if unplaced == 1 else "s", vids[-1]["id"], _song_clock(last_end)))
+        else:
+            warnings.append("%d bar%s of the song come after the last shot." % (unplaced, "" if unplaced == 1 else "s"))
+    report = {"bars_total": sum(w["bars"] or 0 for w in wins), "song_bars": max(0, len(D) - 1),
+              "unplaced_bars": unplaced, "warnings": warnings}
+    return {"windows": {s["id"]: w for s, w in zip(vids, wins)}, "report": report}
+
+
+def _snap_try(out):
+    """Windows by slot id for a derived beat-snapped sequence, or None with out["snap_error"] saying why."""
+    try:
+        plan = _snap_plan(out)
+    except ValueError as e:
+        out["snap_error"] = str(e)
+        return None
+    out["snap_report"] = plan["report"]
+    return plan["windows"]
+
+
+def _window_view(w):
+    return {"start": round(w["start"], 6), "len": round(w["len"], 6), "f0": w["f0"], "f1": w["f1"],
+            "render_frames": w["render_frames"], "keep": w["keep"], "slice_start": round(w["slice_start"], 6),
+            "trim_in": round(w["trim_in"], 6), "bars": w["bars"], "edge": w["edge"]}
+
+
+def _window_record(w):
+    """What a take remembers of the window it was made for."""
+    return {"f0": w["f0"], "f1": w["f1"], "render_frames": w["render_frames"], "keep": w["keep"],
+            "slice_start": round(w["slice_start"], 6)}
+
+
+def _window_same(rec, w):
+    cur = _window_record(w)
+    return (isinstance(rec, dict) and all(rec.get(k) == cur[k] for k in ("f0", "f1", "render_frames", "keep"))
+            and isinstance(rec.get("slice_start"), (int, float))
+            and abs(rec["slice_start"] - cur["slice_start"]) < 1e-6)
+
+
+def _picked_take(slot):
+    return next((t for t in slot.get("takes") or [] if t.get("job_id") == slot.get("pick")), None)
+
+
+def _window_stale_ids(seq):
+    """Ids of the video shots whose picked take recorded a window that differs from the one derived now."""
+    if not (seq.get("audio_led") and seq.get("bar_snap")):
+        return set()
+    try:
+        wins = _snap_plan(seq)["windows"]
+    except ValueError:
+        return set()
+    out = set()
+    for slot in seq.get("slots") or []:
+        take, w = _picked_take(slot), wins.get(slot.get("id"))
+        rec = ((take or {}).get("inputs") or {}).get("window") if take else None
+        if w is not None and isinstance(rec, dict) and not _window_same(rec, w):
+            out.add(slot["id"])
+    return out
+
+
+def _reflow_report(seq, before):
+    """The op's answer to 'what did that move': the made shots the new windows just turned stale."""
+    newly = sorted(_window_stale_ids(seq) - set(before))
+    return {"reflow_stale": newly, "reflow_stale_count": len(newly)}
+
+
+def _op_set_bar_snap(seq, p):
+    """Opt-in: every video shot's window becomes whole bars between detected downbeats. Off removes the key only."""
+    on = p.get("on")
+    if not isinstance(on, bool):
+        raise ValueError("Snap to beats is either on or off.")
+    if not on:
+        seq.pop("bar_snap", None)
+        return
+    if not seq.get("audio_led"):
+        raise ValueError("Snap to beats works on an audio-led sequence: turn audio-led on first.")
+    if not isinstance(seq.get("song_map"), dict):
+        raise ValueError("Find the beats of the master sound first.")
+    if _song_map_stale(seq):
+        raise ValueError(SONG_MAP_STALE)
+    before = _window_stale_ids(seq)
+    seq["bar_snap"] = True
+    wins = _snap_plan(seq)["windows"]
+    vids = [s for s in seq["slots"] if s.get("lane") == "video"]
+    for slot in vids[:-1]:                       # one-time fill: later edits do not reflow the shots after them
+        if all(slot.get(m) is None for m in SNAP_KEYS):
+            slot["bars"] = wins[slot["id"]]["bars"]
+    _snap_plan(seq)
+    return _reflow_report(seq, before)
+
+
+def _op_set_shot_bars(seq, p):
+    """{slot_id, bars | end_at | to_end | auto}: how this shot's window ends."""
+    slot = _slot(seq, p)
+    if slot.get("lane") != "video":
+        raise ValueError("Only a video shot has bars.")
+    if not (seq.get("audio_led") and seq.get("bar_snap")):
+        raise ValueError("Turn on Snap to beats first.")
+    given = [k for k in ("bars", "end_at", "to_end", "auto") if k in p]
+    if len(given) != 1:
+        raise ValueError("Give exactly one of bars, end_at, to_end or auto.")
+    key, val = given[0], p[given[0]]
+    before = _window_stale_ids(seq)
+    for m in SNAP_KEYS:
+        slot.pop(m, None)
+    if key == "bars":
+        if isinstance(val, bool) or not isinstance(val, int) or val < 1:
+            raise ValueError("Bars must be a whole number, 1 or more.")
+        slot["bars"] = val
+    elif key == "end_at":
+        if isinstance(val, bool) or not isinstance(val, (int, float)) or not math.isfinite(val) or val <= 0:
+            raise ValueError("end_at must be a number of seconds on the cut, more than zero.")
+        slot["end_at"] = float(val)
+    elif val is not True:
+        raise ValueError("%s must be true." % key)
+    elif key == "to_end":
+        slot["to_end"] = True
+    _snap_plan(seq)
+    return _reflow_report(seq, before)
+
+
+def _count_frames(path):
+    """Decoded video frames in a file (counts them: nb_frames is a header claim), or None."""
+    try:
+        r = subprocess.run([FFPROBE_BIN, "-v", "error", "-count_frames", "-select_streams", "v:0",
+                            "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", path],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600)
+        return int(r.stdout.strip().split(",")[0]) if r.returncode == 0 else None
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+
+
+def _fps_of(text):
+    try:
+        num, den = str(text).split("/")
+        return float(num) / float(den)
+    except (ValueError, ZeroDivisionError):
+        return None
+
+
+def _span_clock(f0, f1):
+    return "%s–%s" % (_song_clock(f0 / AUDIO_LED_FPS), _song_clock(f1 / AUDIO_LED_FPS))
+
+
+def _snapped_clip(slot, win, path, info, vstream):
+    """One picked take of a beat-snapped cut -> (in seconds, length seconds, (start_frame, end_frame)), or a
+    ValueError sentence. The cut trims by frame index, so the count per shot is exact."""
+    sid = slot["id"]
+    take = _picked_take(slot) or {}
+    inputs = take.get("inputs") if isinstance(take.get("inputs"), dict) else {}
+    W = win["W"]
+    rec = inputs.get("window")
+    follows = _slot_follows_song(slot)
+    steady = ("Shot %s is not a steady 24 frames a second, so it cannot be cut to the beat grid frame by frame." % sid)
+    rfr, afr = _fps_of(vstream.get("r_frame_rate")), _fps_of(vstream.get("avg_frame_rate"))
+    if rfr is None or afr is None or abs(rfr - AUDIO_LED_FPS) > 1e-6 or abs(afr - AUDIO_LED_FPS) > 1e-6:
+        raise ValueError(steady)
+    try:
+        nb = int(vstream.get("nb_frames"))
+    except (TypeError, ValueError):
+        nb = _count_frames(path)
+    try:
+        dur = float(vstream.get("duration"))
+    except (TypeError, ValueError):
+        dur = float((info.get("format") or {}).get("duration"))
+    if nb is None or abs(nb - dur * AUDIO_LED_FPS) > 1:
+        raise ValueError(steady)
+    if isinstance(rec, dict):
+        if not _window_same(rec, win):
+            raise ValueError("Shot %s was made for %s; the beat grid now puts it at %s. Make it again, or undo "
+                             "the bar change." % (sid, _span_clock(rec.get("f0", 0), rec.get("f1", 0)),
+                                                  _span_clock(win["f0"], win["f1"])))
+        base = win["trim_in"]
+    elif inputs.get("adopted") is True:
+        if follows:
+            raise ValueError("Shot %s was brought in from History and this shot follows the song, so its mouth cannot "
+                             "be matched to the beat grid. Make it again." % sid)
+        if nb < W:
+            raise ValueError("Shot %s was brought in from History with %d frames, but its %d-frame window needs "
+                             "at least that many." % (sid, nb, W))
+        base = 0.0
+    else:
+        raise ValueError("Shot %s was made before Snap to beats, so it was not made for the beat grid. "
+                         "Make it again." % sid)
+    trim = slot.get("trim")
+    if isinstance(trim, dict) and trim.get("in") is not None:
+        base = float(trim["in"])                 # a slip: only the in-point moves, the length is the bars'
+    start = int(round(base * AUDIO_LED_FPS))
+    if start < 0 or start + W > nb:
+        raise ValueError("Shot %s: its take has %d frames, but the window needs %d frames from frame %d."
+                         % (sid, nb, W, start))
+    return start / AUDIO_LED_FPS, W / AUDIO_LED_FPS, (start, start + W)
+
+
+# -- analyze: find the beats of the master on a process lane, then attach them under an identity check ------------
+
+ANALYZE_POLL_S = 1.0
+ANALYZE_MAX_S = 3700
+ANALYZE_NO_START = "Finding the beats could not start."
+ANALYZE_RESTARTED = "BWF restarted while the beats were being found. Find them again."
+ANALYZE_STARTED = set()      # job ids this process started (never discarded: a finished run is not a restarted one)
+ANALYZE_LIVE_LOCK = threading.Lock()
+
+
+def _grid_lane(lane_id=None):
+    """The process lane that will run the producer's grid mode: the named one, else the first that is up and able."""
+    for lane in LANES:
+        if lane_id and lane["id"] != lane_id:
+            continue
+        if lane_kind(lane) != "process":
+            continue
+        with STATE_LOCK:
+            up = bool(LANE_STATE.get(lane["id"], {}).get("up"))
+        if up and abilities(lane).get("grid"):
+            return lane
+    return None
+
+
+def seq_analyze(p):
+    """POST /api/sequence/analyze {id, lane?, beats_per_bar?, first_downbeat?} -> ({ok, job_id}, 200) or a sentence.
+    Starts the producer's grid job on the master (CPU, on a process lane), remembers WHICH bytes it was given, and
+    attaches the result only if the master still has those bytes."""
+    if not isinstance(p, dict):
+        return {"ok": False, "error": "Send a JSON object."}, 400
+    sid = p.get("id")
+    if not seq_valid_id(sid):
+        return {"ok": False, "error": "That is not a sequence id."}, 400
+    if not CAN_CUT:
+        return {"ok": False, "error": CUT_REASON}, 400
+    with SEQ_LOCK:
+        seq = _seq_read(sid)
+    if seq is None:
+        return {"ok": False, "error": "There is no such sequence."}, 404
+    lane_id = p.get("lane")
+    if lane_id is not None and not isinstance(lane_id, str):
+        return {"ok": False, "error": "lane must be a lane id."}, 400
+    gen = {"kind": "producer", "mode": "grid", "prompt": ""}
+    try:
+        if p.get("beats_per_bar") not in (None, "", "auto"):
+            gen["beats_per_bar"] = p["beats_per_bar"]
+        if p.get("first_downbeat") not in (None, ""):
+            gen["first_downbeat"] = p["first_downbeat"]
+        lane = _grid_lane(lane_id)
+        if lane is None:
+            raise ValueError("No lane that can find a song's beats is online right now (a process lane with the "
+                             "Producer's grid check set up).")
+        mpath, mstart = _audio_led_master_source(seq)
+        ident = _master_identity(seq)
+        ext = os.path.splitext(mpath)[1].lower() or ".bin"
+        d = os.path.join(UPLOADS_DIR, lane["id"])
+        os.makedirs(d, exist_ok=True)
+        staged = uuid.uuid4().hex[:8] + "_master" + ext
+        shutil.copyfile(mpath, os.path.join(d, staged))
+        sha = _file_sha256(os.path.join(d, staged))
+        now_ident = _master_identity(_seq_read(sid) or seq)
+        if ident is None or now_ident is None or sha != now_ident["sha256"]:
+            raise ValueError("The master sound changed while it was being read. Try again.")
+        seconds = _decoded_seconds(os.path.join(d, staged))
+        if not seconds:
+            raise ValueError("The master sound could not be decoded, so its length is unknown.")
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}, 400
+    except OSError:
+        return {"ok": False, "error": "The master sound could not be read."}, 400
+    gen.update(lane=lane["id"], source_audio_name=staged)
+    body, code = generate(gen)
+    if not body.get("ok"):
+        return body, code
+    jid = body["job"]["id"]
+    source = {"kind": ident["kind"], "ref": ident["ref"], "sha256": sha, "seconds": round(seconds, 6)}
+    job = {"job_id": jid, "source": source, "master_start": mstart, "lane": lane["id"], "status": "running",
+           "started": time.time()}
+    with ANALYZE_LIVE_LOCK:
+        ANALYZE_STARTED.add(jid)
+    try:
+        _seq_write_server(sid, lambda s: s.__setitem__("song_map_job", job))
+    except ValueError as e:
+        with ANALYZE_LIVE_LOCK:
+            ANALYZE_STARTED.discard(jid)
+        return {"ok": False, "error": str(e)}, 404
+    try:
+        threading.Thread(target=_analyze_attach, args=(sid, jid), daemon=True).start()
+    except Exception:
+        traceback.print_exc()
+        _analyze_fail(sid, jid, ANALYZE_NO_START)
+        return {"ok": False, "error": ANALYZE_NO_START}, 500
+    return {"ok": True, "job_id": jid}, 200
+
+
+def _seq_write_server(sid, mutate):
+    """A server-side writer (no client rev, like seq_add_take): mutate the stored sequence, bump its rev."""
+    with SEQ_LOCK:
+        seq = _seq_read(sid)
+        if seq is None:
+            raise ValueError("There is no such sequence.")
+        mutate(seq)
+        seq["rev"] += 1
+        seq["updated"] = time.time()
+        _seq_write(seq)
+
+
+def _analyze_fail(sid, jid, sentence):
+    """Record why a beat-finding run did not land, if it is still the sequence's current run."""
+    def mark(seq):
+        job = seq.get("song_map_job")
+        if isinstance(job, dict) and job.get("job_id") == jid:
+            job["status"], job["error"] = "error", sentence
+    try:
+        _seq_write_server(sid, mark)
+    except Exception:
+        traceback.print_exc()
+
+
+def _analyze_attach(sid, jid):
+    try:
+        _analyze_attach_run(sid, jid)
+    except Exception:
+        traceback.print_exc()
+        _analyze_fail(sid, jid, "finding the beats stopped with an error")
+
+
+def _analyze_attach_run(sid, jid):
+    """Wait for the grid job, then attach its map with set_song_map {grid_job}. A 409 refreshes the REV only: the
+    identity the op checks is the one snapshotted when the run started."""
+    deadline = time.time() + ANALYZE_MAX_S
+    while True:
+        with JOBS_LOCK:
+            status = (JOBS.get(jid) or {}).get("status")
+            err = (JOBS.get(jid) or {}).get("error")
+        if status in ("done", "error", "interrupted"):
+            break
+        if time.time() > deadline:
+            return _analyze_fail(sid, jid, "finding the beats took too long")
+        time.sleep(ANALYZE_POLL_S)
+    if status != "done":
+        return _analyze_fail(sid, jid, str(err or "finding the beats did not finish"))
+    for _ in range(12):
+        with SEQ_LOCK:
+            seq = _seq_read(sid)
+        job = (seq or {}).get("song_map_job")
+        if seq is None or not isinstance(job, dict) or job.get("job_id") != jid:
+            return                                   # the sequence is gone, or a newer run replaced this one
+        body, code = seq_op({"id": sid, "rev": seq["rev"], "op": "set_song_map", "grid_job": jid})
+        if code == 409:
+            continue
+        if code != 200:
+            return _analyze_fail(sid, jid, str(body.get("error") or "the beats could not be attached"))
+        return
+    _analyze_fail(sid, jid, "the sequence kept changing, so the beats could not be attached")
 
 
 def _seq_auto_title(seq):
@@ -3473,7 +4091,28 @@ def _op_set_trim(seq, p):
         if _num(trim["len"], "The length") <= 0:
             raise ValueError("The length must be more than zero.")
         trim = {"in": trim["in"], "len": trim["len"]}
+        if seq.get("audio_led") and seq.get("bar_snap") and slot.get("lane") == "video":
+            _check_snapped_trim(seq, slot, trim)
     slot["trim"] = trim
+
+
+def _check_snapped_trim(seq, slot, trim):
+    """A beat-snapped shot's length is its bars: its trim may only slip (move the in-point), only on a shot that does
+    not follow the song, and only inside the take. Raises ValueError(sentence)."""
+    win = _snap_plan(seq)["windows"].get(slot["id"])
+    if win is None:
+        return
+    if trim["in"] is None or abs(trim["len"] * AUDIO_LED_FPS - win["W"]) > 0.01:
+        raise ValueError("On a beat-snapped shot only the in-point can move: its length is %d frames, set by its bars. "
+                         "Change the bars to change the length." % win["W"])
+    if _slot_follows_song(slot):
+        raise ValueError("This shot follows the song, so it cannot slip: its mouth would stop matching the sound. "
+                         "Untick Follows the song first.")
+    take = _picked_take(slot)
+    path = _seq_take_cache_path(seq["id"], take.get("file")) if take and take.get("file") else None
+    dur = _probe_duration(path) if path and os.path.isfile(path) else None
+    if dur is not None and trim["in"] + win["W"] / AUDIO_LED_FPS > dur + 1e-6:
+        raise ValueError("That slip runs past the end of the take (%.2f s long). Slip it earlier." % dur)
 
 
 def _op_set_sing(seq, p):
@@ -3487,7 +4126,9 @@ def _op_set_sing(seq, p):
     if "on" in p:
         if not isinstance(p["on"], bool):
             raise ValueError("Sing along is either on or off.")
-        if p["on"] and seq_song_slot(seq) is None:
+        snap_master = bool(seq.get("audio_led") and seq.get("bar_snap") and isinstance(seq.get("master"), dict)
+                           and seq["master"].get("file"))
+        if p["on"] and seq_song_slot(seq) is None and not snap_master:
             raise ValueError("Pick a song in the sound lane first.")
         sing["on"] = p["on"]
     if "start" in p:
@@ -3917,6 +4558,7 @@ SEQ_OPS = {
     "insert_beat": _op_insert_beat, "update_beat": _op_update_beat,
     "delete_beat": _op_delete_beat, "import_script": _op_import_script,
     "copy_beat_to_prompt": _op_copy_beat_to_prompt,
+    "set_song_map": _op_set_song_map, "set_bar_snap": _op_set_bar_snap, "set_shot_bars": _op_set_shot_bars,
 }
 
 # Ops that can make a sequence name a job id it did not name before (finding 1:
@@ -4127,44 +4769,7 @@ def seq_add_take(sid, slot_id, job_id, beat_rev=None, inputs=None):
     return seq_derive(seq)
 
 
-def collect_outputs(hist_entry):
-    """ComfyUI puts SaveImage under 'images' and SaveVideo ALSO under 'images'
-    (with animated: true). Scan every list of file dicts.
-
-    A loader node (LoadVideo) echoes the file it just loaded back into this
-    same history dict as a UI preview, tagged `"type": "input"` -- and a
-    PreviewImage-style node tags its own preview `"type": "temp"`. Both are
-    shaped identically to a real SaveX result, so skip anything not tagged
-    "output" (a missing `type` still counts as "output", same as before --
-    most real Save nodes never set it explicitly). Found 2026-09-23: an H3
-    "continue" job's LoadVideo (prev_video) ran before its SaveVideo, so
-    outputs[0] silently became the echoed prev_video instead of the render."""
-    outs = []
-    for node_id, node_out in (hist_entry.get("outputs") or {}).items():
-        for key, val in node_out.items():
-            if not isinstance(val, list):
-                continue
-            for item in val:
-                if isinstance(item, dict) and item.get("filename"):
-                    if item.get("type", "output") != "output":
-                        continue
-                    fn = item["filename"]
-                    ext = os.path.splitext(fn)[1].lower()
-                    if ext in (".mp4", ".webm", ".mov", ".mkv"):
-                        media = "video"
-                    elif ext in (".flac", ".mp3", ".opus", ".wav", ".m4a", ".ogg"):
-                        media = "audio"
-                    elif ext in (".glb", ".gltf", ".obj", ".ply"):
-                        media = "3d"
-                    else:
-                        media = "image"
-                    outs.append({
-                        "filename": fn,
-                        "subfolder": item.get("subfolder", ""),
-                        "type": item.get("type", "output"),
-                        "media": media,
-                    })
-    return outs
+collect_outputs = _comfy.collect_outputs     # moved, unchanged, to engines/_comfy.py
 
 
 _WIN_RESERVED_NAMES = {"con", "prn", "aux", "nul"}
@@ -6696,7 +7301,23 @@ def _generate_video(p, lane, m, able, mode, qmode, prompt, seed, steps):
     # The turbo LoRA is a 4-step distillation: attach it for the fast rows (<= 8 steps),
     # never above that, where it fights the schedule and smooths detail away.
     turbo = bool(p.get("turbo_lora")) if p.get("turbo_lora") is not None else (steps <= 8)
-    if turbo and not able["turbo"]:
+    # fast_kind picks which speed LoRA the fast mode uses: absent/"turbo" is
+    # today's; "taomate" is the fl2va-only fast draft. Refused, never ignored,
+    # where it cannot apply, so nobody believes they got it.
+    fast_kind = p.get("fast_kind") or "turbo"
+    if fast_kind not in ("turbo", "taomate"):
+        return {"ok": False, "error": "Fast mode kind must be one of turbo, taomate."}, 400
+    if fast_kind != "turbo":
+        if qmode != "fl2va":
+            return {"ok": False, "error":
+                                   "The fast draft only works for animating a picture, not for this kind of "
+                                   "clip. Use the standard fast mode (turbo) here."}, 400
+        if turbo and not able.get(fast_kind):
+            return {"ok": False, "error":
+                                   "%s does not have the fast-draft pack installed (its LoRA and the sigma-shift "
+                                   "node), so that setting is not available. Use the standard fast mode (turbo) "
+                                   "or pick Middle, Good or Best." % lane["name"]}, 400
+    if turbo and fast_kind == "turbo" and not able["turbo"]:
         # No speed pack on this box. Silently running a 4-step schedule
         # without its LoRA produces mush, so refuse rather than disappoint.
         return {"ok": False, "error":
@@ -6704,7 +7325,7 @@ def _generate_video(p, lane, m, able, mode, qmode, prompt, seed, steps):
                                "mushy. Pick Middle, Good or Best, or install a turbo LoRA "
                                "on that machine." % lane["name"]}, 400
     args = {"prompt": prompt, "width": w, "height": h, "length": length, "steps": steps,
-            "turbo_lora": turbo,
+            "turbo_lora": turbo, "fast_kind": fast_kind,
             "seed": seed, "encoder": p.get("encoder") or None,
             "first_frame": p.get("first_frame"), "last_frame": p.get("last_frame"),
             "ref_images": p.get("ref_images") or [], "ref_videos": p.get("ref_videos") or [],
@@ -6832,7 +7453,19 @@ def _coerce_field_value(f, val):
         except (TypeError, ValueError):
             raise ValueError("%s needs a whole number." % label)
     if ftype == "checkbox":
-        return bool(val)
+        # Not bool(val): bool("false") is True, so a JSON "false" or "0" sent to
+        # /api/generate used to tick the box. Accept real booleans and their usual
+        # spellings; refuse anything else rather than guess.
+        if val is None or isinstance(val, bool):
+            return bool(val)
+        if isinstance(val, (int, float)) and val in (0, 1):
+            return bool(val)
+        word = str(val).strip().lower() if isinstance(val, str) else None
+        if word in ("true", "1", "yes", "on"):
+            return True
+        if word in ("false", "0", "no", "off", ""):
+            return False
+        raise ValueError("%s needs true or false." % label)
     if ftype == "select":
         # E2: a select's value must be one of its declared options --
         # never passed through unchecked into the graph the way every other
@@ -7229,9 +7862,11 @@ def resolve_slot_sing(seq, slot, target_lane):
     return name, use
 
 
-def _audio_led_slice(seq, slot, lane):
+def _audio_led_slice(seq, slot, lane, snap_win=None):
     """Audio-led generate: cut this shot's window out of the master sound, upload
     it to the lane the shot will run on, and return (uploaded name, window).
+    Beat-snapped (snap_win = the shot's derived window): the slice is the whole render plus one frame, starting at
+    its slice_start, which can be before the master begins (leading silence is put in front: apad pads the end).
     Raises ValueError with a plain sentence for every refusal."""
     if not CAN_CUT:
         raise ValueError(CUT_REASON)
@@ -7240,16 +7875,24 @@ def _audio_led_slice(seq, slot, lane):
     vpath = _audio_led_vocals_source(seq)
     if vpath:
         mpath = vpath          # the stem is aligned to the song it came from: same window, same offset
-    derived = copy.deepcopy(seq)
-    _audio_led_derive(derived)
-    win = next((s.get("window") for s in derived.get("slots") or [] if s.get("id") == slot.get("id")), None)
-    if not win:
-        raise ValueError("Shot %s has no place on the master sound." % slot.get("id"))
+    if snap_win is not None:
+        cut = beatsnap.slice_plan(snap_win["slice_start"], mstart, snap_win["render_frames"])
+        seek, af, length = cut["seek"], "apad", cut["len"]
+        if cut["lead"] > 0:
+            af = "adelay=%d:all=1,apad" % int(round(cut["lead"] * 1000))
+        win = {"start": round(snap_win["slice_start"], 6), "len": round(snap_win["render_frames"] / AUDIO_LED_FPS, 6)}
+    else:
+        derived = copy.deepcopy(seq)
+        _audio_led_derive(derived)
+        win = next((s.get("window") for s in derived.get("slots") or [] if s.get("id") == slot.get("id")), None)
+        if not win:
+            raise ValueError("Shot %s has no place on the master sound." % slot.get("id"))
+        seek, af, length = mstart + win["start"], "apad", win["len"] + 1.0 / AUDIO_LED_FPS
     outdir = os.path.join(SEQ_MEDIA_DIR, sid, "audio")
     os.makedirs(outdir, exist_ok=True)
     wav = os.path.join(outdir, "%s.wav" % slot["id"])
-    r = subprocess.run([FFMPEG_BIN, "-y", "-hide_banner", "-ss", "%.6f" % (mstart + win["start"]), "-i", mpath,
-                        "-af", "apad", "-t", "%.6f" % (win["len"] + 1.0 / AUDIO_LED_FPS),
+    r = subprocess.run([FFMPEG_BIN, "-y", "-hide_banner", "-ss", "%.6f" % seek, "-i", mpath,
+                        "-af", af, "-t", "%.6f" % length,
                         "-ar", "44100", "-ac", "2", wav], capture_output=True, text=True,
                         encoding="utf-8", errors="replace", timeout=120)
     if r.returncode != 0 or not os.path.isfile(wav):
@@ -7396,6 +8039,18 @@ def seq_generate(payload):
         p["quality"] = slot["quality"]
     p["sequence_id"] = sid
     p["slot_id"] = slot_id
+    # Beat-snapped (audio-led + bar_snap): this shot renders on its model's frame grid at the smallest length that
+    # covers its window; the cut trims it back. Its length is derived, never the slot's own.
+    snap_win = None
+    if seq.get("audio_led") and seq.get("bar_snap") and slot.get("lane") == "video":
+        try:
+            snap_win = _snap_plan(seq)["windows"][slot_id]
+        except (ValueError, KeyError) as e:
+            return {"ok": False, "error": str(e) if isinstance(e, ValueError) else "Shot %s has no place on the beats." % slot_id}, 400
+        p["length"] = p["values"]["length"] = snap_win["render_frames"]
+        join = _join_spec(slot.get("cap"), slot.get("mode"))
+        if join:       # a hard cut at a bar line: the carried frames are dropped from the delivery, never kept to dissolve
+            p[join["field"]] = p["values"][join["field"]] = False
     # P2: the Make-time writer check applies to a slot too; the page confirms
     # the same way and sends "confirm" back through here.
     if payload.get("confirm") is True:
@@ -7416,7 +8071,21 @@ def seq_generate(payload):
     # driven by its window of the sequence's master sound -- unless the shot has
     # been unticked ("Follows the song"), which is how an instrumental passage
     # or a shot with nobody in it is made. The window and the cut do not move.
-    if (seq.get("audio_led") and slot.get("lane") == "video" and slot.get("mode") == "ltx"
+    if snap_win is not None:
+        # Beat-snapped: a shot that follows the song (LTX lip-sync on; H3 sing.on) gets its window of the master,
+        # for every mode that can take a sound clip. E1's song slot and typed start play no part here.
+        ltx = slot.get("cap") == "video" and slot.get("mode") == "ltx"
+        if (_slot_follows_song(slot) and (not ltx or not str(slot_values.get("audio_slice") or "").strip())):
+            try:
+                led_name, led_window = _audio_led_slice(seq, slot, lane, snap_win)
+            except ValueError as e:
+                return {"ok": False, "error": str(e)}, 400
+            if ltx:
+                p["audio_slice"] = p["values"]["audio_slice"] = led_name
+            else:
+                p["sing_audio"], p["sing_start"] = led_name, 0.0
+            audio_inputs = {"audio_window": led_window}
+    elif (seq.get("audio_led") and slot.get("lane") == "video" and slot.get("mode") == "ltx"
             and slot.get("lipsync") is not False
             and not str(slot_values.get("audio_slice") or "").strip() and not sing_use):
         try:
@@ -7433,6 +8102,8 @@ def seq_generate(payload):
     beat = next((b for b in seq.get("beats") or [] if b.get("id") == slot.get("beat_id")), None)
     inputs = {"refs": ref_uses, "cables": cable_uses}
     inputs.update(audio_inputs)
+    if snap_win is not None:
+        inputs["window"] = _window_record(snap_win)
     if sing_use:
         inputs["sing"] = sing_use
     # E2 (R2): only when the render kept the overlap (join field on + cabled).
@@ -7514,6 +8185,32 @@ def _probe_video_stream(info):
 
 def _probe_audio_stream(info):
     return next((s for s in (info or {}).get("streams", []) if s.get("codec_type") == "audio"), None)
+
+
+def _decoded_seconds(path):
+    """The length of a sound as it DECODES: samples / rate. `format.duration` can include encoder padding (ffmpeg 4.4
+    reports 177.633 for an mp3 that decodes to 177.600), which would put a frame too many on a snapped last shot.
+    None when it cannot be decoded."""
+    info = _probe_json(path) or {}
+    try:
+        rate = next(float(x["sample_rate"]) for x in info.get("streams") or [] if x.get("codec_type") == "audio")
+    except (StopIteration, KeyError, TypeError, ValueError):
+        return None
+    if rate <= 0:
+        return None
+    try:
+        proc = subprocess.Popen([FFMPEG_BIN, "-v", "error", "-i", path, "-vn", "-ac", "1", "-f", "s16le", "-"],
+                                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    except OSError:
+        return None
+    total = 0
+    try:
+        for chunk in iter(lambda: proc.stdout.read(1 << 20), b""):
+            total += len(chunk)
+    finally:
+        proc.stdout.close()
+        proc.wait()
+    return total / 2.0 / rate if proc.returncode == 0 and total else None
 
 
 def _probe_duration(path):
@@ -7668,6 +8365,18 @@ def seq_cut_start(payload):
     # shot and both sizes. The sequence canvas still governs the cable
     # crop and default_canvas() -- untouched here.
     audio_led = bool(seq.get("audio_led"))
+    snapped = audio_led and bool(seq.get("bar_snap"))
+    snap_wins = None
+    if snapped:
+        # Beat-snapped: every shot must be there and made for the window it has now, or the picture drifts off the beats.
+        if left_out:
+            return {"ok": False, "error": "Shot%s %s %s no picked take yet. A beat-snapped cut needs every shot, or "
+                    "the later ones slide off the beats." % ("" if len(left_out) == 1 else "s", ", ".join(left_out),
+                                                             "has" if len(left_out) == 1 else "have")}, 400
+        try:
+            snap_wins = _snap_plan(seq)["windows"]
+        except ValueError as e:
+            return {"ok": False, "error": str(e)}, 400
     shots, probed, sung, joined = [], [], [], []
     for slot in picked:
         job_id = slot["pick"]
@@ -7686,11 +8395,15 @@ def seq_cut_start(payload):
             return {"ok": False, "error": "Shot %s's take could not be read — it may be corrupt."
                     % slot["id"]}, 400
         vw, vh = vstream.get("width"), vstream.get("height")
+        frames = None
         try:
-            in_point, length = _resolve_trim_or_raise(slot["id"], slot.get("trim"), duration)
+            if snapped:
+                in_point, length, frames = _snapped_clip(slot, snap_wins[slot["id"]], path, info, vstream)
+            else:
+                in_point, length = _resolve_trim_or_raise(slot["id"], slot.get("trim"), duration)
         except ValueError as e:
             return {"ok": False, "error": str(e)}, 400
-        if audio_led and slot.get("trim") is None:
+        if audio_led and slot.get("trim") is None and not snapped:
             # Audio-led: an untrimmed shot keeps exactly its planned window (an 8n+1 take keeps 8n),
             # so the windows tile and the picture never drifts against the master.
             planned = _slot_planned_len(slot)
@@ -7702,6 +8415,8 @@ def seq_cut_start(payload):
         probed.append({"slot_id": slot["id"], "path": path, "in": in_point, "len": length,
                         "w": vw, "h": vh, "has_audio": _probe_audio_stream(info) is not None,
                         "title": slot.get("title")})
+        if frames:
+            probed[-1]["frames"] = frames
         # E1 (R4): what this take was made singing (its own record, not the
         # slot's current state), and its pictures' own exact length.
         made = next((t.get("inputs") for t in slot.get("takes") or [] if t.get("job_id") == job_id), None)
@@ -7809,6 +8524,10 @@ def seq_cut_start(payload):
              if dissolves else []) + join_notes)
     if audio_led:
         entry["audio_led"] = True
+    expect_frames = None
+    if snapped:
+        expect_frames = sum(snap_wins[c["slot_id"]]["W"] for c in clip_plans)
+        entry["bar_snap"], entry["frames"] = True, expect_frames
     with SEQ_LOCK:
         seq2 = _seq_read(sid)
         if seq2 is None:
@@ -7820,7 +8539,8 @@ def seq_cut_start(payload):
         seq2["updated"] = time.time()
         _seq_write(seq2)
     threading.Thread(target=_run_cut, args=(sid, cut_id, clip_plans, bed_path, out_path, out_w, out_h),
-                     kwargs={"song_plan": song_plan, "audio_led": audio_led, "master_start": master_start}, daemon=True).start()
+                     kwargs={"song_plan": song_plan, "audio_led": audio_led, "master_start": master_start,
+                             "expect_frames": expect_frames}, daemon=True).start()
     return {"ok": True, "cut_id": cut_id}, 200
 
 
@@ -7989,7 +8709,10 @@ def _title_filter(title):
 
 
 def _clip_video_chain(i, clip, out_w, out_h):
-    parts = ["trim=start=%.6f:duration=%.6f" % (clip["in"], clip["len"]), "setpts=PTS-STARTPTS"]
+    # A beat-snapped clip trims by frame index (its count is exact); every other clip by float seconds, as ever.
+    cut = ("trim=start_frame=%d:end_frame=%d" % tuple(clip["frames"]) if clip.get("frames")
+           else "trim=start=%.6f:duration=%.6f" % (clip["in"], clip["len"]))
+    parts = [cut, "setpts=PTS-STARTPTS"]
     if clip.get("dissolve"):
         # E2: xfade needs one frame rate and time base on both sides, and each
         # side exactly its cut length (a last frame held, as concat's cfr does),
@@ -8090,7 +8813,8 @@ def _cfr_args():
     return list(_CFR_ARGS)
 
 
-def _run_cut(sid, cut_id, clip_plans, bed_path, out_path, out_w, out_h, song_plan=None, audio_led=False, master_start=0.0):
+def _run_cut(sid, cut_id, clip_plans, bed_path, out_path, out_w, out_h, song_plan=None, audio_led=False, master_start=0.0,
+             expect_frames=None):
     """The whole ffmpeg build, off the request thread (R8). ffmpeg always
     runs as an argv list, never a shell. Any failure -- ffmpeg's own
     non-zero exit, a take that turns out corrupt once ffmpeg opens it, or a
@@ -8275,6 +8999,13 @@ def _run_cut(sid, cut_id, clip_plans, bed_path, out_path, out_w, out_h, song_pla
             _cut_update(sid, cut_id, status="error",
                        log=("ffmpeg could not build this cut.\n" + (r.stderr or "")[-1500:]))
             return
+        if expect_frames is not None:
+            got = _count_frames(out_path)
+            if got != expect_frames:
+                _cut_update(sid, cut_id, status="error",
+                           log="The cut has %s frames but the beat grid needs exactly %d, so it was not kept."
+                               % (got, expect_frames))
+                return
         # F5: the limiter above is a backstop, not a guarantee -- measure the
         # DELIVERED file's own true peak (the codec's own overshoot included)
         # and, if it is over the ceiling, correct. One pass does not always
@@ -10430,7 +11161,8 @@ class Handler(BaseHTTPRequestHandler):
         """
         lane = LANE_BY_ID.get((q.get("lane") or [""])[0])
         m = models_for(lane) if lane else {}
-        able = engines.abilities(m, blocked=pin_absent(lane) if lane else ())
+        able = engines.abilities(m, blocked=pin_absent(lane) if lane else (),
+                                 nodes=nodes_for(lane) if lane else None)
         out = {}
         for cap in engines.caps():
             words = engines.mode_words(cap)
@@ -10491,7 +11223,10 @@ class Handler(BaseHTTPRequestHandler):
                     "missing": model_missing if kind_mismatch else
                                model_missing + ([deps_reason] if deps_reason else []),
                     "fields": fields_with_pool_options(cap, mode, lane),
-                    "presets": engines.presets(cap, mode),
+                    # A preset that "requires" an ability this lane lacks is not offered
+                    # (the quality ladder greys its rows out; presets are a plain select).
+                    "presets": [pr for pr in engines.presets(cap, mode)
+                                if not pr.get("requires") or able.get(pr["requires"])],
                     # H2: the "Try this" row -- a one-click example per mode.
                     "examples": engines.examples(cap, mode),
                     # R1/R4: the quality ladder, per-lane availability and
@@ -10508,6 +11243,8 @@ class Handler(BaseHTTPRequestHandler):
                     # Rooms slice: "when to pick this one" (pack-declared, or
                     # None) and the licence the finished job would carry.
                     "note": engines.mode_note(cap, mode),
+                    # Front door: the short one-liner (never a data pack's lab note).
+                    "blurb": engines.mode_blurb(cap, mode),
                     # B1c: which lane KIND this mode runs on (comfy / process) --
                     # the page uses it to route the job to a machine that can
                     # actually run it, instead of just disabling the row.
@@ -10532,6 +11269,9 @@ class Handler(BaseHTTPRequestHandler):
         # Rooms by task (rooms.json + each pack's mode_rooms). NOT a cap: every
         # consumer that iterates this payload's keys as caps must skip "rooms".
         out["rooms"] = engines.rooms()
+        # What a person can make (tasks.json + each pack's mode_tasks). NOT a cap
+        # either -- same "skip this key" rule as "rooms".
+        out["tasks"] = engines.tasks()
         # L5: whether a prompt helper is configured at all. NOT a cap either --
         # same "skip this key" rule as "rooms".
         out["helper"] = bool(HELPER)
@@ -10826,6 +11566,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(*seq_generate(self.read_json()))
             if u.path == "/api/sequence/cut":
                 return self.send_json(*seq_cut_start(self.read_json()))
+            if u.path == "/api/sequence/analyze":
+                return self.send_json(*seq_analyze(self.read_json()))
             if u.path == "/api/helper":
                 if not HELPER:
                     return self.send_json({"error": "not found"}, 404)
@@ -11395,6 +12137,10 @@ def _forge_pick_lane(request_lane, cap, mode):
     return None
 
 
+FORGE_BEATS_POLL_S = 2.0
+FORGE_BEATS_MAX_S = 900
+
+
 class _ForgeBackend:
     """The backend forge_run.MusicVideoRun is written against (see its docstring). Every method calls an existing
     server function; anything a person should read is raised as forge_run.RunError."""
@@ -11439,6 +12185,47 @@ class _ForgeBackend:
 
     def set_audio_led(self, sid):
         self._op(sid, "set_audio_led", on=True)
+
+    def find_beats(self, sid):
+        """The master's song map. BeatsUnavailable (with the sentence the person reads) when no lane can find
+        the beats or the run errors; polls the stored sequence the way the Cutting Room's button does."""
+        body, code = seq_analyze({"id": sid})
+        if code != 200:
+            reason = str(body.get("error") or "the beat-finding run did not start")
+            if reason.startswith("No lane that can find"):
+                raise forge_run.BeatsUnavailable(forge_run.NO_BEATS_LANE)
+            raise forge_run.BeatsUnavailable(forge_run.beats_failed(reason))
+        deadline = time.monotonic() + FORGE_BEATS_MAX_S
+        while True:
+            self.check_stop()
+            with SEQ_LOCK:
+                seq = _seq_read(sid)
+            if seq is None:
+                raise forge_run.RunError("The sequence is gone.")
+            if isinstance(seq.get("song_map"), dict):
+                return seq["song_map"]
+            job = seq.get("song_map_job")
+            if isinstance(job, dict) and job.get("status") == "error":
+                raise forge_run.BeatsUnavailable(forge_run.beats_failed(job.get("error") or "the run did not finish"))
+            if time.monotonic() > deadline:
+                raise forge_run.BeatsUnavailable(forge_run.beats_failed("finding the beats took too long"))
+            time.sleep(FORGE_BEATS_POLL_S)
+
+    def snap_shots(self, sid, slot_ids, windows):
+        """Snap to beats on, each shot's bars as planned, then check the sequence derives exactly the planned windows."""
+        self._op(sid, "set_bar_snap", on=True)
+        for slot_id, win in zip(slot_ids, windows):
+            if win["to_end"]:
+                self._op(sid, "set_shot_bars", slot_id=slot_id, to_end=True)
+            else:
+                self._op(sid, "set_shot_bars", slot_id=slot_id, bars=win["bars"])
+        with SEQ_LOCK:
+            seq = _seq_read(sid)
+        derived = {s["id"]: s.get("window") or {} for s in seq_derive(seq).get("slots") or []} if seq else {}
+        for n, (slot_id, win) in enumerate(zip(slot_ids, windows), 1):
+            got = derived.get(slot_id, {})
+            if (got.get("f0"), got.get("f1"), got.get("render_frames")) != (win["f0"], win["f1"], win["frames"]):
+                raise forge_run.RunError("The beat plan and the Cutting Room disagree on shot %d." % n)
 
     def import_master(self, sid, song_job_id):
         try:
@@ -11584,6 +12371,9 @@ class _ForgeBackend:
     def sleep(self, s):
         time.sleep(s)
 
+    def set_planner(self, planner, note):
+        forge_run.update_run(self.run_id, planner=planner, planner_note=note)
+
     def plan(self, plan_line, n_shots):
         forge_run.update_run(self.run_id, plan_line=plan_line, total=2 * n_shots)
 
@@ -11697,7 +12487,12 @@ def _forge_run_validation(p):
         return None, [(400, "No machine that is up can make the video (it needs the LTX video mode). "
                             "Start one, then try again.")]
 
+    on_beats = p.get("on_beats", True)
+    if not isinstance(on_beats, bool):
+        return None, [(400, "on_beats must be true or false.")]
+
     return {
+        "on_beats": on_beats,
         "lane": lane, "picture_lane": picture_lane, "video_lane": video_lane, "song_job": song_job or None, "song_upload": song_upload, "photo": photo or None, "person": person,
         "style": style, "lyrics": lyrics, "width": width, "height": height,
     }, []
@@ -11708,7 +12503,7 @@ def _forge_thread(run_id, v):
                        picture_lane=v.get("picture_lane"), video_lane=v.get("video_lane"))
     try:
         out = forge_run.MusicVideoRun(be).run(v["song_job"], v["photo"], v["style"], v["lyrics"] or "", v["width"], v["height"],
-                                         person=v.get("person"))
+                                         person=v.get("person"), on_beats=v.get("on_beats", False))
         forge_run.update_run(run_id, status="done", stage="done", message="Your video is ready.", file=out["file"],
                              cut_id=out["cut_id"], sequence=out["sequence"], done=2 * out["shots"], total=2 * out["shots"])
     except forge_run.RunStopped:

@@ -1,0 +1,213 @@
+{
+ "id": "00000000-0000-0000-0000-000000000015",
+ "revision": 0,
+ "last_node_id": 99,
+ "last_link_id": 0,
+ "nodes": [
+  {
+   "id": 1,
+   "type": "UNETLoader",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    "zq_dit_fp16.safetensors",
+    "default"
+   ]
+  },
+  {
+   "id": 2,
+   "type": "CLIPLoader",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    "zq_clip.safetensors",
+    "flat",
+    "default"
+   ]
+  },
+  {
+   "id": 3,
+   "type": "VAELoader",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    "zq_vae.safetensors"
+   ]
+  },
+  {
+   "id": 4,
+   "type": "CLIPTextEncode",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    "A stone bridge over a river."
+   ]
+  },
+  {
+   "id": 5,
+   "type": "CLIPTextEncode",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    ""
+   ]
+  },
+  {
+   "id": 6,
+   "type": "EmptyLatentImage",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    640,
+    640,
+    1
+   ]
+  },
+  {
+   "id": 7,
+   "type": "KSampler",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    31,
+    25,
+    6.0,
+    "euler",
+    "simple",
+    1
+   ]
+  },
+  {
+   "id": 8,
+   "type": "VAEDecode",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": []
+  },
+  {
+   "id": 9,
+   "type": "SaveImage",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    100,
+    100
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [],
+   "properties": {},
+   "widgets_values": [
+    "zq"
+   ]
+  }
+ ],
+ "links": [],
+ "groups": [],
+ "config": {},
+ "extra": {},
+ "version": 0.4,
+ "definitions": {
+  "subgraphs": []
+ }
+}

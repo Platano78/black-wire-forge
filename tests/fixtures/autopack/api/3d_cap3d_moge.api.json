@@ -1,0 +1,49 @@
+{
+ "1": {
+  "inputs": {
+   "image": "example.png"
+  },
+  "class_type": "LoadImage",
+  "_meta": {
+   "title": "Load Image"
+  }
+ },
+ "2": {
+  "inputs": {
+   "model_name": "moge_vitl.safetensors"
+  },
+  "class_type": "LoadMoGeModel",
+  "_meta": {
+   "title": "Load MoGe Model"
+  }
+ },
+ "3": {
+  "inputs": {
+   "model": [
+    "2",
+    0
+   ],
+   "image": [
+    "1",
+    0
+   ]
+  },
+  "class_type": "MoGeRun",
+  "_meta": {
+   "title": "MoGe Run"
+  }
+ },
+ "4": {
+  "inputs": {
+   "mesh": [
+    "3",
+    0
+   ],
+   "filename_prefix": "mesh"
+  },
+  "class_type": "SaveGLB",
+  "_meta": {
+   "title": "Save GLB"
+  }
+ }
+}

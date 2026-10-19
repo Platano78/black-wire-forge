@@ -82,13 +82,12 @@ UNDO = "#guideNewUndo"
 PNG = {"name": "ref.png", "mimeType": "image/png", "buffer": ps.PNG}
 
 
-def enter(page, room_id, mode=None):
+def enter(page, room_id, mode=None, task=None):
     page.goto("about:blank")
-    page.goto(URL + "#room=" + room_id, wait_until="networkidle", timeout=30000)
+    page.goto(URL + ("#task=" + task if task else "#room=" + room_id), wait_until="networkidle", timeout=30000)
     page.wait_for_function("() => typeof GUIDE !== 'undefined' && GUIDE && GUIDE.guide", timeout=15000)
     if mode and page.evaluate("STATE.mode") != mode:
-        page.evaluate("() => setEngineChipOpen(true)")
-        page.check('#enginePicker input[data-mode="%s"]' % mode)
+        page.check('#ways input[data-mode="%s"]' % mode)
     page.wait_for_timeout(600)
 
 
@@ -206,7 +205,7 @@ try:
             "async () => ((await getJSON('/api/jobs')).jobs || (await getJSON('/api/jobs')) || []).some(j => j.id === 'songjob1')"))
 
         print("4: Picture room: New picture clears an uploaded picture; the Cutting Room shows no such button")
-        enter(page, "picture", "edit")
+        enter(page, "picture", "edit", task="edit")
         check("picture: the button says New picture", vis(page, NEW) and page.inner_text(NEW) == "New picture",
               page.inner_text(NEW) if page.query_selector(NEW) else None)
         fid = page.evaluate("() => { const f = fieldsFor(currentMode()).find(f => f.type === 'image' || f.type === 'image_list');"

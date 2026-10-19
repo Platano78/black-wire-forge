@@ -1,0 +1,24 @@
+{
+ "1": {
+  "inputs": {
+   "prompt": "A paid picture."
+  },
+  "class_type": "PartnerPaidImage",
+  "_meta": {
+   "title": "Paid Partner Image"
+  }
+ },
+ "2": {
+  "inputs": {
+   "images": [
+    "1",
+    0
+   ],
+   "filename_prefix": "paid"
+  },
+  "class_type": "SaveImage",
+  "_meta": {
+   "title": "Save Image"
+  }
+ }
+}

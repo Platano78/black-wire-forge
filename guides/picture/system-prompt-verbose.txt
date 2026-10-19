@@ -262,6 +262,10 @@ picture), Colours (int, default 8, range 2-32), Palette (hex colours) (optional 
 from a picture..." fills it from a local image), Pixel grid (Sharp (nearest), the default, or
 Cleanest (most common colour), which keeps small features), Dither (number, default 0.0, range 0-1 — 0 keeps flat crisp colour edges;
 raising it adds a fine dotted texture; a hard metal surface usually looks better with it off).
+Five checkboxes, all off by default: Keep small details (eyes and thin lines survive; takes over from
+Pixel grid), Keep accent colours (small bright areas compete for colours instead of losing them all to big areas; unused when a palette is
+filled in), Clean specks (lone stray pixels take the colour around them), Hard edges (every pixel fully
+solid or fully clear), Keep edges crisp (dither dots only on smooth shading; matters only when Dither is above 0).
 Presets: default (8 colours, no dither), richer-palette (16 colours, for a busier subject). Needs
 numpy and Pillow installed on the machine running the app — if missing, this whole mode is
 unavailable no matter which render lane is picked, since the palette-lock step runs on the app's own

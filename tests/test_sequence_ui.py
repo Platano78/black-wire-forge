@@ -149,8 +149,19 @@ if not wait_true("server is up and the fake lane offers at least one audio mode"
     shutil.rmtree(tmp, ignore_errors=True)
     sys.exit(1)
 
+TASK_GROUPS = {}   # task id -> its group, read from /api/engines once the page is up
+
+
 def tab(page, rid):
-    return '#roomStrip [data-room-id="%s"]' % rid
+    """The bar's tab for a task id (its group button first when its tabs are not on screen),
+    or the Cutting Room ("cutting")."""
+    if rid == "cutting":
+        return '#roomStrip [data-room-id="cutting"]'
+    sel = '#roomStrip [data-task-id="%s"]' % rid
+    if page.query_selector(sel) is None and rid in TASK_GROUPS:
+        page.click('#roomStrip [data-group="%s"]' % TASK_GROUPS[rid])
+        page.wait_for_timeout(250)
+    return sel
 
 try:
     print("driving the real page: new sequence -> add a slot -> Make -> pick -> ref room -> 409 -> reload")
@@ -363,10 +374,11 @@ try:
         # generated is named by it as a take, and the server refuses to
         # touch a named job, so a Cutting-Room Forget could never prove a
         # removal, and different prompts are what make the args observable.
-        page.click(tab(page, "music"))
+        TASK_GROUPS.update({t["id"]: t["group"] for t in http_json(URL + "api/engines?lane=" + LANE_ID)["tasks"]})
+        page.click(tab(page, "song"))
         page.wait_for_timeout(400)
-        check("the Music room offers Make", page.is_visible("#makeBtn"))
-        check("the Music room's mode takes a prompt (so Use-again is observable)",
+        check("the Song task offers Make", page.is_visible("#makeBtn"))
+        check("the Song task's mode takes a prompt (so Use-again is observable)",
               page.is_visible("#promptWrap"))
 
         def music_jobs(since):
@@ -553,14 +565,15 @@ try:
             check("monitor: no Stop button for a machine that stopped answering",
                   page.query_selector("#stopBtn") is None)
 
-            def room_of(j):
+            def task_of(j):
                 caps = http_json(URL + "api/engines?lane=" + LANE_ID)
-                for room in caps.get("rooms") or []:
-                    for x in room.get("modes") or []:
-                        if x.get("cap") == j.get("kind") and x.get("mode") == j.get("mode"):
-                            return room["id"]
+                for task in caps.get("tasks") or []:
+                    for w in task.get("ways") or []:
+                        refs = [w] + ([w["final"]] if w.get("final") else []) + list((w.get("finals_by_count") or {}).values())
+                        if any(x.get("cap") == j.get("kind") and x.get("mode") == j.get("mode") for x in refs):
+                            return task["id"]
                 return None
-            rid = room_of(down_job)
+            rid = task_of(down_job)
             if rid:
                 page.wait_for_selector(tab(page, rid), state="visible", timeout=5000)
                 page.click(tab(page, rid))

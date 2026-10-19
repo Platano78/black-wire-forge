@@ -1,0 +1,182 @@
+{
+ "schema": 1,
+ "id": "image-subst-dit",
+ "cap": "image",
+ "mode": "subst_dit",
+ "label": "Subst: Bridge",
+ "graph": "graph.api.json",
+ "fields": [
+  {
+   "id": "prompt",
+   "label": "Prompt",
+   "type": "textarea",
+   "default": "A stone bridge over a river.",
+   "tier": "primary",
+   "group": "Content",
+   "bind": [
+    {
+     "node": "4",
+     "input": "text"
+    }
+   ],
+   "order": 1
+  },
+  {
+   "id": "width",
+   "label": "Width",
+   "type": "int",
+   "units": "px",
+   "default": 640,
+   "range": [
+    64,
+    4096
+   ],
+   "tier": "primary",
+   "group": "Size",
+   "bind": [
+    {
+     "node": "6",
+     "input": "width"
+    }
+   ],
+   "order": 2
+  },
+  {
+   "id": "height",
+   "label": "Height",
+   "type": "int",
+   "units": "px",
+   "default": 640,
+   "range": [
+    64,
+    4096
+   ],
+   "tier": "primary",
+   "group": "Size",
+   "bind": [
+    {
+     "node": "6",
+     "input": "height"
+    }
+   ],
+   "order": 3
+  },
+  {
+   "id": "steps",
+   "label": "Steps",
+   "type": "int",
+   "units": "steps",
+   "default": 25,
+   "range": [
+    1,
+    200
+   ],
+   "tier": "advanced",
+   "group": "Sampling",
+   "bind": [
+    {
+     "node": "7",
+     "input": "steps"
+    }
+   ],
+   "order": 4
+  },
+  {
+   "id": "cfg",
+   "label": "Guidance (CFG)",
+   "type": "number",
+   "units": "cfg",
+   "default": 6.0,
+   "range": [
+    0,
+    30
+   ],
+   "tier": "advanced",
+   "group": "Sampling",
+   "bind": [
+    {
+     "node": "7",
+     "input": "cfg"
+    }
+   ],
+   "order": 5
+  },
+  {
+   "id": "seed",
+   "label": "Seed",
+   "type": "int",
+   "units": "seed",
+   "default": 31,
+   "range": [
+    0,
+    2147483647
+   ],
+   "tier": "advanced",
+   "group": "Sampling",
+   "bind": [
+    {
+     "node": "7",
+     "input": "seed"
+    }
+   ],
+   "order": 6
+  }
+ ],
+ "requires": [
+  {
+   "role": "unet",
+   "pool": "unet",
+   "node": "1",
+   "input": "unet_name",
+   "match": {
+    "all": [
+     "zq",
+     "dit"
+    ],
+    "prefer": [
+     "zq_dit_fp16",
+     "fp16"
+    ]
+   },
+   "words": "the unet file zq_dit_fp16.safetensors"
+  },
+  {
+   "role": "clip",
+   "pool": "clip",
+   "node": "2",
+   "input": "clip_name",
+   "match": {
+    "all": [
+     "zq",
+     "clip"
+    ],
+    "prefer": [
+     "zq_clip"
+    ]
+   },
+   "words": "the clip file zq_clip.safetensors"
+  },
+  {
+   "role": "vae",
+   "pool": "vae",
+   "node": "3",
+   "input": "vae_name",
+   "match": {
+    "all": [
+     "zq",
+     "vae"
+    ],
+    "prefer": [
+     "zq_vae"
+    ]
+   },
+   "words": "the vae file zq_vae.safetensors"
+  }
+ ],
+ "licence": {
+  "name": "Unknown (from the ComfyUI template image_subst_dit)",
+  "shippable": false,
+  "attribution": "Made from the ComfyUI template image_subst_dit on Test lane; models: Zq Dit"
+ },
+ "note": "Names an fp16 file the lane holds only as int8."
+}

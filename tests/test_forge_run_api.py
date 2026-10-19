@@ -400,6 +400,66 @@ check("a running record from a dead process is an error", a["status"] == "error"
 check("a finished record is kept as it was", forge_run.get_run("def")["status"] == "done")
 forge_run.configure(DATA_DIR_FOR_TESTS) if "DATA_DIR_FOR_TESTS" in dir() else None
 
+print("\n--- on_beats: the endpoint default, the refusal, the record, and the fallback against the real analyze ---")
+v, errs = srv._forge_run_validation(dict(GOOD))
+check("on_beats defaults to true at the endpoint", not errs and v["on_beats"] is True, (errs, v))
+v, errs = srv._forge_run_validation(dict(GOOD, on_beats=False))
+check("on_beats false is kept", not errs and v["on_beats"] is False, (errs, v))
+for bad in ("yes", 1, 0, None, "false", [True]):
+    with forge_run.FORGE_RUN_LOCK:
+        _n = len(forge_run.FORGE_RUNS)
+    payload, code = post(dict(GOOD, on_beats=bad))
+    with forge_run.FORGE_RUN_LOCK:
+        _n2 = len(forge_run.FORGE_RUNS)
+    check("on_beats %r is refused with one sentence and no run is made" % (bad,),
+          code == 400 and payload.get("ok") is False and payload.get("error") == "on_beats must be true or false." and _n == _n2,
+          (code, payload))
+
+_seen = []
+def recording_thread(run_id, v):
+    _seen.append(v)
+    forge_run.update_run(run_id, status="done", stage="done", message="Your video is ready.")
+srv._forge_thread = recording_thread
+payload, code = post(GOOD)
+time.sleep(0.3)
+check("the run thread gets on_beats true when the body does not say", code == 200 and _seen and _seen[0]["on_beats"] is True, (code, _seen))
+rec, _ = call_get("/api/forge/run?id=" + payload["run_id"])
+check("the record exposes planner (None until planning finishes) and planner_note", "planner" in rec and rec["planner"] is None
+      and rec["planner_note"] == "", rec)
+payload, code = post(dict(GOOD, on_beats=False))
+time.sleep(0.3)
+check("the run thread gets on_beats false when the body says false", code == 200 and _seen[-1]["on_beats"] is False, _seen[-1:])
+
+be = srv._ForgeBackend(payload["run_id"], srv.LANE_BY_ID["t"], 576, 768)
+be.set_planner("even", "a sentence.")
+rec, _ = call_get("/api/forge/run?id=" + payload["run_id"])
+check("set_planner writes planner and planner_note onto the record", rec["planner"] == "even" and rec["planner_note"] == "a sentence.", rec)
+
+seq, _ = srv.seq_create({"title": "no grid lane", "mode": "sequence"})
+_real_can_cut = srv.CAN_CUT
+srv.CAN_CUT = True
+try:
+    be.find_beats(seq["id"])
+    raised = None
+except forge_run.BeatsUnavailable as e:
+    raised = str(e)
+finally:
+    srv.CAN_CUT = _real_can_cut
+check("with no grid lane, find_beats falls back with the exact no-lane sentence (the real seq_analyze refusal)",
+      raised == "No lane could find the song's beats, so the shots are spaced evenly instead.", raised)
+
+_real_analyze = srv.seq_analyze
+srv.seq_analyze = lambda p: ({"ok": False, "error": "The master sound file is missing. Add it again."}, 400)
+try:
+    be.find_beats(seq["id"])
+    raised = None
+except forge_run.BeatsUnavailable as e:
+    raised = str(e)
+finally:
+    srv.seq_analyze = _real_analyze
+check("any other analyze refusal is the generic sentence with its reason",
+      raised == "Finding the song's beats failed (The master sound file is missing. Add it again), so the shots are spaced evenly instead.", raised)
+
 print()
 if FAILED:
     print("FAILED (%d): %s" % (len(FAILED), ", ".join(FAILED)))

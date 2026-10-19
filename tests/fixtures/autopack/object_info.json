@@ -1,0 +1,1078 @@
+{
+ "UNETLoader": {
+  "input": {
+   "required": {
+    "unet_name": [
+     [
+      "flatmodel_bf16.safetensors",
+      "flatmodel_distilled_bf16.safetensors",
+      "editmodel_fp8.safetensors",
+      "multimodel_bf16.safetensors",
+      "zq_dit_int8_convrot.safetensors"
+     ],
+     {}
+    ],
+    "weight_dtype": [
+     [
+      "default",
+      "fp8"
+     ],
+     {}
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "MODEL"
+  ],
+  "output_name": [
+   "MODEL"
+  ],
+  "name": "LoadDiffusionModel",
+  "display_name": "Load Diffusion Model",
+  "output_node": false,
+  "api_node": false
+ },
+ "CLIPLoader": {
+  "input": {
+   "required": {
+    "clip_name": [
+     [
+      "flat_text_enc.safetensors",
+      "edit_text_enc_fp8.safetensors",
+      "multi_text_enc.safetensors",
+      "zq_clip.safetensors"
+     ],
+     {}
+    ],
+    "type": [
+     [
+      "flat",
+      "edit",
+      "multi"
+     ],
+     {}
+    ],
+    "device": [
+     [
+      "default",
+      "cpu"
+     ],
+     {}
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "CLIP"
+  ],
+  "output_name": [
+   "CLIP"
+  ],
+  "name": "LoadCLIP",
+  "display_name": "Load CLIP",
+  "output_node": false,
+  "api_node": false
+ },
+ "VAELoader": {
+  "input": {
+   "required": {
+    "vae_name": [
+     [
+      "flat_vae.safetensors",
+      "edit_vae.safetensors",
+      "multi_vae.safetensors",
+      "zq_vae.safetensors",
+      "pixel_space"
+     ],
+     {}
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "VAE"
+  ],
+  "output_name": [
+   "VAE"
+  ],
+  "name": "LoadVAE",
+  "display_name": "Load VAE",
+  "output_node": false,
+  "api_node": false
+ },
+ "LoraLoaderModelOnly": {
+  "input": {
+   "required": {
+    "model": [
+     "MODEL",
+     {}
+    ],
+    "lora_name": [
+     [
+      "multi_light_lora.safetensors"
+     ],
+     {}
+    ],
+    "strength_model": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "min": -100.0,
+      "max": 100.0
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "MODEL"
+  ],
+  "output_name": [
+   "MODEL"
+  ],
+  "name": "LoraLoaderModelOnly",
+  "display_name": "LoraLoaderModelOnly",
+  "output_node": false,
+  "api_node": false
+ },
+ "LoadBackgroundRemovalModel": {
+  "input": {
+   "required": {
+    "bg_removal_name": [
+     "COMBO",
+     {
+      "options": [
+       "model.safetensors"
+      ]
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "BGMODEL"
+  ],
+  "output_name": [
+   "BGMODEL"
+  ],
+  "name": "LoadBackgroundRemovalModel",
+  "display_name": "Load Background Removal Model",
+  "output_node": false,
+  "api_node": false
+ },
+ "CLIPTextEncode": {
+  "input": {
+   "required": {
+    "text": [
+     "STRING",
+     {
+      "multiline": true
+     }
+    ],
+    "clip": [
+     "CLIP",
+     {}
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "CONDITIONING"
+  ],
+  "output_name": [
+   "CONDITIONING"
+  ],
+  "name": "CLIPTextEncode(Prompt)",
+  "display_name": "CLIP Text Encode (Prompt)",
+  "output_node": false,
+  "api_node": false
+ },
+ "EmptyLatentImage": {
+  "input": {
+   "required": {
+    "width": [
+     "INT",
+     {
+      "default": 512,
+      "min": 16,
+      "max": 16384
+     }
+    ],
+    "height": [
+     "INT",
+     {
+      "default": 512,
+      "min": 16,
+      "max": 16384
+     }
+    ],
+    "batch_size": [
+     "INT",
+     {
+      "default": 1,
+      "min": 1,
+      "max": 4096
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "LATENT"
+  ],
+  "output_name": [
+   "LATENT"
+  ],
+  "name": "EmptyLatentImage",
+  "display_name": "Empty Latent Image",
+  "output_node": false,
+  "api_node": false
+ },
+ "EmptyVideoLatent": {
+  "input": {
+   "required": {
+    "width": [
+     "INT",
+     {
+      "default": 768,
+      "min": 64,
+      "max": 8192
+     }
+    ],
+    "height": [
+     "INT",
+     {
+      "default": 512,
+      "min": 64,
+      "max": 8192
+     }
+    ],
+    "length": [
+     "INT",
+     {
+      "default": 97,
+      "min": 1,
+      "max": 4096
+     }
+    ],
+    "batch_size": [
+     "INT",
+     {
+      "default": 1,
+      "min": 1,
+      "max": 64
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "LATENT"
+  ],
+  "output_name": [
+   "LATENT"
+  ],
+  "name": "EmptyVideoLatent",
+  "display_name": "Empty Video Latent",
+  "output_node": false,
+  "api_node": false
+ },
+ "KSampler": {
+  "input": {
+   "required": {
+    "model": [
+     "MODEL",
+     {}
+    ],
+    "seed": [
+     "INT",
+     {
+      "default": 0,
+      "min": 0,
+      "max": 18446744073709551615
+     }
+    ],
+    "steps": [
+     "INT",
+     {
+      "default": 20,
+      "min": 1,
+      "max": 10000
+     }
+    ],
+    "cfg": [
+     "FLOAT",
+     {
+      "default": 8.0,
+      "min": 0.0,
+      "max": 100.0
+     }
+    ],
+    "sampler_name": [
+     [
+      "euler",
+      "dpmpp_2m"
+     ],
+     {}
+    ],
+    "scheduler": [
+     [
+      "simple",
+      "karras"
+     ],
+     {}
+    ],
+    "positive": [
+     "CONDITIONING",
+     {}
+    ],
+    "negative": [
+     "CONDITIONING",
+     {}
+    ],
+    "latent_image": [
+     "LATENT",
+     {}
+    ],
+    "denoise": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "min": 0.0,
+      "max": 1.0
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "LATENT"
+  ],
+  "output_name": [
+   "LATENT"
+  ],
+  "name": "KSampler",
+  "display_name": "KSampler",
+  "output_node": false,
+  "api_node": false
+ },
+ "VAEDecode": {
+  "input": {
+   "required": {
+    "samples": [
+     "LATENT",
+     {}
+    ],
+    "vae": [
+     "VAE",
+     {}
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "IMAGE"
+  ],
+  "output_name": [
+   "IMAGE"
+  ],
+  "name": "VAEDecode",
+  "display_name": "VAE Decode",
+  "output_node": false,
+  "api_node": false
+ },
+ "VAEEncode": {
+  "input": {
+   "required": {
+    "pixels": [
+     "IMAGE",
+     {}
+    ],
+    "vae": [
+     "VAE",
+     {}
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "LATENT"
+  ],
+  "output_name": [
+   "LATENT"
+  ],
+  "name": "VAEEncode",
+  "display_name": "VAE Encode",
+  "output_node": false,
+  "api_node": false
+ },
+ "ReferenceLatent": {
+  "input": {
+   "required": {
+    "conditioning": [
+     "CONDITIONING",
+     {}
+    ]
+   },
+   "optional": {
+    "latent": [
+     "LATENT",
+     {}
+    ]
+   }
+  },
+  "output": [
+   "CONDITIONING"
+  ],
+  "output_name": [
+   "CONDITIONING"
+  ],
+  "name": "ReferenceLatent",
+  "display_name": "ReferenceLatent",
+  "output_node": false,
+  "api_node": false
+ },
+ "SaveImage": {
+  "input": {
+   "required": {
+    "images": [
+     "IMAGE",
+     {}
+    ],
+    "filename_prefix": [
+     "STRING",
+     {
+      "default": "ComfyUI"
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [],
+  "output_name": [],
+  "name": "SaveImage",
+  "display_name": "Save Image",
+  "output_node": true,
+  "api_node": false
+ },
+ "PreviewImage": {
+  "input": {
+   "required": {
+    "images": [
+     "IMAGE",
+     {}
+    ]
+   },
+   "optional": {}
+  },
+  "output": [],
+  "output_name": [],
+  "name": "PreviewImage",
+  "display_name": "Preview Image",
+  "output_node": true,
+  "api_node": false
+ },
+ "PreviewAny": {
+  "input": {
+   "required": {
+    "source": [
+     "*",
+     {}
+    ]
+   },
+   "optional": {}
+  },
+  "output": [],
+  "output_name": [],
+  "name": "PreviewasText",
+  "display_name": "Preview as Text",
+  "output_node": true,
+  "api_node": false
+ },
+ "LoadImage": {
+  "input": {
+   "required": {
+    "image": [
+     [
+      "example.png",
+      "other.png"
+     ],
+     {
+      "image_upload": true
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "IMAGE",
+   "MASK"
+  ],
+  "output_name": [
+   "IMAGE",
+   "MASK"
+  ],
+  "name": "LoadImage",
+  "display_name": "Load Image",
+  "output_node": false,
+  "api_node": false
+ },
+ "PrimitiveStringMultiline": {
+  "input": {
+   "required": {
+    "value": [
+     "STRING",
+     {
+      "multiline": true
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "STRING"
+  ],
+  "output_name": [
+   "STRING"
+  ],
+  "name": "String(Multiline)",
+  "display_name": "String (Multiline)",
+  "output_node": false,
+  "api_node": false
+ },
+ "PrimitiveInt": {
+  "input": {
+   "required": {
+    "value": [
+     "INT",
+     {
+      "min": -9223372036854775807,
+      "max": 9223372036854775807
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "INT"
+  ],
+  "output_name": [
+   "INT"
+  ],
+  "name": "Int",
+  "display_name": "Int",
+  "output_node": false,
+  "api_node": false
+ },
+ "PrimitiveFloat": {
+  "input": {
+   "required": {
+    "value": [
+     "FLOAT",
+     {
+      "min": -3.4e+38,
+      "max": 3.4e+38
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "FLOAT"
+  ],
+  "output_name": [
+   "FLOAT"
+  ],
+  "name": "Float",
+  "display_name": "Float",
+  "output_node": false,
+  "api_node": false
+ },
+ "PrimitiveBoolean": {
+  "input": {
+   "required": {
+    "value": [
+     "BOOLEAN",
+     {}
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "BOOLEAN"
+  ],
+  "output_name": [
+   "BOOLEAN"
+  ],
+  "name": "Boolean",
+  "display_name": "Boolean",
+  "output_node": false,
+  "api_node": false
+ },
+ "ComfySwitchNode": {
+  "input": {
+   "required": {
+    "switch": [
+     "BOOLEAN",
+     {}
+    ]
+   },
+   "optional": {
+    "on_false": [
+     "*",
+     {
+      "lazy": true
+     }
+    ],
+    "on_true": [
+     "*",
+     {
+      "lazy": true
+     }
+    ]
+   }
+  },
+  "output": [
+   "*"
+  ],
+  "output_name": [
+   "*"
+  ],
+  "name": "Switch",
+  "display_name": "Switch",
+  "output_node": false,
+  "api_node": false
+ },
+ "ComfyMathExpression": {
+  "input": {
+   "required": {
+    "expression": [
+     "STRING",
+     {
+      "multiline": true
+     }
+    ],
+    "values": [
+     "COMFY_AUTOGROW_V3",
+     {
+      "template": {
+       "prefix": "value",
+       "max": 4
+      }
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "FLOAT",
+   "INT"
+  ],
+  "output_name": [
+   "FLOAT",
+   "INT"
+  ],
+  "name": "MathExpression",
+  "display_name": "Math Expression",
+  "output_node": false,
+  "api_node": false
+ },
+ "TextGenerate": {
+  "input": {
+   "required": {
+    "prompt": [
+     "STRING",
+     {
+      "multiline": true
+     }
+    ],
+    "seed": [
+     "INT",
+     {
+      "default": 0,
+      "min": 0,
+      "max": 18446744073709551615
+     }
+    ]
+   },
+   "optional": {
+    "clip": [
+     "CLIP",
+     {}
+    ]
+   }
+  },
+  "output": [
+   "STRING"
+  ],
+  "output_name": [
+   "STRING"
+  ],
+  "name": "TextGenerate",
+  "display_name": "TextGenerate",
+  "output_node": false,
+  "api_node": false
+ },
+ "StringConcatenate": {
+  "input": {
+   "required": {
+    "string_a": [
+     "STRING",
+     {
+      "multiline": true
+     }
+    ],
+    "string_b": [
+     "STRING",
+     {
+      "multiline": true
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "STRING"
+  ],
+  "output_name": [
+   "STRING"
+  ],
+  "name": "Concatenate",
+  "display_name": "Concatenate",
+  "output_node": false,
+  "api_node": false
+ },
+ "ResolutionSelector": {
+  "input": {
+   "required": {
+    "aspect_ratio": [
+     "COMBO",
+     {
+      "options": [
+       "1:1 (Square)",
+       "16:9 (Landscape)",
+       "9:16 (Portrait)"
+      ]
+     }
+    ],
+    "megapixels": [
+     "FLOAT",
+     {
+      "default": 1.0,
+      "min": 0.1,
+      "max": 16.0
+     }
+    ],
+    "multiple": [
+     "INT",
+     {
+      "default": 8,
+      "min": 1,
+      "max": 64
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "INT",
+   "INT"
+  ],
+  "output_name": [
+   "width",
+   "height"
+  ],
+  "name": "ResolutionSelector",
+  "display_name": "Resolution Selector",
+  "output_node": false,
+  "api_node": false
+ },
+ "CreateVideo": {
+  "input": {
+   "required": {
+    "images": [
+     "IMAGE",
+     {}
+    ],
+    "fps": [
+     "FLOAT",
+     {
+      "default": 24.0,
+      "min": 1.0,
+      "max": 120.0
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "VIDEO"
+  ],
+  "output_name": [
+   "VIDEO"
+  ],
+  "name": "CreateVideo",
+  "display_name": "Create Video",
+  "output_node": false,
+  "api_node": false
+ },
+ "SaveVideo": {
+  "input": {
+   "required": {
+    "video": [
+     "VIDEO",
+     {}
+    ],
+    "filename_prefix": [
+     "STRING",
+     {
+      "default": "video/ComfyUI"
+     }
+    ],
+    "format": [
+     [
+      "auto",
+      "mp4"
+     ],
+     {}
+    ],
+    "codec": [
+     [
+      "auto",
+      "h264"
+     ],
+     {}
+    ]
+   },
+   "optional": {}
+  },
+  "output": [],
+  "output_name": [],
+  "name": "SaveVideo",
+  "display_name": "Save Video",
+  "output_node": true,
+  "api_node": false
+ },
+ "SaveAudioAdvanced": {
+  "input": {
+   "required": {
+    "audio": [
+     "AUDIO",
+     {}
+    ],
+    "filename_prefix": [
+     "STRING",
+     {
+      "default": "audio/ComfyUI"
+     }
+    ],
+    "format": [
+     "COMFY_DYNAMICCOMBO_V3",
+     {
+      "options": [
+       {
+        "key": "flac",
+        "inputs": {
+         "required": {}
+        }
+       },
+       {
+        "key": "mp3",
+        "inputs": {
+         "required": {
+          "quality": [
+           "COMBO",
+           {
+            "options": [
+             "V0",
+             "128k"
+            ]
+           }
+          ]
+         }
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [],
+  "output_name": [],
+  "name": "SaveAudio(Advanced)",
+  "display_name": "Save Audio (Advanced)",
+  "output_node": true,
+  "api_node": false
+ },
+ "LoadDA3Model": {
+  "input": {
+   "required": {
+    "model_name": [
+     "COMBO",
+     {
+      "options": [
+       "other_geometry.safetensors"
+      ]
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "DA3MODEL"
+  ],
+  "output_name": [
+   "DA3MODEL"
+  ],
+  "name": "LoadDA3Model",
+  "display_name": "Load DA3 Model",
+  "output_node": false,
+  "api_node": false
+ },
+ "RunDA3": {
+  "input": {
+   "required": {
+    "da3": [
+     "DA3MODEL",
+     {}
+    ],
+    "image": [
+     "IMAGE",
+     {}
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "IMAGE"
+  ],
+  "output_name": [
+   "IMAGE"
+  ],
+  "name": "RunDA3",
+  "display_name": "Run DA3",
+  "output_node": false,
+  "api_node": false
+ },
+ "LoadMoGeModel": {
+  "input": {
+   "required": {
+    "model_name": [
+     "COMBO",
+     {
+      "options": [
+       "other_geometry.safetensors"
+      ]
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "MOGE"
+  ],
+  "output_name": [
+   "MOGE"
+  ],
+  "name": "LoadMoGeModel",
+  "display_name": "Load MoGe Model",
+  "output_node": false,
+  "api_node": false
+ },
+ "MoGeRun": {
+  "input": {
+   "required": {
+    "model": [
+     "MOGE",
+     {}
+    ],
+    "image": [
+     "IMAGE",
+     {}
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "MESH"
+  ],
+  "output_name": [
+   "MESH"
+  ],
+  "name": "MoGeRun",
+  "display_name": "MoGe Run",
+  "output_node": false,
+  "api_node": false
+ },
+ "SaveGLB": {
+  "input": {
+   "required": {
+    "mesh": [
+     "MESH",
+     {}
+    ],
+    "filename_prefix": [
+     "STRING",
+     {
+      "default": "mesh/ComfyUI"
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [],
+  "output_name": [],
+  "name": "SaveGLB",
+  "display_name": "Save GLB",
+  "output_node": true,
+  "api_node": false
+ },
+ "PartnerPaidImage": {
+  "input": {
+   "required": {
+    "prompt": [
+     "STRING",
+     {
+      "multiline": true
+     }
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "IMAGE"
+  ],
+  "output_name": [
+   "IMAGE"
+  ],
+  "name": "PaidPartnerImage",
+  "display_name": "Paid Partner Image",
+  "output_node": false,
+  "api_node": true
+ },
+ "CustomCombo": {
+  "input": {
+   "required": {
+    "choice": [
+     [
+      "a"
+     ],
+     {}
+    ]
+   },
+   "optional": {}
+  },
+  "output": [
+   "STRING"
+  ],
+  "output_name": [
+   "STRING"
+  ],
+  "name": "CustomCombo",
+  "display_name": "Custom Combo",
+  "output_node": false,
+  "api_node": false
+ }
+}

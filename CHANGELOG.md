@@ -2,6 +2,44 @@
 
 All notable changes to Black Wire Forge are recorded here.
 
+## v1.6.0 — 2026-10-18
+
+### Added
+
+- **A home screen, "What do you want to make?"** The app opens on every task in four columns (Sound, Picture, Motion, Object), each with a one-line description. A task is dimmed, and says so, when nothing installed can make it (the music video, an app feature, never is) or when no machine in `config.json` is set up for it.
+- **Search.** Type what you want ("animate my photo", "make it bigger") and the columns become one list, best match first. Enter opens the top one, Escape clears the box, and "Nothing here does that yet." shows when nothing fits.
+- **Drop a file.** Drop a picture, clip, song or 3D object on the home screen (or press Choose a file, or Try a sample picture): the tasks that use that kind come first, the rest fold away, and the file is already in the first matching box when you open a task. A task with no such box says so and keeps the file for the next one. Any other file is refused with a plain line.
+- **A workspace per task.** A task with two or more ways lists them in the inspector, one to pick; a task with one shows no list. Where a way has a keeper version, a Draft / Final switch makes a quick draft first, then the final from the same inputs. When the final depends on how many pictures you added, the switch picks the one that fits. A muted trail line above the form shows where you are.
+- **`tasks.json`**, and `"tasks"` in `/api/engines`: what a person can make, with its ways. Packs say which task a mode belongs to, so adding a pack is still a file drop; a mode no task names still gets a task of its own. `docs/ARCHITECTURE.md` has a Tasks section; `docs/WRITING-A-PACK.md` has the new pack keys.
+
+- **Beat-snapped cuts in the Cutting Room.** For a sequence led by a song, Find the beats runs the Producer's grid check on the song (it needs the Producer's process lane set up) and keeps the beats and downbeats. With Snap to beats ticked, every video shot becomes a whole number of bars, its edges sit on the detected downbeats, and edges are rounded to 24 fps frames so the shots tile with no gap. Each shot is made at the smallest length its model can render that covers its window, then cut back to it. A Bars stepper sets how many bars a shot gets (or "Ends at song end" on the last one); a shot that sings or lip-syncs follows the song, taking its sound from the song at its own window. Warnings, and the sentence for a window that cannot be worked out, show on the page. It is off unless you tick it: a sequence that never uses it is unchanged. Over the API: `POST /api/sequence/analyze` plus the sequence ops `set_song_map`, `set_bar_snap` and `set_shot_bars` (`docs/ARCHITECTURE.md`, "Beat-snapped cuts").
+- **The music video maker plans on the song's bars.** Forge Master now finds the song's beats first and plans each shot as whole bars (about four seconds), snapped to the downbeats. If it cannot find the beats it plans even spacing as before and says so in one sentence. The run reports `planner` (`beats` or `even`) and `planner_note`; send `"on_beats": false` to `POST /api/forge/music-video` to plan evenly on purpose.
+- **`scripts/autopack.py`**, a command-line tool that turns a ComfyUI template from one of your lanes into a Black Wire Forge data pack in steps: `convert` makes a draft, `show` lists its fields, open questions and the models it needs, `answer`, `ack`, `set` and `licence` close what is open, `review` marks it reviewed, `test` does one render on the lane, and `verdict` records whether it looks right. Only `enable` copies the pack into `packs/` (loaded at the next start); `disable`, `delete` and `updates` (templates that changed on the lane since the draft) round it out. Run it with `--help`.
+- **H3 Animate: a "Fast draft (4-step, measured)" preset.** For Animate a picture, it runs MiniMax-H3's fl2va mode with the TaoMate 4-step speed pack at four steps; measured on our lane at 41.7 s against 76.7 s for the 8-step fast mode, with the same look over three seeds. It needs the `minimax_h3_taomate_fl2va_3step_avg_rank_19_bf16.safetensors` LoRA (176,723,664 bytes, from `Kijai/MiniMax-H3-experimental`, in `models/loras/minimax_h3/`) and the `MiniMaxH3SigmaShift` node on the lane, and is offered only when both are there. It is for drafts. That repo's card states no licence; the LoRA is made from MiniMax-H3, so treat MiniMax-H3's terms as applying (`docs/MODELS.md`).
+
+- **Pixel Art: five new finishing settings**, in the Sprite settings, all off unless you tick them (a sprite made with none ticked is exactly what it was before):
+  - **Keep small details**: a feature smaller than a pixel of the sprite, such as an eye or a thin mouth line, is kept when it stands out from what is around it, where the old grid dropped it.
+  - **Keep accent colours**: the palette is picked so a small bright area (a neon sign) competes for colours on equal terms with the big dark areas, instead of every colour going to them. In our tests the neon sign kept its pink and cyan where the old palette turned them grey. Not used when you fill in a palette.
+  - **Clean specks**: lone stray pixels take the colour around them; a small highlight much lighter or darker than its surroundings stays.
+  - **Hard edges**: every pixel is fully solid or fully clear, with no half see-through edge, and an edge pixel never takes the background's colour.
+  - **Keep edges crisp**: with Dither above 0, the dots go only on smooth shading, never on hard outlines, and only between each pixel's two nearest colours.
+
+  `engines/_quantise.py` offers the same as `downscale="detail"`, `palette_mode="balanced"`, `clean_specks`, `alpha_mode="hard"` and `dither_gate`, and as command-line flags.
+
+### Changed
+
+- The row of room tabs and the "Room · Mode" engine chip are gone. The task bar has an "Everything" button back to the home screen, the four groups, and the tasks in the current group; the Cutting Room and Workflows stay at the right end.
+- History's switch reads "This task / Everything", and a result from another task opens that task.
+- Links: `#task=<id>` opens a task. Older `#room=<id>` links still work and open that room's first task; `#room=cutting` and `#workflows` are unchanged. Opening the app with no link now shows the home screen.
+- Data packs can declare tasks and a short `blurb`; the page shows the blurb, not the pack's own note. Inside a task the app's own modes come before data packs, so a fresh browser opens on the app's own mode.
+- Rooms stay behind the scenes (they carry the guides and the Cutting Room); the page no longer shows them as tabs. The help's guide section still says "room" for that.
+- `/help`'s live list shows tasks by group, with each way and where it can run, instead of rooms. README, `/help`, `docs/ARCHITECTURE.md` and AGENTS.md describe the new front door; the README's clips and screenshots are still the old page.
+
+### Fixed
+
+- A checkbox setting sent as text now means what it says. `"false"`, `"0"`, `"no"` and `"off"` sent to `/api/generate` used to tick the box; they now leave it off (as does empty text), `"true"`, `"1"`, `"yes"` and `"on"` tick it, JSON `true`/`false` and the numbers 0 and 1 work as before, and any other value is refused with "<setting> needs true or false." The page always sent real true/false, so it was never affected.
+- Long songs from the Music room's MiniMax-Music3 mode decode in tiles again (`VAEDecodeAudioTiled`, tile 1536, overlap 64). A change had put back the one-piece decode, which on our lane took 45-67 s for a 120 s song against 4.6 s tiled.
+
 ## v1.5.2 — 2026-10-12
 
 ### Changed

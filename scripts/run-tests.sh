@@ -64,6 +64,20 @@ if [ -n "$SKIP" ]; then
     SUITES=("${filtered[@]}")
 fi
 
+# An explicit suite that is not a file is a typo, not a pass (it used to be skipped silently).
+if [ "$#" -gt 0 ]; then
+    for s in "$@"; do
+        if [ ! -f "$s" ]; then
+            echo "error: no such test file: $s (pass tests/test_*.py paths, or no arguments to run them all)" >&2
+            exit 2
+        fi
+    done
+fi
+if [ "${#SUITES[@]}" -eq 0 ]; then
+    echo "error: no suites to run" >&2
+    exit 1
+fi
+
 CURRENT_SCRATCH=""
 
 cleanup_current() {

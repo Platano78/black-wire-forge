@@ -67,20 +67,20 @@ try:
 
         print("A: the picker rows name the model")
         page.goto(URL + "#room=music", wait_until="networkidle", timeout=30000)
-        page.wait_for_selector("#engineChipBtn", state="visible", timeout=10000)
+        page.wait_for_selector("#ways", state="visible", timeout=10000)
         page.wait_for_function(
-            "() => { const r = document.querySelector('#enginePicker input[data-mode=\"song\"]'); "
+            "() => { const r = document.querySelector('#ways input[data-mode=\"song\"]'); "
             "return r && !r.disabled; }", timeout=20000)
         modes = {m["id"]: m for m in api("api/engines?lane=t")["audio"]["modes"]}
         rows = page.eval_on_selector_all(
-            "#enginePicker .engine-row",
+            "#ways .engine-row",
             "els => els.map(e => [e.querySelector('input').dataset.mode, "
             "(e.querySelector('.erow-model') || {}).textContent || null])")
         check("the picker has a row per music mode", len(rows) >= 2, rows)
         check("at least one row carries a model line", any(t for _, t in rows), rows)
         for mode, text in rows:
             m = modes[mode]
-            want = (m["model"] + (" · " + m["model_file"] if m.get("model_file") else "")) if m.get("model") else None
+            want = (m["model"] + (" · " + m["model_file"] if m.get("model_file") else "")) if m.get("model") and len(m["model"]) <= 40 else None
             check("row %s shows its model line" % mode, text == want, (text, want))
         song = modes["song"]
         check("song has a model name and a resolved file on the fake lane",
@@ -88,9 +88,25 @@ try:
         cur_mode = page.evaluate("STATE.mode")
         cm = modes[cur_mode]
         want_title = (cm.get("model") or "") + (" · " + cm["model_file"] if cm.get("model_file") else "")
-        check("the chip's title is the current mode's model line",
-              page.get_attribute("#engineChipBtn", "title") == want_title,
-              (page.get_attribute("#engineChipBtn", "title"), want_title))
+        cur_row = page.eval_on_selector(
+            "#ways input:checked", "e => (e.closest('label').querySelector('.erow-model') || {}).textContent || ''")
+        check("the picked way's row carries the current mode's model line", cur_row == want_title, (cur_row, want_title))
+
+        print("A2: a model text longer than 40 characters is not shown on a way row")
+        eng = api("api/engines?lane=t")
+        long_ways = [(t["id"], w["mode"]) for t in eng["tasks"] if len(t["ways"]) >= 2 for w in t["ways"]
+                     if len(next(m for m in eng[w["cap"]]["modes"] if m["id"] == w["mode"]).get("model") or "") > 40]
+        check("(setup) the fake lane has a way whose model text is over 40 characters", bool(long_ways), long_ways)
+        if long_ways:
+            tid, lmode = long_ways[0]
+            page.goto(URL + "#task=" + tid, wait_until="networkidle", timeout=30000)
+            page.wait_for_selector('#ways input[data-mode="%s"]' % lmode, timeout=15000)
+            has = page.eval_on_selector('#ways input[data-mode="%s"]' % lmode,
+                                        "e => !!e.closest('label').querySelector('.erow-model')")
+            check("the long-model way row shows no model line", has is False, has)
+            check("... but still shows its licence stamp",
+                  page.eval_on_selector('#ways input[data-mode="%s"]' % lmode,
+                                        "e => !!e.closest('label').querySelector('.licence-stamp')") is True)
 
         print("B: the slot Make double-press guard")
         page.goto(URL + "#room=cutting&seq=" + SEQ, wait_until="networkidle", timeout=30000)

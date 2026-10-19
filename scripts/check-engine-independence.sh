@@ -18,6 +18,7 @@ BASE_INDEX=0
 BASE_ROOMS=0
 BASE_RUNNER=0
 BASE_HELP=0
+BASE_PACKBUILDER=0   # engines/_comfy.py + engines/_autopack*.py: the pack builder names no model
 PAT='qwen|minimax|h3_|ace.step|\byue\b|trellis'
 # rooms.json is core config in TASK words only -- it also must not name the
 # tools packs load (a room is "Clean-up", never the model that cleans up).
@@ -37,13 +38,15 @@ HELP_PAT="$ROOMS_PAT|$PACK_MODE_PAT"
 [ -f rooms.json ] || { echo "FAIL: rooms.json missing; ratchet would pass vacuously"; exit 2; }
 [ -f runner.py ] || { echo "FAIL: runner.py missing; ratchet would pass vacuously"; exit 2; }
 [ -f help.html ] || { echo "FAIL: help.html missing; ratchet would pass vacuously"; exit 2; }
+[ -f engines/_comfy.py ] && [ -f engines/_autopack.py ] && [ -f engines/_autopack_convert.py ] || { echo "FAIL: pack builder modules missing; ratchet would pass vacuously"; exit 2; }
 
 s=$(grep -ciE "$PAT" server.py)
 i=$(grep -ciE "qwen|minimax|h3|ace.step|$PACK_MODE_PAT" index.html)
 r=$(grep -ciE "$ROOMS_PAT" rooms.json)
 u=$(grep -ciE "$RUNNER_PAT" runner.py)
 h=$(grep -ciE "$HELP_PAT" help.html)
-echo "engine coupling: server.py=$s (baseline $BASE_SERVER)  index.html=$i (baseline $BASE_INDEX)  rooms.json=$r (baseline $BASE_ROOMS)  runner.py=$u (baseline $BASE_RUNNER)  help.html=$h (baseline $BASE_HELP)"
+b=$(cat engines/_comfy.py engines/_autopack*.py | grep -ciE "$PAT")
+echo "engine coupling: server.py=$s (baseline $BASE_SERVER)  index.html=$i (baseline $BASE_INDEX)  rooms.json=$r (baseline $BASE_ROOMS)  runner.py=$u (baseline $BASE_RUNNER)  help.html=$h (baseline $BASE_HELP)  pack builder=$b (baseline $BASE_PACKBUILDER)"
 
 rc=0
 [ "$s" -gt "$BASE_SERVER" ] && { echo "FAIL: server.py coupling GREW ($BASE_SERVER -> $s)"; rc=1; }
@@ -51,6 +54,7 @@ rc=0
 [ "$r" -gt "$BASE_ROOMS" ]  && { echo "FAIL: rooms.json coupling GREW ($BASE_ROOMS -> $r)"; rc=1; }
 [ "$u" -gt "$BASE_RUNNER" ] && { echo "FAIL: runner.py coupling GREW ($BASE_RUNNER -> $u)"; rc=1; }
 [ "$h" -gt "$BASE_HELP" ]   && { echo "FAIL: help.html coupling GREW ($BASE_HELP -> $h)"; rc=1; }
+[ "$b" -gt "$BASE_PACKBUILDER" ] && { echo "FAIL: pack builder coupling GREW ($BASE_PACKBUILDER -> $b)"; rc=1; }
 [ "$s" -lt "$BASE_SERVER" ] && echo "note: server.py coupling FELL to $s — lower BASE_SERVER in this commit"
 [ "$i" -lt "$BASE_INDEX" ]  && echo "note: index.html coupling FELL to $i — lower BASE_INDEX in this commit"
 [ "$u" -lt "$BASE_RUNNER" ] && echo "note: runner.py coupling FELL to $u — lower BASE_RUNNER in this commit"

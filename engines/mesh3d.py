@@ -344,6 +344,10 @@ ENGINE = {
         "mesh": "A picture, turned into a 3D model",
     },
     "mode_rooms": {"mesh": "3d"},
+    # Front door: which task (tasks.json) each mode is a way of (engines/__init__.py "mode_tasks").
+    "mode_tasks": {
+        "mesh": {"task": "mesh", "way": "3D object"},
+    },
     "mode_notes": {
         "mesh": "gives a .glb file, not a picture",  # source: engines/mesh3d.py:10 (module docstring)
     },

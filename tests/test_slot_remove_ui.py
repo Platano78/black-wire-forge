@@ -221,7 +221,8 @@ try:
 
         # 7 -- leaving the room drops a brand-new untouched shot
         NEW3 = add_video_slot(page)
-        click(page, '#roomStrip [data-room-id="picture"]')
+        click(page, '#roomStrip [data-group="PICTURE"]')   # leaving the Cutting Room: any task will do
+        click(page, '#roomStrip [data-task-id="t2i"]')
         try:
             page.wait_for_load_state("networkidle")
         except Exception:

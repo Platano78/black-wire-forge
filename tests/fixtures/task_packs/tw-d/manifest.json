@@ -1,0 +1,46 @@
+{
+ "schema": 1,
+ "id": "tw-d",
+ "cap": "video",
+ "graph": "graph.api.json",
+ "fields": [
+  {
+   "id": "prompt",
+   "label": "Prompt",
+   "type": "textarea",
+   "tier": "primary",
+   "group": "Content",
+   "order": 1,
+   "bind": [
+    {
+     "node": "1",
+     "input": "text"
+    }
+   ]
+  },
+  {
+   "id": "pic",
+   "label": "Picture",
+   "type": "image",
+   "tier": "primary",
+   "group": "Content",
+   "order": 2,
+   "bind": [
+    {
+     "node": "2",
+     "input": "image"
+    }
+   ]
+  }
+ ],
+ "mode": "twsound",
+ "label": "Twsound",
+ "task": "tw-sound",
+ "task_words": {
+  "verb": "A sound thing",
+  "short": "A sound thing",
+  "line": "A sound thing line.",
+  "group": "SOUND"
+ },
+ "room": "sfx"
+}

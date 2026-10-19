@@ -1,0 +1,188 @@
+[
+ {
+  "moduleName": "default",
+  "category": "Fixture",
+  "title": "Image",
+  "type": "image",
+  "templates": [
+   {
+    "name": "image_flat_t2i",
+    "title": "Flat: Text to Image",
+    "mediaType": "image",
+    "mediaSubtype": "webp",
+    "description": "Makes a picture from words. A plain one-pass graph.",
+    "tags": [
+     "Image"
+    ],
+    "models": [
+     "Flat Model"
+    ],
+    "date": "2026-01-01",
+    "size": 1000000,
+    "usage": 10,
+    "openSource": true,
+    "minComfyUIVersion": "0.3.0"
+   },
+   {
+    "name": "image_sub_edit",
+    "title": "Sub: Edit a Picture",
+    "mediaType": "image",
+    "mediaSubtype": "webp",
+    "description": "Edits one picture from an instruction. Its loaders live in a subgraph.",
+    "tags": [
+     "Image"
+    ],
+    "models": [
+     "Edit Model"
+    ],
+    "date": "2026-01-01",
+    "size": 1000000,
+    "usage": 10,
+    "openSource": true,
+    "minComfyUIVersion": "0.3.0"
+   },
+   {
+    "name": "image_billed",
+    "title": "Billed: Paid Picture",
+    "mediaType": "image",
+    "mediaSubtype": "webp",
+    "description": "Quietly calls a paid service although the index says open.",
+    "tags": [
+     "Image"
+    ],
+    "models": [],
+    "date": "2026-01-01",
+    "size": 1000000,
+    "usage": 10,
+    "openSource": true,
+    "minComfyUIVersion": "0.3.0"
+   },
+   {
+    "name": "image_preview_only",
+    "title": "Preview: Harbour",
+    "mediaType": "image",
+    "mediaSubtype": "webp",
+    "description": "Only previews its picture.",
+    "tags": [
+     "Image"
+    ],
+    "models": [
+     "Flat Model"
+    ],
+    "date": "2026-01-01",
+    "size": 1000000,
+    "usage": 10,
+    "openSource": true,
+    "minComfyUIVersion": "0.3.0"
+   },
+   {
+    "name": "image_subst_dit",
+    "title": "Subst: Bridge",
+    "mediaType": "image",
+    "mediaSubtype": "webp",
+    "description": "Names an fp16 file the lane holds only as int8.",
+    "tags": [
+     "Image"
+    ],
+    "models": [
+     "Zq Dit"
+    ],
+    "date": "2026-01-01",
+    "size": 1000000,
+    "usage": 10,
+    "openSource": true,
+    "minComfyUIVersion": "0.3.0"
+   },
+   {
+    "name": "api_paid_cloud",
+    "title": "Cloud: Paid Picture",
+    "mediaType": "image",
+    "mediaSubtype": "webp",
+    "description": "A partner API template.",
+    "tags": [
+     "Image"
+    ],
+    "models": [],
+    "date": "2026-01-01",
+    "size": 1000000,
+    "usage": 10,
+    "openSource": false,
+    "minComfyUIVersion": "0.3.0"
+   }
+  ]
+ },
+ {
+  "moduleName": "default",
+  "category": "Fixture",
+  "title": "Video",
+  "type": "video",
+  "templates": [
+   {
+    "name": "video_multi_ref_switch",
+    "title": "Multi: Pictures to Video",
+    "mediaType": "image",
+    "mediaSubtype": "webp",
+    "description": "Three pictures drive one short clip. A switch picks the fast path.",
+    "tags": [
+     "Video"
+    ],
+    "models": [
+     "Multi Model"
+    ],
+    "date": "2026-01-01",
+    "size": 1000000,
+    "usage": 10,
+    "openSource": true,
+    "minComfyUIVersion": "0.3.0"
+   }
+  ]
+ },
+ {
+  "moduleName": "default",
+  "category": "Fixture",
+  "title": "Utility",
+  "type": "image",
+  "templates": [
+   {
+    "name": "utility_unslotted_da3",
+    "title": "Utility: Depth From a Picture",
+    "mediaType": "image",
+    "mediaSubtype": "webp",
+    "description": "Estimates depth for one picture.",
+    "tags": [
+     "Utility"
+    ],
+    "models": [],
+    "date": "2026-01-01",
+    "size": 1000000,
+    "usage": 10,
+    "openSource": true,
+    "minComfyUIVersion": "0.3.0"
+   }
+  ]
+ },
+ {
+  "moduleName": "default",
+  "category": "Fixture",
+  "title": "3D",
+  "type": "3d",
+  "templates": [
+   {
+    "name": "3d_cap3d_moge",
+    "title": "3D: Picture to Mesh",
+    "mediaType": "image",
+    "mediaSubtype": "webp",
+    "description": "Builds a mesh from one picture.",
+    "tags": [
+     "3D"
+    ],
+    "models": [],
+    "date": "2026-01-01",
+    "size": 1000000,
+    "usage": 10,
+    "openSource": true,
+    "minComfyUIVersion": "0.3.0"
+   }
+  ]
+ }
+]

@@ -156,6 +156,11 @@ ENGINE = {
         "upscale": "Make a picture 4 times bigger",
     },
     "mode_rooms": {"cutout": "cleanup", "upscale": "cleanup"},
+    # Front door: which task (tasks.json) each mode is a way of (engines/__init__.py "mode_tasks").
+    "mode_tasks": {
+        "cutout": {"task": "cutout", "way": "Cut out"},
+        "upscale": {"task": "upscale", "way": "4x bigger"},
+    },
     "mode_notes": {
         "cutout": "about 10 times faster than the picture editor's own background removal, for bulk",  # source: engines/cleanup.py:167 (cutout preset note)
         "upscale": "wrap-aware, so edges that wrap around (tiles) stay matched",  # source: engines/cleanup.py:173 (upscale preset note), our internal component notes

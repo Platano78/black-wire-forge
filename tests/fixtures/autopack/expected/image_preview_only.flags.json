@@ -1,0 +1,14 @@
+[
+ {
+  "id": "preview_swapped",
+  "kind": "ack",
+  "text": "The template only previews its picture, so a save step was put in its place.",
+  "data": {}
+ },
+ {
+  "id": "licence",
+  "kind": "answer",
+  "text": "The template does not say what licence its models have. Check the licences of the models listed in the attribution, then confirm.",
+  "data": {}
+ }
+]

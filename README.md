@@ -11,9 +11,14 @@ Forked from [2Wild-Image-Video-Gen-Studio](https://github.com/tonyd2wild/2Wild-I
 
 ## What's in it
 
-- **Rooms.** Sound: Music, Cover, Sound FX, Producer. Picture: Picture, Characters (a design sheet
-  from one picture of a character), Pixel Art, Clean-up, Textures (no built-in engine makes textures
-  yet). Motion: Video, Talking Head. Object: 3D. Most rooms come with a guide (below).
+- **A home screen: "What do you want to make?"** It lists every task in four columns (Sound, Picture,
+  Motion, Object): make a song, a picture, a video, a 3D object, find a song's beats, make a picture
+  bigger, and more. Type what you want and the list reorders, best match first. Or drop a picture, clip,
+  song or 3D object on it: the tasks that use that file come first, and the file is already in place
+  when you open one. A task nothing installed can make yet (or that no machine in `config.json` is set up for) stays in the list, dimmed.
+- **A workspace per task.** The ways to make it are all in view, one to pick. Where a way has a
+  keeper version, a Draft / Final switch makes the quick look first and the final from the same inputs.
+  One line above the form shows how far you are. Most tasks come with a guide (below).
 - **A music video in one click.** On a finished song, "Make a music video from this song"
   plans shots of about 4 seconds, makes a picture of the person for each (from a photo of someone who
   agrees to be in it, or someone it makes up), animates each picture to its slice of the song and cuts
@@ -30,12 +35,14 @@ Forked from [2Wild-Image-Video-Gen-Studio](https://github.com/tonyd2wild/2Wild-I
   marked Ready, or with the model files, nodes or ComfyUI version it still needs, or saying it can't tell
   right now when that can't be checked. It installs and
   downloads nothing; "Save to ComfyUI and open" puts a copy of a template into ComfyUI.
-- **What will run**, in every ComfyUI room: the exact model file each part of the mode loads, why it
+- **What will run**, in every ComfyUI task: the exact model file each part of the mode loads, why it
   was picked, every other file that fits and any left out on purpose. Pin a file in `config.json` to
   choose it yourself.
 - Also: style LoRAs from the Hugging Face Hub ("Browse styles"; downloading is off until you turn it on
-  per machine), "Compare one setting" across several values, and your own modes as data packs (a ComfyUI
-  workflow plus a small manifest, `docs/WRITING-A-PACK.md`).
+  per machine), "Compare one setting" across several values, five optional Pixel Art finishing
+  settings (keep small details, keep accent colours, clean specks, hard edges, crisp dither edges; all
+  off unless you tick them), and your own modes as data packs (a ComfyUI workflow plus a small manifest,
+  `docs/WRITING-A-PACK.md`).
 - **An API your other apps and agents can call.** One JSON request makes something:
 
       curl -s -X POST http://127.0.0.1:3998/api/generate -H 'Content-Type: application/json' \
@@ -125,55 +132,58 @@ never clobbers a real one.
 
 ## What it looks like
 
-Each clip is a short loop; click one to download its full video (mp4). Long renders are cut, with a caption
+The clips were recorded before 1.6 and show the earlier room tabs; the screenshots show the current screen. Each clip is a short loop; click one to download its full video (mp4). Long renders are cut, with a caption
 saying how long they took; nothing is sped up.
 
 | | |
 |---|---|
-| [![First run: the Setup page finds ComfyUI and asks what you want to make first](docs/images/v0-setup.loop.webp)](docs/media/v0-setup.mp4) | [![A song: tell the Music room's guide what you want, press Make, play it](docs/images/v1-song.loop.webp)](docs/media/v1-song.mp4) |
-| **First run.** With no settings file yet, Black Wire Forge opens its Setup page: it finds ComfyUI, shows what each room needs, switches on a guide and writes the file. | **A song.** Switch the Music room's guide on and tell it what you want; it writes the style and the lyrics; you press Make and play it. |
+| [![First run: the Setup page finds ComfyUI and asks what you want to make first](docs/images/v0-setup.loop.webp)](docs/media/v0-setup.mp4) | [![A song: tell the Sound guide what you want, press Make, play it](docs/images/v1-song.loop.webp)](docs/media/v1-song.mp4) |
+| **First run.** With no settings file yet, Black Wire Forge opens its Setup page: it finds ComfyUI, shows what each room needs, switches on a guide and writes the file. | **A song.** Switch the Sound guide on and tell it what you want; it writes the style and the lyrics; you press Make and play it. |
 | [![A picture: the guide writes the prompt, What will run shows the files, then a download with the recipe removed](docs/images/v2-picture.loop.webp)](docs/media/v2-picture.mp4) | [![A music video in one click: a made-up singer, the song cut into shots, the finished video playing](docs/images/v6-music-video.loop.webp)](docs/media/v6-music-video.mp4) |
 | **A picture.** One box to the guide, a look at What will run, Make, then a download with the recipe removed. | **A music video in one click.** From that song: Make someone up, Start, and it plans, pictures and animates ten shots and cuts them to the song. |
-| [![From a script to a cut: shots made from a storyboard, one re-made, then the cut plays](docs/images/v4-storyboard.loop.webp)](docs/media/v4-storyboard.mp4) | [![The Producer room: Grid check on the song, its summary and click track](docs/images/v7-grid-check.loop.webp)](docs/media/v7-grid-check.mp4) |
-| **From a script to a cut.** Paste a script, make its shots, re-make one after a change, cut the film. | **The Producer room.** Grid check takes the song straight from History and finds its beats on this computer's processor: a summary line and a click track. |
+| [![From a script to a cut: shots made from a storyboard, one re-made, then the cut plays](docs/images/v4-storyboard.loop.webp)](docs/media/v4-storyboard.mp4) | [![Find a song's beats and bars: Grid check on the song, its summary and click track](docs/images/v7-grid-check.loop.webp)](docs/media/v7-grid-check.mp4) |
+| **From a script to a cut.** Paste a script, make its shots, re-make one after a change, cut the film. | **Find a song's beats and bars.** Grid check takes the song straight from History and finds its beats on this computer's processor: a summary line and a click track. |
 | [![The Workflows tab: your ComfyUI's audio templates, with what each still needs](docs/images/v5-workflows.loop.webp)](docs/media/v5-workflows.mp4) | |
 | **Workflows.** The templates your ComfyUI ships, each marked Ready or with the files it still needs and where they go. | |
 
+The first thing it shows is a home screen, "What do you want to make?": every task as a card, grouped Sound, Picture, Motion and Object.
+
+![The home screen "What do you want to make?": a search box, a place to drop a file, and task cards under Sound, Picture, Motion and Object.](docs/images/home-1440x900.png)
+
+Type what you want and the cards re-rank; "animate my photo" puts Animate a picture first.
+
+![The home screen with "animate my photo" typed in the search box: the matching tasks listed best match first, Animate a picture on top.](docs/images/search-1440x900.png)
+
 <p float="left">
-  <img src="docs/images/picture-result.png" width="49%" alt="The Picture room: a finished painting of a lighthouse, with the model, seed, time and licence stamp under it and What will run on the right.">
-  <img src="docs/images/what-will-run.png" width="49%" alt="What will run in the Picture room: the model, text encoder and decoder files it loads, each AUTO PICK, with the model's part opened to show a Turbo file left out on purpose and why.">
+  <img src="docs/images/home-390x844.png" width="32%" alt="The home screen on a phone: the search box, the drop area and the Sound task cards in one column.">
 </p>
 <p float="left">
-  <img src="docs/images/cutting-room-1440x900.png" width="74%" alt="The Cutting Room: the storyboard The Lighthouse Keeper, its script beats and three shots on the timeline, with the music video's sequence in the list above.">
-  <img src="docs/images/cutting-room-390x844.png" width="24%" alt="The Cutting Room on a phone.">
+  <img src="docs/images/picture-result.png" width="49%" alt="Make a picture from words: a finished oil painting of a lighthouse open in the monitor, with the model, seed, time and licence stamp under it and What will run on the right.">
+  <img src="docs/images/what-will-run.png" width="49%" alt="What will run for Make a picture from words: the model, text encoder and decoder files it loads, each AUTO PICK, with the model's part opened to show a Turbo file left out on purpose and why.">
+</p>
+<p float="left">
+  <img src="docs/images/cutting-room-1440x900.png" width="74%" alt="The Cutting Room: the storyboard The Lighthouse Keeper open with its first shot in the monitor, the cut button, and the script beats and three shots on the timeline.">
+  <img src="docs/images/cutting-room-390x844.png" width="24%" alt="The Cutting Room on a phone, scrolled to the cut button and the timeline with the three shots.">
 </p>
 <p float="left">
   <img src="docs/images/workflows.png" width="49%" alt="The Workflows tab filtered to audio: template cards, each marked Ready or with how many model files it still needs.">
   <img src="docs/images/setup-rooms.png" width="49%" alt="Setup, step 2: each room with its model files' total size, licences and an Installed badge checked against the ComfyUI it found.">
 </p>
 <p float="left">
-  <img src="docs/images/picture-390x844.png" width="32%" alt="The Picture room on a phone, with the lighthouse picture open.">
-  <img src="docs/images/video-390x844.png" width="32%" alt="The Video room on a phone, with a shot open.">
+  <img src="docs/images/picture-390x844.png" width="32%" alt="Make a picture from words on a phone, with the lighthouse picture open.">
+  <img src="docs/images/video-390x844.png" width="32%" alt="Make a video from words on a phone, with one shot open.">
 </p>
 
 <details>
-<summary>Every room (screenshots, 1440x900)</summary>
+<summary>Every group (screenshots, 1440x900)</summary>
 
 | | |
 |---|---|
-| ![Music: the song from the song clip open in the monitor, with its model, seed and licence stamp](docs/images/rooms/01-music.png) | ![Cover, empty: it asks for a song to add and how it should sound now](docs/images/rooms/02-cover.png) |
-| **Music** | **Cover** |
-| ![Sound FX, empty, with What will run showing the Stable Audio Open files it loads](docs/images/rooms/03-sfx.png) | ![Producer, nothing open: its four modes listed (Grid check, Fit, Re-arrange by bars, Mix) and the song field](docs/images/rooms/04-producer.png) |
-| **Sound FX** | **Producer** |
-| ![Picture: the lighthouse painting open, with What will run on the right](docs/images/rooms/05-picture.png) | ![Characters, empty: it asks for a picture of a character and a name](docs/images/rooms/06-characters.png) |
-| **Picture** | **Characters** |
-| ![Pixel Art, empty: the prompt, the optional shape to hold and What will run](docs/images/rooms/07-pixelart.png) | ![Clean-up, empty: remove a background or make a picture 4 times bigger](docs/images/rooms/08-cleanup.png) |
-| **Pixel Art** | **Clean-up** |
-| ![Textures: no built-in engine makes textures yet, and the room says so](docs/images/rooms/09-textures.png) | ![Video: one shot of the music video open, with History listing the run's shots](docs/images/rooms/10-video.png) |
-| **Textures** | **Video** |
-| ![Talking Head, empty: a face picture, the line to speak, or your own recording](docs/images/rooms/11-talking.png) | ![3D, empty: it asks for a picture, with What will run showing the TRELLIS2 files](docs/images/rooms/12-3d.png) |
-| **Talking Head** | **3D** |
-| ![The Cutting Room with the storyboard The Lighthouse Keeper open: script beats and three shots](docs/images/rooms/13-cutting.png) | |
+| ![Make a song with words: the finished song open in the monitor with its model, seed and licence stamp, and the Quick and Melody planned first ways on the right](docs/images/tasks/sound-song.png) | ![Make a picture from words: the lighthouse painting open, with What will run on the right](docs/images/tasks/picture-t2i.png) |
+| **Sound:** Make a song with words | **Picture:** Make a picture from words |
+| ![Make a video from words: one lighthouse shot open in the monitor, with the With sound and One long take ways on the right and the group's shots listed in History](docs/images/tasks/motion-video.png) | ![Turn a picture into a 3D object, empty: it asks for a picture, with What will run showing the TRELLIS2 files](docs/images/tasks/object-mesh.png) |
+| **Motion:** Make a video from words | **Object:** Turn a picture into a 3D object |
+| ![The Cutting Room with the storyboard The Lighthouse Keeper open: script beats and three shots](docs/images/tasks/cutting.png) | |
 | **Cutting Room** | |
 
 </details>
@@ -248,7 +258,7 @@ configuration" below for multi-lane, multi-GPU, process-lane, status-tile and he
 ## Prerequisites for your first render
 
 Black Wire Forge does not install ComfyUI, custom nodes, or model weights -- it only talks
-to a ComfyUI instance you already have running. Start the app and open a room; a lane
+to a ComfyUI instance you already have running. Start the app and open a task; a lane
 missing something says so with a "needs ..." sentence rather than failing silently.
 
 For the Picture room (Qwen-Image 2.1, `engines/qwen_image.py`), your lane's ComfyUI needs:
@@ -261,7 +271,7 @@ For the Picture room (Qwen-Image 2.1, `engines/qwen_image.py`), your lane's Comf
   the `qwen_image` rules; the text encoder must match `qwen3vl` (preferably `8b`). See the model
   table in `docs/MODELS.md` for the exact filenames, and "Qwen-Image 2.1 preference" below.
 
-Other rooms (Video, Music, 3D, ...) need their own engine's nodes and models the same way;
+Other tasks (video, music, 3D, ...) need their own engine's nodes and models the same way;
 read the relevant file under `engines/` for the exact roles it declares.
 
 ## GPU and no-GPU paths
@@ -363,7 +373,7 @@ part's name rule.
 
 ## Reading order
 
-- `docs/ARCHITECTURE.md` — lanes, discovery, packs, rooms, jobs, sequences and the cut
+- `docs/ARCHITECTURE.md` — lanes, discovery, packs, rooms, tasks, jobs, sequences and the cut
 - `docs/WRITING-A-PACK.md` — how to add an engine
 - `docs/WHAT-YOU-NEED.md` — what each opt-in feature needs (external deps, models, ffmpeg, etc.)
 
@@ -403,11 +413,12 @@ The generated media in "What it looks like" was made with the models and tools b
 
 | Media | Made with | Licence |
 |---|---|---|
-| The song (the song clip; the sound of the music video and Producer clips) | ACE-Step 1.5 (ACE Studio and StepFun) | [MIT](https://github.com/ace-step/ACE-Step-1.5) |
-| Pictures (the picture clip, the Picture screenshots; in the music video clip, the made-up singer and the picture each shot starts from) | Qwen-Image 2.1 (Qwen team, Alibaba) | [Qwen Research License](https://huggingface.co/Qwen/Qwen-Image-2.1/blob/main/LICENSE), research or evaluation use only |
-| Video (the storyboard and music video clips, the Cutting Room and Video screenshots) | LTX-2.5 (Lightricks) | [LTX-2.x Community License](https://github.com/Lightricks/LTX-2/blob/main/LICENSE-2_x) |
+| The song (the song clip and the Sound screenshot; the sound of the music video and Producer clips) | ACE-Step 1.5 (ACE Studio and StepFun) | [MIT](https://github.com/ace-step/ACE-Step-1.5) |
+| Pictures (the picture clip, the Picture screenshots; the picture the first Cutting Room shot starts from; in the music video clip, the made-up singer and the picture each shot starts from) | Qwen-Image 2.1 (Qwen team, Alibaba) | [Qwen Research License](https://huggingface.co/Qwen/Qwen-Image-2.1/blob/main/LICENSE), research or evaluation use only |
+| Video (the storyboard and music video clips, the Cutting Room, Video and Motion screenshots) | LTX-2.5 (Lightricks) | [LTX-2.x Community License](https://github.com/Lightricks/LTX-2/blob/main/LICENSE-2_x) |
 | Beat and bar times (the Producer clip) | beat_this, `final0` checkpoint (CPJKU) | [MIT](https://github.com/CPJKU/beat_this) |
 | Guide replies, and the music video's scene for each shot | the chat model (the helper) the guide was pointed at | its own licence |
+| Screenshots with no generated content (home, search, What will run, 3D object, Workflows apart from its thumbnails) | Black Wire Forge's own interface | MIT, as this repository |
 | Template thumbnails in the Workflows clip and screenshot | ComfyUI's own workflow templates, shown as your ComfyUI lists them | theirs |
 
 ## Licences

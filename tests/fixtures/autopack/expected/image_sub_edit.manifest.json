@@ -1,0 +1,241 @@
+{
+ "schema": 1,
+ "id": "image-sub-edit",
+ "cap": "image",
+ "mode": "sub_edit",
+ "label": "Sub: Edit a Picture",
+ "graph": "graph.api.json",
+ "fields": [
+  {
+   "id": "prompt",
+   "label": "Prompt",
+   "type": "textarea",
+   "default": "Make the sky a deep violet and add a crescent moon.",
+   "tier": "primary",
+   "group": "Content",
+   "bind": [
+    {
+     "node": "20",
+     "input": "value"
+    }
+   ],
+   "order": 1
+  },
+  {
+   "id": "picture",
+   "label": "Picture",
+   "type": "image",
+   "tier": "primary",
+   "group": "Content",
+   "required": true,
+   "bind": [
+    {
+     "node": "10",
+     "input": "image"
+    }
+   ],
+   "order": 2
+  },
+  {
+   "id": "aspect",
+   "label": "Aspect ratio",
+   "type": "select",
+   "options": [
+    "1:1 (Square)",
+    "16:9 (Landscape)",
+    "9:16 (Portrait)"
+   ],
+   "default": "1:1 (Square)",
+   "tier": "primary",
+   "group": "Size",
+   "bind": [
+    {
+     "node": "19",
+     "input": "aspect_ratio"
+    }
+   ],
+   "order": 3
+  },
+  {
+   "id": "megapixels",
+   "label": "Megapixels",
+   "type": "number",
+   "units": "MP",
+   "default": 1,
+   "range": [
+    0.1,
+    4.0
+   ],
+   "tier": "primary",
+   "group": "Size",
+   "bind": [
+    {
+     "node": "19",
+     "input": "megapixels"
+    }
+   ],
+   "order": 4
+  },
+  {
+   "id": "steps",
+   "label": "Steps",
+   "type": "int",
+   "units": "steps",
+   "default": 8,
+   "range": [
+    1,
+    200
+   ],
+   "tier": "advanced",
+   "group": "Sampling",
+   "bind": [
+    {
+     "node": "30:10",
+     "input": "steps"
+    }
+   ],
+   "order": 5
+  },
+  {
+   "id": "cfg",
+   "label": "Guidance (CFG)",
+   "type": "number",
+   "units": "cfg",
+   "default": 1.0,
+   "range": [
+    0,
+    30
+   ],
+   "tier": "advanced",
+   "group": "Sampling",
+   "bind": [
+    {
+     "node": "30:10",
+     "input": "cfg"
+    }
+   ],
+   "order": 6
+  },
+  {
+   "id": "seed",
+   "label": "Seed",
+   "type": "int",
+   "units": "seed",
+   "default": 777,
+   "range": [
+    0,
+    2147483647
+   ],
+   "tier": "advanced",
+   "group": "Sampling",
+   "bind": [
+    {
+     "node": "30:5",
+     "input": "seed"
+    },
+    {
+     "node": "30:10",
+     "input": "seed"
+    }
+   ],
+   "order": 7
+  },
+  {
+   "id": "denoise",
+   "label": "denoise",
+   "tier": "advanced",
+   "group": "Template options",
+   "type": "number",
+   "units": "denoise",
+   "default": 1,
+   "range": [
+    0.0,
+    1.0
+   ],
+   "bind": [
+    {
+     "node": "30:10",
+     "input": "denoise"
+    }
+   ],
+   "order": 8
+  },
+  {
+   "id": "sampler_name",
+   "label": "sampler name",
+   "tier": "advanced",
+   "group": "Template options",
+   "type": "select",
+   "options": [
+    "euler",
+    "dpmpp_2m"
+   ],
+   "default": "euler",
+   "bind": [
+    {
+     "node": "30:10",
+     "input": "sampler_name"
+    }
+   ],
+   "order": 9
+  }
+ ],
+ "requires": [
+  {
+   "role": "unet",
+   "pool": "unet",
+   "node": "30:1",
+   "input": "unet_name",
+   "match": {
+    "all": [
+     "editmodel"
+    ],
+    "prefer": [
+     "editmodel_fp8",
+     "fp8"
+    ]
+   },
+   "words": "the unet file editmodel_fp8.safetensors"
+  },
+  {
+   "role": "clip",
+   "pool": "clip",
+   "node": "30:2",
+   "input": "clip_name",
+   "match": {
+    "all": [
+     "edit",
+     "text",
+     "enc"
+    ],
+    "prefer": [
+     "edit_text_enc_fp8",
+     "fp8"
+    ]
+   },
+   "words": "the clip file edit_text_enc_fp8.safetensors"
+  },
+  {
+   "role": "vae",
+   "pool": "vae",
+   "node": "30:3",
+   "input": "vae_name",
+   "match": {
+    "all": [
+     "edit",
+     "vae"
+    ],
+    "prefer": [
+     "edit_vae"
+    ]
+   },
+   "words": "the vae file edit_vae.safetensors"
+  }
+ ],
+ "licence": {
+  "name": "Unknown (from the ComfyUI template image_sub_edit)",
+  "shippable": false,
+  "attribution": "Made from the ComfyUI template image_sub_edit on Test lane; models: Edit Model"
+ },
+ "note": "Edits one picture from an instruction."
+}

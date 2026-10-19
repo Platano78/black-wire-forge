@@ -1,0 +1,49 @@
+[
+ {
+  "id": "picture_roles",
+  "kind": "answer",
+  "text": "This template takes 3 pictures. Say what each one is, in this order.",
+  "data": {
+   "fields": [
+    "picture1",
+    "picture2",
+    "picture3"
+   ],
+   "nodes": [
+    "1",
+    "2",
+    "3"
+   ]
+  }
+ },
+ {
+  "id": "length_unit",
+  "kind": "answer",
+  "text": "The length is worked out through a calculation. Say whether the number is frames, seconds or something else.",
+  "data": {
+   "field": "length",
+   "template_value": 5.0
+  }
+ },
+ {
+  "id": "steps_hidden",
+  "kind": "ack",
+  "text": "Steps are chosen by a switch or differ between stages, so this mode has no steps field.",
+  "data": {}
+ },
+ {
+  "id": "switch:opt_enable_light",
+  "kind": "answer",
+  "text": "A switch in the template (Enable light) changes how it runs, and the template does not say what it does. Give it a label, or hide it.",
+  "data": {
+   "field": "opt_enable_light",
+   "node": "15"
+  }
+ },
+ {
+  "id": "licence",
+  "kind": "answer",
+  "text": "The template does not say what licence its models have. Check the licences of the models listed in the attribution, then confirm.",
+  "data": {}
+ }
+]

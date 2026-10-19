@@ -376,12 +376,12 @@ try:
         #     file chosen afterwards wins again and POSTs song_upload.
         # ------------------------------------------------------------------
         page5 = browser.new_page(viewport={"width": 1280, "height": 800})
-        page5.goto(URL + "#room=video", wait_until="networkidle", timeout=30000)
+        page5.goto(URL + "#task=musicvideo", wait_until="networkidle", timeout=30000)
         page5.wait_for_selector("#forgeVideoFromFileBtn", timeout=15000)
-        check("video room: its empty monitor offers the button in plain words",
+        check("music-video task: its empty monitor offers the button in plain words",
               page5.inner_text("#forgeVideoFromFileBtn") == "Make a music video")
         page5.click("#forgeVideoFromFileBtn")
-        check("video room: clicking it opens the dialog",
+        check("music-video task: clicking it opens the dialog",
               page5.evaluate("() => $('#forgeVideoDialog').open && !!$('#forgeVideoSongPick')"))
         page5.check("#forgeVideoWhoMake")
 

@@ -129,6 +129,10 @@ ENGINE = {
         "turntable": "Turn a 3D model around",
     },
     "mode_rooms": {"turntable": "3d"},
+    # Front door: which task (tasks.json) each mode is a way of (engines/__init__.py "mode_tasks").
+    "mode_tasks": {
+        "turntable": {"task": "turntable", "way": "Turntable"},
+    },
     "mode_notes": {
         "turntable": "renders on the processor, so it never competes for the graphics card; about 1 s a frame at 512 px on a simple scene",  # source: the internal Blender process-lane design doc (measured 2026-09-22, Cycles CPU)
     },

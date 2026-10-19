@@ -187,7 +187,11 @@ card, then general web craft — see "Research log" for what came from where.
   colours; when set, Colours is ignored), `pixel_grid` (Sharp, the default, or Cleanest: each pixel takes
   its square's most common colour), `pixel_dither` (default 0 — flat crisp
   edges; a hard metal surface usually looks better with it off, raising it adds a fine dotted
-  texture). — observed, `engines/pixelart.py` `fields.pixelart`.
+  texture), then five opt-in checkboxes, all off by default: `pixel_detail` (Keep small details; takes over
+  from Pixel grid), `pixel_accents` (Keep accent colours; unused when a palette is set), `pixel_specks`
+  (Clean specks), `pixel_hard_edges` (Hard edges: fully solid or fully clear pixels), `pixel_dither_edges`
+  (Keep edges crisp: dither dots only on smooth shading, matters only when Dither is above 0).
+  — observed, `engines/pixelart.py` `fields.pixelart`.
 - `shape_image` measurably matters: held-shape renders hit a median silhouette match of 0.92 against
   the target outline; a free render (no shape) only reaches 0.57 — push a user toward a shape image
   when they need a specific pose/silhouette (a game sprite that must fit a hitbox, say), rather than
@@ -225,12 +229,12 @@ card, then general web craft — see "Research log" for what came from where.
   weren't real defects — the render matched the prompt's own wording well. Fixed by adding an
   explicit instruction that an honest "this looks like what you asked for" is a real answer, and
   that a critique should only be named if it's something you'd actually point at on the screen. —
-  observed, live-trial vision probe P5.
+  observed, vision probe.
 - **Before confirming a detail the user names, check it's actually visible.** Same trial: asked to
   read "the small text on the sign next to the cabin's door" (the cabin has no such sign at all —
   ground truth confirmed by direct inspection), an early draft answered as if a sign existed but was
   merely too small to read, instead of noting no such sign is visible. Fixed with an explicit rule to
-  check presence before answering about a named detail. — observed, live-trial vision probe P6.
+  check presence before answering about a named detail. — observed, vision probe.
 - **An exact count past two or three things is not reliable, even with a picture attached.** Directly
   measured: asked to count the monsters in the Godzilla/MechaKing Ghidorah render (ground truth: 3,
   confirmed by direct inspection at full resolution — two Godzilla-like kaiju plus a single-headed
@@ -242,13 +246,13 @@ card, then general web craft — see "Research log" for what came from where.
   user's own look, which is the right behaviour given a real capability limit this endpoint has on
   this image. This is a vision-model capability limit, not a prompt-writing mistake, and is not
   something a system-prompt fix can reliably correct — treat any count past two or three as a rough
-  read to double-check, never a settled fact. — observed, live-trial vision probes P2 (first pass and
+  read to double-check, never a settled fact. — observed, vision probe (first pass and
   after two fix attempts).
 - **Garbled or stylized rendered text should be flagged as uncertain, not confidently transcribed.**
   A render with a neon sign showing garbled cursive script (not real words) was, on an early pass,
   confidently transcribed as specific (wrong) text; the fixed guide correctly said it couldn't read
   the exact characters because the script is stylized, while still confirming the overall scene
-  matched. — observed, live-trial vision probe P3.
+  matched. — observed, vision probe.
 
 ## What I can't judge — say so, don't guess
 
@@ -263,10 +267,10 @@ card, then general web craft — see "Research log" for what came from where.
   not merely assumed.
 - Whether small or stylized rendered text says exactly what it appears to — legible-looking text in
   a generated image is not guaranteed to be real characters, and a diffusion model frequently
-  produces garbled glyphs that only look like words at a glance. — observed, live-trial probe P3.
+  produces garbled glyphs that only look like words at a glance. — observed, vision probe.
 - Whether a named detail (a sign, a label, a specific object) is present at all just because the user
   asked about it — a leading question does not confirm existence; check the frame first. — observed,
-  live-trial probe P6.
+  vision probe.
 - Anything that needs to be heard or measured rather than seen (an edit's actual effect on a format
   this text channel can't render, an audio track, a file's metadata).
 

@@ -82,7 +82,7 @@ fits the line out. The topic is enough: "a pirate telling a kid to go to bed" ge
 pirate's voice.
 
 **The writer writes the words; the app works the length out.** A small brain counts words
-unreliably (live trial: a 14-word line came back at 257 frames), so the pack's `derive` sizes the
+unreliably (observed: a 14-word line came back at 257 frames), so the pack's `derive` sizes the
 clip from the written line: **words ÷ 2.2 words/s × 1.15 cushion × 24 fps, rounded UP to the next
 8n+1, never below the 97-frame default** (the one length measured on this hardware). 10 words → 129,
 13 → 169, 14 → 177. One clip holds at most 28 words (361 frames, about 15 s, the field's own UI
@@ -121,8 +121,8 @@ DIAGNOSIS, FIX, a revised PROMPT and at most one setting TWEAK out. Serves `ltx`
 **A still is not the clip.** From the still the fixer describes only what is in that one frame (who,
 where, framing, light). It never claims camera movement, speed, sound, speech, lip sync or timing
 from it, never says yes or no to any of those, and opens with "I can't judge motion or sound from one
-still, so going by what you say:" when the complaint is about one of them (this guide's own vision
-trial: only an absolute rule stopped a 12B model confirming a push-in that was not there). With no
+still, so going by what you say:" when the complaint is about one of them (observed in vision
+testing: only an absolute rule stopped a 12B model confirming a push-in that was not there). With no
 picture it says it cannot see the clip. It never gives a likeness verdict: check the face at full
 size.
 

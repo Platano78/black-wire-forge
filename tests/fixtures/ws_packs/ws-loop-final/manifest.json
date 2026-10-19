@@ -1,0 +1,71 @@
+{
+ "schema": 1,
+ "id": "ws-loop-final",
+ "cap": "video",
+ "graph": "graph.api.json",
+ "fields": [
+  {
+   "id": "prompt",
+   "label": "Prompt",
+   "type": "textarea",
+   "tier": "primary",
+   "group": "Content",
+   "order": 1,
+   "bind": [
+    {
+     "node": "1",
+     "input": "text"
+    }
+   ]
+  },
+  {
+   "id": "start_image",
+   "label": "Picture",
+   "type": "image",
+   "tier": "primary",
+   "group": "Content",
+   "order": 2,
+   "bind": [
+    {
+     "node": "2",
+     "input": "image"
+    }
+   ]
+  },
+  {
+   "id": "keep_note_loop",
+   "label": "Keeper note",
+   "type": "text",
+   "tier": "primary",
+   "group": "Content",
+   "order": 3,
+   "default": "",
+   "bind": [
+    {
+     "node": "1",
+     "input": "note"
+    }
+   ]
+  }
+ ],
+ "mode": "wsloopkeep",
+ "label": "Video, keeper (needs a file)",
+ "task": "video",
+ "tier": "final",
+ "final_of": "ltx",
+ "blurb": "A keeper this lane cannot run.",
+ "requires": [
+  {
+   "role": "unet",
+   "pool": "unet",
+   "node": "1",
+   "input": "unet",
+   "match": {
+    "all": [
+     "no-such-model-anywhere"
+    ]
+   },
+   "words": "the keeper model"
+  }
+ ]
+}

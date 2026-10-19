@@ -1,0 +1,263 @@
+{
+ "schema": 1,
+ "id": "video-multi-ref-switch",
+ "cap": "video",
+ "mode": "multi_ref_switch",
+ "label": "Multi: Pictures to Video",
+ "graph": "graph.api.json",
+ "fields": [
+  {
+   "id": "prompt",
+   "label": "Prompt",
+   "type": "textarea",
+   "default": "Use the face from <Picture 1>, the outfit from image 2 and the setting of Picture 3. A slow dolly shot.",
+   "tier": "primary",
+   "group": "Content",
+   "bind": [
+    {
+     "node": "10",
+     "input": "value"
+    }
+   ],
+   "order": 1
+  },
+  {
+   "id": "picture1",
+   "label": "Picture 1 (Subject)",
+   "type": "image",
+   "tier": "primary",
+   "group": "Content",
+   "required": true,
+   "hint": "Template node 1 (Subject). The prompt mentions: <Picture 1>, image 2, Picture 3.",
+   "bind": [
+    {
+     "node": "1",
+     "input": "image"
+    }
+   ],
+   "order": 2
+  },
+  {
+   "id": "picture2",
+   "label": "Picture 2 (untitled)",
+   "type": "image",
+   "tier": "primary",
+   "group": "Content",
+   "required": true,
+   "hint": "Template node 2 (untitled). The prompt mentions: <Picture 1>, image 2, Picture 3.",
+   "bind": [
+    {
+     "node": "2",
+     "input": "image"
+    }
+   ],
+   "order": 3
+  },
+  {
+   "id": "picture3",
+   "label": "Picture 3 (untitled)",
+   "type": "image",
+   "tier": "primary",
+   "group": "Content",
+   "required": true,
+   "hint": "Template node 3 (untitled). The prompt mentions: <Picture 1>, image 2, Picture 3.",
+   "bind": [
+    {
+     "node": "3",
+     "input": "image"
+    }
+   ],
+   "order": 4
+  },
+  {
+   "id": "width",
+   "label": "Width",
+   "type": "int",
+   "units": "px",
+   "default": 848,
+   "range": [
+    64,
+    4096
+   ],
+   "tier": "primary",
+   "group": "Size",
+   "bind": [
+    {
+     "node": "24",
+     "input": "width"
+    }
+   ],
+   "order": 5
+  },
+  {
+   "id": "height",
+   "label": "Height",
+   "type": "int",
+   "units": "px",
+   "default": 480,
+   "range": [
+    64,
+    4096
+   ],
+   "tier": "primary",
+   "group": "Size",
+   "bind": [
+    {
+     "node": "24",
+     "input": "height"
+    }
+   ],
+   "order": 6
+  },
+  {
+   "id": "length",
+   "label": "Length",
+   "type": "number",
+   "units": "value",
+   "default": 5.0,
+   "range": [
+    1,
+    2000
+   ],
+   "tier": "primary",
+   "group": "Length",
+   "bind": [
+    {
+     "node": "22",
+     "input": "value"
+    }
+   ],
+   "order": 7
+  },
+  {
+   "id": "cfg",
+   "label": "Guidance (CFG)",
+   "type": "number",
+   "units": "cfg",
+   "default": 3.0,
+   "range": [
+    0,
+    30
+   ],
+   "tier": "advanced",
+   "group": "Sampling",
+   "bind": [
+    {
+     "node": "25",
+     "input": "cfg"
+    }
+   ],
+   "order": 8
+  },
+  {
+   "id": "seed",
+   "label": "Seed",
+   "type": "int",
+   "units": "seed",
+   "default": 42,
+   "range": [
+    0,
+    2147483647
+   ],
+   "tier": "advanced",
+   "group": "Sampling",
+   "bind": [
+    {
+     "node": "25",
+     "input": "seed"
+    }
+   ],
+   "order": 9
+  },
+  {
+   "id": "opt_enable_light",
+   "label": "Enable light",
+   "type": "checkbox",
+   "default": false,
+   "tier": "advanced",
+   "group": "Options",
+   "hint": "Template switch node 15; the template does not say what it does.",
+   "bind": [
+    {
+     "node": "15",
+     "input": "value"
+    }
+   ],
+   "order": 10
+  }
+ ],
+ "requires": [
+  {
+   "role": "unet",
+   "pool": "unet",
+   "node": "11",
+   "input": "unet_name",
+   "match": {
+    "all": [
+     "multimodel"
+    ],
+    "prefer": [
+     "multimodel_bf16",
+     "bf16"
+    ]
+   },
+   "words": "the unet file multimodel_bf16.safetensors"
+  },
+  {
+   "role": "clip",
+   "pool": "clip",
+   "node": "12",
+   "input": "clip_name",
+   "match": {
+    "all": [
+     "multi",
+     "text",
+     "enc"
+    ],
+    "prefer": [
+     "multi_text_enc"
+    ]
+   },
+   "words": "the clip file multi_text_enc.safetensors"
+  },
+  {
+   "role": "vae",
+   "pool": "vae",
+   "node": "13",
+   "input": "vae_name",
+   "match": {
+    "all": [
+     "multi",
+     "vae"
+    ],
+    "prefer": [
+     "multi_vae"
+    ]
+   },
+   "words": "the vae file multi_vae.safetensors"
+  },
+  {
+   "role": "lora",
+   "pool": "lora",
+   "node": "14",
+   "input": "lora_name",
+   "match": {
+    "all": [
+     "multi",
+     "light",
+     "lora"
+    ],
+    "prefer": [
+     "multi_light_lora"
+    ]
+   },
+   "words": "the lora file multi_light_lora.safetensors"
+  }
+ ],
+ "licence": {
+  "name": "Unknown (from the ComfyUI template video_multi_ref_switch)",
+  "shippable": false,
+  "attribution": "Made from the ComfyUI template video_multi_ref_switch on Test lane; models: Multi Model"
+ },
+ "note": "Three pictures drive one short clip."
+}

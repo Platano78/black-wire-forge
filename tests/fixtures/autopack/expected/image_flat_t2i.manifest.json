@@ -1,0 +1,185 @@
+{
+ "schema": 1,
+ "id": "image-flat-t2i",
+ "cap": "image",
+ "mode": "flat_t2i",
+ "label": "Flat: Text to Image",
+ "graph": "graph.api.json",
+ "fields": [
+  {
+   "id": "prompt",
+   "label": "Prompt",
+   "type": "textarea",
+   "default": "A red lighthouse on a cliff at dusk, waves below.",
+   "tier": "primary",
+   "group": "Content",
+   "bind": [
+    {
+     "node": "4",
+     "input": "text"
+    }
+   ],
+   "order": 1
+  },
+  {
+   "id": "width",
+   "label": "Width",
+   "type": "int",
+   "units": "px",
+   "default": 1024,
+   "range": [
+    64,
+    4096
+   ],
+   "tier": "primary",
+   "group": "Size",
+   "bind": [
+    {
+     "node": "6",
+     "input": "width"
+    }
+   ],
+   "order": 2
+  },
+  {
+   "id": "height",
+   "label": "Height",
+   "type": "int",
+   "units": "px",
+   "default": 768,
+   "range": [
+    64,
+    4096
+   ],
+   "tier": "primary",
+   "group": "Size",
+   "bind": [
+    {
+     "node": "6",
+     "input": "height"
+    }
+   ],
+   "order": 3
+  },
+  {
+   "id": "steps",
+   "label": "Steps",
+   "type": "int",
+   "units": "steps",
+   "default": 20,
+   "range": [
+    1,
+    200
+   ],
+   "tier": "advanced",
+   "group": "Sampling",
+   "bind": [
+    {
+     "node": "7",
+     "input": "steps"
+    }
+   ],
+   "order": 4
+  },
+  {
+   "id": "cfg",
+   "label": "Guidance (CFG)",
+   "type": "number",
+   "units": "cfg",
+   "default": 4.5,
+   "range": [
+    0,
+    30
+   ],
+   "tier": "advanced",
+   "group": "Sampling",
+   "bind": [
+    {
+     "node": "7",
+     "input": "cfg"
+    }
+   ],
+   "order": 5
+  },
+  {
+   "id": "seed",
+   "label": "Seed",
+   "type": "int",
+   "units": "seed",
+   "default": 1050221133,
+   "range": [
+    0,
+    2147483647
+   ],
+   "tier": "advanced",
+   "group": "Sampling",
+   "bind": [
+    {
+     "node": "7",
+     "input": "seed"
+    }
+   ],
+   "order": 6
+  }
+ ],
+ "requires": [
+  {
+   "role": "unet",
+   "pool": "unet",
+   "node": "1",
+   "input": "unet_name",
+   "match": {
+    "all": [
+     "flatmodel"
+    ],
+    "none": [
+     "distilled"
+    ],
+    "prefer": [
+     "flatmodel_bf16",
+     "bf16"
+    ]
+   },
+   "words": "the unet file flatmodel_bf16.safetensors"
+  },
+  {
+   "role": "clip",
+   "pool": "clip",
+   "node": "2",
+   "input": "clip_name",
+   "match": {
+    "all": [
+     "flat",
+     "text",
+     "enc"
+    ],
+    "prefer": [
+     "flat_text_enc"
+    ]
+   },
+   "words": "the clip file flat_text_enc.safetensors"
+  },
+  {
+   "role": "vae",
+   "pool": "vae",
+   "node": "3",
+   "input": "vae_name",
+   "match": {
+    "all": [
+     "flat",
+     "vae"
+    ],
+    "prefer": [
+     "flat_vae"
+    ]
+   },
+   "words": "the vae file flat_vae.safetensors"
+  }
+ ],
+ "licence": {
+  "name": "Unknown (from the ComfyUI template image_flat_t2i)",
+  "shippable": false,
+  "attribution": "Made from the ComfyUI template image_flat_t2i on Test lane; models: Flat Model"
+ },
+ "note": "Makes a picture from words."
+}

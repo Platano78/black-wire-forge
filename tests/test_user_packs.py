@@ -512,9 +512,10 @@ check("a pack added after the scan is not picked up until the next start",
       "late" not in [p["id"] for p in engines.packs()])
 
 # the fixed pool list tracks server.py's POOL_NODES
-m = re.search(r"POOL_NODES = \{(.*?)\n\}", server_src, re.S)
-server_pools = set(re.findall(r'^\s*"(\w+)":\s*\[', m.group(1), re.M)) if m else set()
-check("POOLS equals server.py POOL_NODES", server_pools and server_pools == set(up.POOLS), (sorted(server_pools), sorted(up.POOLS)))
+# (the table moved to engines/_comfy.py; tests/test_comfy_shared.py pins that server.py's POOL_NODES IS that dict)
+import engines._comfy as _comfy
+check("POOLS equals the shared POOL_NODES table", set(_comfy.POOL_NODES) == set(up.POOLS), (sorted(_comfy.POOL_NODES), sorted(up.POOLS)))
+check("server.py takes its POOL_NODES from that table", "POOL_NODES = _comfy.POOL_NODES" in server_src)
 check("RESERVED_IDS + seed equals server.py RESERVED_FIELD_IDS",
       set(re.search(r"RESERVED_FIELD_IDS = \{(.*?)\}", server_src).group(1).replace('"', "").replace(" ", "").split(",")) ==
       set(up.RESERVED_IDS) | {"seed"})

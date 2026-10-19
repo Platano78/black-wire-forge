@@ -29,16 +29,10 @@ try:
         browser = pw.chromium.launch()
         for w, h in ((1280, 800), (3440, 1440)):
             page = browser.new_page(viewport={"width": w, "height": h})
-            page.goto(URL + "#room=3d", wait_until="networkidle")
-            # Which 3D engine the room opens on is not this test's business: the page picks
-            # the first one the active lane can offer, and "This machine" (the process lane
-            # that runs the turntable) only comes up ~2 s after the server starts -- so the
-            # default was mesh or turntable depending on how fast the page loaded. Pick the
-            # picture mode the way a person does.
+            # The picture-to-3D task is its own task (the turntable is another), so the
+            # engine no longer depends on how fast the process lane came up.
+            page.goto(URL + "#task=mesh", wait_until="networkidle")
             page.wait_for_function("() => STATE.room === '3d' && !!STATE.mode", timeout=15000)
-            if page.evaluate("STATE.mode") != "mesh":
-                page.evaluate("() => setEngineChipOpen(true)")
-                page.check('#enginePicker input[data-cap="3d"][data-mode="mesh"]')
             page.wait_for_function("() => STATE.mode === 'mesh' && !document.querySelector('#helperBar').hidden", timeout=15000)
             check("%d: the 3D picture mode shows a topic box, not a field" % w, page.is_visible("#promptBox")
                   and page.get_attribute("#promptBox", "data-field-id") is None
@@ -68,7 +62,7 @@ try:
                  "() => STATE.mode === 'turntable' && document.querySelector('[data-field-id=\"frames\"]').value === '120'"),
                 ("DIAGNOSIS: the handle is fused.\nFIX: picture\nPROMPT: " + SRC, "#guideReviseTarget", None)):
             page.goto("about:blank")
-            page.goto(URL + "#room=3d", wait_until="networkidle")
+            page.goto(URL + "#task=turntable", wait_until="networkidle")
             page.wait_for_selector('#binBody tr[data-job="ttjob1"]', timeout=15000)
             page.click('#binBody tr[data-job="ttjob1"]')
             page.wait_for_selector("#notRightBtn", timeout=15000)

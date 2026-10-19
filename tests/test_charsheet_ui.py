@@ -21,10 +21,9 @@ URL = ui.start([])
 SHEET = "\n".join(("%d. Section %d of the sheet for \"ROOKIE\": %s" % (n, n, "the rust-red scarf knots at the left of the neck. " * 12)).rstrip()
                   for n in range(1, 11))
 PNG = os.path.join(ui.SCRATCH, "hero.png")
+READY = "Fill in Reference picture, Sheet prompt and Name, then press Make."
 with open(PNG, "wb") as f:
     f.write(ui.gradient_png(96, 128))
-EMPTY = ("Add a picture of your character and a name — the guide writes the sheet prompt, "
-         "then Make draws the sheet.")
 
 try:
     with sync_playwright() as pw:
@@ -39,16 +38,17 @@ try:
         page.wait_for_timeout(1000)
         check("the Characters room is selected", page.evaluate("() => currentRoom() && currentRoom().id") == "characters")
         check("its mode is the sheet", page.evaluate("() => STATE.mode") == "charsheet")
-        rail = page.evaluate("() => Array.from(document.querySelectorAll('#roomList, #rooms, nav')).map(n => n.innerText).join('|')")
-        check("Characters sits right after Picture in the room list",
-              "Picture" in rail and "Characters" in rail and rail.index("Picture") < rail.index("Characters") < rail.index("Pixel Art"),
+        rail = page.inner_text("#roomStrip").lower()
+        check("Character sheet sits right after Change one in the Picture tabs",
+              "change one" in rail and "character sheet" in rail and rail.index("change one") < rail.index("character sheet") < rail.index("pixel art"),
               rail)
-        check("single-engine chip: named, no caret, disabled",
-              page.evaluate("() => document.querySelector('#engineChipCaret').hidden") is True
-              and page.get_attribute("#engineChipBtn", "disabled") is not None
-              and "Characters" in page.inner_text("#enginePickerCurrent"), page.inner_text("#enginePickerCurrent"))
-        check("the empty-state line explains the two steps", EMPTY in page.inner_text("#monitor") if page.query_selector("#monitor")
-              else EMPTY in page.inner_text("body"), page.inner_text("body")[:400])
+        check("single-way task: named by its heading, no ways list",
+              not page.is_visible("#ways") and "character sheet" in page.inner_text("#roomHeading").lower(),
+              page.inner_text("#roomHeading"))
+        mon = page.inner_text("#monitor")
+        check("the empty state names the task and what to fill in first",
+              "One picture of a character in, a design sheet out." in mon
+              and page.inner_text("#taskReady") == READY, page.inner_text("#taskReady"))
         # FB-2: the Sheet prompt and the name sit under "What the guide filled in"
         # (closed while empty); open it to read the whole form.
         page.evaluate("() => { document.querySelector('#guideFilled').open = true; }")

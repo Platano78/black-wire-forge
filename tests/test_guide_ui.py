@@ -223,10 +223,17 @@ def show_fix_job(page, url):
     page.wait_for_selector("#monitorActions", timeout=15000)
 
 def pick(page, mode):
-    """Pick an engine: the picker is one summary line until opened (P2c)."""
-    # UX-2 #1: the picker is a chip + popover now, not a <details>.
-    page.evaluate("() => { if(typeof setEngineChipOpen === 'function') setEngineChipOpen(true); }")
-    page.check('#enginePicker input[data-mode="%s"]' % mode)
+    """Pick an engine: its way radio when the task on screen lists it, else the task that
+    owns it (its group button, then its tab) -- the bar is how a person gets there."""
+    if page.query_selector('#ways input[data-mode="%s"]' % mode):
+        page.check('#ways input[data-mode="%s"]' % mode)
+        return
+    tid, group = page.evaluate(
+        "m => { const t = STATE.tasks.find(t => t.ways.some(w => w.mode === m)); return [t.id, t.group]; }", mode)
+    if not page.query_selector('#roomStrip [data-task-id="%s"]' % tid):
+        page.click('#roomStrip [data-group="%s"]' % group)
+        page.wait_for_selector('#roomStrip [data-task-id="%s"]' % tid)
+    page.click('#roomStrip [data-task-id="%s"]' % tid)
 
 OPEN_FILLED = "() => { const d = document.querySelector('#guideFilled'); if(d && !d.hidden) d.open = true; }"
 

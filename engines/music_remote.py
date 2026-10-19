@@ -78,6 +78,11 @@ ENGINE = {
         "yue.int8-r9700": "R9700 INT8 song generation",
     },
     "mode_rooms": {"yue2.yue2-bf16-5080": "music", "yue.int8-r9700": "music"},
+    # Front door: which task (tasks.json) each mode is a way of (engines/__init__.py "mode_tasks").
+    "mode_tasks": {
+        "yue2.yue2-bf16-5080": {"task": "song"},
+        "yue.int8-r9700": {"task": "song"},
+    },
     "mode_notes": {
         "yue2.yue2-bf16-5080": "Complete YuE2 song generation on the RTX 5080 BF16 backend.",  # source: verified private RTX 5080 backend contract
         "yue.int8-r9700": "Complete YuE2 song generation on the AMD Radeon AI PRO R9700 INT8 backend.",  # source: verified private R9700 backend contract

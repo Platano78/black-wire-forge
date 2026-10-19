@@ -1194,15 +1194,23 @@ ENGINE = {
         "talking": talking_graph,
     },
     "describe": _describe,
+    # Beat-snap: an LTX render is 8n+1 frames (9..993); the cut keeps 8n of them.
+    "frame_grid": {"ltx": {"step": 8, "offset": 1, "min": 9, "max": 993, "carried": 0}},
     "mode_words": {
         "ltx": "A video from text or a picture, with sound",
         "ltx_loop": "One long continuous take (no sound)",
         "talking": "A face that speaks one line",
     },
     "mode_rooms": {"ltx": "video", "ltx_loop": "video", "talking": "talking"},
+    # Front door: which task (tasks.json) each mode is a way of (engines/__init__.py "mode_tasks").
+    "mode_tasks": {
+        "ltx": {"task": "video", "way": "With sound"},
+        "ltx_loop": {"task": "video", "way": "One long take, no sound"},
+        "talking": {"task": "talking", "way": "Talking face"},
+    },
     "mode_notes": {
         "ltx": "starts from words or a picture; holds one take to about 41 seconds when windowed",  # source: our internal component notes, engines/ltx.py:878 (preset note)
-        "ltx_loop": "the longest length by default, picture only",  # source: engines/ltx.py:884 (preset note), engines/ltx.py:675 (video-only comment)
+        "ltx_loop": "the longest single take, from words only, no sound",  # source: engines/ltx.py:884 (preset note, longest length), engines/ltx.py:675 (video-only comment), engines/ltx.py:1485 (takes no picture)
         "talking": "the setting this pack is tuned for",  # source: engines/ltx.py:891 (talking preset note); A2: no hardware/time claim -- the live estimate already shows time
     },
     # L5: how a prompt must be written for each mode, drawn only from this

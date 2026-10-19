@@ -242,17 +242,14 @@ today). Terms in `code font` are the app's own words. In-house sources were cons
   added, and this mode has no measured "line lands late" cushion the way H3's dialogue path does
   (below). This is the Guide's own sizing choice, not a number the app or any source states
   directly — inferred, built from the observed WPM range above plus the observed absence of a
-  landing-time measurement for this specific mode. **Verified as followable**: the live trial's own
-  arithmetic (13 words → 5.9s → +15% → ~163 frames, rounded up) reproduced cleanly across 6 of 7
-  separate runs on a 12B local model once stated as an explicit step-by-step procedure (one
-  run showed a stochastic frame-conversion slip, not a formula error).
-  🔴 **The live trial's own recommended frame count at the time (168) was itself invalid** — LTX
-  requires `length % 8 == 1` (`engines/ltx.py:124`), and 168 fails that check outright, so the app's
-  backend would have refused it. Caught by cross-model review, not by the live trial itself; fixed
-  by adding an explicit "round up to the nearest valid frame count" step to the formula (169 frames,
-  ~7.04s, is the corrected recommendation for that same 13-word line). **For now**: keep 2.2
+  landing-time measurement for this specific mode. **Verified as followable**: the arithmetic (13 words → 5.9s → +15% → ~163 frames, rounded up) reproduced
+  cleanly in 6 of 7 runs on a 12B local model once stated as an explicit step-by-step procedure (one
+  run slipped on the frame conversion, not the formula).
+  🔴 **Always finish with "round up to the nearest valid frame count".** LTX
+  requires `length % 8 == 1` (`engines/ltx.py:124`), so a raw 168 fails outright and the app's
+  backend would refuse it; the valid answer for that same 13-word line is 169 frames (~7.04s). **For now**: keep 2.2
   words/second, labelled inferred, until a real Talking Head render exists to test the actual
-  landing-time against — this figure stays a placeholder for a measurement, not a final answer.
+  landing-time against; this figure stays a placeholder for a measurement, not a final answer.
 - **Two different calculations, not one formula run both ways.** Recommending a length FOR a line
   (above) includes the 15% cushion; finding how many words comfortably FIT a clip length someone
   already picked is the reverse and does not simply invert step 3 — divide the clip's seconds by
